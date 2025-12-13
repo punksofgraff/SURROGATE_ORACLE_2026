@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
-import DIDWebRTCClient, { DIDClientHandle } from './DIDWebRTCClient';
+import DecartClient, { DecartClientHandle } from './DecartClient';
 import { BackendControlPanel } from './BackendControlPanel';
 import { GoogleSignInOverlay } from './GoogleSignInOverlay';
 import { GraffPunksRadio } from './GraffPunksRadio';
@@ -26,7 +26,6 @@ interface OracleState {
   currentMode: 'voice' | 'text';
   error: string | null;
   debugMode: boolean;
-  // @ts-ignore – existing code uses this dynamically
   activeBackendTab?: 'coins' | 'squad' | 'portraits' | 'debug';
 }
 
@@ -59,9 +58,8 @@ export const SurrogateOracleImmersion: React.FC = () => {
   const [voiceGender, setVoiceGender] = useState<'male' | 'female'>('male');
 
   // Refs
-  const didClientRef = useRef<DIDClientHandle | null>(null);
-  const idleVideoRef = useRef<HTMLVideoElement>(null);
-  const streamVideoRef = useRef<HTMLVideoElement>(null);
+  const decartClientRef = useRef<DecartClientHandle | null>(null);
+  const avatarCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   // Environment Validation
@@ -69,7 +67,7 @@ export const SurrogateOracleImmersion: React.FC = () => {
     const required = [
       'VITE_SUPABASE_URL',
       'VITE_SUPABASE_ANON_KEY',
-      'VITE_DID_AGENT_ID'
+      'VITE_DECART_API_KEY'
     ];
     
     const missing = required.filter(key => !import.meta.env[key]);
@@ -129,16 +127,20 @@ export const SurrogateOracleImmersion: React.FC = () => {
     }
   }, [audioVolume, oracleState.isProcessing]);
 
-  // Initialize Oracle (D-ID WebRTC) – **NO `new` HERE**
+  // Initialize Oracle (Decart LipSync Live)
   const initializeOracle = async () => {
     if (!validateEnvironment()) return;
+    if (!avatarCanvasRef.current) {
+      setOracleState(prev => ({ ...prev, error: 'Oracle canvas not ready' }));
+      return;
+    }
 
     setIsConnecting(true);
     setConnectionProgress(0);
 
     try {
-      console.log('🚀 Initializing SURROGATE Oracle...');
-      
+      console.log('🚀 Initializing SURROGATE Oracle via Decart...');
+
       // Progress animation
       const progressInterval = setInterval(() => {
         setConnectionProgress(prev => {
@@ -150,33 +152,32 @@ export const SurrogateOracleImmersion: React.FC = () => {
         });
       }, 500);
 
-      // Set D-ID callbacks on the client handle
-      didClientRef.current?.setCallbacks({
+      // Set Decart callbacks
+      decartClientRef.current?.setCallbacks({
         onConnected: () => {
-          console.log('✅ D-ID WebRTC connected');
+          console.log('✅ Decart WebSocket connected');
           setOracleState(prev => ({ ...prev, isConnected: true }));
           setConnectionProgress(95);
         },
         onStreamReady: () => {
-          console.log('✅ D-ID stream ready');
+          console.log('✅ Decart stream ready');
           setOracleState(prev => ({ ...prev, isReady: true, error: null }));
           setConnectionProgress(100);
-          
           setTimeout(() => {
             setIsConnecting(false);
             setIsOracleMode(true);
-          }, 1000);
+          }, 800);
         },
         onTalkStarted: () => {
-          console.log('🎤 Oracle speaking...');
+          console.log('🎤 Oracle speaking (Decart)...');
           setOracleState(prev => ({ ...prev, isProcessing: true }));
         },
         onTalkEnded: () => {
-          console.log('🎤 Oracle finished speaking');
+          console.log('🎤 Oracle finished speaking (Decart)');
           setOracleState(prev => ({ ...prev, isProcessing: false }));
         },
         onDisconnected: (state) => {
-          console.log('❌ D-ID disconnected:', state);
+          console.log('❌ Decart disconnected:', state);
           setOracleState(prev => ({ 
             ...prev, 
             isConnected: false, 
@@ -185,22 +186,23 @@ export const SurrogateOracleImmersion: React.FC = () => {
           }));
           setIsOracleMode(false);
           setIsConnecting(false);
+        },
+        onError: (err) => {
+          console.error('❌ Decart error:', err);
+          setOracleState(prev => ({ ...prev, error: err }));
         }
       });
 
-      // Attach video elements once refs ready
-      if (idleVideoRef.current && streamVideoRef.current) {
-        didClientRef.current?.attachVideoElements(idleVideoRef.current, streamVideoRef.current);
+      const result = await decartClientRef.current?.initializeStream(
+        ORACLE_IMAGE_URL,
+        avatarCanvasRef.current
+      );
+
+      if (!result?.success) {
+        throw new Error(result?.error || 'Failed to initialize Decart stream');
       }
 
-      // Initialize stream
-      const result = await didClientRef.current?.initializeStream(ORACLE_IMAGE_URL);
-      if (!result?.success) {
-        throw new Error(result?.error || 'Failed to initialize stream');
-      }
-      
-      console.log('✅ Oracle stream initialized');
-      
+      console.log('✅ Oracle (Decart) stream initialized');
     } catch (error: any) {
       console.error('❌ Oracle initialization failed:', error);
       setOracleState(prev => ({ ...prev, error: error.message }));
@@ -210,28 +212,24 @@ export const SurrogateOracleImmersion: React.FC = () => {
   };
 
   // Oracle Response Handler
-  const handleOracleResponse = async (response: string) => {
-    if (!didClientRef.current?.isStreamActive()) return;
-    
+  // NOTE: OracleConversation MUST now provide an audio URL (e.g. from ElevenLabs)
+  const handleOracleResponse = async (audioUrl: string) => {
+    if (!decartClientRef.current?.isStreamActive()) return;
+
     try {
-      console.log('🎤 Sending Oracle response to D-ID avatar:', response.substring(0, 50) + '...');
-      const result = await didClientRef.current.sendTalk(response);
-      
+      console.log('🎤 Sending audio to Decart for lip-sync:', audioUrl);
+      const result = await decartClientRef.current.sendAudio(audioUrl);
+
       if (!result.success) {
-        const errorMsg = result.usedFallback 
-          ? `Oracle speaking with backup voice: ${result.error}` 
-          : `D-ID Avatar Error: ${result.error}`;
+        const errorMsg = `Decart LipSync error: ${result.error}`;
         console.error('❌', errorMsg);
         setOracleState(prev => ({ ...prev, error: errorMsg }));
       } else {
-        const successMsg = result.usedFallback 
-          ? '✅ Oracle response sent to D-ID (using fallback voice)' 
-          : '✅ Oracle response sent to D-ID successfully';
-        console.log(successMsg);
+        console.log('✅ Audio sent to Decart successfully');
         setOracleState(prev => ({ ...prev, error: null }));
       }
     } catch (error: any) {
-      const errorMsg = `Oracle response error: ${error.message}`;
+      const errorMsg = `Oracle/Decart response error: ${error.message}`;
       console.error('❌', errorMsg);
       setOracleState(prev => ({ ...prev, error: errorMsg }));
     }
@@ -241,8 +239,8 @@ export const SurrogateOracleImmersion: React.FC = () => {
   const exitOracleMode = async () => {
     console.log('🚪 Exiting Oracle mode...');
     
-    if (didClientRef.current) {
-      await didClientRef.current.closeStream();
+    if (decartClientRef.current) {
+      await decartClientRef.current.closeStream();
     }
     
     setIsOracleMode(false);
@@ -309,8 +307,8 @@ export const SurrogateOracleImmersion: React.FC = () => {
 
   return (
     <div className="oracle-immersion-container">
-      {/* Hidden WebRTC client instance (imperative API only) */}
-      <DIDWebRTCClient ref={didClientRef} hideUI={true} />
+      {/* Decart LipSync client (no UI) */}
+      <DecartClient ref={decartClientRef} />
 
       {/* Direct Audio Element for GraffPunks Radio */}
       <audio
@@ -351,7 +349,7 @@ export const SurrogateOracleImmersion: React.FC = () => {
         </motion.p>
       </div>
 
-      {/* Oracle Image - Perfect Center */}
+      {/* Oracle Image / Canvas Container */}
       <motion.div
         className="oracle-image-container"
         onClick={!isOracleMode ? initializeOracle : undefined}
@@ -371,6 +369,7 @@ export const SurrogateOracleImmersion: React.FC = () => {
           zIndex: 90
         }}
       >
+        {/* Static Oracle image (visible until Decart stream is active) */}
         <img 
           src={ORACLE_IMAGE_URL} 
           alt="SURROGATE Oracle" 
@@ -378,39 +377,21 @@ export const SurrogateOracleImmersion: React.FC = () => {
           style={{ opacity: isOracleMode ? 0 : 1 }}
         />
 
-        {/* Oracle Videos (for D-ID streaming) */}
-        <video
-          ref={idleVideoRef}
-          className="oracle-video idle-video"
-          style={{ 
-            opacity: isOracleMode && !oracleState.isReady ? 1 : 0,
+        {/* Decart-rendered avatar canvas */}
+        <canvas
+          ref={avatarCanvasRef}
+          className="oracle-canvas"
+          style={{
             position: 'absolute',
             top: 0,
             left: 0,
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            borderRadius: '15%'
+            borderRadius: '15%',
+            opacity: isOracleMode ? 1 : 0,
+            transition: 'opacity 0.5s ease'
           }}
-          muted
-          playsInline
-        />
-        
-        <video
-          ref={streamVideoRef}
-          className="oracle-video stream-video"
-          style={{ 
-            opacity: isOracleMode && oracleState.isReady ? 1 : 0,
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            borderRadius: '15%'
-          }}
-          muted={false}
-          playsInline
         />
       </motion.div>
 
@@ -491,6 +472,8 @@ export const SurrogateOracleImmersion: React.FC = () => {
             <OracleConversation
               userId={currentUserId || currentSessionId}
               sessionId={currentSessionId}
+              // IMPORTANT: OracleConversation must call this with an audio URL,
+              // not with plain text, after generating TTS via ElevenLabs/etc.
               onOracleResponse={handleOracleResponse}
               onCoinsEarned={handleCoinsUpdate}
               onClose={exitOracleMode}

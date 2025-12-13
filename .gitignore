@@ -1,0 +1,62 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Ready Player Me / 3D Assets
+/public/rpm-avatars/
+/src/components/ReadyPlayerMe/
+/src/hooks/useReadyPlayerMe.ts
+*.glb
+*.gltf
+*.fbx
+*.obj
+
+# D-ID deprecated assets
+/src/components/DID*
+/public/did-assets/
+
+# Development and testing artifacts
+/src/components/*Test.tsx
+/src/components/*Debug.tsx
+/coverage/
+/.nyc_output/
+
+# Build artifacts
+.turbo
+
+# D-ID Legacy References (Moved to Linly-Talker)
+**/d-id*
+**/did*
+**/*d-id*
+**/*did*
+**/bloat*did*
+supabase/functions/*d-id*
+supabase/functions/*did*

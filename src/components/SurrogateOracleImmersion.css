@@ -1,0 +1,483 @@
+/* SURROGATE Oracle Complete Immersion Styles */
+
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Bangers&display=swap');
+
+/* Main Container */
+.oracle-immersion-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #000;
+  font-family: 'PhillySans', 'Orbitron', monospace;
+}
+
+/* Graffiti Alley Background */
+.alley-background-tilt {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: 1;
+  transition: opacity 1.2s ease, filter 1.2s ease;
+  filter: brightness(0.7) contrast(1.2);
+}
+
+/* SNEAKAR Branding */
+.sneakar-branding {
+  position: absolute;
+  top: 5%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  text-align: center;
+  width: 90%;
+  max-width: 900px;
+}
+
+.sneakar-title {
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: 4rem;
+  color: var(--neon-cyan);
+  text-shadow: 
+    0 0 10px var(--neon-cyan), 
+    0 0 20px var(--neon-cyan), 
+    0 0 30px var(--neon-cyan),
+    0 0 40px var(--neon-pink);
+  letter-spacing: 0.2em;
+  margin: 0;
+  animation: title-glow 4s infinite ease-in-out;
+}
+
+@keyframes title-glow {
+  0%, 100% { 
+    text-shadow: 
+      0 0 10px var(--neon-cyan), 
+      0 0 20px var(--neon-cyan), 
+      0 0 30px var(--neon-cyan),
+      0 0 40px var(--neon-pink);
+  }
+  50% { 
+    text-shadow: 
+      0 0 15px var(--neon-cyan), 
+      0 0 30px var(--neon-cyan), 
+      0 0 45px var(--neon-cyan),
+      0 0 60px var(--neon-pink);
+  }
+}
+
+.sneakar-subtitle {
+  font-family: 'aDrip1', 'Bangers', monospace;
+  font-size: 1.6rem;
+  color: var(--neon-green);
+  text-shadow: 0 0 8px var(--neon-green), 0 0 16px var(--neon-green);
+  margin: 15px 0 0 0;
+  letter-spacing: 0.1em;
+  transition: all 0.3s ease;
+}
+
+.sneakar-subtitle:hover {
+  color: var(--neon-pink);
+  text-shadow: 0 0 12px var(--neon-pink), 0 0 24px var(--neon-pink);
+  transform: scale(1.05);
+ animation-play-state: paused;
+}
+
+ @keyframes subtitle-pulse-glow {
+   0%, 100% {
+     color: var(--neon-green);
+     text-shadow: 0 0 8px var(--neon-green), 0 0 16px var(--neon-green);
+   }
+   25% {
+     color: var(--neon-purple);
+     text-shadow: 0 0 12px var(--neon-purple), 0 0 24px var(--neon-purple);
+   }
+   50% {
+     color: var(--neon-yellow);
+     text-shadow: 0 0 10px var(--neon-yellow), 0 0 20px var(--neon-yellow);
+   }
+   75% {
+     color: var(--neon-pink);
+     text-shadow: 0 0 8px var(--neon-pink), 0 0 16px var(--neon-pink);
+   }
+ }
+/* Oracle Image Container - CENTER FOCUS */
+.oracle-image-container {
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.8)) brightness(1.2);
+  animation: oracle-center-pulse 3s ease-in-out infinite;
+}
+
+.oracle-image-container:hover {
+  transform: translate(-50%, -50%) scale(1.08) !important;
+  animation-play-state: paused;
+}
+
+/* Force Center Pulse Animation */
+@keyframes oracle-center-pulse {
+  0%, 100% { 
+    transform: translate(-50%, -50%) scale(1);
+    filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.8)) brightness(1.2);
+  }
+  50% { 
+    transform: translate(-50%, -50%) scale(1.05);
+    filter: drop-shadow(0 0 30px rgba(0, 255, 255, 1)) drop-shadow(0 0 20px rgba(255, 0, 170, 0.6)) brightness(1.4);
+  }
+}
+
+/* Connecting State Animation Override */
+.oracle-image-container.connecting {
+  animation: oracle-connecting-pulse 2s ease-in-out infinite !important;
+}
+
+@keyframes oracle-connecting-pulse {
+  0%, 100% { 
+    transform: translate(-50%, -50%) scale(1);
+    filter: drop-shadow(0 0 25px #00ffff) brightness(1.2);
+  }
+  50% { 
+    transform: translate(-50%, -50%) scale(1.08);
+    filter: drop-shadow(0 0 40px #00ffff) drop-shadow(0 0 30px #ff00aa) brightness(1.5);
+  }
+}
+
+/* Static Oracle Image */
+.static-oracle-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 15%;
+}
+
+/* Controls Container - BOTTOM LAYOUT */
+.bottom-controls-center {
+  position: absolute;
+  bottom: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 40px;
+}
+
+/* GraffPunks Radio Animations */
+.graff-punks-radio {
+  position: relative;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation: radio-pulse-idle 4s infinite ease-in-out;
+}
+
+@keyframes radio-pulse-idle {
+  0%, 100% { 
+    filter: brightness(1.1) saturate(1.1) drop-shadow(0 0 15px #00ffff);
+    transform: scale(1);
+  }
+  50% { 
+    filter: brightness(1.3) saturate(1.2) drop-shadow(0 0 25px #00ffff);
+    transform: scale(1.02);
+  }
+}
+
+@keyframes radio-pulse-active {
+  0%, 100% { 
+    filter: brightness(1.4) saturate(1.4) drop-shadow(0 0 20px #00ffff) drop-shadow(0 0 40px #ff00aa);
+    transform: scale(1);
+  }
+  50% { 
+    filter: brightness(1.6) saturate(1.6) drop-shadow(0 0 30px #00ffff) drop-shadow(0 0 60px #ff00aa);
+    transform: scale(1.05);
+  }
+}
+
+/* Enculturate Crate Animations */
+.enculturate-crate {
+  position: relative;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation: spray-crate-pulse 3s infinite ease-in-out;
+}
+
+@keyframes spray-crate-pulse {
+  0%, 100% { 
+    filter: brightness(1.2) saturate(1.2) drop-shadow(0 0 20px #00ff62);
+    transform: scale(1);
+  }
+  50% { 
+    filter: brightness(1.4) saturate(1.3) drop-shadow(0 0 30px #00ff62);
+    transform: scale(1.03);
+  }
+}
+
+/* Oracle Mode Overlay */
+.oracle-mode-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.9);
+  backdrop-filter: blur(10px);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Oracle Exit Button */
+.oracle-exit-btn {
+  position: absolute;
+  top: 25px;
+  right: 25px;
+  background: rgba(255, 0, 0, 0.8);
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  padding: 12px;
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 2001;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
+}
+
+.oracle-exit-btn:hover {
+  background: rgba(255, 0, 0, 1);
+  transform: scale(1.1);
+  box-shadow: 0 0 30px rgba(255, 0, 0, 1);
+}
+
+/* Conversation Controls */
+.conversation-controls {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  z-index: 1100;
+}
+
+.voice-controls, .keyboard-controls {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 2px solid var(--neon-cyan);
+  border-radius: 25px;
+  padding: 15px 25px;
+  backdrop-filter: blur(10px);
+}
+
+.voice-input-btn {
+  background: rgba(0, 255, 255, 0.2);
+  border: 2px solid var(--neon-cyan);
+  color: var(--neon-cyan);
+  padding: 12px 20px;
+  border-radius: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+  font-family: 'PhillySans', 'Orbitron', monospace;
+}
+
+.voice-input-btn:hover {
+  background: rgba(0, 255, 255, 0.4);
+  transform: scale(1.05);
+}
+
+.voice-input-btn.listening {
+  background: rgba(255, 0, 170, 0.3);
+  border-color: var(--neon-pink);
+  color: var(--neon-pink);
+  animation: mic-pulse 2s infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); box-shadow: 0 0 30px rgba(0, 255, 65, 0.8); }
+}
+
+.keyboard-input {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--neon-cyan);
+  color: var(--neon-cyan);
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 1rem;
+  width: 300px;
+  font-family: 'PhillySans', 'Orbitron', monospace;
+}
+
+.keyboard-input:focus {
+  outline: none;
+  border-color: var(--neon-green);
+  box-shadow: 0 0 10px rgba(0, 255, 98, 0.5);
+}
+
+/* Oracle Response Display */
+.oracle-response {
+  position: absolute;
+  bottom: 150px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 600px;
+  width: 90%;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(0, 255, 255, 0.4);
+  border-radius: 12px;
+  padding: 16px;
+  font-size: 0.9rem;
+  font-family: 'PhillySans', 'Orbitron', monospace;
+  color: var(--neon-cyan);
+  z-index: 1050;
+  text-align: center;
+}
+
+/* Error Display */
+.error-display {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 0, 0, 0.2);
+  border: 2px solid rgba(255, 0, 0, 0.5);
+  color: #ff6666;
+  padding: 12px 20px;
+  border-radius: 10px;
+  z-index: 3000;
+  max-width: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  animation: error-slide-in 0.3s ease;
+  font-family: 'PhillySans', 'Orbitron', monospace;
+}
+
+@keyframes error-slide-in {
+  from { 
+    opacity: 0; 
+    transform: translateX(100%); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateX(0); 
+  }
+}
+
+.error-close-btn {
+  background: none;
+  border: none;
+  color: #ff6666;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+}
+
+.error-close-btn:hover {
+  background: rgba(255, 0, 0, 0.2);
+  transform: scale(1.1);
+}
+
+/* Neon Pulse Effect */
+@keyframes neon-pulse {
+  0%, 100% { 
+    box-shadow: 0 0 5px currentColor, 0 0 10px currentColor;
+    opacity: 1;
+  }
+  50% { 
+    box-shadow: 0 0 20px currentColor, 0 0 30px currentColor;
+    opacity: 0.8;
+  }
+}
+
+/* Power Blink Effect */
+@keyframes power-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.3; }
+}
+
+/* Responsive Design */
+@media (max-width: 900px) {
+  .sneakar-title { 
+    font-size: 3.5rem; 
+  }
+  .sneakar-subtitle { 
+    font-size: 1.2rem; 
+  }
+  .oracle-image-container { 
+    width: 220px; 
+    height: 220px; 
+  }
+  .learn2earn-tag {
+    font-size: 1.8rem;
+  }
+  .controls-container {
+    bottom: 6%;
+    padding: 0 3%;
+  }
+  
+  .bottom-controls-center {
+    bottom: 6%;
+    gap: 30px;
+  }
+}
+
+@media (max-width: 600px) {
+  .sneakar-title { 
+    font-size: 2.5rem; 
+  }
+  .sneakar-subtitle { 
+    font-size: 1rem; 
+  }
+  .oracle-image-container { 
+    width: 180px; 
+    height: 180px; 
+  }
+  .learn2earn-tag {
+    font-size: 1.5rem;
+  }
+  .controls-container {
+    bottom: 4%;
+    padding: 0 2%;
+  }
+  
+  .bottom-controls-center {
+    bottom: 4%;
+    gap: 25px;
+  }
+  
+  .conversation-controls {
+    bottom: 20px;
+  }
+  
+  .voice-controls, .keyboard-controls {
+    padding: 10px 15px;
+  }
+  
+  .keyboard-input {
+    width: 250px;
+  }
+  
+  .oracle-response {
+    bottom: 120px;
+    width: 95%;
+    font-size: 0.8rem;
+    padding: 12px;
+  }
+}

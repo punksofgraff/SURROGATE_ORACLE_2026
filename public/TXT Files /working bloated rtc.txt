@@ -1,0 +1,550 @@
+// PART 1: D-ID OFFICIAL WebRTC Client - Core Foundation & Setup
+import { supabase } from '../lib/supabase';
+
+export interface CreateStreamResponse {
+  success: boolean;
+  streamId?: string;
+  sessionId?: string;
+  error?: string;
+}
+
+export interface TalkResponse {
+  success: boolean;
+  talk_id?: string;
+  error?: string;
+}
+
+interface ClientCallbacks {
+  onConnected?: () => void;
+  onDisconnected?: (state: string) => void;
+  onStreamReady?: () => void;
+  onTalkStarted?: () => void;
+  onTalkEnded?: () => void;
+}
+
+export class DIDWebRTCClient {
+  private peerConnection: RTCPeerConnection | null = null;
+  private pcDataChannel: RTCDataChannel | null = null;
+  private statsIntervalId: number | null = null;
+  private lastBytesReceived: number = 0;
+  private videoIsPlaying: boolean = false;
+  private streamVideoOpacity: number = 0;
+  
+  // D-ID Official: Stream warmup configuration
+  private streamWarmup: boolean = true;
+  private isStreamReady: boolean = false;
+  
+  private streamId: string | null = null;
+  private sessionId: string | null = null;
+  private sessionClientAnswer: RTCSessionDescriptionInit | null = null;
+
+  private idleVideoElement: HTMLVideoElement | null = null;
+  private streamVideoElement: HTMLVideoElement | null = null;
+  private callbacks: ClientCallbacks = {};
+
+  // D-ID Official: Retry configuration
+  private maxRetryCount: number = 3;
+  private maxDelaySec: number = 4;
+
+  constructor() {
+    console.log('🎬 D-ID WebRTC Client initialized (Official Source)');
+  }
+
+  public attachVideoElements(idleVideo: HTMLVideoElement | null, streamVideo: HTMLVideoElement | null) {
+    this.idleVideoElement = idleVideo;
+    this.streamVideoElement = streamVideo;
+    
+    if (this.idleVideoElement) {
+      this.idleVideoElement.setAttribute('playsinline', '');
+      this.idleVideoElement.setAttribute('autoplay', '');
+    }
+    if (this.streamVideoElement) {
+      this.streamVideoElement.setAttribute('playsinline', '');
+      this.streamVideoElement.setAttribute('autoplay', '');
+    }
+  }
+
+  public toggleMute(muted: boolean) {
+    if (this.streamVideoElement) this.streamVideoElement.muted = muted;
+    if (this.idleVideoElement) this.idleVideoElement.muted = muted;
+  }
+
+  // D-ID Official: Network resilience with exponential backoff
+  private async fetchWithRetries(url: string, options: RequestInit, retries = 1): Promise<Response> {
+    try {
+      return await fetch(url, options);
+    } catch (err) {
+      if (retries <= this.maxRetryCount) {
+        const delay = Math.min(Math.pow(2, retries) / 4 + Math.random(), this.maxDelaySec) * 1000;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        console.log(`Request failed, retrying ${retries}/${this.maxRetryCount}. Error ${err}`);
+        return this.fetchWithRetries(url, options, retries + 1);
+      } else {
+        throw new Error(`Max retries exceeded. error: ${err}`);
+      }
+    }
+  }
+
+  // D-ID Official: Main initialization
+  public async initializeStream(sourceUrl?: string): Promise<CreateStreamResponse> {
+    console.log('🚀 Starting D-ID stream initialization (Official Pattern)...');
+    
+    if (this.peerConnection) {
+      await this.closeStream();
+    }
+
+    this.sessionId = crypto.randomUUID();
+    this.isStreamReady = false;
+
+    try {
+      const response = await this.fetchWithRetries(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/d-id-api-handler`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          action: 'create_stream',
+          sessionId: this.sessionId,
+          agent_id: import.meta.env.VITE_DID_AGENT_ID || 'agt_EGmpzZtA',
+          source_url: sourceUrl || 'https://i.postimg.cc/jSGnyZXh/Image-1-11.jpg',
+          stream_warmup: this.streamWarmup
+        }),
+      });
+
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error);
+
+      const { stream_id, offer, ice_servers, session_id } = result;
+      this.streamId = stream_id;
+      this.sessionId = session_id;
+
+      this.sessionClientAnswer = await this.createPeerConnection(offer, ice_servers);
+      await this.sendSDPAnswer();
+
+      return { success: true, streamId: stream_id, sessionId: session_id };
+      
+    } catch (err: any) {
+      console.error('❌ Stream init failed:', err);
+      return { success: false, error: err.message };
+    }
+  }
+
+  // D-ID Official: Complete peer connection setup
+  private async createPeerConnection(offer: RTCSessionDescriptionInit, iceServers: RTCIceServer[]): Promise<RTCSessionDescriptionInit> {
+    if (!this.peerConnection) {
+      this.peerConnection = new RTCPeerConnection({ iceServers });
+      this.pcDataChannel = this.peerConnection.createDataChannel('JanusDataChannel');
+      
+      // D-ID Official: ALL event listeners
+      this.peerConnection.addEventListener('icegatheringstatechange', this.onIceGatheringStateChange.bind(this), true);
+      this.peerConnection.addEventListener('icecandidate', this.onIceCandidate.bind(this), true);
+      this.peerConnection.addEventListener('iceconnectionstatechange', this.onIceConnectionStateChange.bind(this), true);
+      this.peerConnection.addEventListener('connectionstatechange', this.onConnectionStateChange.bind(this), true);
+      this.peerConnection.addEventListener('signalingstatechange', this.onSignalingStateChange.bind(this), true);
+      this.peerConnection.addEventListener('track', this.onTrack.bind(this), true);
+      
+      // CRITICAL: Data channel message listener
+      this.pcDataChannel.addEventListener('message', this.onStreamEvent.bind(this), true);
+    }
+
+    await this.peerConnection.setRemoteDescription(offer);
+    console.log('set remote sdp OK');
+
+    const answer = await this.peerConnection.createAnswer();
+    console.log('create local sdp OK');
+    
+    await this.peerConnection.setLocalDescription(answer);
+    console.log('set local sdp OK');
+
+    return answer;
+  }
+  // PART 2: Event Handlers & Public Methods
+
+  // D-ID Official: Stream event handler - THE CRITICAL PIECE
+  private onStreamEvent(message: MessageEvent) {
+    if (this.pcDataChannel?.readyState !== 'open') return;
+
+    const [event, _] = message.data.split(':');
+    
+    switch (event) {
+      case 'stream/started':
+        console.log('stream/started');
+        this.callbacks.onTalkStarted?.();
+        break;
+      case 'stream/done':
+        console.log('stream/done');
+        this.callbacks.onTalkEnded?.();
+        break;
+      case 'stream/ready':
+        // D-ID Official: Set ready after 1-second delay for timing sync
+        setTimeout(() => {
+          console.log('stream/ready');
+          this.isStreamReady = true;
+          this.callbacks.onStreamReady?.();
+          
+          // Update video opacity if currently streaming
+          if (this.videoIsPlaying && this.streamVideoElement) {
+            this.streamVideoOpacity = 1;
+            this.streamVideoElement.style.opacity = '1';
+            this.streamVideoElement.muted = false;
+            if (this.idleVideoElement) {
+              this.idleVideoElement.style.opacity = '0';
+            }
+          }
+        }, 1000);
+        break;
+      case 'stream/error':
+        console.error('stream/error');
+        break;
+      default:
+        console.log('stream event:', event);
+        break;
+    }
+  }
+
+  // D-ID Official: Video status management
+  private onVideoStatusChange(videoIsPlaying: boolean, stream: MediaStream) {
+    let status;
+
+    if (videoIsPlaying) {
+      status = 'streaming';
+      this.streamVideoOpacity = this.isStreamReady ? 1 : 0;
+      this.setStreamVideoElement(stream);
+    } else {
+      status = 'empty';
+      this.streamVideoOpacity = 0;
+    }
+
+    if (this.streamVideoElement) {
+      this.streamVideoElement.style.opacity = this.streamVideoOpacity.toString();
+    }
+    if (this.idleVideoElement) {
+      this.idleVideoElement.style.opacity = (1 - this.streamVideoOpacity).toString();
+    }
+
+    console.log('Video status:', status);
+  }
+
+  // D-ID Official: Set stream video element
+  private setStreamVideoElement(stream: MediaStream) {
+    if (!stream || !this.streamVideoElement) return;
+
+    this.streamVideoElement.srcObject = stream;
+    this.streamVideoElement.loop = false;
+    this.streamVideoElement.muted = !this.isStreamReady;
+
+    // Safari hotfix - D-ID official pattern
+    if (this.streamVideoElement.paused) {
+      this.streamVideoElement
+        .play()
+        .then(() => console.log('Video autoplay successful'))
+        .catch((e) => console.warn('Video autoplay failed:', e));
+    }
+  }
+
+  // D-ID Official: Play idle video
+  private playIdleVideo() {
+    if (this.idleVideoElement) {
+      this.idleVideoElement.style.opacity = '1';
+    }
+  }
+
+  // D-ID Official: All event handlers
+  private onIceGatheringStateChange() {
+    console.log('ICE gathering state:', this.peerConnection?.iceGatheringState);
+  }
+
+  private async onIceCandidate(event: RTCPeerConnectionIceEvent) {
+    if (!this.streamId || !this.sessionId) return;
+
+    try {
+      await this.fetchWithRetries(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/d-id-api-handler`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          action: 'send_ice_candidate',
+          sessionId: this.sessionId,
+          stream_id: this.streamId,
+          ice_candidate: event.candidate,
+        }),
+      });
+    } catch (err) {
+      console.error('ICE candidate failed:', err);
+    }
+  }
+
+  private onIceConnectionStateChange() {
+    const state = this.peerConnection?.iceConnectionState;
+    console.log('ICE connection state:', state);
+    
+    if (state === 'failed' || state === 'closed') {
+      this.stopAllStreams();
+      this.closePC();
+    }
+  }
+
+  private onConnectionStateChange() {
+    const state = this.peerConnection?.connectionState;
+    console.log('Connection state:', state);
+
+    if (state === 'connected') {
+      this.callbacks.onConnected?.();
+      this.playIdleVideo();
+      
+      // D-ID Official: 5-second fallback for stream/ready
+      setTimeout(() => {
+        if (!this.isStreamReady) {
+          console.log('forcing stream/ready');
+          this.isStreamReady = true;
+          this.callbacks.onStreamReady?.();
+        }
+      }, 5000);
+    }
+
+    if (state === 'closed' || state === 'failed' || state === 'disconnected') {
+      this.callbacks.onDisconnected?.(state || '');
+    }
+  }
+
+  private onSignalingStateChange() {
+    console.log('Signaling state:', this.peerConnection?.signalingState);
+  }
+
+  // D-ID Official: Track handler with video stats monitoring
+  private onTrack(event: RTCTrackEvent) {
+    if (!event.track || event.track.kind !== 'video' || !event.streams.length) return;
+
+    this.statsIntervalId = window.setInterval(async () => {
+      if (!this.peerConnection) return;
+      
+      try {
+        const stats = await this.peerConnection.getStats(event.track);
+        stats.forEach((report) => {
+          if (report.type === 'inbound-rtp' && report.kind === 'video') {
+            const videoStatusChanged = this.videoIsPlaying !== (report.bytesReceived > this.lastBytesReceived);
+
+            if (videoStatusChanged) {
+              this.videoIsPlaying = report.bytesReceived > this.lastBytesReceived;
+              this.onVideoStatusChange(this.videoIsPlaying, event.streams[0]);
+            }
+            this.lastBytesReceived = report.bytesReceived;
+          }
+        });
+      } catch (err) {
+        console.warn('getStats error:', err);
+      }
+    }, 500);
+  }
+
+  private async sendSDPAnswer() {
+    if (!this.streamId || !this.sessionId || !this.sessionClientAnswer) return;
+
+    try {
+      await this.fetchWithRetries(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/d-id-api-handler`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          action: 'send_sdp_answer',
+          sessionId: this.sessionId,
+          stream_id: this.streamId,
+          sdp_answer: this.sessionClientAnswer,
+        }),
+      });
+    } catch (err) {
+      console.error('SDP answer failed:', err);
+    }
+  }
+
+  // PUBLIC METHODS - D-ID Official API
+
+  // Send talk - Simple text input
+  public async sendTalk(content: string): Promise<TalkResponse> {
+    const connectionReady = this.peerConnection?.signalingState === 'stable' || 
+                           this.peerConnection?.iceConnectionState === 'connected';
+    
+    if (!connectionReady || !this.isStreamReady) {
+      return { success: false, error: 'Connection not ready' };
+    }
+
+    try {
+      const response = await this.fetchWithRetries(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/d-id-api-handler`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          action: 'talk',
+          sessionId: this.sessionId,
+          stream_id: this.streamId,
+          script: {
+            type: 'text',
+            input: content,
+            provider: { type: 'microsoft', voice_id: 'en-US-AndrewNeural' },
+            ssml: false
+          },
+        }),
+      });
+
+      const result = await response.json();
+      return result.success ? 
+        { success: true, talk_id: result.talk_id } : 
+        { success: false, error: result.error };
+        
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  // Start stream with script - Full configuration support
+  public async startStreamWithScript(script: any): Promise<TalkResponse> {
+    const connectionReady = this.peerConnection?.signalingState === 'stable' || 
+                           this.peerConnection?.iceConnectionState === 'connected';
+    
+    if (!connectionReady || !this.isStreamReady) {
+      console.warn('Cannot start stream with script: connection not ready or stream not ready');
+      return { success: false, error: 'Connection not ready or stream not ready' };
+    }
+
+    console.log('Starting stream with script...');
+
+    try {
+      const response = await this.fetchWithRetries(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/d-id-api-handler`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          action: 'talk',
+          sessionId: this.sessionId,
+          stream_id: this.streamId,
+          script: script,
+        }),
+      });
+
+      const result = await response.json();
+      return result.success ? 
+        { success: true, talk_id: result.talk_id } : 
+        { success: false, error: result.error };
+        
+    } catch (err: any) {
+      console.error('Script send error:', err);
+      return { success: false, error: err.message };
+    }
+  }
+
+  // Cleanup methods
+  private stopAllStreams() {
+    if (this.streamVideoElement?.srcObject) {
+      console.log('stopping video streams');
+      const tracks = (this.streamVideoElement.srcObject as MediaStream).getTracks();
+      tracks.forEach((track) => track.stop());
+      this.streamVideoElement.srcObject = null;
+      this.streamVideoOpacity = 0;
+    }
+  }
+
+  private closePC() {
+    if (!this.peerConnection) return;
+    
+    console.log('stopping peer connection');
+    this.peerConnection.close();
+    
+    // Remove all event listeners
+    this.peerConnection.removeEventListener('icegatheringstatechange', this.onIceGatheringStateChange, true);
+    this.peerConnection.removeEventListener('icecandidate', this.onIceCandidate, true);
+    this.peerConnection.removeEventListener('iceconnectionstatechange', this.onIceConnectionStateChange, true);
+    this.peerConnection.removeEventListener('connectionstatechange', this.onConnectionStateChange, true);
+    this.peerConnection.removeEventListener('signalingstatechange', this.onSignalingStateChange, true);
+    this.peerConnection.removeEventListener('track', this.onTrack, true);
+
+    if (this.statsIntervalId) {
+      clearInterval(this.statsIntervalId);
+      this.statsIntervalId = null;
+    }
+
+    // Reset state
+    this.isStreamReady = false;
+    this.streamVideoOpacity = 0;
+    this.videoIsPlaying = false;
+    this.lastBytesReceived = 0;
+
+    this.peerConnection = null;
+    console.log('stopped peer connection');
+  }
+
+  public async closeStream(): Promise<void> {
+    console.log('Closing D-ID stream...');
+    
+    this.stopAllStreams();
+
+    try {
+      if (this.streamId && this.sessionId) {
+        await this.fetchWithRetries(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/d-id-api-handler`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            action: 'close_stream',
+            sessionId: this.sessionId,
+            stream_id: this.streamId,
+          }),
+        });
+      }
+    } catch (err) {
+      console.warn('Stream close failed:', err);
+    }
+
+    this.closePC();
+
+    // Reset video elements
+    if (this.streamVideoElement) {
+      this.streamVideoElement.pause();
+      this.streamVideoElement.srcObject = null;
+      this.streamVideoElement.style.opacity = '0';
+    }
+    if (this.idleVideoElement) {
+      this.idleVideoElement.style.opacity = '1';
+    }
+
+    // Reset all state
+    this.sessionId = null;
+    this.streamId = null;
+    this.sessionClientAnswer = null;
+    this.isStreamReady = false;
+    this.videoIsPlaying = false;
+    this.lastBytesReceived = 0;
+    this.streamVideoOpacity = 0;
+
+    console.log('Stream closed and state reset');
+    this.callbacks.onDisconnected?.('closed');
+  }
+
+  // Status check
+  public isStreamActive(): boolean {
+    const isConnected = this.peerConnection?.connectionState === 'connected';
+    return isConnected && this.isStreamReady;
+  }
+
+  // Set callbacks
+  public setCallbacks(callbacks: ClientCallbacks): void {
+    this.callbacks = { ...this.callbacks, ...callbacks };
+    console.log('Callbacks set:', Object.keys(callbacks));
+  }
+}

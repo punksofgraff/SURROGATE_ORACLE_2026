@@ -523,7 +523,7 @@ export const SurrogateOracleImmersion: React.FC = () => {
       {/* Error Display */}
       <AnimatePresence>
         {oracleState.error && (
-          <motion.div 
+          <motion.div
             className="error-display"
             initial={{ opacity: 0, x: 100 }}
             animate={{ opacity: 1, x: 0 }}

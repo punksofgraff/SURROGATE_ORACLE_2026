@@ -228,94 +228,97 @@ export function SurrogateOracleImmersion() {
         </motion.p>
       </div>
 
-      {/* Oracle image / video container */}
-      <div
-        className="oracle-image-container"
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: isOracleMode ? '38%' : '50%',
-          transform: 'translate(-50%, -50%)',
-          zIndex: 5,
-          transition: 'top 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
-          cursor: isOracleMode ? 'default' : 'pointer',
-        }}
-        onClick={!isOracleMode && !isConnecting ? initializeOracle : undefined}
+      <motion.div
+        className={`oracle-world-message ${isOracleMode ? 'is-animated' : ''}`}
+        initial={{ opacity: 0, y: -12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.9, delay: 0.35 }}
       >
-        {/* Static image — shown until Decart stream is active */}
-        <img
-          src={ORACLE_IMAGE_URL}
-          alt="SURROGATE Oracle"
-          style={{
-            width: isOracleMode ? '220px' : '300px',
-            height: 'auto',
-            display: isOracleMode ? 'none' : 'block',
-            transition: 'width 0.8s ease',
-            filter: 'drop-shadow(0 0 30px rgba(0,255,255,0.8)) brightness(1.15)',
-          }}
-        />
+        SURROGATE ORACLE
+      </motion.div>
 
-        {/* Decart-rendered avatar video */}
-        <video
-          ref={avatarVideoRef}
-          autoPlay
-          playsInline
-          style={{
-            width: '280px',
-            borderRadius: '16px',
-            display: isOracleMode ? 'block' : 'none',
-            border: '2px solid rgba(0,255,255,0.4)',
-            boxShadow: '0 0 40px rgba(0,255,255,0.5), 0 0 80px rgba(0,255,255,0.2)',
-            background: '#000',
-          }}
-        />
+      {/* Oracle image / video container */}
+      <div className="oracle-cabinet-frame" onClick={!isOracleMode && !isConnecting ? initializeOracle : undefined}>
+        <div className="oracle-image-container">
+          <div className="oracle-cabinet-screen">
+            {/* Static image — shown until Decart stream is active */}
+            <img
+              src={ORACLE_IMAGE_URL}
+              alt="SURROGATE Oracle"
+              style={{
+                width: isOracleMode ? '220px' : '300px',
+                height: 'auto',
+                display: isOracleMode ? 'none' : 'block',
+                transition: 'width 0.8s ease',
+                filter: 'drop-shadow(0 0 30px rgba(0,255,255,0.8)) brightness(1.15)',
+                transform: isOracleMode ? 'scale(0.82)' : 'scale(1)',
+              }}
+            />
 
-        {/* "Click to Connect" hint when not in oracle mode */}
-        {!isOracleMode && !isConnecting && (
-          <motion.div
-            animate={{ opacity: [0.5, 1, 0.5] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            style={{
-              position: 'absolute',
-              bottom: -36,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              fontSize: '0.65rem',
-              color: '#00ffff',
-              fontFamily: "'Orbitron', monospace",
-              letterSpacing: '0.15em',
-              whiteSpace: 'nowrap',
-              textShadow: '0 0 10px #00ffff',
-            }}
-          >
-            ▶ CONNECT TO ORACLE
-          </motion.div>
-        )}
+            {/* Decart-rendered avatar video */}
+            <video
+              ref={avatarVideoRef}
+              autoPlay
+              playsInline
+              style={{
+                width: '280px',
+                borderRadius: '16px',
+                display: isOracleMode ? 'block' : 'none',
+                border: '2px solid rgba(0,255,255,0.4)',
+                boxShadow: '0 0 40px rgba(0,255,255,0.5), 0 0 80px rgba(0,255,255,0.2)',
+                background: '#000',
+                transform: 'scale(1)',
+              }}
+            />
+          </div>
 
-        {/* Processing indicator */}
-        {oracleState.isProcessing && (
-          <motion.div
-            animate={{ opacity: [0.6, 1, 0.6] }}
-            transition={{ duration: 0.8, repeat: Infinity }}
-            style={{
-              position: 'absolute',
-              bottom: -28,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              display: 'flex',
-              gap: 6,
-            }}
-          >
-            {[0, 1, 2].map((i) => (
-              <motion.div
-                key={i}
-                animate={{ scale: [1, 1.4, 1] }}
-                transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
-                style={{ width: 6, height: 6, borderRadius: '50%', background: '#ff00ff' }}
-              />
-            ))}
-          </motion.div>
-        )}
+          {/* "Click to Connect" hint when not in oracle mode */}
+          {!isOracleMode && !isConnecting && (
+            <motion.div
+              animate={{ opacity: [0.5, 1, 0.5] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              style={{
+                position: 'absolute',
+                bottom: -36,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                fontSize: '0.65rem',
+                color: '#00ffff',
+                fontFamily: "'Orbitron', monospace",
+                letterSpacing: '0.15em',
+                whiteSpace: 'nowrap',
+                textShadow: '0 0 10px #00ffff',
+              }}
+            >
+              ▶ CONNECT TO ORACLE
+            </motion.div>
+          )}
+
+          {/* Processing indicator */}
+          {oracleState.isProcessing && (
+            <motion.div
+              animate={{ opacity: [0.6, 1, 0.6] }}
+              transition={{ duration: 0.8, repeat: Infinity }}
+              style={{
+                position: 'absolute',
+                bottom: -28,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                gap: 6,
+              }}
+            >
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  animate={{ scale: [1, 1.4, 1] }}
+                  transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
+                  style={{ width: 6, height: 6, borderRadius: '50%', background: '#ff00ff' }}
+                />
+              ))}
+            </motion.div>
+          )}
+        </div>
       </div>
 
       {/* Bottom controls: Radio + Crate */}

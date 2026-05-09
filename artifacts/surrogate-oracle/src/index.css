@@ -2,8 +2,7 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
-/* ── Cyberpunk Oracle Theme ─────────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+/* ── Cyberpunk Oracle Theme — Orbitron font loaded via index.html <link> ── */
 
 @custom-variant dark (&:is(.dark *));
 

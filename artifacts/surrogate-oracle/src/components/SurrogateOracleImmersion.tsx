@@ -16,6 +16,8 @@ import { OracleConversation } from './OracleConversation';
 
 const ORACLE_IMAGE_URL = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
 const AUDIO_STREAM_URL = 'https://stream.radiojar.com/2qm1fc5kb';
+// Graffiti alley background from the original repo's public/ folder
+const ALLEY_BG_URL = 'https://raw.githubusercontent.com/punksofgraff/SURROGATE_ORACLE_2026/main/public/image.png';
 
 interface OracleState {
   isConnected: boolean;
@@ -197,8 +199,9 @@ export function SurrogateOracleImmersion() {
       <div
         className="alley-background-tilt"
         style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=1920&q=80')`,
-          opacity: isOracleMode ? 0.4 : 0.7,
+          backgroundImage: `url('${ALLEY_BG_URL}')`,
+          opacity: isOracleMode ? 0.35 : 0.65,
+          filter: 'brightness(0.7) contrast(1.2)',
         }}
       />
 

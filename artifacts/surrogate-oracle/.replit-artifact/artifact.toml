@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "SURROGATE Oracle"
+version = "1.0.0"
+id = "artifacts/surrogate-oracle"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22168
+
+[services.development]
+run = "pnpm --filter @workspace/surrogate-oracle run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/surrogate-oracle", "run", "build" ]
+publicDir = "artifacts/surrogate-oracle/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22168"
+BASE_PATH = "/"

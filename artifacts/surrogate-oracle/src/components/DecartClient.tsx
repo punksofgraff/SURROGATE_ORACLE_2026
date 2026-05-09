@@ -1,0 +1,127 @@
+/**
+ * DecartClient — Real-time lip-sync avatar using Decart live-avatar WebRTC model
+ * Uses @decartai/sdk: portrait image + audio → animated talking avatar video stream
+ */
+import { useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
+import { createDecartClient, models } from '@decartai/sdk';
+
+export interface DecartClientCallbacks {
+  onConnected?: () => void;
+  onStreamReady?: () => void;
+  onTalkStarted?: () => void;
+  onTalkEnded?: () => void;
+  onDisconnected?: (reason: string) => void;
+  onError?: (error: string) => void;
+}
+
+export interface DecartClientHandle {
+  initializeStream: (
+    imageUrl: string,
+    videoElement: HTMLVideoElement
+  ) => Promise<{ success: boolean; error?: string }>;
+  sendAudio: (audioUrl: string) => Promise<{ success: boolean; error?: string }>;
+  closeStream: () => Promise<void>;
+  isStreamActive: () => boolean;
+  setCallbacks: (callbacks: DecartClientCallbacks) => void;
+}
+
+const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
+  const realtimeClientRef = useRef<Awaited<ReturnType<ReturnType<typeof createDecartClient>['realtime']['connect']>> | null>(null);
+  const callbacksRef = useRef<DecartClientCallbacks>({});
+  const activeRef = useRef(false);
+
+  const setCallbacks = useCallback((callbacks: DecartClientCallbacks) => {
+    callbacksRef.current = callbacks;
+  }, []);
+
+  const initializeStream = useCallback(
+    async (
+      imageUrl: string,
+      videoElement: HTMLVideoElement
+    ): Promise<{ success: boolean; error?: string }> => {
+      const apiKey = import.meta.env.VITE_DECART_API_KEY;
+      if (!apiKey) {
+        const error = 'Missing VITE_DECART_API_KEY environment variable';
+        callbacksRef.current.onError?.(error);
+        return { success: false, error };
+      }
+
+      try {
+        const decartClient = createDecartClient({ apiKey });
+
+        callbacksRef.current.onConnected?.();
+
+        const realtimeClient = await decartClient.realtime.connect(null, {
+          model: models.realtime('live_avatar'),
+          initialState: { image: imageUrl },
+          onRemoteStream: (videoStream: MediaStream) => {
+            videoElement.srcObject = videoStream;
+            videoElement.play().catch(console.warn);
+            callbacksRef.current.onStreamReady?.();
+            activeRef.current = true;
+          },
+          onError: (err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            callbacksRef.current.onError?.(msg);
+          },
+          onDisconnect: (reason: string) => {
+            activeRef.current = false;
+            callbacksRef.current.onDisconnected?.(reason);
+          },
+        });
+
+        realtimeClientRef.current = realtimeClient;
+        return { success: true };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        callbacksRef.current.onError?.(msg);
+        return { success: false, error: msg };
+      }
+    },
+    []
+  );
+
+  const sendAudio = useCallback(
+    async (audioUrl: string): Promise<{ success: boolean; error?: string }> => {
+      if (!realtimeClientRef.current || !activeRef.current) {
+        return { success: false, error: 'No active Decart stream' };
+      }
+
+      try {
+        callbacksRef.current.onTalkStarted?.();
+        const audioBlob = await fetch(audioUrl).then((r) => r.blob());
+        await realtimeClientRef.current.playAudio(audioBlob);
+        callbacksRef.current.onTalkEnded?.();
+        return { success: true };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        callbacksRef.current.onError?.(msg);
+        return { success: false, error: msg };
+      }
+    },
+    []
+  );
+
+  const closeStream = useCallback(async () => {
+    if (realtimeClientRef.current) {
+      realtimeClientRef.current.disconnect();
+      realtimeClientRef.current = null;
+    }
+    activeRef.current = false;
+  }, []);
+
+  const isStreamActive = useCallback(() => activeRef.current, []);
+
+  useImperativeHandle(ref, () => ({
+    initializeStream,
+    sendAudio,
+    closeStream,
+    isStreamActive,
+    setCallbacks,
+  }));
+
+  return null;
+});
+
+DecartClient.displayName = 'DecartClient';
+export default DecartClient;

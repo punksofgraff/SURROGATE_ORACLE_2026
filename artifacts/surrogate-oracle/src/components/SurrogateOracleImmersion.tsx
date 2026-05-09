@@ -1,10 +1,14 @@
 /**
- * SURROGATE Oracle — Main Immersive Cyberpunk Interface
- * Avatar: Decart live-avatar (WebRTC, portrait → real-time lip sync)
+ * SURROGATE Oracle — Immersive Cyberpunk XR Experience
+ *
+ * UX Flow:
+ *   DORMANT  → User lands in a dark graffiti alley.  Oracle glows in a cabinet.
+ *   AWAKENED → One tap: title types in, dust moves, boombox + crate light up, avatar pulses.
+ *   ORACLE   → Decart WebRTC stream active, conversation panel live.
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Mic, MicOff, MessageCircle } from 'lucide-react';
+import { motion, AnimatePresence, useAnimation } from 'framer-motion';
+import { X } from 'lucide-react';
 import DecartClient, { DecartClientHandle } from './DecartClient';
 import { BackendControlPanel } from './BackendControlPanel';
 import { GoogleSignInOverlay } from './GoogleSignInOverlay';
@@ -16,48 +20,119 @@ import { OracleConversation } from './OracleConversation';
 
 const ORACLE_IMAGE_URL = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
 const AUDIO_STREAM_URL = 'https://stream.radiojar.com/2qm1fc5kb';
-// Graffiti alley background from the original repo's public/ folder
-const ALLEY_BG_URL = 'https://raw.githubusercontent.com/punksofgraff/SURROGATE_ORACLE_2026/main/public/image.png';
+const ALLEY_BG_URL =
+  'https://raw.githubusercontent.com/punksofgraff/SURROGATE_ORACLE_2026/main/public/image.png';
+
+// Typewriter helper
+function useTypewriter(text: string, active: boolean, speed = 55) {
+  const [displayed, setDisplayed] = useState('');
+  useEffect(() => {
+    if (!active) { setDisplayed(''); return; }
+    setDisplayed('');
+    let i = 0;
+    const id = setInterval(() => {
+      setDisplayed(text.slice(0, ++i));
+      if (i >= text.length) clearInterval(id);
+    }, speed);
+    return () => clearInterval(id);
+  }, [active, text, speed]);
+  return displayed;
+}
+
+// Tiny floating dust particle
+function DustParticle({ delay, x, y, size }: { delay: number; x: number; y: number; size: number }) {
+  return (
+    <motion.div
+      style={{
+        position: 'absolute',
+        left: `${x}%`,
+        top: `${y}%`,
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        background: 'rgba(0,255,255,0.55)',
+        pointerEvents: 'none',
+        zIndex: 3,
+      }}
+      initial={{ opacity: 0, scale: 0 }}
+      animate={{
+        opacity: [0, 0.7, 0],
+        scale: [0, 1, 0.4],
+        y: [0, -60 - Math.random() * 80],
+        x: [(Math.random() - 0.5) * 40],
+      }}
+      transition={{ duration: 3.5 + Math.random() * 2, delay, repeat: Infinity, repeatDelay: Math.random() * 4 }}
+    />
+  );
+}
+
+// Generate stable particles
+const PARTICLES = Array.from({ length: 28 }, (_, i) => ({
+  id: i,
+  delay: i * 0.22,
+  x: 5 + (i * 3.4) % 90,
+  y: 15 + (i * 7.1) % 70,
+  size: 1 + (i % 3),
+}));
 
 interface OracleState {
   isConnected: boolean;
   isReady: boolean;
   isProcessing: boolean;
-  isListening: boolean;
   error: string | null;
   debugMode: boolean;
   activeBackendTab: 'coins' | 'squad' | 'portraits' | 'debug';
 }
 
 export function SurrogateOracleImmersion() {
-  const [oracleState, setOracleState] = useState<OracleState>({
-    isConnected: false,
-    isReady: false,
-    isProcessing: false,
-    isListening: false,
-    error: null,
-    debugMode: false,
-    activeBackendTab: 'coins',
-  });
+  // ── Scene phases ─────────────────────────────────────────────────────────
+  const [scenePhase, setScenePhase] = useState<'dormant' | 'awakened' | 'oracle'>('dormant');
+  const awakened = scenePhase !== 'dormant';
+  const isOracleMode = scenePhase === 'oracle';
 
+  // ── Oracle connection state ───────────────────────────────────────────────
+  const [oracleState, setOracleState] = useState<OracleState>({
+    isConnected: false, isReady: false, isProcessing: false,
+    error: null, debugMode: false, activeBackendTab: 'coins',
+  });
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionProgress, setConnectionProgress] = useState(0);
+  const [showConversation, setShowConversation] = useState(false);
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showAuthOverlay, setShowAuthOverlay] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentSessionId] = useState(() => crypto.randomUUID());
-
-  const [isOracleMode, setIsOracleMode] = useState(false);
-  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
-  const [audioVolume] = useState(0.3);
-  const [connectionProgress, setConnectionProgress] = useState(0);
-  const [isConnecting, setIsConnecting] = useState(false);
   const [showInlineCoins, setShowInlineCoins] = useState(false);
-  const [showConversation, setShowConversation] = useState(false);
 
+  // ── Audio ─────────────────────────────────────────────────────────────────
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const decartClientRef = useRef<DecartClientHandle>(null);
   const avatarVideoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Auth check from localStorage
+  // ── Typewriter title ──────────────────────────────────────────────────────
+  const titleText = useTypewriter('SURROGATE:ORACLE', awakened, 60);
+  const subtitleText = useTypewriter('SNEAKAR AI IMMERSION', awakened && titleText.length >= 16, 35);
+
+  // ── Cabinet glow controls ─────────────────────────────────────────────────
+  const cabinetControls = useAnimation();
+
+  useEffect(() => {
+    if (awakened) {
+      cabinetControls.start({
+        boxShadow: [
+          '0 0 20px rgba(0,255,255,0.25), 0 0 60px rgba(0,255,255,0.12)',
+          '0 0 35px rgba(0,255,255,0.65), 0 0 90px rgba(0,255,255,0.30), 0 0 140px rgba(255,0,255,0.18)',
+          '0 0 25px rgba(0,255,255,0.45), 0 0 70px rgba(0,255,255,0.22)',
+        ],
+        transition: { duration: 2.2, repeat: Infinity, ease: 'easeInOut' },
+      });
+    }
+  }, [awakened, cabinetControls]);
+
+  // ── Auth check ────────────────────────────────────────────────────────────
   useEffect(() => {
     const devSession = localStorage.getItem('dev_user_session');
     if (devSession) {
@@ -66,31 +141,33 @@ export function SurrogateOracleImmersion() {
         setIsAuthenticated(true);
         setCurrentUserId(user.id);
         setShowInlineCoins(true);
-      } catch {
-        setIsAuthenticated(false);
-      }
+      } catch { /* ignore */ }
     }
   }, []);
 
-  // Audio management
+  // ── Audio management ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!audioRef.current) return;
-    if (isAudioPlaying) {
-      audioRef.current.play().catch(() => {});
-    } else {
-      audioRef.current.pause();
-    }
+    if (isAudioPlaying) audioRef.current.play().catch(() => {});
+    else audioRef.current.pause();
   }, [isAudioPlaying]);
 
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.volume = oracleState.isProcessing ? audioVolume * 0.2 : audioVolume;
+      audioRef.current.volume = oracleState.isProcessing ? 0.06 : 0.28;
     }
-  }, [audioVolume, oracleState.isProcessing]);
+  }, [oracleState.isProcessing]);
 
+  // ── Scene awakening ───────────────────────────────────────────────────────
+  const awakenScene = useCallback(() => {
+    if (scenePhase !== 'dormant') return;
+    setScenePhase('awakened');
+  }, [scenePhase]);
+
+  // ── Oracle connection ─────────────────────────────────────────────────────
   const validateEnvironment = useCallback(() => {
     const missing = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'VITE_DECART_API_KEY'].filter(
-      (k) => !import.meta.env[k]
+      (k) => !import.meta.env[k],
     );
     if (missing.length > 0) {
       setOracleState((prev) => ({ ...prev, error: `Missing env vars: ${missing.join(', ')}` }));
@@ -99,63 +176,52 @@ export function SurrogateOracleImmersion() {
     return true;
   }, []);
 
-  const initializeOracle = async () => {
+  const initializeOracle = useCallback(async () => {
     if (!validateEnvironment()) return;
     if (!avatarVideoRef.current) {
       setOracleState((prev) => ({ ...prev, error: 'Avatar video element not ready' }));
       return;
     }
-
     setIsConnecting(true);
     setConnectionProgress(0);
 
-    const progressInterval = setInterval(() => {
-      setConnectionProgress((prev) => {
-        if (prev >= 90) { clearInterval(progressInterval); return 90; }
-        return prev + 10;
-      });
+    const interval = setInterval(() => {
+      setConnectionProgress((p) => { if (p >= 90) { clearInterval(interval); return 90; } return p + 10; });
     }, 500);
 
     decartClientRef.current?.setCallbacks({
-      onConnected: () => {
-        setOracleState((prev) => ({ ...prev, isConnected: true }));
-        setConnectionProgress(95);
-      },
+      onConnected: () => { setOracleState((p) => ({ ...p, isConnected: true })); setConnectionProgress(95); },
       onStreamReady: () => {
-        clearInterval(progressInterval);
-        setOracleState((prev) => ({ ...prev, isReady: true, error: null }));
+        clearInterval(interval);
+        setOracleState((p) => ({ ...p, isReady: true, error: null }));
         setConnectionProgress(100);
         setTimeout(() => {
           setIsConnecting(false);
-          setIsOracleMode(true);
+          setScenePhase('oracle');
           setShowConversation(true);
         }, 800);
       },
-      onTalkStarted: () => setOracleState((prev) => ({ ...prev, isProcessing: true })),
-      onTalkEnded: () => setOracleState((prev) => ({ ...prev, isProcessing: false })),
+      onTalkStarted: () => setOracleState((p) => ({ ...p, isProcessing: true })),
+      onTalkEnded: () => setOracleState((p) => ({ ...p, isProcessing: false })),
       onDisconnected: (reason) => {
-        setOracleState((prev) => ({ ...prev, isConnected: false, isReady: false, error: `Disconnected: ${reason}` }));
-        setIsOracleMode(false);
+        setOracleState((p) => ({ ...p, isConnected: false, isReady: false, error: `Disconnected: ${reason}` }));
+        setScenePhase('awakened');
         setIsConnecting(false);
       },
       onError: (err) => {
-        clearInterval(progressInterval);
-        setOracleState((prev) => ({ ...prev, error: err }));
+        clearInterval(interval);
+        setOracleState((p) => ({ ...p, error: err }));
         setIsConnecting(false);
       },
     });
 
-    const result = await decartClientRef.current?.initializeStream(
-      ORACLE_IMAGE_URL,
-      avatarVideoRef.current
-    );
-
+    const result = await decartClientRef.current?.initializeStream(ORACLE_IMAGE_URL, avatarVideoRef.current);
     if (!result?.success) {
-      clearInterval(progressInterval);
-      setOracleState((prev) => ({ ...prev, error: result?.error || 'Failed to initialize Decart stream' }));
+      clearInterval(interval);
+      setOracleState((p) => ({ ...p, error: result?.error || 'Failed to initialize Decart stream' }));
       setIsConnecting(false);
     }
-  };
+  }, [validateEnvironment]);
 
   const handleOracleResponse = async (audioUrl: string) => {
     if (!decartClientRef.current?.isStreamActive()) return;
@@ -164,19 +230,14 @@ export function SurrogateOracleImmersion() {
 
   const exitOracleMode = async () => {
     await decartClientRef.current?.closeStream();
-    setIsOracleMode(false);
+    setScenePhase('awakened');
     setShowConversation(false);
-    setOracleState({
-      isConnected: false, isReady: false, isProcessing: false,
-      isListening: false, error: null, debugMode: false, activeBackendTab: 'coins',
-    });
+    setOracleState((p) => ({ ...p, isConnected: false, isReady: false, isProcessing: false, error: null }));
   };
 
-  const openBackendPanel = (tab: 'coins' | 'squad' | 'portraits' | 'debug' = 'coins') => {
-    if (!isAuthenticated && (tab === 'coins' || tab === 'squad')) {
-      setShowAuthOverlay(true);
-    }
-    setOracleState((prev) => ({ ...prev, debugMode: true, activeBackendTab: tab }));
+  const openBackendPanel = (tab: OracleState['activeBackendTab'] = 'coins') => {
+    if (!isAuthenticated && (tab === 'coins' || tab === 'squad')) setShowAuthOverlay(true);
+    setOracleState((p) => ({ ...p, debugMode: true, activeBackendTab: tab }));
   };
 
   const handleAuthSuccess = (user: { id: string; email: string }) => {
@@ -184,203 +245,218 @@ export function SurrogateOracleImmersion() {
     setShowAuthOverlay(false);
     setCurrentUserId(user.id);
     setShowInlineCoins(true);
-    setOracleState((prev) => ({ ...prev, debugMode: true }));
+    setOracleState((p) => ({ ...p, debugMode: true }));
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="oracle-immersion-container">
-      {/* Decart LipSync client — headless */}
+    <div
+      className="oracle-stage"
+      onClick={scenePhase === 'dormant' ? awakenScene : undefined}
+      style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}
+    >
+      {/* Headless clients */}
       <DecartClient ref={decartClientRef} />
-
-      {/* Background audio */}
       <audio ref={audioRef} src={AUDIO_STREAM_URL} loop preload="none" />
 
-      {/* Graffiti alley background */}
-      <div
-        className="alley-background-tilt"
-        style={{
-          backgroundImage: `url('${ALLEY_BG_URL}')`,
-          opacity: isOracleMode ? 0.35 : 0.65,
-          filter: 'brightness(0.7) contrast(1.2)',
+      {/* ── Layer 1: Graffiti alley background ─────────────────────────── */}
+      <motion.div
+        className="oracle-alley"
+        style={{ backgroundImage: `url('${ALLEY_BG_URL}')` }}
+        animate={{
+          opacity: isOracleMode ? 0.25 : awakened ? 0.62 : 0.45,
+          scale: awakened ? 1 : 1.04,
         }}
+        transition={{ duration: 1.8, ease: 'easeOut' }}
       />
 
-      {/* Dark overlay */}
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.6) 100%)', zIndex: 2 }} />
+      {/* ── Layer 2: Vignette overlay ───────────────────────────────────── */}
+      <div className="oracle-vignette" />
 
-      {/* SNEAKAR branding */}
-      <div className="sneakar-branding" style={{ zIndex: 10 }}>
-        <motion.h1
-          className="sneakar-title"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1 }}
-        >
-          SURROGATE:ORACLE
-        </motion.h1>
-        <motion.p
-          className="sneakar-subtitle"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1, delay: 0.5 }}
-        >
-          SNEAKAR AI IMMERSION
-        </motion.p>
+      {/* ── Layer 3: Space dust particles (only when awakened) ─────────── */}
+      <AnimatePresence>
+        {awakened && PARTICLES.map((p) => (
+          <DustParticle key={p.id} {...p} />
+        ))}
+      </AnimatePresence>
+
+      {/* ── Layer 4: Top branding — types in on awakening ──────────────── */}
+      <div className="oracle-branding">
+        <h1 className="oracle-title">
+          {titleText}
+          {awakened && titleText.length < 16 && (
+            <span className="oracle-cursor">▌</span>
+          )}
+        </h1>
+        {subtitleText && (
+          <motion.p
+            className="oracle-subtitle"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.4 }}
+          >
+            {subtitleText}
+          </motion.p>
+        )}
       </div>
 
-      <motion.div
-        className={`oracle-world-message ${isOracleMode ? 'is-animated' : ''}`}
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.9, delay: 0.35 }}
-      >
-        SURROGATE ORACLE
-      </motion.div>
-
-      {/* Oracle image / video container */}
-      <div className="oracle-cabinet-frame" onClick={!isOracleMode && !isConnecting ? initializeOracle : undefined}>
-        <div className="oracle-image-container">
-          <div className="oracle-cabinet-screen">
-            {/* Static image — shown until Decart stream is active */}
-            <img
-              src={ORACLE_IMAGE_URL}
-              alt="SURROGATE Oracle"
-              style={{
-                width: isOracleMode ? '220px' : '300px',
-                height: 'auto',
-                display: isOracleMode ? 'none' : 'block',
-                transition: 'width 0.8s ease',
-                filter: 'drop-shadow(0 0 30px rgba(0,255,255,0.8)) brightness(1.15)',
-                transform: isOracleMode ? 'scale(0.82)' : 'scale(1)',
-              }}
-            />
-
-            {/* Decart-rendered avatar video */}
-            <video
-              ref={avatarVideoRef}
-              autoPlay
-              playsInline
-              style={{
-                width: '280px',
-                borderRadius: '16px',
-                display: isOracleMode ? 'block' : 'none',
-                border: '2px solid rgba(0,255,255,0.4)',
-                boxShadow: '0 0 40px rgba(0,255,255,0.5), 0 0 80px rgba(0,255,255,0.2)',
-                background: '#000',
-                transform: 'scale(1)',
-              }}
-            />
-          </div>
-
-          {/* "Click to Connect" hint when not in oracle mode */}
-          {!isOracleMode && !isConnecting && (
+      {/* ── Layer 5: Central cabinet + avatar ──────────────────────────── */}
+      <div className="oracle-center">
+        {/* Dormant tap prompt */}
+        <AnimatePresence>
+          {scenePhase === 'dormant' && (
             <motion.div
-              animate={{ opacity: [0.5, 1, 0.5] }}
-              transition={{ duration: 2, repeat: Infinity }}
-              style={{
-                position: 'absolute',
-                bottom: -36,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                fontSize: '0.65rem',
-                color: '#00ffff',
-                fontFamily: "'Orbitron', monospace",
-                letterSpacing: '0.15em',
-                whiteSpace: 'nowrap',
-                textShadow: '0 0 10px #00ffff',
-              }}
+              className="oracle-tap-prompt"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0.35, 0.9, 0.35] }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
             >
-              ▶ CONNECT TO ORACLE
+              ◈ TAP TO ENTER ◈
             </motion.div>
           )}
+        </AnimatePresence>
 
-          {/* Processing indicator */}
-          {oracleState.isProcessing && (
-            <motion.div
-              animate={{ opacity: [0.6, 1, 0.6] }}
-              transition={{ duration: 0.8, repeat: Infinity }}
-              style={{
-                position: 'absolute',
-                bottom: -28,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                display: 'flex',
-                gap: 6,
-              }}
-            >
-              {[0, 1, 2].map((i) => (
-                <motion.div
-                  key={i}
-                  animate={{ scale: [1, 1.4, 1] }}
-                  transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
-                  style={{ width: 6, height: 6, borderRadius: '50%', background: '#ff00ff' }}
-                />
-              ))}
-            </motion.div>
-          )}
-        </div>
-      </div>
+        {/* Cabinet CRT frame */}
+        <motion.div
+          className="oracle-cabinet"
+          animate={cabinetControls}
+          initial={{ boxShadow: '0 0 20px rgba(0,255,255,0.15), 0 0 40px rgba(0,255,255,0.06)' }}
+          onClick={awakened && !isOracleMode && !isConnecting ? initializeOracle : undefined}
+          style={{ cursor: awakened && !isOracleMode && !isConnecting ? 'pointer' : 'default' }}
+          whileHover={awakened && !isOracleMode ? { scale: 1.015 } : {}}
+          whileTap={awakened && !isOracleMode ? { scale: 0.985 } : {}}
+        >
+          {/* CRT scanline overlay */}
+          <div className="oracle-scanlines" />
 
-      {/* Bottom controls: Radio + Crate */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '5%',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 20,
-          display: 'flex',
-          alignItems: 'flex-end',
-          gap: '60px',
-        }}
-      >
-        <GraffPunksRadio isPlaying={isAudioPlaying} onToggle={() => setIsAudioPlaying(!isAudioPlaying)} volume={audioVolume} />
-        <EnculturateCrate onClick={() => openBackendPanel('coins')} isActive={oracleState.debugMode} />
-      </div>
-
-      {/* Culture Coin inline display */}
-      {showInlineCoins && isAuthenticated && currentUserId && (
-        <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 30 }}>
-          <CultureCoinInlineDisplay
-            userId={currentUserId}
-            onUpgradeClick={() => openBackendPanel('coins')}
-            showUpgradePrompt
+          {/* Static oracle image (pre-stream) */}
+          <motion.img
+            src={ORACLE_IMAGE_URL}
+            alt="SURROGATE Oracle"
+            className="oracle-avatar-img"
+            initial={{ opacity: 0.35, filter: 'brightness(0.5) drop-shadow(0 0 8px rgba(0,255,255,0.3))' }}
+            animate={{
+              opacity: isOracleMode ? 0 : awakened ? 1 : 0.45,
+              filter: awakened
+                ? 'brightness(1.15) drop-shadow(0 0 28px rgba(0,255,255,0.75))'
+                : 'brightness(0.5) drop-shadow(0 0 8px rgba(0,255,255,0.3))',
+              scale: awakened ? [1, 1.012, 1] : 1,
+            }}
+            transition={{
+              opacity: { duration: 1 },
+              filter: { duration: 1.2, delay: 0.3 },
+              scale: { duration: 3, repeat: Infinity, ease: 'easeInOut' },
+            }}
+            style={{ display: isOracleMode ? 'none' : 'block' }}
           />
-        </div>
-      )}
 
-      {/* Oracle mode — conversation panel */}
+          {/* Decart live avatar video */}
+          <video
+            ref={avatarVideoRef}
+            autoPlay
+            playsInline
+            className="oracle-avatar-video"
+            style={{ display: isOracleMode ? 'block' : 'none' }}
+          />
+
+          {/* "CONNECT TO ORACLE" CTA — shown after awakening */}
+          <AnimatePresence>
+            {awakened && !isOracleMode && !isConnecting && (
+              <motion.div
+                className="oracle-connect-cta"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: [0.6, 1, 0.6], y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
+              >
+                ▶ CONNECT TO ORACLE
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Processing dots */}
+          <AnimatePresence>
+            {oracleState.isProcessing && (
+              <motion.div className="oracle-processing-dots" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                {[0, 1, 2].map((i) => (
+                  <motion.div
+                    key={i}
+                    className="oracle-dot"
+                    animate={{ scale: [1, 1.5, 1] }}
+                    transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.18 }}
+                  />
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      </div>
+
+      {/* ── Layer 6: Bottom — Boombox + Crate (light up on awakening) ──── */}
+      <div className="oracle-bottom-bar">
+        <motion.div
+          initial={{ opacity: 0.3, filter: 'brightness(0.4) saturate(0.3)' }}
+          animate={{
+            opacity: awakened ? 1 : 0.3,
+            filter: awakened
+              ? 'brightness(1.1) saturate(1.2) drop-shadow(0 0 16px rgba(255,0,255,0.5))'
+              : 'brightness(0.4) saturate(0.3)',
+          }}
+          transition={{ duration: 1.1, delay: awakened ? 0.7 : 0 }}
+        >
+          <GraffPunksRadio
+            isPlaying={isAudioPlaying}
+            onToggle={() => setIsAudioPlaying(!isAudioPlaying)}
+            volume={0.28}
+          />
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0.3, filter: 'brightness(0.4) saturate(0.3)' }}
+          animate={{
+            opacity: awakened ? 1 : 0.3,
+            filter: awakened
+              ? 'brightness(1.15) saturate(1.3) drop-shadow(0 0 18px rgba(0,255,136,0.55))'
+              : 'brightness(0.4) saturate(0.3)',
+          }}
+          transition={{ duration: 1.1, delay: awakened ? 1.0 : 0 }}
+        >
+          <EnculturateCrate onClick={() => openBackendPanel('coins')} isActive={oracleState.debugMode} />
+        </motion.div>
+      </div>
+
+      {/* ── Culture coin display ─────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showInlineCoins && isAuthenticated && currentUserId && (
+          <motion.div
+            style={{ position: 'absolute', top: 16, right: 16, zIndex: 30 }}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.5 }}
+          >
+            <CultureCoinInlineDisplay
+              userId={currentUserId}
+              onUpgradeClick={() => openBackendPanel('coins')}
+              showUpgradePrompt
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Conversation panel (oracle mode) ────────────────────────────── */}
       <AnimatePresence>
         {isOracleMode && showConversation && (
           <motion.div
-            initial={{ opacity: 0, x: -30 }}
+            className="oracle-convo-panel"
+            initial={{ opacity: 0, x: -40 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -30 }}
-            style={{
-              position: 'absolute',
-              left: 20,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              width: '340px',
-              maxHeight: '60vh',
-              background: 'rgba(0,0,10,0.85)',
-              border: '1px solid rgba(0,255,255,0.2)',
-              borderRadius: 16,
-              backdropFilter: 'blur(20px)',
-              zIndex: 40,
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-            }}
+            exit={{ opacity: 0, x: -40 }}
+            transition={{ type: 'spring', damping: 24, stiffness: 180 }}
           >
-            {/* Panel header */}
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontFamily: "'Orbitron', monospace", fontSize: '0.7rem', color: '#00ffff', letterSpacing: '0.1em' }}>
-                ORACLE INTERFACE
-              </div>
-              <button onClick={exitOracleMode} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', padding: 2 }}>
-                <X size={14} />
-              </button>
+            <div className="oracle-convo-header">
+              <span>ORACLE INTERFACE</span>
+              <button onClick={exitOracleMode} className="oracle-close-btn"><X size={14} /></button>
             </div>
             <OracleConversation
               userId={currentUserId}
@@ -392,7 +468,7 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
-      {/* Connecting animation */}
+      {/* ── Connecting animation ─────────────────────────────────────────── */}
       <AnimatePresence>
         {isConnecting && (
           <ConnectingAnimation
@@ -406,13 +482,11 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
-      {/* Backend control panel */}
+      {/* ── Backend panel ───────────────────────────────────────────────── */}
       <AnimatePresence>
         {oracleState.debugMode && (
           <motion.div
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
+            initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 150 }}
           >
@@ -422,7 +496,7 @@ export function SurrogateOracleImmersion() {
                 sessionId={currentSessionId}
                 isVisible
                 initialTab={oracleState.activeBackendTab}
-                onClose={() => setOracleState((prev) => ({ ...prev, debugMode: false }))}
+                onClose={() => setOracleState((p) => ({ ...p, debugMode: false }))}
                 isAuthenticated={isAuthenticated}
               />
             </div>
@@ -430,48 +504,22 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
-      {/* Auth overlay */}
+      {/* ── Auth overlay ────────────────────────────────────────────────── */}
       <AnimatePresence>
         {showAuthOverlay && (
-          <GoogleSignInOverlay
-            onClose={() => setShowAuthOverlay(false)}
-            onSuccess={handleAuthSuccess}
-          />
+          <GoogleSignInOverlay onClose={() => setShowAuthOverlay(false)} onSuccess={handleAuthSuccess} />
         )}
       </AnimatePresence>
 
-      {/* Error display */}
+      {/* ── Error toast ─────────────────────────────────────────────────── */}
       <AnimatePresence>
         {oracleState.error && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            style={{
-              position: 'fixed',
-              bottom: 80,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              background: 'rgba(255,0,80,0.15)',
-              border: '1px solid #ff0050',
-              borderRadius: 10,
-              padding: '10px 20px',
-              color: '#ff0050',
-              fontFamily: "'Orbitron', monospace",
-              fontSize: '0.72rem',
-              zIndex: 200,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              maxWidth: '90vw',
-              backdropFilter: 'blur(10px)',
-            }}
+            className="oracle-error-toast"
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
           >
             <span>{oracleState.error}</span>
-            <button
-              onClick={() => setOracleState((prev) => ({ ...prev, error: null }))}
-              style={{ background: 'none', border: 'none', color: '#ff0050', cursor: 'pointer', padding: 0 }}
-            >
+            <button onClick={() => setOracleState((p) => ({ ...p, error: null }))} className="oracle-close-btn">
               <X size={14} />
             </button>
           </motion.div>

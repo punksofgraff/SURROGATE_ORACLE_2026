@@ -222,8 +222,8 @@ export const BackendControlPanel = ({
                           TEST
                         </button>
                       </div>
-                      {testResults[name] && (
-                        <pre style={{ margin: 0, fontSize: '0.65rem', color: (testResults[name] as { success: boolean }).success ? '#00ff62' : '#ff0050', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                      {!!testResults[name] && (
+                        <pre style={{ margin: 0, fontSize: '0.65rem', color: (testResults[name] as { success?: boolean }).success ? '#00ff62' : '#ff0050', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
                           {JSON.stringify(testResults[name], null, 2)}
                         </pre>
                       )}

@@ -51,7 +51,8 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
 
         callbacksRef.current.onConnected?.();
 
-        const realtimeClient = await decartClient.realtime.connect(null, {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const connectOptions: any = {
           model: models.realtime('live_avatar'),
           initialState: { image: imageUrl },
           onRemoteStream: (videoStream: MediaStream) => {
@@ -60,15 +61,16 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
             callbacksRef.current.onStreamReady?.();
             activeRef.current = true;
           },
-          onError: (err: unknown) => {
-            const msg = err instanceof Error ? err.message : String(err);
-            callbacksRef.current.onError?.(msg);
-          },
           onDisconnect: (reason: string) => {
             activeRef.current = false;
             callbacksRef.current.onDisconnected?.(reason);
           },
-        });
+          onError: (err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            callbacksRef.current.onError?.(msg);
+          },
+        };
+        const realtimeClient = await decartClient.realtime.connect(null, connectOptions);
 
         realtimeClientRef.current = realtimeClient;
         return { success: true };
@@ -90,7 +92,8 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
       try {
         callbacksRef.current.onTalkStarted?.();
         const audioBlob = await fetch(audioUrl).then((r) => r.blob());
-        await realtimeClientRef.current.playAudio(audioBlob);
+        const client = realtimeClientRef.current as { playAudio?: (b: Blob) => Promise<void> };
+        if (client.playAudio) await client.playAudio(audioBlob);
         callbacksRef.current.onTalkEnded?.();
         return { success: true };
       } catch (err: unknown) {

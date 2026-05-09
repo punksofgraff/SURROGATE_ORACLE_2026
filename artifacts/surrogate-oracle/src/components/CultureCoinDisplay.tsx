@@ -73,11 +73,10 @@ export function CultureCoinDisplay({ userId, onLevelUp, onMetricsFetched }: Cult
   }, [userId, onLevelUp, supabaseUrl, supabaseKey]);
 
   useEffect(() => {
-    if (userId) {
-      fetchUserMetrics();
-      const interval = setInterval(fetchUserMetrics, 30000);
-      return () => clearInterval(interval);
-    }
+    if (!userId) return;
+    fetchUserMetrics();
+    const interval = setInterval(fetchUserMetrics, 30000);
+    return () => clearInterval(interval);
   }, [userId, fetchUserMetrics]);
 
   if (isLoading) {

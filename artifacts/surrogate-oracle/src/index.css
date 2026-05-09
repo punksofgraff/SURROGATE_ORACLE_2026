@@ -337,204 +337,342 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SURROGATE ORACLE — Cyberpunk Immersion Theme
+   SURROGATE ORACLE — Cyberpunk XR Immersion Theme
    ═══════════════════════════════════════════════════════════════════════════ */
 
 html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #000008;
+  background: #00000a;
   font-family: 'Orbitron', monospace;
 }
 
-/* ── Oracle Container ───────────────────────────────────────────────────── */
-.oracle-immersion-container {
+/* ── Stage (full-screen, flex-centered) ─────────────────────────────────── */
+.oracle-stage {
   position: relative;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: #000008;
+  background: #00000a;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ── Graffiti Alley Background ──────────────────────────────────────────── */
-.alley-background-tilt {
+.oracle-alley {
   position: absolute;
-  top: -15%;
-  left: -15%;
-  width: 130%;
-  height: 130%;
+  top: -10%;
+  left: -10%;
+  width: 120%;
+  height: 120%;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  will-change: transform;
+  will-change: opacity, transform;
   z-index: 1;
-  transition: opacity 1.2s ease, filter 1.2s ease;
-  filter: saturate(1.1) contrast(1.15) brightness(0.7);
 }
 
-/* ── SNEAKAR Branding ───────────────────────────────────────────────────── */
-.sneakar-branding {
+/* ── Vignette — draws focus to center ───────────────────────────────────── */
+.oracle-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background:
+    radial-gradient(ellipse 50% 58% at 50% 52%, transparent 0%, rgba(0,0,10,0.72) 100%),
+    linear-gradient(180deg, rgba(0,0,10,0.68) 0%, rgba(0,0,10,0.05) 28%, rgba(0,0,10,0.05) 68%, rgba(0,0,10,0.82) 100%);
+  pointer-events: none;
+}
+
+/* ── Branding — absolutely pinned top-center ─────────────────────────────── */
+.oracle-branding {
   position: absolute;
   top: 5%;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 100;
+  z-index: 20;
   text-align: center;
-  width: 90%;
-  max-width: 900px;
   pointer-events: none;
   user-select: none;
+  min-height: 80px;
   white-space: nowrap;
 }
 
-.sneakar-title {
+.oracle-title {
   font-family: 'Orbitron', monospace;
-  font-size: clamp(1.6rem, 4vw, 3.5rem);
+  font-size: clamp(1.8rem, 4.5vw, 4rem);
   font-weight: 900;
-  letter-spacing: 0.25em;
+  letter-spacing: 0.22em;
   color: #00ffff;
   text-shadow:
-    0 0 10px #00ffff,
-    0 0 20px #00ffff,
-    0 0 30px #00ffff,
-    0 0 50px #ff00ff;
+    0 0 12px #00ffff,
+    0 0 28px #00ffff,
+    0 0 50px rgba(0,255,255,0.6),
+    0 0 80px rgba(255,0,255,0.35);
   margin: 0;
-  animation: title-glow 4s ease-in-out infinite;
+  animation: oracle-title-glow 3.5s ease-in-out infinite;
 }
 
-.sneakar-subtitle {
+.oracle-cursor {
+  display: inline-block;
+  animation: blink 0.7s step-end infinite;
+  color: #00ffff;
+  opacity: 0.9;
+}
+
+.oracle-subtitle {
   font-family: 'Orbitron', monospace;
-  font-size: clamp(0.6rem, 1.5vw, 1rem);
+  font-size: clamp(0.55rem, 1.4vw, 0.9rem);
   font-weight: 500;
-  color: #00ff62;
-  text-shadow: 0 0 8px #00ff62, 0 0 16px #00ff62;
+  color: #00ff88;
+  text-shadow: 0 0 8px #00ff88, 0 0 18px rgba(0,255,136,0.5);
   margin: 10px 0 0;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.35em;
   text-transform: uppercase;
 }
 
-/* ── Oracle Image Container ─────────────────────────────────────────────── */
-.oracle-image-container {
+/* ── Center — hosts the cabinet, centered by flex parent ────────────────── */
+.oracle-center {
+  position: relative;
+  z-index: 10;
   display: flex;
   flex-direction: column;
   align-items: center;
-  filter: drop-shadow(0 0 18px rgba(0,255,255,0.45));
-  animation: oracle-pulse 3s ease-in-out infinite;
-  transition: transform 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.6s ease;
-  transform: translateY(0);
-}
-
-.oracle-cabinet-frame {
-  position: relative;
-  display: flex;
-  align-items: center;
   justify-content: center;
-  padding: 18px 22px 30px;
-  border-radius: 28px;
-  background: linear-gradient(180deg, rgba(0, 255, 255, 0.06), rgba(255, 0, 255, 0.05));
-  box-shadow:
-    0 0 0 1px rgba(0, 255, 255, 0.12),
-    0 0 24px rgba(0, 255, 255, 0.14),
-    inset 0 0 42px rgba(0, 255, 255, 0.04);
+  /* Shift up slightly from flex center to leave visual space for bottom bar */
+  margin-top: -30px;
 }
 
-.oracle-cabinet-frame::before {
-  content: "";
+/* ── Dormant tap prompt ──────────────────────────────────────────────────── */
+.oracle-tap-prompt {
   position: absolute;
-  inset: -6px;
-  border-radius: 34px;
-  border: 1px solid rgba(0, 255, 255, 0.22);
-  box-shadow:
-    0 0 18px rgba(0, 255, 255, 0.22),
-    inset 0 0 20px rgba(255, 0, 255, 0.12);
-  opacity: 0.8;
-  animation: cabinet-glow 2.2s ease-in-out infinite;
+  top: -52px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(0.6rem, 1.6vw, 0.95rem);
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  color: rgba(0,255,255,0.8);
+  text-shadow: 0 0 14px rgba(0,255,255,0.6);
+  white-space: nowrap;
   pointer-events: none;
 }
 
-.oracle-cabinet-screen {
+/* ── Cabinet CRT Frame ───────────────────────────────────────────────────── */
+.oracle-cabinet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 18px 52px;
+  border-radius: 20px;
+  background: linear-gradient(180deg,
+    rgba(0,255,255,0.06) 0%,
+    rgba(0,0,18,0.75) 40%,
+    rgba(255,0,255,0.04) 100%
+  );
+  border: 1px solid rgba(0,255,255,0.22);
+  /* box-shadow animated by framer-motion */
+}
+
+.oracle-cabinet::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 28px;
+  border: 1.5px solid rgba(0,255,255,0.12);
+  pointer-events: none;
+}
+
+.oracle-cabinet::after {
+  content: '';
+  position: absolute;
+  inset: -14px;
+  border-radius: 34px;
+  border: 1px solid rgba(0,255,255,0.06);
+  pointer-events: none;
+}
+
+/* CRT scanline overlay */
+.oracle-scanlines {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0,255,255,0.022) 3px,
+    rgba(0,255,255,0.022) 4px
+  );
+  pointer-events: none;
+  z-index: 2;
+  animation: scanline-drift 8s linear infinite;
+}
+
+@keyframes scanline-drift {
+  from { background-position: 0 0; }
+  to   { background-position: 0 100px; }
+}
+
+/* ── Avatar ──────────────────────────────────────────────────────────────── */
+.oracle-avatar-img {
+  width: clamp(180px, 28vw, 300px);
+  height: auto;
+  display: block;
   position: relative;
   z-index: 1;
 }
 
-.oracle-world-message {
+.oracle-avatar-video {
+  width: clamp(200px, 28vw, 300px);
+  border-radius: 14px;
+  border: 1.5px solid rgba(0,255,255,0.35);
+  box-shadow:
+    0 0 30px rgba(0,255,255,0.45),
+    0 0 70px rgba(0,255,255,0.18);
+  background: #000;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Connect CTA ─────────────────────────────────────────────────────────── */
+.oracle-connect-cta {
   position: absolute;
-  top: 22%;
+  bottom: -42px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 8;
   font-family: 'Orbitron', monospace;
-  font-size: clamp(1.1rem, 2.6vw, 2.8rem);
-  font-weight: 900;
-  letter-spacing: 0.34em;
-  text-transform: uppercase;
-  color: rgba(0, 255, 255, 0.95);
-  text-shadow:
-    0 0 8px rgba(0, 255, 255, 0.8),
-    0 0 24px rgba(0, 255, 255, 0.55),
-    0 0 42px rgba(255, 0, 255, 0.35);
-  mix-blend-mode: screen;
-  pointer-events: none;
+  font-size: clamp(0.55rem, 1.3vw, 0.75rem);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #00ffff;
+  text-shadow: 0 0 12px #00ffff, 0 0 24px rgba(0,255,255,0.5);
   white-space: nowrap;
+  pointer-events: none;
 }
 
-.oracle-world-message.is-animated {
-  animation: world-message-float 7s linear infinite, world-message-flicker 4s ease-in-out infinite;
+/* ── Processing dots ─────────────────────────────────────────────────────── */
+.oracle-processing-dots {
+  position: absolute;
+  bottom: -32px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 7px;
+}
+.oracle-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff00ff;
+  box-shadow: 0 0 8px #ff00ff;
 }
 
-/* ── Animations ─────────────────────────────────────────────────────────── */
-@keyframes title-glow {
+/* ── Bottom bar — boombox + crate ────────────────────────────────────────── */
+.oracle-bottom-bar {
+  position: absolute;
+  bottom: 4%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  gap: clamp(40px, 8vw, 90px);
+}
+
+/* ── Conversation panel ──────────────────────────────────────────────────── */
+.oracle-convo-panel {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 340px;
+  max-height: 62vh;
+  background: rgba(0,0,12,0.88);
+  border: 1px solid rgba(0,255,255,0.18);
+  border-radius: 16px;
+  backdrop-filter: blur(22px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.oracle-convo-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.68rem;
+  color: #00ffff;
+  letter-spacing: 0.12em;
+}
+
+.oracle-close-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.4);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s;
+}
+.oracle-close-btn:hover { color: #ff0050; }
+
+/* ── Error toast ─────────────────────────────────────────────────────────── */
+.oracle-error-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255,0,80,0.12);
+  border: 1px solid #ff0050;
+  border-radius: 10px;
+  padding: 10px 20px;
+  color: #ff0050;
+  font-family: 'Orbitron', monospace;
+  font-size: 0.7rem;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 90vw;
+  backdrop-filter: blur(12px);
+}
+
+/* ── Keyframes ───────────────────────────────────────────────────────────── */
+@keyframes oracle-title-glow {
   0%, 100% {
     text-shadow:
-      0 0 10px #00ffff,
-      0 0 20px #00ffff,
-      0 0 30px #00ffff,
-      0 0 40px #ff00ff;
+      0 0 12px #00ffff,
+      0 0 28px #00ffff,
+      0 0 50px rgba(0,255,255,0.5),
+      0 0 80px rgba(255,0,255,0.25);
   }
   50% {
     text-shadow:
-      0 0 15px #00ffff,
-      0 0 30px #00ffff,
-      0 0 45px #00ffff,
-      0 0 70px #ff00ff;
+      0 0 18px #00ffff,
+      0 0 40px #00ffff,
+      0 0 70px rgba(0,255,255,0.75),
+      0 0 110px rgba(255,0,255,0.5);
   }
 }
 
-@keyframes oracle-pulse {
-  0%, 100% { filter: drop-shadow(0 0 20px rgba(0,255,255,0.8)) brightness(1.2); }
-  50%       { filter: drop-shadow(0 0 35px rgba(0,255,255,1.0)) brightness(1.35); }
-}
-
-@keyframes cabinet-glow {
-  0%, 100% { transform: scale(1); opacity: 0.65; }
-  50% { transform: scale(1.01); opacity: 1; }
-}
-
-@keyframes world-message-float {
-  0% { transform: translateX(-50%) translateY(0); opacity: 0; }
-  10% { opacity: 1; }
-  50% { transform: translateX(-50%) translateY(10px); opacity: 1; }
-  90% { opacity: 1; }
-  100% { transform: translateX(-50%) translateY(18px); opacity: 0; }
-}
-
-@keyframes world-message-flicker {
-  0%, 100% { filter: brightness(1); }
-  45% { filter: brightness(1.15); }
-  48% { filter: brightness(0.85); }
-  52% { filter: brightness(1.3); }
-  78% { filter: brightness(1.05); }
+@keyframes blink {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 0; }
 }
 
 @keyframes spin {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
 }
 
 @keyframes fadeIn {

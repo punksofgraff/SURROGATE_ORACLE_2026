@@ -45,11 +45,10 @@ export function CultureCoinInlineDisplay({ userId, onUpgradeClick, showUpgradePr
   };
 
   useEffect(() => {
-    if (userId) {
-      fetchMetrics();
-      const interval = setInterval(fetchMetrics, 30000);
-      return () => clearInterval(interval);
-    }
+    if (!userId) return;
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 30000);
+    return () => clearInterval(interval);
   }, [userId]);
 
   const tierColor =

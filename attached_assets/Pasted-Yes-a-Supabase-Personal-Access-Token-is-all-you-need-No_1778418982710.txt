@@ -1,0 +1,100 @@
+Yes — **a Supabase Personal Access Token is all you need**. No service account JSON, no Docker, no OAuth. Here's the exact setup for Replit:
+
+## Step 1 — Get Your Supabase Access Token
+
+Go to: [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens) [supabase](https://supabase.com/docs/reference/cli/introduction)
+
+- Click **"Generate new token"**
+- Name it `replit-deploy`
+- Copy it — it starts with `sbp_...`
+
+This token is tied to your **personal account** and has access to all your Supabase projects. [reddit](https://www.reddit.com/r/Supabase/comments/1mih7nr/generating_access_token_for_edge_functions_github/)
+
+## Step 2 — Add to Replit Secrets
+
+In your Replit project → **Secrets** tab, add:
+
+```
+SUPABASE_ACCESS_TOKEN   =   sbp_xxxxxxxxxxxxxxxx
+SUPABASE_PROJECT_REF    =   your-project-ref  (from Supabase dashboard URL)
+```
+
+Never put these in `.env` or commit them — Replit Secrets are the right place. [supabase](https://supabase.com/docs/guides/functions/deploy)
+
+## Step 3 — Install Supabase CLI in Replit
+
+In your Replit shell:
+
+```bash
+npm install supabase --save-dev
+```
+
+Or use npx directly — no install needed:
+
+```bash
+npx supabase --version
+```
+
+## Step 4 — Deploy Command (No Docker Required)
+
+The `--use-api` flag is critical for Replit — it skips Docker entirely: [github](https://github.com/orgs/supabase/discussions/33613)
+
+```bash
+# Deploy a single function
+SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy gemini-live-proxy \
+  --project-ref your-project-ref \
+  --use-api
+
+# Deploy ALL functions at once
+SUPABASE_ACCESS_TOKEN=sbp_xxx npx supabase functions deploy \
+  --project-ref your-project-ref \
+  --use-api
+```
+
+Since you stored them as Replit secrets, you can reference them directly:
+
+```bash
+npx supabase functions deploy gemini-live-proxy \
+  --project-ref $SUPABASE_PROJECT_REF \
+  --use-api
+```
+
+## Step 5 — Set Edge Function Secrets (API Keys) from Replit
+
+Push your `GOOGLE_AI_API_KEY` to the Edge Function environment in one shot: [supabase](https://supabase.com/docs/guides/functions/deploy)
+
+```bash
+npx supabase secrets set GOOGLE_AI_API_KEY=AIza... \
+  --project-ref $SUPABASE_PROJECT_REF
+```
+
+And verify:
+
+```bash
+npx supabase secrets list --project-ref $SUPABASE_PROJECT_REF
+```
+
+## Optional: `package.json` Deploy Scripts
+
+Add these to `package.json` so you can just run `npm run deploy:oracle` from the Replit shell:
+
+```json
+"scripts": {
+  "deploy:oracle": "npx supabase functions deploy surrogate-oracle-agent --project-ref $SUPABASE_PROJECT_REF --use-api",
+  "deploy:gemini": "npx supabase functions deploy gemini-live-proxy --project-ref $SUPABASE_PROJECT_REF --use-api",
+  "deploy:all": "npx supabase functions deploy --project-ref $SUPABASE_PROJECT_REF --use-api",
+  "secrets:set": "npx supabase secrets set --project-ref $SUPABASE_PROJECT_REF"
+}
+```
+
+## Summary
+
+| What you need | What you use |
+|---|---|
+| Deploy Edge Functions | Supabase Personal Access Token (`sbp_...`) [supabase](https://supabase.com/docs/reference/cli/introduction) |
+| Set Edge Function secrets | Same token via `supabase secrets set` [supabase](https://supabase.com/docs/guides/functions/deploy) |
+| No Docker needed | `--use-api` flag [github](https://github.com/orgs/supabase/discussions/33613) |
+| Service account JSON | ❌ Not needed at this stage |
+| Service role key | Only needed **inside** Edge Functions for DB admin writes (already set as Supabase built-in `SUPABASE_SERVICE_ROLE_KEY`) [supabase](https://supabase.com/docs/guides/functions/auth) |
+
+The `SUPABASE_SERVICE_ROLE_KEY` for DB writes inside Edge Functions is **auto-injected by Supabase** — you don't set it yourself, it's just available as `Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')` in any deployed function. [supabase](https://supabase.com/docs/guides/functions/auth)

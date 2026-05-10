@@ -7,7 +7,9 @@
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "deploy:functions": "npx supabase functions deploy gemini-live-proxy --project-ref $SUPABASE_PROJECT_REF --use-api",
+    "set:gemini-secret": "npx supabase secrets set GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY --project-ref $SUPABASE_PROJECT_REF"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",

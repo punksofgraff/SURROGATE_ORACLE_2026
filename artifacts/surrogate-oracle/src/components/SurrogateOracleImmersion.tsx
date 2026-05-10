@@ -16,7 +16,7 @@ import { GraffPunksRadio } from './GraffPunksRadio';
 import { EnculturateCrate } from './EnculturateCrate';
 import { CultureCoinInlineDisplay } from './CultureCoinInlineDisplay';
 import { ConnectingAnimation } from './ConnectingAnimation';
-import { OracleConversation } from './OracleConversation';
+import OracleConversation from './OracleConversation';
 
 const ORACLE_IMAGE_URL = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
 const AUDIO_STREAM_URL = 'https://stream.radiojar.com/2qm1fc5kb';
@@ -227,6 +227,13 @@ export function SurrogateOracleImmersion() {
     if (!decartClientRef.current?.isStreamActive()) return;
     await decartClientRef.current.sendAudio(audioUrl);
   };
+
+  // Coins earned from Sacred exchanges — bubble to window for CultureCoinInlineDisplay
+  const handleCoinsEarned = useCallback((amount: number) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updater = (window as any).updateInlineCultureCoins;
+    if (typeof updater === 'function') updater(amount);
+  }, []);
 
   const exitOracleMode = async () => {
     await decartClientRef.current?.closeStream();
@@ -445,28 +452,15 @@ export function SurrogateOracleImmersion() {
       </AnimatePresence>
 
       {/* ── Conversation panel (oracle mode) ────────────────────────────── */}
-      <AnimatePresence>
-        {isOracleMode && showConversation && (
-          <motion.div
-            className="oracle-convo-panel"
-            initial={{ opacity: 0, x: -40 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -40 }}
-            transition={{ type: 'spring', damping: 24, stiffness: 180 }}
-          >
-            <div className="oracle-convo-header">
-              <span>ORACLE INTERFACE</span>
-              <button onClick={exitOracleMode} className="oracle-close-btn"><X size={14} /></button>
-            </div>
-            <OracleConversation
-              userId={currentUserId}
-              sessionId={currentSessionId}
-              onAudioReady={handleOracleResponse}
-              isOracleReady={oracleState.isReady}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {isOracleMode && showConversation && (
+        <OracleConversation
+          userId={currentUserId || currentSessionId}
+          sessionId={currentSessionId}
+          onOracleResponse={handleOracleResponse}
+          onCoinsEarned={handleCoinsEarned}
+          onClose={exitOracleMode}
+        />
+      )}
 
       {/* ── Connecting animation ─────────────────────────────────────────── */}
       <AnimatePresence>

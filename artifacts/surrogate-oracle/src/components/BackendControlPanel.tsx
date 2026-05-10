@@ -4,6 +4,7 @@ import { CultureCoinDisplay } from './CultureCoinDisplay';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { PortraitGalleryDashboard } from './PortraitGalleryDashboard';
 import { Learn2EarnInterface } from './Learn2EarnInterface';
+import { supabaseEdgeFunctionHeaders } from '../lib/supabase';
 
 interface BackendControlPanelProps {
   userId?: string;
@@ -45,19 +46,14 @@ export const BackendControlPanel = ({
   };
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   const testEdgeFunction = async (functionName: string, payload: Record<string, unknown> = {}) => {
     setIsLoading(true);
     try {
-      if (!supabaseUrl || !supabaseKey) throw new Error('Supabase not configured');
+      if (!supabaseUrl) throw new Error('Supabase not configured');
       const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${supabaseKey}`,
-          apikey: supabaseKey,
-        },
+        headers: supabaseEdgeFunctionHeaders,
         body: JSON.stringify(payload),
       });
       const data = await response.json();
@@ -110,7 +106,6 @@ export const BackendControlPanel = ({
   return (
     <>
       <div style={panelStyle}>
-        {/* Header */}
         <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#00ffff', letterSpacing: '0.1em' }}>ENCULTURATE CRATE</div>
@@ -123,7 +118,6 @@ export const BackendControlPanel = ({
           )}
         </div>
 
-        {/* Tabs */}
         <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           {(['coins', 'squad', 'portraits', 'debug'] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={tabStyle(tab)}>
@@ -132,7 +126,6 @@ export const BackendControlPanel = ({
           ))}
         </div>
 
-        {/* Content */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {activeTab === 'coins' && (
             userId ? (
@@ -206,29 +199,31 @@ export const BackendControlPanel = ({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   <div style={{ fontSize: '0.7rem', color: '#00ff64', marginBottom: 8 }}>✅ Developer Console Active</div>
 
-                  {[
-                    { name: 'oracle-conversation', label: 'Oracle Conversation', payload: { action: 'health_check' } },
-                    { name: 'culture-coin-manager', label: 'Culture Coin Manager', payload: { action: 'get_user_metrics', userId: userId || 'test' } },
-                    { name: 'd-id-api-handler', label: 'D-ID API Handler', payload: {} },
-                  ].map(({ name, label, payload }) => (
-                    <div key={name} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '12px 14px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                        <div style={{ fontSize: '0.7rem', color: '#ccc' }}>{label}</div>
-                        <button
-                          onClick={() => testEdgeFunction(name, payload)}
-                          disabled={isLoading}
-                          style={{ padding: '4px 10px', background: 'rgba(0,255,255,0.1)', border: '1px solid rgba(0,255,255,0.3)', borderRadius: 4, color: '#00ffff', cursor: 'pointer', fontSize: '0.65rem', fontFamily: "'Orbitron', monospace" }}
-                        >
-                          TEST
-                        </button>
+                  {
+                    [
+                      { name: 'oracle-conversation', label: 'Oracle Conversation', payload: { action: 'health_check' } },
+                      { name: 'culture-coin-manager', label: 'Culture Coin Manager', payload: { action: 'get_user_metrics', userId: userId || 'test' } },
+                      { name: 'd-id-api-handler', label: 'D-ID API Handler', payload: {} },
+                    ].map(({ name, label, payload }) => (
+                      <div key={name} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '12px 14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <div style={{ fontSize: '0.7rem', color: '#ccc' }}>{label}</div>
+                          <button
+                            onClick={() => testEdgeFunction(name, payload)}
+                            disabled={isLoading}
+                            style={{ padding: '4px 10px', background: 'rgba(0,255,255,0.1)', border: '1px solid rgba(0,255,255,0.3)', borderRadius: 4, color: '#00ffff', cursor: 'pointer', fontSize: '0.65rem', fontFamily: "'Orbitron', monospace" }}
+                          >
+                            TEST
+                          </button>
+                        </div>
+                        {!!testResults[name] && (
+                          <pre style={{ margin: 0, fontSize: '0.65rem', color: (testResults[name] as { success?: boolean }).success ? '#00ff62' : '#ff0050', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                            {JSON.stringify(testResults[name], null, 2)}
+                          </pre>
+                        )}
                       </div>
-                      {!!testResults[name] && (
-                        <pre style={{ margin: 0, fontSize: '0.65rem', color: (testResults[name] as { success?: boolean }).success ? '#00ff62' : '#ff0050', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                          {JSON.stringify(testResults[name], null, 2)}
-                        </pre>
-                      )}
-                    </div>
-                  ))}
+                    ))
+                  }
 
                   <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '12px 14px' }}>
                     <div style={{ fontSize: '0.65rem', color: '#666', marginBottom: 8 }}>SESSION INFO</div>

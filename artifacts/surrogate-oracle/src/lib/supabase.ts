@@ -2,9 +2,14 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseServiceRoleKey = import.meta.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Missing Supabase environment variables - some features will be disabled');
+}
+
+if (!supabaseServiceRoleKey) {
+  console.warn('Missing Supabase service role key - Edge Function calls may be limited');
 }
 
 export const supabase = createClient(
@@ -28,6 +33,15 @@ export const supabase = createClient(
     },
   }
 );
+
+export const supabaseEdgeFunctionHeaders: Record<string, string> = {
+  'Content-Type': 'application/json',
+};
+
+if (supabaseServiceRoleKey) {
+  supabaseEdgeFunctionHeaders.Authorization = `Bearer ${supabaseServiceRoleKey}`;
+  supabaseEdgeFunctionHeaders.apikey = supabaseServiceRoleKey;
+}
 
 export type Database = {
   public: {

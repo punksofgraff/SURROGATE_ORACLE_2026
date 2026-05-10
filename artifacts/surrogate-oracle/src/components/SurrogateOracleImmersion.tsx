@@ -20,10 +20,10 @@ import OracleConversation from './OracleConversation';
 import { useAtmosphere } from '../hooks/useAtmosphere';
 import './SurrogateOracleImmersion.css';
 
-const ORACLE_IMAGE_URL = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
+const ORACLE_IMAGE_URL = 'https://i.postimg.cc/D20ctNV0/orackle-only-static.png'; // Static floating face (click to start)
+const DECART_AVATAR_URL = 'https://i.postimg.cc/hnyNRQLz/static-alley-reduced.png'; // Image for Decart stream (green character)
 const AUDIO_STREAM_URL = 'https://stream.radiojar.com/2qm1fc5kb';
-const ALLEY_BG_URL =
-  'https://raw.githubusercontent.com/punksofgraff/SURROGATE_ORACLE_2026/main/public/image.png';
+const ALLEY_BG_URL = 'https://i.postimg.cc/9CL0tMdd/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png'; // Empty alley with SNEAKAR cabinet
 
 // Typewriter helper
 function useTypewriter(text: string, active: boolean, speed = 55) {
@@ -204,7 +204,7 @@ export function SurrogateOracleImmersion() {
       },
     });
 
-    const result = await decartClientRef.current?.initializeStream(ORACLE_IMAGE_URL, avatarVideoRef.current);
+    const result = await decartClientRef.current?.initializeStream(DECART_AVATAR_URL, avatarVideoRef.current);
     if (!result?.success) {
       clearInterval(interval);
       setOracleState((p) => ({ ...p, error: result?.error || 'Failed to initialize Decart stream' }));
@@ -249,6 +249,8 @@ export function SurrogateOracleImmersion() {
     <div
       className="oracle-stage"
       data-oracle-state={scenePhase}
+      data-oracle-alignment={oracleAlignment || 'neutral'}
+      data-debug={oracleState.debugMode}
       onClick={scenePhase === 'dormant' ? awakenScene : undefined}
       style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}
     >
@@ -256,46 +258,29 @@ export function SurrogateOracleImmersion() {
       <DecartClient ref={decartClientRef} />
       <audio ref={audioRef} src={AUDIO_STREAM_URL} loop preload="none" />
 
-      {/* ── Layer 1: Graffiti alley background ─────────────────────────── */}
-      <motion.div
+      {/* ── Layer 1: Graffiti alley background + Vignette ─────────────── */}
+      <div
         className="oracle-alley"
-        style={{ backgroundImage: `url('${ALLEY_BG_URL}')` }}
-        animate={{
-          opacity: isOracleMode ? 0.06 : awakened ? 0.18 : 0.12,
-          scale: awakened ? 1 : 1.04,
-        }}
-        transition={{ duration: 1.8, ease: 'easeOut' }}
+        style={{ '--bg-url': `url('${ALLEY_BG_URL}')` } as React.CSSProperties}
       />
 
-      {/* ── Layer 2: Vignette overlay ───────────────────────────────────── */}
-      <motion.div 
-        className="oracle-vignette" 
-        animate={{
-          background: oracleAlignment === 'sacred' 
-            ? 'radial-gradient(circle at center, transparent 40%, rgba(0,30,15,0.7) 100%)'
-            : oracleAlignment === 'profane'
-            ? 'radial-gradient(circle at center, transparent 30%, rgba(30,0,0,0.85) 100%)'
-            : 'radial-gradient(circle at center, transparent 50%, rgba(0,0,0,0.8) 100%)'
-        }}
-        transition={{ duration: 2 }}
-      />
-
-      {/* ── Layer 3: Atmosphere Canvas (only when awakened) ────────────── */}
+      {/* ── Layer 2: Atmosphere Canvas (only when awakened) ────────────── */}
       <canvas
         ref={atmosphereCanvasRef}
+        className="atmosphere-layer"
         style={{
           position: 'absolute',
           inset: 0,
           width: '100%',
           height: '100%',
           pointerEvents: 'none',
-          zIndex: 3,
+          zIndex: 'var(--z-atmosphere)',
           opacity: awakened ? 1 : 0,
           transition: 'opacity 2s ease-in-out'
         }}
       />
 
-      {/* ── Layer 4: Top branding — types in on awakening ──────────────── */}
+      {/* ── Layer 3: Top branding — types in on awakening ──────────────── */}
       <div className="oracle-branding">
         <h1 className="oracle-title">
           {titleText}
@@ -304,18 +289,13 @@ export function SurrogateOracleImmersion() {
           )}
         </h1>
         {subtitleText && (
-          <motion.p
-            className="oracle-subtitle"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4 }}
-          >
+          <div className="oracle-subtitle">
             {subtitleText}
-          </motion.p>
+          </div>
         )}
       </div>
 
-      {/* ── Layer 5: Central cabinet + avatar ──────────────────────────── */}
+      {/* ── Layer 4: Central cabinet + avatar ──────────────────────────── */}
       <div className="oracle-center">
         {/* Dormant tap prompt */}
         <AnimatePresence>
@@ -333,51 +313,30 @@ export function SurrogateOracleImmersion() {
         </AnimatePresence>
 
         {/* Cabinet CRT frame */}
-        <motion.div
+        <div
           className="oracle-cabinet"
-          animate={cabinetControls}
-          initial={{ boxShadow: '0 0 20px rgba(0,255,255,0.15), 0 0 40px rgba(0,255,255,0.06)' }}
           onClick={awakened && !isOracleMode && !isConnecting ? initializeOracle : undefined}
           style={{ cursor: awakened && !isOracleMode && !isConnecting ? 'pointer' : 'default' }}
-          whileHover={awakened && !isOracleMode ? { scale: 1.015 } : {}}
-          whileTap={awakened && !isOracleMode ? { scale: 0.985 } : {}}
         >
           {/* CRT scanline overlay */}
           <div className="oracle-scanlines" />
 
-          {/* Static oracle image (pre-stream) */}
-          <motion.img
-            src={ORACLE_IMAGE_URL}
-            alt="SURROGATE Oracle"
-            className="oracle-avatar-img"
-            initial={{ opacity: 0.35, filter: 'brightness(0.5) drop-shadow(0 0 8px rgba(0,255,255,0.3))' }}
-            animate={{
-              opacity: isOracleMode ? 0 : awakened ? 1 : 0.45,
-              filter: awakened
-                ? oracleAlignment === 'sacred' 
-                  ? 'brightness(1.2) drop-shadow(0 0 40px rgba(0,255,136,0.85))'
-                  : oracleAlignment === 'profane'
-                  ? 'brightness(0.9) drop-shadow(0 0 20px rgba(255,0,0,0.6))'
-                  : 'brightness(1.15) drop-shadow(0 0 28px rgba(0,255,255,0.75))'
-                : 'brightness(0.5) drop-shadow(0 0 8px rgba(0,255,255,0.3))',
-              scale: awakened ? [1, 1.012, 1] : 1,
-            }}
-            transition={{
-              opacity: { duration: 1 },
-              filter: { duration: 1.2, delay: 0.3 },
-              scale: { duration: 3, repeat: Infinity, ease: 'easeInOut' },
-            }}
-            style={{ display: isOracleMode ? 'none' : 'block' }}
-          />
+          <div className="oracle-avatar-wrapper">
+            {/* Static oracle image (pre-stream) */}
+            <img
+              src={ORACLE_IMAGE_URL}
+              alt="SURROGATE Oracle"
+              className="oracle-avatar-img"
+            />
 
-          {/* Decart live avatar video */}
-          <video
-            ref={avatarVideoRef}
-            autoPlay
-            playsInline
-            className="oracle-avatar-video"
-            style={{ display: isOracleMode ? 'block' : 'none' }}
-          />
+            {/* Decart live avatar video */}
+            <video
+              ref={avatarVideoRef}
+              autoPlay
+              playsInline
+              className="oracle-avatar-video"
+            />
+          </div>
 
           {/* "CONNECT TO ORACLE" CTA — shown after awakening */}
           <AnimatePresence>
@@ -409,7 +368,7 @@ export function SurrogateOracleImmersion() {
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
+        </div>
       </div>
 
       {/* ── Layer 6: Bottom — Boombox + Crate (light up on awakening) ──── */}
@@ -479,7 +438,7 @@ export function SurrogateOracleImmersion() {
           <motion.div
             initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 150 }}
+            style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 'var(--z-system)' as any }}
           >
             <div style={{ pointerEvents: 'auto', position: 'absolute', right: 0, top: 0, bottom: 0 }}>
               <BackendControlPanel

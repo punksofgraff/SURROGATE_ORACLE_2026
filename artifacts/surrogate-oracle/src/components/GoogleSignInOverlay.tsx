@@ -22,7 +22,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
   const overlayStyle: React.CSSProperties = {
     position: 'fixed',
     inset: 0,
-    zIndex: 300,
+    zIndex: 'var(--z-auth)' as any,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -31,28 +31,17 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
   };
 
   const panelStyle: React.CSSProperties = {
-    background: 'linear-gradient(135deg, rgba(10,25,20,0.95), rgba(0,10,15,0.95))',
-    border: '1px solid rgba(0,255,136,0.4)',
     borderRadius: '4px',
     padding: '40px',
     maxWidth: '420px',
     width: '90%',
     position: 'relative',
-    boxShadow: '0 0 40px rgba(0,255,136,0.15), inset 0 0 20px rgba(0,255,136,0.05)',
-    fontFamily: "'PhillySans', 'Orbitron', monospace",
     color: '#fff',
   };
 
   return (
     <div style={overlayStyle} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div style={panelStyle} className="neural-link-terminal">
-        {/* CRT Scanline effect */}
-        <div style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-          background: 'linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06))',
-          backgroundSize: '100% 2px, 3px 100%', zIndex: 1
-        }} />
-
         {isLoading && (
           <div
             style={{
@@ -132,7 +121,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                     background: 'rgba(0,255,136,0.1)',
                     border: '1px solid #00ff88',
                     color: '#00ff88',
-                    fontFamily: "'PhillySans', 'Orbitron', monospace",
+                    fontFamily: 'inherit',
                     fontSize: '0.85rem',
                     letterSpacing: '0.15em',
                     cursor: isLoading ? 'not-allowed' : 'pointer',
@@ -210,7 +199,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                     border: '1px solid #00ff64',
                     color: '#00ff64',
                     cursor: 'pointer',
-                    fontFamily: "'PhillySans', 'Orbitron', monospace",
+                    fontFamily: 'inherit',
                     fontSize: '0.75rem',
                     letterSpacing: '0.1em'
                     }}
@@ -225,7 +214,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                     border: '1px solid #333',
                     color: '#666',
                     cursor: 'pointer',
-                    fontFamily: "'PhillySans', 'Orbitron', monospace",
+                    fontFamily: 'inherit',
                     fontSize: '0.75rem',
                     letterSpacing: '0.1em'
                     }}

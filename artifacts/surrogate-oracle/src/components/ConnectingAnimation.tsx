@@ -28,7 +28,7 @@ export function ConnectingAnimation({
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 200,
+        zIndex: 'var(--z-system)' as any,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -43,7 +43,7 @@ export function ConnectingAnimation({
         style={{
           textAlign: 'center',
           color: '#00ffff',
-          fontFamily: "'PhillySans', 'Orbitron', monospace",
+          fontFamily: 'inherit',
           padding: '40px',
           maxWidth: '500px',
         }}
@@ -109,7 +109,7 @@ export function ConnectingAnimation({
               padding: '8px 24px',
               borderRadius: '4px',
               cursor: 'pointer',
-              fontFamily: "'PhillySans', 'Orbitron', monospace",
+              fontFamily: 'inherit',
               fontSize: '0.75rem',
               letterSpacing: '0.1em',
             }}

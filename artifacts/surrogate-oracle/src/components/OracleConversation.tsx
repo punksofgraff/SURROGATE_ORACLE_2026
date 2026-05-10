@@ -32,7 +32,7 @@ const GEMINI_MODEL = 'gemini-2.5-flash-live-001';
 // ──────────────────────────────────────────────────────────────────────────────
 
 // Derive project ref from VITE_SUPABASE_URL — no extra env var needed
-const _supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const _supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABASE_URL || '';
 const _projectRef = _supabaseUrl.replace(/^https?:\/\//, '').replace(/\.supabase\.co.*$/, '');
 const GEMINI_PROXY_URL = `wss://${_projectRef}.supabase.co/functions/v1/gemini-live-proxy`;
 
@@ -217,6 +217,20 @@ const OracleConversation = forwardRef<OracleConversationHandle, OracleConversati
         }
 
         setTimeout(() => setCurrentAlignment(null), 3000);
+
+        if (score.totemAdvancement === 'ascend') {
+          // Phase 4: Acknowledge level up as a world event
+          setTimeout(() => {
+             setTurns((prev) => [
+              ...prev,
+              {
+                role: 'oracle',
+                content: `[WORLD EVENT] The alley knows you now. You walk as ${totemLabel(score.totemLevel)}.`,
+                timestamp: Date.now(),
+              },
+            ]);
+          }, 1500); // Slight delay after the Oracle finishes speaking
+        }
 
         if (score.unlockTrigger) {
           if (score.unlockTrigger === 'squad_invite') {
@@ -420,7 +434,7 @@ const OracleConversation = forwardRef<OracleConversationHandle, OracleConversati
       else startMic();
     }, [isListening, startMic, stopMic]);
 
-    // ─── Close ───────────────────────────────────────────────────────────────
+    // ─── Close & Session Summary ─────────────────────────────────────────────
     const closeConnection = useCallback(() => {
       stopMic();
       if (wsRef.current) {
@@ -430,6 +444,32 @@ const OracleConversation = forwardRef<OracleConversationHandle, OracleConversati
       setIsConnected(false);
       sessionBootedRef.current = false;
     }, [stopMic]);
+
+    const handleCloseClick = useCallback(() => {
+      if (totalCoins > 0) {
+        // Phase 4: Reveal coins as a "revelation" before closing
+        // We will append a system message to the chat
+        setTurns((prev) => [
+          ...prev,
+          {
+            role: 'oracle',
+            content: `[SYSTEM REVELATION] The Oracle has witnessed your path. You leave the alley with ${totalCoins} Culture Coins.`,
+            timestamp: Date.now(),
+          },
+        ]);
+        
+        // Disconnect immediately so they can't type more
+        closeConnection();
+        
+        // Wait for the user to read the revelation before actually closing the panel
+        setTimeout(() => {
+          onClose();
+        }, 4000);
+      } else {
+        closeConnection();
+        onClose();
+      }
+    }, [totalCoins, closeConnection, onClose]);
 
     // ─── Submit ──────────────────────────────────────────────────────────────
     const handleSubmit = (e: React.FormEvent) => {
@@ -460,64 +500,27 @@ const OracleConversation = forwardRef<OracleConversationHandle, OracleConversati
           height: '60vh',
           background: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.95) 20%)',
           borderTop: '1px solid rgba(255,255,255,0.08)',
-          zIndex: 200,
-          fontFamily: "'PhillySans', 'Orbitron', monospace",
+          zIndex: 'var(--z-oracle)',
         }}
       >
-        {/* Header — Totem status */}
+        {/* Header — Minimalist to preserve immersion (Phase 4) */}
         <div
           style={{
             display: 'flex',
-            justifyContent: 'space-between',
+            justifyContent: 'flex-end',
             alignItems: 'center',
             padding: '8px 16px',
             borderBottom: '1px solid rgba(255,255,255,0.06)',
+            minHeight: '32px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-              {totemLabel(currentTotemLevel)}
-            </span>
-            <AnimatePresence>
-              {currentAlignment && (
-                <motion.span
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0 }}
-                  style={{
-                    fontSize: '10px',
-                    color: alignmentColor(currentAlignment),
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.15em',
-                    fontWeight: 700,
-                  }}
-                >
-                  {currentAlignment}
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ fontSize: '12px', color: '#ffd700', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Zap size={12} />
-              {totalCoins}
-            </span>
-            <div
-              style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: isConnected ? '#00ff88' : '#ff4444',
-              }}
-            />
-            <button
-              onClick={onClose}
-              style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '2px' }}
-            >
-              <X size={14} />
-            </button>
-          </div>
+          <button
+            onClick={handleCloseClick}
+            style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            aria-label="Close connection"
+          >
+            <X size={14} />
+          </button>
         </div>
 
         {/* Connection error */}

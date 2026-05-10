@@ -99,12 +99,6 @@ export function CultureCoinInlineDisplay({ userId, onUpgradeClick, showUpgradePr
           </div>
         </>
       )}
-
-      {recentEarning > 0 && (
-        <span style={{ color: '#00ff62', fontSize: '0.75rem', fontWeight: 700 }}>
-          +{recentEarning}
-        </span>
-      )}
     </div>
   );
 }

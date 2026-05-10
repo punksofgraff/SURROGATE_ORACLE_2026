@@ -1,0 +1,73 @@
+/* ── Depth Layers ───────────────────────────────────────────────────────── */
+:root {
+  --z-world: 0;
+  --z-oracle: 10;
+  --z-system: 20;
+}
+
+.oracle-stage {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  overflow: hidden;
+  font-family: 'Orbitron', monospace;
+  color: #fff;
+}
+
+/* World Layer */
+.oracle-alley {
+  position: absolute;
+  inset: -10%;
+  background-size: cover;
+  background-position: center;
+  z-index: calc(var(--z-world) + 1);
+  will-change: transform, opacity, filter;
+  filter: saturate(0) brightness(0.2); /* Dormant state */
+  transition: filter 1.8s ease-out;
+}
+
+.oracle-stage[data-oracle-state="awakened"] .oracle-alley {
+  filter: saturate(0.8) brightness(0.6);
+}
+
+.oracle-stage[data-oracle-state="oracle"] .oracle-alley {
+  filter: saturate(0.2) brightness(0.1);
+}
+
+.oracle-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: calc(var(--z-world) + 2);
+  pointer-events: none;
+  background: radial-gradient(circle at center, transparent 30%, rgba(0,0,0,0.95) 100%);
+  transition: background 2s ease;
+}
+
+/* System Layer */
+.oracle-error-toast {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255,0,80,0.15);
+  border: 1px solid rgba(255,0,80,0.3);
+  padding: 12px 20px;
+  border-radius: 8px;
+  color: #ff0050;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  z-index: var(--z-system);
+  backdrop-filter: blur(8px);
+}
+
+.oracle-close-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+}

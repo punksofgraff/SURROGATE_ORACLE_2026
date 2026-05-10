@@ -11,7 +11,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
   const [showDevBypass, setShowDevBypass] = useState(false);
   const [devPassword, setDevPassword] = useState('');
 
-  const { isLoading, error, handleGoogleSignIn, handleDevBypass: authDevBypass, clearError } =
+  const { isLoading, error, handleGoogleSignIn, handleDevBypass: authDevBypass } =
     useAuth(onSuccess);
 
   const handleDevBypass = () => {
@@ -31,28 +31,35 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
   };
 
   const panelStyle: React.CSSProperties = {
-    background: 'linear-gradient(135deg, rgba(10,10,20,0.95), rgba(0,0,40,0.95))',
-    border: '1px solid rgba(0,255,255,0.3)',
-    borderRadius: '16px',
+    background: 'linear-gradient(135deg, rgba(10,25,20,0.95), rgba(0,10,15,0.95))',
+    border: '1px solid rgba(0,255,136,0.4)',
+    borderRadius: '4px',
     padding: '40px',
     maxWidth: '420px',
     width: '90%',
     position: 'relative',
-    boxShadow: '0 0 40px rgba(0,255,255,0.2)',
+    boxShadow: '0 0 40px rgba(0,255,136,0.15), inset 0 0 20px rgba(0,255,136,0.05)',
     fontFamily: "'Orbitron', monospace",
     color: '#fff',
   };
 
   return (
     <div style={overlayStyle} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div style={panelStyle}>
+      <div style={panelStyle} className="neural-link-terminal">
+        {/* CRT Scanline effect */}
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          background: 'linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06))',
+          backgroundSize: '100% 2px, 3px 100%', zIndex: 1
+        }} />
+
         {isLoading && (
           <div
             style={{
               position: 'absolute',
               inset: 0,
-              background: 'rgba(0,0,0,0.7)',
-              borderRadius: '16px',
+              background: 'rgba(0,0,0,0.85)',
+              borderRadius: '4px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -61,8 +68,21 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
               zIndex: 10,
             }}
           >
-            <Loader2 size={32} style={{ color: '#00ffff', animation: 'spin 1s linear infinite' }} />
-            <span style={{ color: '#00ffff', fontSize: '0.8rem' }}>Connecting to Google...</span>
+            <Loader2 size={32} style={{ color: '#00ff88', animation: 'spin 1.5s linear infinite' }} />
+            <div style={{ display: 'flex', gap: '4px' }}>
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    style={{
+                      width: '4px', height: '16px', background: '#00ff88',
+                      animation: `blink 1s ease-in-out infinite ${i * 0.1}s`
+                    }}
+                  />
+                ))}
+            </div>
+            <span style={{ color: '#00ff88', fontSize: '0.8rem', letterSpacing: '0.15em', marginTop: '8px' }}>
+              CALIBRATING FREQUENCY...
+            </span>
           </div>
         )}
 
@@ -74,156 +94,148 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
             right: 16,
             background: 'none',
             border: 'none',
-            color: '#666',
+            color: '#00ff88',
+            opacity: 0.5,
             cursor: 'pointer',
             padding: 4,
+            zIndex: 5,
           }}
         >
           <X size={18} />
         </button>
 
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <img
-            src="https://sintra-images.s3.eu-north-1.amazonaws.com/3fddfa4f-21d6-4499-8920-9b9b4c304d56/message-files/8732b2b3-dfd0-4cea-beea-2dcb5d908947/unnamed.jpg"
-            alt="Culture Coin"
-            style={{ width: 64, height: 64, borderRadius: '50%', marginBottom: 16, objectFit: 'cover' }}
-          />
-          <h2 style={{ fontSize: '1.1rem', letterSpacing: '0.1em', marginBottom: 8, color: '#00ffff' }}>
-            Culture Coin Access
+        <div style={{ textAlign: 'center', marginBottom: 28, position: 'relative', zIndex: 2 }}>
+          <Terminal size={48} style={{ color: '#00ff88', margin: '0 auto 16px', opacity: 0.8 }} />
+          <h2 style={{ fontSize: '1.2rem', letterSpacing: '0.15em', marginBottom: 8, color: '#00ff88', textShadow: '0 0 10px rgba(0,255,136,0.5)' }}>
+            ESTABLISH NEURAL LINK
           </h2>
-          <p style={{ fontSize: '0.75rem', color: '#888', lineHeight: 1.6 }}>
-            Sign in with Google to start earning Culture Coins, track your consciousness level, and
-            unlock exclusive SNEAKAR Culture Crew rewards.
+          <p style={{ fontSize: '0.75rem', color: '#888', lineHeight: 1.6, letterSpacing: '0.05em' }}>
+            VERIFY SEEKER FREQUENCY TO ACCESS THE CULTURE CREW ENCLAVE.
           </p>
         </div>
 
-        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {[
-            ['🪙', 'Earn Culture Coins through Oracle conversations'],
-            ['📈', 'Track your consciousness evolution level'],
-            ['🎨', 'Generate and save Procedural Portraits'],
-            ['👥', 'Join the SNEAKAR Culture Crew community'],
-          ].map(([icon, text]) => (
-            <li key={text} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.78rem', color: '#ccc' }}>
-              <span>{icon}</span>
-              <span>{text}</span>
-            </li>
-          ))}
-        </ul>
-
-        {error && (
-          <div style={{ background: 'rgba(255,0,80,0.1)', border: '1px solid #ff0050', borderRadius: 8, padding: '8px 12px', marginBottom: 16, fontSize: '0.75rem', color: '#ff0050' }}>
-            {error}
-          </div>
-        )}
-
-        {!showDevBypass ? (
-          <>
-            <button
-              onClick={handleGoogleSignIn}
-              disabled={isLoading}
-              style={{
-                width: '100%',
-                padding: '12px',
-                background: 'linear-gradient(135deg, #4285f4, #0066ff)',
-                border: 'none',
-                borderRadius: 8,
-                color: '#fff',
-                fontFamily: "'Orbitron', monospace",
-                fontSize: '0.85rem',
-                letterSpacing: '0.05em',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 10,
-                opacity: isLoading ? 0.7 : 1,
-              }}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                  Connecting...
-                </>
-              ) : (
-                'Continue with Google'
-              )}
-            </button>
-            <button
-              onClick={() => setShowDevBypass(true)}
-              disabled={isLoading}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#333',
-                fontSize: '0.6rem',
-                cursor: 'pointer',
-                marginTop: 12,
-                display: 'block',
-                marginLeft: 'auto',
-              }}
-              aria-label="Access developer bypass mode"
-            >
-              <Terminal size={10} />
-            </button>
-          </>
-        ) : (
-          <div style={{ background: 'rgba(0,255,100,0.05)', border: '1px solid rgba(0,255,100,0.2)', borderRadius: 8, padding: 16 }}>
-            <h3 style={{ fontSize: '0.8rem', color: '#00ff64', marginBottom: 12 }}>🛠️ Developer Bypass</h3>
-            <input
-              type="password"
-              value={devPassword}
-              onChange={(e) => setDevPassword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleDevBypass()}
-              placeholder="Enter dev password..."
-              autoFocus
-              style={{
-                width: '100%',
-                background: 'rgba(0,0,0,0.5)',
-                border: '1px solid rgba(0,255,100,0.3)',
-                borderRadius: 6,
-                padding: '8px 12px',
-                color: '#00ff64',
-                fontFamily: 'monospace',
-                fontSize: '0.85rem',
-                marginBottom: 10,
-                boxSizing: 'border-box',
-              }}
-            />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={handleDevBypass}
-                style={{
-                  flex: 1,
-                  padding: '8px',
-                  background: 'rgba(0,255,100,0.15)',
-                  border: '1px solid #00ff64',
-                  borderRadius: 6,
-                  color: '#00ff64',
-                  cursor: 'pointer',
-                  fontFamily: "'Orbitron', monospace",
-                  fontSize: '0.75rem',
-                }}
-              >
-                🚀 Bypass
-              </button>
-              <button
-                onClick={() => setShowDevBypass(false)}
-                style={{
-                  padding: '8px 12px',
-                  background: 'none',
-                  border: '1px solid #333',
-                  borderRadius: 6,
-                  color: '#666',
-                  cursor: 'pointer',
-                  fontSize: '0.75rem',
-                }}
-              >
-                Cancel
-              </button>
+        <div style={{ position: 'relative', zIndex: 2 }}>
+            {error && (
+            <div style={{ background: 'rgba(255,0,80,0.1)', border: '1px solid #ff0050', padding: '8px 12px', marginBottom: 16, fontSize: '0.75rem', color: '#ff0050', letterSpacing: '0.05em' }}>
+                FREQUENCY REJECTED — {error.toUpperCase()}
             </div>
-          </div>
-        )}
+            )}
+
+            {!showDevBypass ? (
+            <>
+                <button
+                onClick={handleGoogleSignIn}
+                disabled={isLoading}
+                style={{
+                    width: '100%',
+                    padding: '14px',
+                    background: 'rgba(0,255,136,0.1)',
+                    border: '1px solid #00ff88',
+                    color: '#00ff88',
+                    fontFamily: "'Orbitron', monospace",
+                    fontSize: '0.85rem',
+                    letterSpacing: '0.15em',
+                    cursor: isLoading ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 10,
+                    opacity: isLoading ? 0.7 : 1,
+                    textShadow: '0 0 8px rgba(0,255,136,0.4)',
+                    boxShadow: 'inset 0 0 10px rgba(0,255,136,0.1)'
+                }}
+                onMouseOver={(e) => {
+                    if (!isLoading) {
+                        e.currentTarget.style.background = 'rgba(0,255,136,0.2)';
+                        e.currentTarget.style.boxShadow = '0 0 15px rgba(0,255,136,0.3), inset 0 0 10px rgba(0,255,136,0.2)';
+                    }
+                }}
+                onMouseOut={(e) => {
+                    if (!isLoading) {
+                        e.currentTarget.style.background = 'rgba(0,255,136,0.1)';
+                        e.currentTarget.style.boxShadow = 'inset 0 0 10px rgba(0,255,136,0.1)';
+                    }
+                }}
+                >
+                {isLoading ? 'INITIATING...' : 'BIND TO THE CULTURE'}
+                </button>
+                <button
+                onClick={() => setShowDevBypass(true)}
+                disabled={isLoading}
+                style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#333',
+                    fontSize: '0.6rem',
+                    cursor: 'pointer',
+                    marginTop: 16,
+                    display: 'block',
+                    marginLeft: 'auto',
+                }}
+                aria-label="Access developer bypass mode"
+                >
+                <Terminal size={10} />
+                </button>
+            </>
+            ) : (
+            <div style={{ background: 'rgba(0,255,100,0.05)', border: '1px solid rgba(0,255,100,0.2)', padding: 16 }}>
+                <h3 style={{ fontSize: '0.8rem', color: '#00ff64', marginBottom: 12, letterSpacing: '0.1em' }}>🛠️ MANUAL OVERRIDE</h3>
+                <input
+                type="password"
+                value={devPassword}
+                onChange={(e) => setDevPassword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleDevBypass()}
+                placeholder="ENTER OVERRIDE CODE..."
+                autoFocus
+                style={{
+                    width: '100%',
+                    background: 'rgba(0,0,0,0.8)',
+                    border: '1px solid rgba(0,255,100,0.3)',
+                    padding: '10px 12px',
+                    color: '#00ff64',
+                    fontFamily: 'monospace',
+                    fontSize: '0.85rem',
+                    marginBottom: 12,
+                    boxSizing: 'border-box',
+                    outline: 'none'
+                }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                    onClick={handleDevBypass}
+                    style={{
+                    flex: 1,
+                    padding: '10px',
+                    background: 'rgba(0,255,100,0.15)',
+                    border: '1px solid #00ff64',
+                    color: '#00ff64',
+                    cursor: 'pointer',
+                    fontFamily: "'Orbitron', monospace",
+                    fontSize: '0.75rem',
+                    letterSpacing: '0.1em'
+                    }}
+                >
+                    EXECUTE
+                </button>
+                <button
+                    onClick={() => setShowDevBypass(false)}
+                    style={{
+                    padding: '10px 16px',
+                    background: 'none',
+                    border: '1px solid #333',
+                    color: '#666',
+                    cursor: 'pointer',
+                    fontFamily: "'Orbitron', monospace",
+                    fontSize: '0.75rem',
+                    letterSpacing: '0.1em'
+                    }}
+                >
+                    ABORT
+                </button>
+                </div>
+            </div>
+            )}
+        </div>
       </div>
     </div>
   );

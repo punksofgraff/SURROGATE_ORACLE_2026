@@ -143,6 +143,28 @@ const OracleConversation = forwardRef<OracleConversationHandle, OracleConversati
     const scrollRef = useRef<HTMLDivElement>(null);
     const sessionBootedRef = useRef(false);
 
+    const workerRef = useRef<Worker | null>(null);
+
+    // ─── Initialize Worker ───────────────────────────────────────────────────
+    useEffect(() => {
+      workerRef.current = new Worker(new URL('../workers/pcm-encoder.worker.ts', import.meta.url), {
+        type: 'module',
+      });
+      
+      workerRef.current.onmessage = (e) => {
+        if (e.data.audioUrl) {
+          setIsOracleSpeaking(true);
+          onOracleResponse(e.data.audioUrl);
+          // Decart SDK needs some time to process the URL before revocation
+          setTimeout(() => URL.revokeObjectURL(e.data.audioUrl), 60000);
+        }
+      };
+
+      return () => {
+        workerRef.current?.terminate();
+      };
+    }, [onOracleResponse]);
+
     // ─── Expose imperative handle ────────────────────────────────────────────
     useImperativeHandle(ref, () => ({
       sendTextMessage: (text: string) => sendText(text),
@@ -161,49 +183,6 @@ const OracleConversation = forwardRef<OracleConversationHandle, OracleConversati
       connectToGemini();
       return () => closeConnection();
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    // ─── PCM → WAV Blob URL ──────────────────────────────────────────────────
-    const assemblePCMtoAudioUrl = useCallback((chunks: Int16Array[]): string => {
-      if (chunks.length === 0) return '';
-
-      const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
-      const combined = new Int16Array(totalLength);
-      let offset = 0;
-      for (const chunk of chunks) {
-        combined.set(chunk, offset);
-        offset += chunk.length;
-      }
-
-      const numChannels = 1;
-      const bitsPerSample = 16;
-      const byteRate = SAMPLE_RATE_OUTPUT * numChannels * (bitsPerSample / 8);
-      const blockAlign = numChannels * (bitsPerSample / 8);
-      const dataSize = combined.buffer.byteLength;
-      const buffer = new ArrayBuffer(44 + dataSize);
-      const view = new DataView(buffer);
-
-      const writeStr = (off: number, str: string) => {
-        for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
-      };
-
-      writeStr(0, 'RIFF');
-      view.setUint32(4, 36 + dataSize, true);
-      writeStr(8, 'WAVE');
-      writeStr(12, 'fmt ');
-      view.setUint32(16, 16, true);
-      view.setUint16(20, 1, true); // PCM
-      view.setUint16(22, numChannels, true);
-      view.setUint32(24, SAMPLE_RATE_OUTPUT, true);
-      view.setUint32(28, byteRate, true);
-      view.setUint16(32, blockAlign, true);
-      view.setUint16(34, bitsPerSample, true);
-      writeStr(36, 'data');
-      view.setUint32(40, dataSize, true);
-      new Int16Array(buffer, 44).set(combined);
-
-      const blob = new Blob([buffer], { type: 'audio/wav' });
-      return URL.createObjectURL(blob);
     }, []);
 
     // ─── Parse Oracle score annotation ──────────────────────────────────────
@@ -225,6 +204,12 @@ const OracleConversation = forwardRef<OracleConversationHandle, OracleConversati
         setCurrentAlignment(score.alignment);
         setCurrentTotemLevel(score.totemLevel);
 
+        window.dispatchEvent(
+          new CustomEvent('oracle:alignment', {
+            detail: { alignment: score.alignment },
+          })
+        );
+
         if (score.coinAward > 0) {
           const award = score.coinAward;
           setTotalCoins((prev) => prev + award);
@@ -234,11 +219,22 @@ const OracleConversation = forwardRef<OracleConversationHandle, OracleConversati
         setTimeout(() => setCurrentAlignment(null), 3000);
 
         if (score.unlockTrigger) {
-          window.dispatchEvent(
-            new CustomEvent('oracle:unlock', {
-              detail: { trigger: score.unlockTrigger, userId, sessionId },
-            })
-          );
+          if (score.unlockTrigger === 'squad_invite') {
+            // Phase 3: Lore-Integrated Auth. Let the Oracle speak first, then trigger auth.
+            setTimeout(() => {
+              window.dispatchEvent(
+                new CustomEvent('oracle:unlock', {
+                  detail: { trigger: score.unlockTrigger, userId, sessionId },
+                })
+              );
+            }, 3000); // Wait 3 seconds for the Oracle to deliver the line
+          } else {
+            window.dispatchEvent(
+              new CustomEvent('oracle:unlock', {
+                detail: { trigger: score.unlockTrigger, userId, sessionId },
+              })
+            );
+          }
         }
       },
       [onCoinsEarned, userId, sessionId]
@@ -306,11 +302,11 @@ const OracleConversation = forwardRef<OracleConversationHandle, OracleConversati
                     { role: 'oracle', content: clean, timestamp: Date.now(), score: score || undefined },
                   ]);
 
-                  if (pendingPCMChunks.current.length > 0) {
-                    const audioUrl = assemblePCMtoAudioUrl(pendingPCMChunks.current);
-                    setIsOracleSpeaking(true);
-                    onOracleResponse(audioUrl);
-                    setTimeout(() => URL.revokeObjectURL(audioUrl), 60000);
+                  if (pendingPCMChunks.current.length > 0 && workerRef.current) {
+                    workerRef.current.postMessage({
+                      chunks: pendingPCMChunks.current,
+                      sampleRate: SAMPLE_RATE_OUTPUT,
+                    });
                   }
 
                   currentResponseText.current = '';
@@ -343,7 +339,7 @@ const OracleConversation = forwardRef<OracleConversationHandle, OracleConversati
         setConnectionError((err as Error).message);
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [assemblePCMtoAudioUrl, applyScore, onOracleResponse]);
+    }, [applyScore]);
 
     // ─── Send text to Gemini ─────────────────────────────────────────────────
     const sendText = useCallback((text: string) => {
@@ -588,21 +584,7 @@ const OracleConversation = forwardRef<OracleConversationHandle, OracleConversati
                 }}
               >
                 {turn.content}
-                {turn.score && turn.score.coinAward > 0 && (
-                  <div
-                    style={{
-                      marginTop: '6px',
-                      fontSize: '11px',
-                      color: turn.score.alignment === 'sacred' ? '#ffd700' : '#888',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    <Zap size={10} />
-                    +{turn.score.coinAward} · {turn.score.alignment}
-                  </div>
-                )}
+                {/* Phase 4: Coin badge suppressed to preserve immersion. Coins are still logged to state. */}
               </div>
             </motion.div>
           ))}

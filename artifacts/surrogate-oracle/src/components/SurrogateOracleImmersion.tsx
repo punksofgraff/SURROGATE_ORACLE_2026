@@ -17,6 +17,8 @@ import { EnculturateCrate } from './EnculturateCrate';
 import { CultureCoinInlineDisplay } from './CultureCoinInlineDisplay';
 import { ConnectingAnimation } from './ConnectingAnimation';
 import OracleConversation from './OracleConversation';
+import { useAtmosphere } from '../hooks/useAtmosphere';
+import './SurrogateOracleImmersion.css';
 
 const ORACLE_IMAGE_URL = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
 const AUDIO_STREAM_URL = 'https://stream.radiojar.com/2qm1fc5kb';
@@ -38,42 +40,6 @@ function useTypewriter(text: string, active: boolean, speed = 55) {
   }, [active, text, speed]);
   return displayed;
 }
-
-// Tiny floating dust particle
-function DustParticle({ delay, x, y, size }: { delay: number; x: number; y: number; size: number }) {
-  return (
-    <motion.div
-      style={{
-        position: 'absolute',
-        left: `${x}%`,
-        top: `${y}%`,
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        background: 'rgba(0,255,255,0.55)',
-        pointerEvents: 'none',
-        zIndex: 3,
-      }}
-      initial={{ opacity: 0, scale: 0 }}
-      animate={{
-        opacity: [0, 0.7, 0],
-        scale: [0, 1, 0.4],
-        y: [0, -60 - Math.random() * 80],
-        x: [(Math.random() - 0.5) * 40],
-      }}
-      transition={{ duration: 3.5 + Math.random() * 2, delay, repeat: Infinity, repeatDelay: Math.random() * 4 }}
-    />
-  );
-}
-
-// Generate stable particles
-const PARTICLES = Array.from({ length: 28 }, (_, i) => ({
-  id: i,
-  delay: i * 0.22,
-  x: 5 + (i * 3.4) % 90,
-  y: 15 + (i * 7.1) % 70,
-  size: 1 + (i % 3),
-}));
 
 interface OracleState {
   isConnected: boolean;
@@ -105,12 +71,16 @@ export function SurrogateOracleImmersion() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentSessionId] = useState(() => crypto.randomUUID());
   const [showInlineCoins, setShowInlineCoins] = useState(false);
+  const [oracleAlignment, setOracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
 
-  // ── Audio ─────────────────────────────────────────────────────────────────
+  // ── Audio management ──────────────────────────────────────────────────────
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const decartClientRef = useRef<DecartClientHandle>(null);
   const avatarVideoRef = useRef<HTMLVideoElement>(null);
+  const atmosphereCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  useAtmosphere(atmosphereCanvasRef, awakened, oracleAlignment);
 
   // ── Typewriter title ──────────────────────────────────────────────────────
   const titleText = useTypewriter('SURROGATE:ORACLE', awakened, 60);
@@ -143,7 +113,26 @@ export function SurrogateOracleImmersion() {
         setShowInlineCoins(true);
       } catch { /* ignore */ }
     }
-  }, []);
+
+    const handleUnlock = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.trigger === 'squad_invite' && !isAuthenticated) {
+        setShowAuthOverlay(true);
+      }
+    };
+    
+    const handleAlignment = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      setOracleAlignment(customEvent.detail?.alignment);
+    };
+
+    window.addEventListener('oracle:unlock', handleUnlock);
+    window.addEventListener('oracle:alignment', handleAlignment);
+    return () => {
+      window.removeEventListener('oracle:unlock', handleUnlock);
+      window.removeEventListener('oracle:alignment', handleAlignment);
+    };
+  }, [isAuthenticated]);
 
   // ── Audio management ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -259,6 +248,7 @@ export function SurrogateOracleImmersion() {
   return (
     <div
       className="oracle-stage"
+      data-oracle-state={scenePhase}
       onClick={scenePhase === 'dormant' ? awakenScene : undefined}
       style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}
     >
@@ -278,14 +268,32 @@ export function SurrogateOracleImmersion() {
       />
 
       {/* ── Layer 2: Vignette overlay ───────────────────────────────────── */}
-      <div className="oracle-vignette" />
+      <motion.div 
+        className="oracle-vignette" 
+        animate={{
+          background: oracleAlignment === 'sacred' 
+            ? 'radial-gradient(circle at center, transparent 40%, rgba(0,30,15,0.7) 100%)'
+            : oracleAlignment === 'profane'
+            ? 'radial-gradient(circle at center, transparent 30%, rgba(30,0,0,0.85) 100%)'
+            : 'radial-gradient(circle at center, transparent 50%, rgba(0,0,0,0.8) 100%)'
+        }}
+        transition={{ duration: 2 }}
+      />
 
-      {/* ── Layer 3: Space dust particles (only when awakened) ─────────── */}
-      <AnimatePresence>
-        {awakened && PARTICLES.map((p) => (
-          <DustParticle key={p.id} {...p} />
-        ))}
-      </AnimatePresence>
+      {/* ── Layer 3: Atmosphere Canvas (only when awakened) ────────────── */}
+      <canvas
+        ref={atmosphereCanvasRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: 'none',
+          zIndex: 3,
+          opacity: awakened ? 1 : 0,
+          transition: 'opacity 2s ease-in-out'
+        }}
+      />
 
       {/* ── Layer 4: Top branding — types in on awakening ──────────────── */}
       <div className="oracle-branding">
@@ -346,7 +354,11 @@ export function SurrogateOracleImmersion() {
             animate={{
               opacity: isOracleMode ? 0 : awakened ? 1 : 0.45,
               filter: awakened
-                ? 'brightness(1.15) drop-shadow(0 0 28px rgba(0,255,255,0.75))'
+                ? oracleAlignment === 'sacred' 
+                  ? 'brightness(1.2) drop-shadow(0 0 40px rgba(0,255,136,0.85))'
+                  : oracleAlignment === 'profane'
+                  ? 'brightness(0.9) drop-shadow(0 0 20px rgba(255,0,0,0.6))'
+                  : 'brightness(1.15) drop-shadow(0 0 28px rgba(0,255,255,0.75))'
                 : 'brightness(0.5) drop-shadow(0 0 8px rgba(0,255,255,0.3))',
               scale: awakened ? [1, 1.012, 1] : 1,
             }}

@@ -53,7 +53,7 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const connectOptions: any = {
-          model: models.realtime('live_avatar'),
+          model: models.realtime('live-avatar'),
           initialState: { image: imageUrl },
           onRemoteStream: (videoStream: MediaStream) => {
             videoElement.srcObject = videoStream;

@@ -16,7 +16,7 @@ export const Learn2EarnInterface = ({ userId, navigateToDebug }: Learn2EarnInter
     border: `1px solid ${activeTab === tab ? 'rgba(0,255,255,0.4)' : 'rgba(255,255,255,0.1)'}`,
     borderRadius: 8,
     color: activeTab === tab ? '#00ffff' : '#666',
-    fontFamily: "'Orbitron', monospace",
+    fontFamily: "'PhillySans', 'Orbitron', monospace",
     fontSize: '0.7rem',
     cursor: 'pointer',
     letterSpacing: '0.05em',
@@ -102,7 +102,7 @@ export const Learn2EarnInterface = ({ userId, navigateToDebug }: Learn2EarnInter
             {navigateToDebug && (
               <button
                 onClick={navigateToDebug}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '10px 14px', color: '#888', cursor: 'pointer', fontSize: '0.7rem', fontFamily: "'Orbitron', monospace' " }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '10px 14px', color: '#888', cursor: 'pointer', fontSize: '0.7rem', fontFamily: "'PhillySans', 'Orbitron', monospace" }}
               >
                 <Terminal size={13} /> Open Debug Console
               </button>
@@ -179,7 +179,7 @@ export const Learn2EarnInterface = ({ userId, navigateToDebug }: Learn2EarnInter
   };
 
   return (
-    <div style={{ padding: 20, fontFamily: "'Orbitron', monospace", color: '#fff' }}>
+    <div style={{ padding: 20, fontFamily: "'PhillySans', 'Orbitron', monospace", color: '#fff' }}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         {(['coins', 'tiers', 'mission', 'readme'] as const).map((tab) => (
           <button key={tab} onClick={() => setActiveTab(tab)} style={tabStyle(tab)}>

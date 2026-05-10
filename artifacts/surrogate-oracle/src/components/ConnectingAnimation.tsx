@@ -43,7 +43,7 @@ export function ConnectingAnimation({
         style={{
           textAlign: 'center',
           color: '#00ffff',
-          fontFamily: "'Orbitron', monospace",
+          fontFamily: "'PhillySans', 'Orbitron', monospace",
           padding: '40px',
           maxWidth: '500px',
         }}
@@ -109,7 +109,7 @@ export function ConnectingAnimation({
               padding: '8px 24px',
               borderRadius: '4px',
               cursor: 'pointer',
-              fontFamily: "'Orbitron', monospace",
+              fontFamily: "'PhillySans', 'Orbitron', monospace",
               fontSize: '0.75rem',
               letterSpacing: '0.1em',
             }}

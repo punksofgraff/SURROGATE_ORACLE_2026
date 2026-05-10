@@ -461,7 +461,7 @@ const OracleConversation = forwardRef<OracleConversationHandle, OracleConversati
           background: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.95) 20%)',
           borderTop: '1px solid rgba(255,255,255,0.08)',
           zIndex: 200,
-          fontFamily: "'Orbitron', monospace",
+          fontFamily: "'PhillySans', 'Orbitron', monospace",
         }}
       >
         {/* Header — Totem status */}

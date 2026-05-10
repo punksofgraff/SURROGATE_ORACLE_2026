@@ -71,7 +71,7 @@ export function CultureCoinInlineDisplay({ userId, onUpgradeClick, showUpgradePr
         borderRadius: 12,
         padding: '8px 16px',
         backdropFilter: 'blur(10px)',
-        fontFamily: "'Orbitron', monospace",
+        fontFamily: "'PhillySans', 'Orbitron', monospace",
         cursor: showUpgradePrompt ? 'pointer' : 'default',
       }}
       onClick={showUpgradePrompt ? onUpgradeClick : undefined}

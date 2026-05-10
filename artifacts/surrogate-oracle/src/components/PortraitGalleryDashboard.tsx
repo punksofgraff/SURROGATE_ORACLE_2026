@@ -131,7 +131,7 @@ export function PortraitGalleryDashboard({
 
   const containerStyle: React.CSSProperties = {
     padding: isBackendCabinetTab ? '16px' : '24px',
-    fontFamily: "'Orbitron', monospace",
+    fontFamily: "'PhillySans', 'Orbitron', monospace",
     color: '#fff',
   };
 
@@ -275,7 +275,7 @@ export function PortraitGalleryDashboard({
               alt="Oracle portrait"
               style={{ maxWidth: '100%', maxHeight: '75vh', borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)' }}
             />
-            <div style={{ padding: '12px', textAlign: 'center', fontFamily: "'Orbitron', monospace" }}>
+            <div style={{ padding: '12px', textAlign: 'center', fontFamily: "'PhillySans', 'Orbitron', monospace" }}>
               {selectedPortrait.conversation_themes?.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
                   {selectedPortrait.conversation_themes.map((t) => (
@@ -289,10 +289,10 @@ export function PortraitGalleryDashboard({
                 {new Date(selectedPortrait.created_at).toLocaleDateString()}
               </div>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 10 }}>
-                <button onClick={() => downloadPortrait(selectedPortrait)} style={{ padding: '8px 16px', background: 'rgba(0,255,255,0.15)', border: '1px solid rgba(0,255,255,0.4)', borderRadius: 8, color: '#00ffff', cursor: 'pointer', fontFamily: "'Orbitron', monospace", fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button onClick={() => downloadPortrait(selectedPortrait)} style={{ padding: '8px 16px', background: 'rgba(0,255,255,0.15)', border: '1px solid rgba(0,255,255,0.4)', borderRadius: 8, color: '#00ffff', cursor: 'pointer', fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Download size={14} /> DOWNLOAD
                 </button>
-                <button onClick={() => sharePortrait(selectedPortrait)} style={{ padding: '8px 16px', background: 'rgba(0,255,98,0.15)', border: '1px solid rgba(0,255,98,0.4)', borderRadius: 8, color: '#00ff62', cursor: 'pointer', fontFamily: "'Orbitron', monospace", fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button onClick={() => sharePortrait(selectedPortrait)} style={{ padding: '8px 16px', background: 'rgba(0,255,98,0.15)', border: '1px solid rgba(0,255,98,0.4)', borderRadius: 8, color: '#00ff62', cursor: 'pointer', fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Share size={14} /> SHARE
                 </button>
               </div>

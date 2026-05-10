@@ -39,7 +39,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
     width: '90%',
     position: 'relative',
     boxShadow: '0 0 40px rgba(0,255,136,0.15), inset 0 0 20px rgba(0,255,136,0.05)',
-    fontFamily: "'Orbitron', monospace",
+    fontFamily: "'PhillySans', 'Orbitron', monospace",
     color: '#fff',
   };
 
@@ -132,7 +132,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                     background: 'rgba(0,255,136,0.1)',
                     border: '1px solid #00ff88',
                     color: '#00ff88',
-                    fontFamily: "'Orbitron', monospace",
+                    fontFamily: "'PhillySans', 'Orbitron', monospace",
                     fontSize: '0.85rem',
                     letterSpacing: '0.15em',
                     cursor: isLoading ? 'not-allowed' : 'pointer',
@@ -210,7 +210,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                     border: '1px solid #00ff64',
                     color: '#00ff64',
                     cursor: 'pointer',
-                    fontFamily: "'Orbitron', monospace",
+                    fontFamily: "'PhillySans', 'Orbitron', monospace",
                     fontSize: '0.75rem',
                     letterSpacing: '0.1em'
                     }}
@@ -225,7 +225,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                     border: '1px solid #333',
                     color: '#666',
                     cursor: 'pointer',
-                    fontFamily: "'Orbitron', monospace",
+                    fontFamily: "'PhillySans', 'Orbitron', monospace",
                     fontSize: '0.75rem',
                     letterSpacing: '0.1em'
                     }}

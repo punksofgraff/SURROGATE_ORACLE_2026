@@ -137,9 +137,11 @@
   --chart-4: 270 60% 55%;          /* purple */
   --chart-5: 45 100% 55%;          /* amber */
 
-  --app-font-sans: 'Orbitron', 'Inter', monospace;
+  --app-font-sans: 'PhillySans', 'Orbitron', 'Inter', monospace;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
+  --app-font-header: 'aAnotherTag', 'Orbitron', monospace;
+  --app-font-subheader: 'adrip1', 'Orbitron', monospace;
   --radius: .5rem; /* 8px */
   --shadow-2xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00); /*replace with H S L */
   --shadow-xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00); /*replace with H S L */
@@ -369,7 +371,7 @@ html, body, #root {
   height: 100%;
   overflow: hidden;
   background: #00000a;
-  font-family: 'Orbitron', monospace;
+  font-family: 'PhillySans', 'Orbitron', monospace;
 }
 
 /* ── Stage (full-screen, flex-centered) ─────────────────────────────────── */
@@ -482,7 +484,7 @@ html, body, #root {
   top: -52px;
   left: 50%;
   transform: translateX(-50%);
-  font-family: 'Orbitron', monospace;
+  font-family: 'PhillySans', 'Orbitron', monospace;
   font-size: clamp(0.6rem, 1.6vw, 0.95rem);
   font-weight: 700;
   letter-spacing: 0.3em;
@@ -576,7 +578,7 @@ html, body, #root {
   bottom: -42px;
   left: 50%;
   transform: translateX(-50%);
-  font-family: 'Orbitron', monospace;
+  font-family: 'PhillySans', 'Orbitron', monospace;
   font-size: clamp(0.55rem, 1.3vw, 0.75rem);
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -639,7 +641,7 @@ html, body, #root {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-family: 'Orbitron', monospace;
+  font-family: 'PhillySans', 'Orbitron', monospace;
   font-size: 0.68rem;
   color: #00ffff;
   letter-spacing: 0.12em;
@@ -668,7 +670,7 @@ html, body, #root {
   border-radius: 10px;
   padding: 10px 20px;
   color: #ff0050;
-  font-family: 'Orbitron', monospace;
+  font-family: 'PhillySans', 'Orbitron', monospace;
   font-size: 0.7rem;
   z-index: 200;
   display: flex;

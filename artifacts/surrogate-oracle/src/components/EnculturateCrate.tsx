@@ -70,7 +70,7 @@ export function EnculturateCrate({ onClick, isActive = false }: EnculturateCrate
           fontSize: '0.6rem',
           color: '#00ff62',
           letterSpacing: '0.1em',
-          fontFamily: "'Orbitron', monospace",
+          fontFamily: "'PhillySans', 'Orbitron', monospace",
           whiteSpace: 'nowrap',
         }}
       >

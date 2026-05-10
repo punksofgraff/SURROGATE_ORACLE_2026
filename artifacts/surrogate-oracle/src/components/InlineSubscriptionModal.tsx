@@ -91,7 +91,7 @@ export function InlineSubscriptionModal({
               overflowY: 'auto',
               position: 'relative',
               boxShadow: '0 0 60px rgba(255,0,255,0.2)',
-              fontFamily: "'Orbitron', monospace",
+              fontFamily: "'PhillySans', 'Orbitron', monospace",
             }}
           >
             <button
@@ -173,7 +173,7 @@ export function InlineSubscriptionModal({
                           border: 'none',
                           borderRadius: 8,
                           color: currentTier === product.id ? '#888' : '#fff',
-                          fontFamily: "'Orbitron', monospace",
+                          fontFamily: "'PhillySans', 'Orbitron', monospace",
                           fontSize: '0.75rem',
                           letterSpacing: '0.05em',
                           cursor: isUpgrading || currentTier === product.id ? 'not-allowed' : 'pointer',

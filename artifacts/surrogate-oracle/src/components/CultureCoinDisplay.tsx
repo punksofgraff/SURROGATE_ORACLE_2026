@@ -81,7 +81,7 @@ export function CultureCoinDisplay({ userId, onLevelUp, onMetricsFetched }: Cult
 
   if (isLoading) {
     return (
-      <div style={{ padding: 20, textAlign: 'center', color: '#666', fontFamily: "'Orbitron', monospace", fontSize: '0.8rem' }}>
+      <div style={{ padding: 20, textAlign: 'center', color: '#666', fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.8rem' }}>
         Loading consciousness metrics...
       </div>
     );
@@ -89,14 +89,14 @@ export function CultureCoinDisplay({ userId, onLevelUp, onMetricsFetched }: Cult
 
   if (!metrics) {
     return (
-      <div style={{ padding: 20, textAlign: 'center', color: '#666', fontFamily: "'Orbitron', monospace", fontSize: '0.8rem' }}>
+      <div style={{ padding: 20, textAlign: 'center', color: '#666', fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.8rem' }}>
         {supabaseUrl ? 'No metrics available' : 'Configure Supabase to enable coins'}
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 20, fontFamily: "'Orbitron', monospace" }}>
+    <div style={{ padding: 20, fontFamily: "'PhillySans', 'Orbitron', monospace" }}>
       <AnimatePresence>
         {showLevelUpAnimation && (
           <motion.div

@@ -82,7 +82,7 @@ export const BackendControlPanel = ({
     zIndex: 150,
     display: 'flex',
     flexDirection: 'column',
-    fontFamily: "'Orbitron', monospace",
+    fontFamily: "'PhillySans', 'Orbitron', monospace",
     overflowY: 'auto',
     boxShadow: '-10px 0 40px rgba(0,0,0,0.5)',
   };
@@ -94,7 +94,7 @@ export const BackendControlPanel = ({
     border: 'none',
     borderBottom: `2px solid ${activeTab === tab ? '#00ffff' : 'transparent'}`,
     color: activeTab === tab ? '#00ffff' : '#555',
-    fontFamily: "'Orbitron', monospace",
+    fontFamily: "'PhillySans', 'Orbitron', monospace",
     fontSize: '0.6rem',
     letterSpacing: '0.08em',
     cursor: 'pointer',
@@ -141,7 +141,7 @@ export const BackendControlPanel = ({
                       width: '100%', padding: '12px',
                       background: 'linear-gradient(135deg, #ff00ff, #7c3aed)',
                       border: 'none', borderRadius: 8, color: '#fff',
-                      fontFamily: "'Orbitron', monospace", fontSize: '0.75rem',
+                      fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.75rem',
                       letterSpacing: '0.08em', cursor: 'pointer', fontWeight: 700,
                     }}
                   >
@@ -191,7 +191,7 @@ export const BackendControlPanel = ({
                       fontSize: '0.85rem', marginBottom: 10, boxSizing: 'border-box',
                     }}
                   />
-                  <button onClick={handleDebugPasswordSubmit} style={{ padding: '8px 20px', background: 'rgba(0,255,100,0.15)', border: '1px solid #00ff64', borderRadius: 6, color: '#00ff64', cursor: 'pointer', fontFamily: "'Orbitron', monospace", fontSize: '0.7rem' }}>
+                  <button onClick={handleDebugPasswordSubmit} style={{ padding: '8px 20px', background: 'rgba(0,255,100,0.15)', border: '1px solid #00ff64', borderRadius: 6, color: '#00ff64', cursor: 'pointer', fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.7rem' }}>
                     ACCESS
                   </button>
                 </div>
@@ -211,7 +211,7 @@ export const BackendControlPanel = ({
                           <button
                             onClick={() => testEdgeFunction(name, payload)}
                             disabled={isLoading}
-                            style={{ padding: '4px 10px', background: 'rgba(0,255,255,0.1)', border: '1px solid rgba(0,255,255,0.3)', borderRadius: 4, color: '#00ffff', cursor: 'pointer', fontSize: '0.65rem', fontFamily: "'Orbitron', monospace" }}
+                            style={{ padding: '4px 10px', background: 'rgba(0,255,255,0.1)', border: '1px solid rgba(0,255,255,0.3)', borderRadius: 4, color: '#00ffff', cursor: 'pointer', fontSize: '0.65rem', fontFamily: "'PhillySans', 'Orbitron', monospace" }}
                           >
                             TEST
                           </button>

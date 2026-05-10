@@ -446,22 +446,7 @@ export function SurrogateOracleImmersion() {
       </div>
 
       {/* ── Culture coin display ─────────────────────────────────────────── */}
-      <AnimatePresence>
-        {showInlineCoins && isAuthenticated && currentUserId && (
-          <motion.div
-            style={{ position: 'absolute', top: 16, right: 16, zIndex: 30 }}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.5 }}
-          >
-            <CultureCoinInlineDisplay
-              userId={currentUserId}
-              onUpgradeClick={() => openBackendPanel('coins')}
-              showUpgradePrompt
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Intentionally removed: Culture coin display is hidden to subvert the token economy (Phase 4). Coins are private until invited via Enculturate Crate. */}
 
       {/* ── Conversation panel (oracle mode) ────────────────────────────── */}
       {isOracleMode && showConversation && (

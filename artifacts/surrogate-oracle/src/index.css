@@ -2,6 +2,30 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
+@font-face {
+  font-family: 'aAnotherTag';
+  src: url('https://sneakar-public.s3.us-east-1.amazonaws.com/SNEAKARCADE+FONTS/SNEAKAR-SURROGATE%3AORACLE/aAnotherTag.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'adrip1';
+  src: url('https://sneakar-public.s3.us-east-1.amazonaws.com/SNEAKARCADE+FONTS/SNEAKAR-SURROGATE%3AORACLE/adrip1.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'PhillySans';
+  src: url('https://sneakar-public.s3.us-east-1.amazonaws.com/SNEAKARCADE+FONTS/SNEAKAR-SURROGATE%3AORACLE/PhillySans.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ── Cyberpunk Oracle Theme — Orbitron font loaded via index.html <link> ── */
 
 @custom-variant dark (&:is(.dark *));
@@ -408,10 +432,10 @@ html, body, #root {
 }
 
 .oracle-title {
-  font-family: 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(1.8rem, 4.5vw, 4rem);
   font-weight: 900;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.1em;
   color: #00ffff;
   text-shadow:
     0 0 12px #00ffff,
@@ -430,13 +454,13 @@ html, body, #root {
 }
 
 .oracle-subtitle {
-  font-family: 'Orbitron', monospace;
-  font-size: clamp(0.55rem, 1.4vw, 0.9rem);
+  font-family: 'adrip1', 'Orbitron', monospace;
+  font-size: clamp(1.2rem, 2.5vw, 1.8rem);
   font-weight: 500;
   color: #00ff88;
   text-shadow: 0 0 8px #00ff88, 0 0 18px rgba(0,255,136,0.5);
   margin: 10px 0 0;
-  letter-spacing: 0.35em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 

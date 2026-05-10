@@ -264,7 +264,7 @@ export function SurrogateOracleImmersion() {
         className="oracle-alley"
         style={{ backgroundImage: `url('${ALLEY_BG_URL}')` }}
         animate={{
-          opacity: isOracleMode ? 0.25 : awakened ? 0.62 : 0.45,
+          opacity: isOracleMode ? 0.06 : awakened ? 0.18 : 0.12,
           scale: awakened ? 1 : 1.04,
         }}
         transition={{ duration: 1.8, ease: 'easeOut' }}

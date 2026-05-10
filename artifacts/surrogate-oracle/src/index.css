@@ -375,14 +375,21 @@ html, body, #root {
   z-index: 1;
 }
 
-/* ── Vignette — draws focus to center ───────────────────────────────────── */
+/* ── Vignette — heavy dark overlay, keeps image as subtle atmosphere only ── */
 .oracle-vignette {
   position: absolute;
   inset: 0;
   z-index: 2;
-  background:
-    radial-gradient(ellipse 50% 58% at 50% 52%, transparent 0%, rgba(0,0,10,0.72) 100%),
-    linear-gradient(180deg, rgba(0,0,10,0.68) 0%, rgba(0,0,10,0.05) 28%, rgba(0,0,10,0.05) 68%, rgba(0,0,10,0.82) 100%);
+  background: rgba(0, 0, 8, 0.88);
+  pointer-events: none;
+}
+
+/* Spotlight punch-through: reveals a small glow at center only */
+.oracle-vignette::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 42% 48% at 50% 50%, rgba(0, 30, 60, 0.55) 0%, transparent 100%);
   pointer-events: none;
 }
 

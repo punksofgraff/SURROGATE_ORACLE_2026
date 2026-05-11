@@ -14,6 +14,8 @@ interface UseAuthReturn {
   isLoading: boolean;
   error: string | null;
   handleGoogleSignIn: () => Promise<void>;
+  handleEmailSignIn: (email: string) => Promise<boolean>;
+  handleVerifyOtp: (email: string, token: string) => Promise<void>;
   handleDevBypass: (password: string) => boolean;
   clearError: () => void;
 }
@@ -32,7 +34,7 @@ export function useAuth(onSuccess: (user: AuthUser) => void): UseAuthReturn {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: window.location.origin,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -44,6 +46,50 @@ export function useAuth(onSuccess: (user: AuthUser) => void): UseAuthReturn {
     } catch (err: unknown) {
       console.error('Google sign-in error:', err);
       setError((err as Error).message || 'Sign-in failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEmailSignIn = async (email: string): Promise<boolean> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: window.location.origin,
+        },
+      });
+      if (error) throw error;
+      return true;
+    } catch (err: unknown) {
+      setError((err as Error).message);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (email: string, token: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: 'email',
+      });
+      if (error) throw error;
+      if (data.user) {
+        onSuccess({
+          id: data.user.id,
+          email: data.user.email || '',
+        });
+      }
+    } catch (err: unknown) {
+      setError((err as Error).message);
     } finally {
       setIsLoading(false);
     }
@@ -74,6 +120,8 @@ export function useAuth(onSuccess: (user: AuthUser) => void): UseAuthReturn {
     isLoading,
     error,
     handleGoogleSignIn,
+    handleEmailSignIn,
+    handleVerifyOtp,
     handleDevBypass,
     clearError,
   };

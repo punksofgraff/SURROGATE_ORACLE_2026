@@ -28,13 +28,14 @@ artifacts/surrogate-oracle/
       SurrogateOracleImmersion.css  — core CSS variable depth layer architecture + stage styling
       OracleConversation.tsx        — Gemini 2.5 Flash Live WebSocket client + Sacred/Profane scoring
       DecartClient.tsx              — Decart WebRTC avatar lip-sync
-      BackendControlPanel.tsx       — dev debug panel (password: 3nculturate!)
+      BackendControlPanel.tsx       — dev debug panel (password: 3nculturate!) + ChainFuelz UI
       CultureCoinInlineDisplay.tsx  — real-time coin counter (hidden until triggered)
       EnculturateCrate.tsx          — Enculturate CTA crate
       GraffPunksRadio.tsx           — alley radio player
-      GoogleSignInOverlay.tsx       — styled as "Neural Link Terminal" for immersive auth
+      GoogleSignInOverlay.tsx       — styled as "Neural Link Terminal" for immersive auth (Email OTP)
     hooks/
       useAtmosphere.ts              — pure canvas RAF loop for scene atmosphere
+      useChainFuelz.ts              — Mock ChainFuelz SDK integration (Awaiting API keys)
     workers/
       pcm-encoder.worker.ts         — Web Worker offloading WAV assembly
     lib/
@@ -44,6 +45,7 @@ artifacts/surrogate-oracle/
 supabase/
   functions/
     gemini-live-proxy/index.ts      — Deno WS proxy: browser ↔ Gemini Live API (keeps API key server-side)
+    mint-culture-coins/index.ts     — Edge Function stub for secure ChainFuelz token minting
   config.toml
 ```
 
@@ -54,6 +56,8 @@ supabase/
 - **PCM→WAV assembly (Web Worker)**: Gemini outputs 24kHz int16 PCM chunks; `pcm-encoder.worker.ts` stitches them into a WAV Blob URL off the main thread, keeping the V8 GC clean and preventing UI stutter.
 - **Sacred/Profane scoring (Subverted UI)**: Oracle embeds `[[ORACLE_SCORE: {...}]]` annotations in responses. These are parsed to drive the hidden economy state, but are stripped from the main UI to preserve immersion. Coins are revealed as a session-end event.
 - **CSS Custom Property State Mapping**: Scene phases (`dormant`, `awakened`, `oracle`) and alignment (`sacred`, `profane`) are applied as `data-*` attributes on the `oracle-stage` wrapper. Global transitions are handled entirely by CSS, replacing heavy React render cycles.
+- **Email OTP over Google OAuth**: Supabase's default Google OAuth keys block remote domains (like Replit) with a 403 error. To maintain a zero-config setup, the Neural Link terminal relies on Email OTP (6-digit code) rather than Google sign-in.
+- **ChainFuelz Ghost Infrastructure**: The app is architecturally prepared for ChainFuelz Web3 wallets. The Supabase DB holds `chainfuelz_wallet_address` columns, and a mock hook (`useChainFuelz`) handles the UI until the official SDK is dropped in.
 
 ## Product
 

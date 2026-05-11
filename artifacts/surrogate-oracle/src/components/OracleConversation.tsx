@@ -33,8 +33,9 @@ const GEMINI_MODEL = 'gemini-2.5-flash-live-001';
 
 // Derive project ref from VITE_SUPABASE_URL — no extra env var needed
 const _supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABASE_URL || '';
+const _anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY || '';
 const _projectRef = _supabaseUrl.replace(/^https?:\/\//, '').replace(/\.supabase\.co.*$/, '');
-const GEMINI_PROXY_URL = `wss://${_projectRef}.supabase.co/functions/v1/gemini-live-proxy`;
+const GEMINI_PROXY_URL = `wss://${_projectRef}.supabase.co/functions/v1/gemini-live-proxy?apikey=${_anonKey}`;
 
 // PCM audio config matching Gemini Live output spec
 const SAMPLE_RATE_OUTPUT = 24000; // Hz — Gemini Live outputs 24kHz PCM
@@ -120,8 +121,9 @@ export interface OracleConversationHandle {
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
-const OracleConversation = forwardRef<OracleConversationHandle, OracleConversationProps>(
-  ({ userId, sessionId, onOracleResponse, onCoinsEarned, onClose }, ref) => {
+const OracleConversation = forwardRef(
+  (props: OracleConversationProps, ref: React.ForwardedRef<OracleConversationHandle>) => {
+    const { userId, sessionId, onOracleResponse, onCoinsEarned, onClose } = props;
     // ─── State ──────────────────────────────────────────────────────────────
     const [turns, setTurns] = useState<ConversationTurn[]>([]);
     const [inputText, setInputText] = useState('');
@@ -298,11 +300,20 @@ const OracleConversation = forwardRef<OracleConversationHandle, OracleConversati
                 const parts = msg.serverContent?.modelTurn?.parts || [];
                 for (const part of parts) {
                   if (part.text) currentResponseText.current += part.text;
+                  // AUDIO — accumulate PCM chunks
                   if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
                     const raw = atob(part.inlineData.data);
                     const bytes = new Uint8Array(raw.length);
                     for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-                    pendingPCMChunks.current.push(new Int16Array(bytes.buffer));
+
+                    // Safe Int16 conversion: Ensure we don't have an odd byte count
+                    // which would cause RangeError on Int16Array(buffer)
+                    const pcmData = new Int16Array(Math.floor(bytes.length / 2));
+                    const view = new DataView(bytes.buffer);
+                    for (let i = 0; i < pcmData.length; i++) {
+                      pcmData[i] = view.getInt16(i * 2, true); // true = little-endian
+                    }
+                    pendingPCMChunks.current.push(pcmData);
                   }
                 }
 

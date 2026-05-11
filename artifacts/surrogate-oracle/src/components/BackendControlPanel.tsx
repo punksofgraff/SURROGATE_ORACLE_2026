@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, Wallet } from 'lucide-react';
 import { CultureCoinDisplay } from './CultureCoinDisplay';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { PortraitGalleryDashboard } from './PortraitGalleryDashboard';
 import { Learn2EarnInterface } from './Learn2EarnInterface';
 import { supabaseEdgeFunctionHeaders } from '../lib/supabase';
+import { useChainFuelz } from '../hooks/useChainFuelz';
 
 interface BackendControlPanelProps {
   userId?: string;
@@ -13,6 +14,7 @@ interface BackendControlPanelProps {
   initialTab?: 'coins' | 'squad' | 'portraits' | 'debug';
   onClose?: () => void;
   isAuthenticated?: boolean;
+  userEmail?: string;
 }
 
 export const BackendControlPanel = ({
@@ -22,6 +24,7 @@ export const BackendControlPanel = ({
   initialTab = 'coins',
   onClose,
   isAuthenticated = false,
+  userEmail,
 }: BackendControlPanelProps) => {
   const [activeTab, setActiveTab] = useState<'coins' | 'squad' | 'portraits' | 'debug'>(initialTab);
   const [debugPasswordEntered, setDebugPasswordEntered] = useState(false);
@@ -29,6 +32,8 @@ export const BackendControlPanel = ({
   const [testResults, setTestResults] = useState<Record<string, unknown>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+  const chainFuelz = useChainFuelz(userEmail);
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -134,7 +139,38 @@ export const BackendControlPanel = ({
                   userId={userId}
                   onLevelUp={(level, title) => console.log(`Level up! ${level}: ${title}`)}
                 />
+
                 <div style={{ padding: '0 20px 20px' }}>
+                  <div style={{ 
+                    background: 'rgba(0, 0, 0, 0.4)', 
+                    border: '1px solid rgba(0,255,255,0.15)', 
+                    borderRadius: 8, 
+                    padding: 16,
+                    marginBottom: 20
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                      <Wallet size={16} color="#00ffff" />
+                      <div style={{ fontSize: '0.7rem', color: '#00ffff', letterSpacing: '0.1em' }}>CULTURE CREW WALLET</div>
+                    </div>
+                    {chainFuelz.isInitialized ? (
+                      <>
+                        <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: 4 }}>ADDRESS</div>
+                        <div style={{ fontSize: '0.8rem', color: '#fff', fontFamily: 'monospace', background: 'rgba(255,255,255,0.05)', padding: '6px 10px', borderRadius: 4, letterSpacing: '0.05em', wordBreak: 'break-all' }}>
+                          {chainFuelz.walletAddress}
+                        </div>
+                        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.65rem', color: '#888' }}>ON-CHAIN BALANCE</span>
+                          <span style={{ fontSize: '0.85rem', color: '#00ff88', fontWeight: 'bold' }}>{chainFuelz.balance} $FUELZ</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: '0.7rem', color: '#888', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#ffaa00', animation: 'pulse 2s infinite' }} />
+                        Awaiting ChainFuelz Initialization...
+                      </div>
+                    )}
+                  </div>
+
                   <button
                     onClick={() => setShowUpgradeModal(true)}
                     style={{

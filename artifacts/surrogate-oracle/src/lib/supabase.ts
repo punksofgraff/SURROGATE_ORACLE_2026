@@ -33,6 +33,7 @@ export const supabase = createClient(
 // Edge functions must be invoked with the standard anon key or user session token.
 export const supabaseEdgeFunctionHeaders: Record<string, string> = {
   'Content-Type': 'application/json',
+  'apikey': supabaseAnonKey || '',
 };
 
 export type Database = {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Loader2, Terminal } from 'lucide-react';
+import { X, Loader2, Terminal, Mail, Key } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
 interface GoogleSignInOverlayProps {
@@ -10,13 +10,36 @@ interface GoogleSignInOverlayProps {
 export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayProps) {
   const [showDevBypass, setShowDevBypass] = useState(false);
   const [devPassword, setDevPassword] = useState('');
+  
+  // Email flow state
+  const [email, setEmail] = useState('');
+  const [otp, setOtp] = useState('');
+  const [step, setStep] = useState<'email' | 'otp'>('email');
 
-  const { isLoading, error, handleGoogleSignIn, handleDevBypass: authDevBypass } =
-    useAuth(onSuccess);
+  const { 
+    isLoading, 
+    error, 
+    handleEmailSignIn, 
+    handleVerifyOtp,
+    handleDevBypass: authDevBypass 
+  } = useAuth(onSuccess);
 
   const handleDevBypass = () => {
     authDevBypass(devPassword);
     setDevPassword('');
+  };
+
+  const onEmailSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!email) return;
+    const success = await handleEmailSignIn(email);
+    if (success) setStep('otp');
+  };
+
+  const onOtpSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!otp) return;
+    await handleVerifyOtp(email, otp);
   };
 
   const overlayStyle: React.CSSProperties = {
@@ -37,6 +60,41 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
     width: '90%',
     position: 'relative',
     color: '#fff',
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    background: 'rgba(0,0,0,0.8)',
+    border: '1px solid rgba(0,255,136,0.3)',
+    padding: '12px 14px',
+    color: '#00ff88',
+    fontFamily: 'monospace',
+    fontSize: '0.9rem',
+    marginBottom: 16,
+    boxSizing: 'border-box',
+    outline: 'none',
+    textAlign: step === 'otp' ? 'center' : 'left',
+    letterSpacing: step === 'otp' ? '0.5em' : 'normal',
+  };
+
+  const buttonStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '14px',
+    background: 'rgba(0,255,136,0.1)',
+    border: '1px solid #00ff88',
+    color: '#00ff88',
+    fontFamily: 'inherit',
+    fontSize: '0.85rem',
+    letterSpacing: '0.15em',
+    cursor: isLoading ? 'not-allowed' : 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    opacity: isLoading ? 0.7 : 1,
+    textShadow: '0 0 8px rgba(0,255,136,0.4)',
+    boxShadow: 'inset 0 0 10px rgba(0,255,136,0.1)',
+    transition: 'all 0.2s ease',
   };
 
   return (
@@ -99,7 +157,9 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
             ESTABLISH NEURAL LINK
           </h2>
           <p style={{ fontSize: '0.75rem', color: '#888', lineHeight: 1.6, letterSpacing: '0.05em' }}>
-            VERIFY SEEKER FREQUENCY TO ACCESS THE CULTURE CREW ENCLAVE.
+            {step === 'email' 
+              ? 'VERIFY SEEKER FREQUENCY TO ACCESS THE CULTURE CREW ENCLAVE.' 
+              : 'ACCESS CODE SENT. CALIBRATE NEURAL FREQUENCY NOW.'}
           </p>
         </div>
 
@@ -111,43 +171,53 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
             )}
 
             {!showDevBypass ? (
-            <>
-                <button
-                onClick={handleGoogleSignIn}
-                disabled={isLoading}
-                style={{
-                    width: '100%',
-                    padding: '14px',
-                    background: 'rgba(0,255,136,0.1)',
-                    border: '1px solid #00ff88',
-                    color: '#00ff88',
-                    fontFamily: 'inherit',
-                    fontSize: '0.85rem',
-                    letterSpacing: '0.15em',
-                    cursor: isLoading ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 10,
-                    opacity: isLoading ? 0.7 : 1,
-                    textShadow: '0 0 8px rgba(0,255,136,0.4)',
-                    boxShadow: 'inset 0 0 10px rgba(0,255,136,0.1)'
-                }}
-                onMouseOver={(e) => {
-                    if (!isLoading) {
-                        e.currentTarget.style.background = 'rgba(0,255,136,0.2)';
-                        e.currentTarget.style.boxShadow = '0 0 15px rgba(0,255,136,0.3), inset 0 0 10px rgba(0,255,136,0.2)';
-                    }
-                }}
-                onMouseOut={(e) => {
-                    if (!isLoading) {
-                        e.currentTarget.style.background = 'rgba(0,255,136,0.1)';
-                        e.currentTarget.style.boxShadow = 'inset 0 0 10px rgba(0,255,136,0.1)';
-                    }
-                }}
-                >
-                {isLoading ? 'INITIATING...' : 'BIND TO THE CULTURE'}
-                </button>
+              <form onSubmit={step === 'email' ? onEmailSubmit : onOtpSubmit}>
+                {step === 'email' ? (
+                  <>
+                    <div style={{ position: 'relative', marginBottom: 4 }}>
+                      <Mail size={14} style={{ position: 'absolute', left: 14, top: 15, color: 'rgba(0,255,136,0.4)' }} />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="ENTER IDENTIFIER (EMAIL)"
+                        style={{ ...inputStyle, paddingLeft: 40 }}
+                        autoFocus
+                        required
+                      />
+                    </div>
+                    <button type="submit" disabled={isLoading} style={buttonStyle}>
+                      INITIALIZE LINK
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ position: 'relative', marginBottom: 4 }}>
+                      <Key size={14} style={{ position: 'absolute', left: 14, top: 15, color: 'rgba(0,255,136,0.4)' }} />
+                      <input
+                        type="text"
+                        value={otp}
+                        onChange={(e) => setOtp(e.target.value)}
+                        placeholder="000000"
+                        maxLength={6}
+                        style={{ ...inputStyle, paddingLeft: 40 }}
+                        autoFocus
+                        required
+                      />
+                    </div>
+                    <button type="submit" disabled={isLoading} style={buttonStyle}>
+                      CALIBRATE LINK
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={() => setStep('email')}
+                      style={{ background: 'none', border: 'none', color: '#555', fontSize: '0.65rem', marginTop: 12, cursor: 'pointer', width: '100%', textAlign: 'center' }}
+                    >
+                      WRONG IDENTIFIER? ABORT AND RETRY.
+                    </button>
+                  </>
+                )}
+                
                 <button
                 onClick={() => setShowDevBypass(true)}
                 disabled={isLoading}
@@ -165,7 +235,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                 >
                 <Terminal size={10} />
                 </button>
-            </>
+              </form>
             ) : (
             <div style={{ background: 'rgba(0,255,100,0.05)', border: '1px solid rgba(0,255,100,0.2)', padding: 16 }}>
                 <h3 style={{ fontSize: '0.8rem', color: '#00ff64', marginBottom: 12, letterSpacing: '0.1em' }}>🛠️ MANUAL OVERRIDE</h3>

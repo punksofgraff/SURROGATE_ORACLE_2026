@@ -84,7 +84,7 @@ export function SurrogateOracleImmersion() {
 
   // ── Typewriter title ──────────────────────────────────────────────────────
   const titleText = useTypewriter('SURROGATE:ORACLE', awakened, 60);
-  const subtitleText = useTypewriter('SNEAKAR AI IMMERSION', awakened && titleText.length >= 16, 35);
+  const subtitleText = useTypewriter('SNEAKAR XR AI IMMERSION', awakened && titleText.length >= 16, 35);
 
   // ── Cabinet glow controls ─────────────────────────────────────────────────
   const cabinetControls = useAnimation();
@@ -104,6 +104,7 @@ export function SurrogateOracleImmersion() {
 
   // ── Auth check ────────────────────────────────────────────────────────────
   useEffect(() => {
+    // 1. Check for local dev bypass
     const devSession = localStorage.getItem('dev_user_session');
     if (devSession) {
       try {
@@ -114,10 +115,38 @@ export function SurrogateOracleImmersion() {
       } catch { /* ignore */ }
     }
 
+    // 2. Listen for actual Supabase OAuth redirects
+    import('../lib/supabase').then(({ supabase }) => {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          setIsAuthenticated(true);
+          setCurrentUserId(session.user.id);
+          setShowInlineCoins(true);
+        }
+      });
+
+      supabase.auth.onAuthStateChange((_event, session) => {
+        if (session?.user) {
+          setIsAuthenticated(true);
+          setCurrentUserId(session.user.id);
+          setShowInlineCoins(true);
+        }
+      });
+    });
+
     const handleUnlock = (e: Event) => {
       const customEvent = e as CustomEvent;
-      if (customEvent.detail?.trigger === 'squad_invite' && !isAuthenticated) {
+      const trigger = customEvent.detail?.trigger;
+      
+      if (trigger === 'squad_invite' && !isAuthenticated) {
         setShowAuthOverlay(true);
+      } else if (trigger === 'portrait_unlock') {
+        // Phase 4: Procedural Portrait Path Wiring
+        openBackendPanel('portraits');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if ((window as any).showSuccessNotification) {
+          (window as any).showSuccessNotification('PORTRAIT UNLOCKED: Neural imprint captured.');
+        }
       }
     };
     
@@ -146,12 +175,6 @@ export function SurrogateOracleImmersion() {
       audioRef.current.volume = oracleState.isProcessing ? 0.06 : 0.28;
     }
   }, [oracleState.isProcessing]);
-
-  // ── Scene awakening ───────────────────────────────────────────────────────
-  const awakenScene = useCallback(() => {
-    if (scenePhase !== 'dormant') return;
-    setScenePhase('awakened');
-  }, [scenePhase]);
 
   // ── Oracle connection ─────────────────────────────────────────────────────
   const validateEnvironment = useCallback(() => {
@@ -184,11 +207,17 @@ export function SurrogateOracleImmersion() {
         clearInterval(interval);
         setOracleState((p) => ({ ...p, isReady: true, error: null }));
         setConnectionProgress(100);
+        
+        // Phase 1 Overhaul: Staggered Cinematic Awakening (Tightened)
         setTimeout(() => {
           setIsConnecting(false);
           setScenePhase('oracle');
-          setShowConversation(true);
-        }, 800);
+          
+          // Very brief pause before showing conversation panel
+          setTimeout(() => {
+            setShowConversation(true);
+          }, 300);
+        }, 400);
       },
       onTalkStarted: () => setOracleState((p) => ({ ...p, isProcessing: true })),
       onTalkEnded: () => setOracleState((p) => ({ ...p, isProcessing: false })),
@@ -212,6 +241,16 @@ export function SurrogateOracleImmersion() {
     }
   }, [validateEnvironment]);
 
+  // ── Scene awakening ───────────────────────────────────────────────────────
+  const awakenScene = useCallback(() => {
+    if (scenePhase !== 'dormant') return;
+    setScenePhase('awakened');
+    setIsAudioPlaying(true);
+    // 2 Birds with One Stone: Initiate connection immediately on awakening
+    // This kills the separate "Connect" step and lets the pulse lead directly to live mode
+    initializeOracle();
+  }, [scenePhase, initializeOracle]);
+
   const handleOracleResponse = async (audioUrl: string) => {
     if (!decartClientRef.current?.isStreamActive()) return;
     await decartClientRef.current.sendAudio(audioUrl);
@@ -232,7 +271,7 @@ export function SurrogateOracleImmersion() {
   };
 
   const openBackendPanel = (tab: OracleState['activeBackendTab'] = 'coins') => {
-    if (!isAuthenticated && (tab === 'coins' || tab === 'squad')) setShowAuthOverlay(true);
+    if (!isAuthenticated && tab === 'coins') setShowAuthOverlay(true);
     setOracleState((p) => ({ ...p, debugMode: true, activeBackendTab: tab }));
   };
 
@@ -338,21 +377,6 @@ export function SurrogateOracleImmersion() {
             />
           </div>
 
-          {/* "CONNECT TO ORACLE" CTA — shown after awakening */}
-          <AnimatePresence>
-            {awakened && !isOracleMode && !isConnecting && (
-              <motion.div
-                className="oracle-connect-cta"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: [0.6, 1, 0.6], y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut', delay: 0.5 }}
-              >
-                ▶ CONNECT TO ORACLE
-              </motion.div>
-            )}
-          </AnimatePresence>
-
           {/* Processing dots */}
           <AnimatePresence>
             {oracleState.isProcessing && (
@@ -407,7 +431,7 @@ export function SurrogateOracleImmersion() {
       {/* ── Culture coin display ─────────────────────────────────────────── */}
       {/* Intentionally removed: Culture coin display is hidden to subvert the token economy (Phase 4). Coins are private until invited via Enculturate Crate. */}
 
-      {/* ── Conversation panel (oracle mode) ────────────────────────────── */}
+      {/* Conversation panel (oracle mode) ────────────────────────────── */}
       {isOracleMode && showConversation && (
         <OracleConversation
           userId={currentUserId || currentSessionId}
@@ -418,21 +442,8 @@ export function SurrogateOracleImmersion() {
         />
       )}
 
-      {/* ── Connecting animation ─────────────────────────────────────────── */}
-      <AnimatePresence>
-        {isConnecting && (
-          <ConnectingAnimation
-            connectionProgress={connectionProgress}
-            onCancel={() => {
-              setIsConnecting(false);
-              setConnectionProgress(0);
-              decartClientRef.current?.closeStream();
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {/* Backend panel ───────────────────────────────────────────────── */}
 
-      {/* ── Backend panel ───────────────────────────────────────────────── */}
       <AnimatePresence>
         {oracleState.debugMode && (
           <motion.div

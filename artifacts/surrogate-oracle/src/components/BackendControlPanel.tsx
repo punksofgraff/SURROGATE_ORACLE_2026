@@ -15,6 +15,7 @@ interface BackendControlPanelProps {
   onClose?: () => void;
   isAuthenticated?: boolean;
   userEmail?: string;
+  pendingCoins?: number; // Added to trigger auto-claim
 }
 
 export const BackendControlPanel = ({
@@ -25,6 +26,7 @@ export const BackendControlPanel = ({
   onClose,
   isAuthenticated = false,
   userEmail,
+  pendingCoins = 0,
 }: BackendControlPanelProps) => {
   const [activeTab, setActiveTab] = useState<'coins' | 'squad' | 'portraits' | 'debug'>(initialTab);
   const [debugPasswordEntered, setDebugPasswordEntered] = useState(false);
@@ -32,8 +34,10 @@ export const BackendControlPanel = ({
   const [testResults, setTestResults] = useState<Record<string, unknown>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showRawAddress, setShowRawAddress] = useState(false);
 
-  const chainFuelz = useChainFuelz(userEmail);
+  // Pass pendingCoins so the wallet can auto-mint them on initialization
+  const chainFuelz = useChainFuelz(userEmail, pendingCoins);
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -146,27 +150,67 @@ export const BackendControlPanel = ({
                     border: '1px solid rgba(0,255,255,0.15)', 
                     borderRadius: 8, 
                     padding: 16,
-                    marginBottom: 20
+                    marginBottom: 20,
+                    position: 'relative',
+                    overflow: 'hidden'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                      <Wallet size={16} color="#00ffff" />
-                      <div style={{ fontSize: '0.7rem', color: '#00ffff', letterSpacing: '0.1em' }}>CULTURE CREW WALLET</div>
+                    {/* Minting Overlay */}
+                    {chainFuelz.isMinting && (
+                      <div style={{
+                        position: 'absolute', inset: 0, background: 'rgba(0,255,136,0.1)', backdropFilter: 'blur(4px)',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10
+                      }}>
+                        <div style={{ width: 24, height: 24, border: '2px solid #00ff88', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: 8 }} />
+                        <span style={{ fontSize: '0.65rem', color: '#00ff88', letterSpacing: '0.2em' }}>DECRYPTING YIELD...</span>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Wallet size={16} color="#00ffff" />
+                        <div style={{ fontSize: '0.7rem', color: '#00ffff', letterSpacing: '0.1em' }}>NEURAL VAULT</div>
+                      </div>
+                      {chainFuelz.isInitialized && (
+                         <button onClick={() => setShowRawAddress(!showRawAddress)} style={{ background: 'none', border: 'none', color: '#555', fontSize: '0.55rem', cursor: 'pointer' }}>
+                           {showRawAddress ? 'HIDE SECRETS' : 'DEV LOG'}
+                         </button>
+                      )}
                     </div>
+
                     {chainFuelz.isInitialized ? (
                       <>
-                        <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: 4 }}>ADDRESS</div>
-                        <div style={{ fontSize: '0.8rem', color: '#fff', fontFamily: 'monospace', background: 'rgba(255,255,255,0.05)', padding: '6px 10px', borderRadius: 4, letterSpacing: '0.05em', wordBreak: 'break-all' }}>
-                          {chainFuelz.walletAddress}
+                        <div style={{ fontSize: '0.65rem', color: '#888', marginBottom: 4 }}>VAULT ID</div>
+                        <div style={{ fontSize: '0.8rem', color: '#fff', fontFamily: 'monospace', background: 'rgba(255,255,255,0.05)', padding: '6px 10px', borderRadius: 4, letterSpacing: '0.05em' }}>
+                          {chainFuelz.vaultHandle}
                         </div>
-                        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.65rem', color: '#888' }}>ON-CHAIN BALANCE</span>
-                          <span style={{ fontSize: '0.85rem', color: '#00ff88', fontWeight: 'bold' }}>{chainFuelz.balance} $FUELZ</span>
+                        
+                        {showRawAddress && (
+                           <div style={{ fontSize: '0.55rem', color: '#444', marginTop: 4, wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                             RAW: {chainFuelz.walletAddress}
+                           </div>
+                        )}
+
+                        <div style={{ 
+                          marginTop: 12, 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          padding: '8px 10px',
+                          background: chainFuelz.justClaimed ? 'rgba(0,255,136,0.15)' : 'rgba(0,0,0,0.3)',
+                          border: `1px solid ${chainFuelz.justClaimed ? 'rgba(0,255,136,0.5)' : 'transparent'}`,
+                          borderRadius: 4,
+                          transition: 'all 0.5s ease'
+                        }}>
+                          <span style={{ fontSize: '0.65rem', color: '#888' }}>CULTURE YIELD</span>
+                          <span style={{ fontSize: '0.85rem', color: '#00ff88', fontWeight: 'bold', textShadow: chainFuelz.justClaimed ? '0 0 10px rgba(0,255,136,0.8)' : 'none' }}>
+                            {chainFuelz.balance}
+                          </span>
                         </div>
                       </>
                     ) : (
                       <div style={{ fontSize: '0.7rem', color: '#888', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#ffaa00', animation: 'pulse 2s infinite' }} />
-                        Awaiting ChainFuelz Initialization...
+                        Initializing Neural Vault...
                       </div>
                     )}
                   </div>

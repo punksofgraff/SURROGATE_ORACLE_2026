@@ -48,6 +48,7 @@ interface OracleState {
   error: string | null;
   debugMode: boolean;
   activeBackendTab: 'coins' | 'squad' | 'portraits' | 'debug';
+  userEmail?: string;
 }
 
 export function SurrogateOracleImmersion() {
@@ -72,6 +73,7 @@ export function SurrogateOracleImmersion() {
   const [currentSessionId] = useState(() => crypto.randomUUID());
   const [showInlineCoins, setShowInlineCoins] = useState(false);
   const [oracleAlignment, setOracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
+  const [sessionCoins, setSessionCoins] = useState(0);
 
   // ── Audio management ──────────────────────────────────────────────────────
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
@@ -258,6 +260,7 @@ export function SurrogateOracleImmersion() {
 
   // Coins earned from Sacred exchanges — bubble to window for CultureCoinInlineDisplay
   const handleCoinsEarned = useCallback((amount: number) => {
+    setSessionCoins((prev) => prev + amount);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updater = (window as any).updateInlineCultureCoins;
     if (typeof updater === 'function') updater(amount);
@@ -279,8 +282,8 @@ export function SurrogateOracleImmersion() {
     setIsAuthenticated(true);
     setShowAuthOverlay(false);
     setCurrentUserId(user.id);
+    setOracleState((p) => ({ ...p, userEmail: user.email, debugMode: true }));
     setShowInlineCoins(true);
-    setOracleState((p) => ({ ...p, debugMode: true }));
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -459,6 +462,8 @@ export function SurrogateOracleImmersion() {
                 initialTab={oracleState.activeBackendTab}
                 onClose={() => setOracleState((p) => ({ ...p, debugMode: false }))}
                 isAuthenticated={isAuthenticated}
+                userEmail={oracleState.userEmail}
+                pendingCoins={sessionCoins}
               />
             </div>
           </motion.div>

@@ -244,7 +244,21 @@
   align-items: center;
   overflow: hidden;
   border-radius: 8px;
-  transition: transform 0.6s var(--ease-cinematic);
+  transition: transform 1.8s var(--ease-cinematic), box-shadow 1.8s var(--ease-cinematic);
+}
+
+.oracle-stage[data-oracle-state="awakened"] .oracle-avatar-wrapper {
+  transform: scale(1.15) translateZ(0);
+  box-shadow: 0 0 50px rgba(0,255,255,0.4);
+  z-index: 10;
+  overflow: visible; /* Let the pulse zoom break out of the box slightly */
+}
+
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-wrapper {
+  transform: scale(1) translateZ(0);
+  box-shadow: none;
+  z-index: auto;
+  overflow: hidden;
 }
 
 .oracle-avatar-img {
@@ -254,7 +268,7 @@
   position: absolute;
   z-index: 1;
   opacity: 0.25;
-  transition: filter 1.5s var(--ease-cinematic), opacity 1.2s var(--ease-cinematic), transform 1.2s var(--ease-cinematic);
+  transition: filter 1.5s var(--ease-cinematic), opacity 1.2s var(--ease-cinematic), transform 2.5s cubic-bezier(0.2, 0.8, 0.2, 1);
   filter: brightness(0.4) grayscale(0.5);
   transform: scale(0.9);
 }
@@ -262,13 +276,14 @@
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-img {
   opacity: 1;
   filter: brightness(1.2) drop-shadow(0 0 25px rgba(0,255,255,0.6));
-  transform: scale(1.1);
-  animation: avatar-zoom-breathe 4s ease-in-out infinite;
+  transform: scale(1.25);
+  animation: avatar-zoom-breathe 2s ease-in-out infinite alternate;
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-img {
   opacity: 0;
   pointer-events: none;
+  transform: scale(1.5); /* Zoom out towards user as it fades */
 }
 
 .oracle-avatar-video {
@@ -333,8 +348,8 @@
 }
 
 @keyframes avatar-zoom-breathe {
-  0%, 100% { transform: scale(1.1); filter: brightness(1.2) drop-shadow(0 0 25px rgba(0,255,255,0.6)); }
-  50% { transform: scale(1.2); filter: brightness(1.4) drop-shadow(0 0 45px rgba(0,255,136,0.8)); }
+  0% { transform: scale(1.25); filter: brightness(1.2) drop-shadow(0 0 25px rgba(0,255,255,0.6)); }
+  100% { transform: scale(1.35); filter: brightness(1.5) drop-shadow(0 0 55px rgba(0,255,136,0.9)); }
 }
 
 @keyframes cabinet-breathe {

@@ -503,6 +503,9 @@ importers:
       playwright:
         specifier: ^1.59.1
         version: 1.59.1
+      puppeteer:
+        specifier: ^24.43.0
+        version: 24.43.0(typescript@5.9.3)
       react:
         specifier: 'catalog:'
         version: 19.1.0

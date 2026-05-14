@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Loader2, Terminal, Mail, Key } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
@@ -8,6 +8,10 @@ interface GoogleSignInOverlayProps {
 }
 
 export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayProps) {
+  useEffect(() => {
+    console.log('🚨 GoogleSignInOverlay MOUNTED (v3 - active logging)');
+  }, []);
+
   const [showDevBypass, setShowDevBypass] = useState(false);
   const [devPassword, setDevPassword] = useState('');
   
@@ -24,20 +28,28 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
     handleDevBypass: authDevBypass 
   } = useAuth(onSuccess);
 
+  console.log(`🖼️ Overlay Render - Step: ${step}, IsLoading: ${isLoading}, Email: ${email}`);
+
   const handleDevBypass = () => {
     authDevBypass(devPassword);
     setDevPassword('');
   };
 
   const onEmailSubmit = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!email) return;
+    if (e) e.preventDefault();
+    console.log('🔘 onEmailSubmit triggered! Email value:', email);
+    if (!email) {
+      console.warn('⚠️ No email provided, aborting submission');
+      return;
+    }
     const success = await handleEmailSignIn(email);
+    console.log('🔄 handleEmailSignIn returned:', success);
     if (success) setStep('otp');
   };
 
   const onOtpSubmit = async (e?: React.FormEvent) => {
-    e?.preventDefault();
+    if (e) e.preventDefault();
+    console.log('🔘 onOtpSubmit triggered! OTP value:', otp);
     if (!otp) return;
     await handleVerifyOtp(email, otp);
   };
@@ -171,7 +183,14 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
             )}
 
             {!showDevBypass ? (
-              <form onSubmit={step === 'email' ? onEmailSubmit : onOtpSubmit}>
+              <form 
+                onSubmit={step === 'email' ? onEmailSubmit : onOtpSubmit}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    console.log('⌨️ Enter key detected in form');
+                  }
+                }}
+              >
                 {step === 'email' ? (
                   <>
                     <div style={{ position: 'relative', marginBottom: 4 }}>
@@ -179,14 +198,22 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                       <input
                         type="email"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => {
+                          console.log('⌨️ Typing email:', e.target.value);
+                          setEmail(e.target.value);
+                        }}
                         placeholder="ENTER IDENTIFIER (EMAIL)"
                         style={{ ...inputStyle, paddingLeft: 40 }}
                         autoFocus
                         required
                       />
                     </div>
-                    <button type="submit" disabled={isLoading} style={buttonStyle}>
+                    <button 
+                      type="submit" 
+                      disabled={isLoading} 
+                      style={buttonStyle}
+                      onClick={() => console.log('🖱️ Submit button explicitly clicked')}
+                    >
                       INITIALIZE LINK
                     </button>
                   </>
@@ -219,7 +246,11 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                 )}
                 
                 <button
-                onClick={() => setShowDevBypass(true)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  console.log('🖱️ Dev Bypass button clicked');
+                  setShowDevBypass(true);
+                }}
                 disabled={isLoading}
                 style={{
                     background: 'none',

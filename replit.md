@@ -58,6 +58,7 @@ supabase/
 - **CSS Custom Property State Mapping**: Scene phases (`dormant`, `awakened`, `oracle`) and alignment (`sacred`, `profane`) are applied as `data-*` attributes on the `oracle-stage` wrapper. Global transitions are handled entirely by CSS, replacing heavy React render cycles.
 - **Email OTP over Google OAuth**: Supabase's default Google OAuth keys block remote domains (like Replit) with a 403 error. To maintain a zero-config setup, the Neural Link terminal relies on Email OTP (6-digit code) rather than Google sign-in.
 - **ChainFuelz Ghost Infrastructure**: The app is architecturally prepared for ChainFuelz Web3 wallets. The Supabase DB holds `chainfuelz_wallet_address` columns, and a mock hook (`useChainFuelz`) handles the UI until the official SDK is dropped in.
+  - **⚠️ Integration Blocker:** Investigation confirmed ChainFuelz is a no-code SaaS dashboard (using thirdweb/Alchemy) and does not expose a public server-to-server REST API or Node SDK for dynamic backend minting. We must coordinate with Patrick Madren at CF to map our Supabase Edge Function output to their Dashboard "Flow" triggers.
 
 ## Product
 

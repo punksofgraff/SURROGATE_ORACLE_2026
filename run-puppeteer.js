@@ -5,10 +5,11 @@ const puppeteer = require('puppeteer');
   let browser;
   try {
     browser = await puppeteer.launch({ 
+      executablePath: '/nix/store/0n9rl5l9syy808xi9bk4f6dhnfrvhkww-playwright-browsers-chromium/chromium-1080/chrome-linux/chrome',
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] 
     });
   } catch(e) {
-    console.log("Browser launch failed due to missing system dependencies. This is expected in this headless VM container.");
+    console.log("Browser launch failed due to missing system dependencies.");
     console.log(e.message);
     process.exit(1);
   }
@@ -20,11 +21,14 @@ const puppeteer = require('puppeteer');
   
   console.log("Navigating to app...");
   try {
-    await page.goto('http://localhost:5173', { waitUntil: 'networkidle0', timeout: 10000 });
+    // Vite server is running at http://localhost:5173
+    await page.goto('http://localhost:5173', { waitUntil: 'networkidle0', timeout: 20000 });
   } catch(e) {
-    console.log("Navigation failed or timed out.");
+    console.log("Navigation timeout - proceeding with current DOM state.");
   }
   
+  const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
   console.log("--- Initial State Check ---");
   const stage = await page.waitForSelector('.oracle-stage');
   const initialState = await page.evaluate(el => el.getAttribute('data-oracle-state'), stage);
@@ -32,7 +36,7 @@ const puppeteer = require('puppeteer');
 
   console.log("--- Awakening Event ---");
   await stage.click();
-  await page.waitForTimeout(1000);
+  await delay(1000);
   const awakenedState = await page.evaluate(el => el.getAttribute('data-oracle-state'), stage);
   console.log(`State: ${awakenedState}`);
 
@@ -40,7 +44,7 @@ const puppeteer = require('puppeteer');
   const cabinet = await page.waitForSelector('.oracle-cabinet');
   await cabinet.click();
   
-  await page.waitForTimeout(3000);
+  await delay(3000);
   
   const finalState = await page.evaluate(el => el.getAttribute('data-oracle-state'), stage);
   console.log(`State after connection attempt: ${finalState}`);
@@ -64,7 +68,7 @@ const puppeteer = require('puppeteer');
       })
     );
   });
-  await page.waitForTimeout(500);
+  await delay(1000);
   
   const hasTerminalNow = await page.evaluate(() => !!document.querySelector('.neural-link-terminal'));
   console.log(`Neural Link Terminal present after event: ${hasTerminalNow}`);
@@ -74,4 +78,5 @@ const puppeteer = require('puppeteer');
   }
 
   await browser.close();
+  process.exit(0);
 })();

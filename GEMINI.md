@@ -22,6 +22,7 @@ This file serves as the project-level `GEMINI.md` to store team-shared architect
   - Ghost hook (`useChainFuelz.ts`) and UI placeholders are active in the `BackendControlPanel`.
   - Supabase `culture_crew` and `surrogate_sessions` tables have been migrated via CLI (`chainfuelz_wallet_address`, `on_chain_tx_hash`, `culture_coins_minted`) to support non-custodial wallet generation.
   - Edge function stub (`mint-culture-coins`) is prepared for secure server-side minting once the SDK is provided.
+  - **⚠️ Integration Blocker:** Investigation confirmed ChainFuelz is a no-code SaaS dashboard (using thirdweb/Alchemy) and does not expose a public server-to-server REST API or Node SDK for dynamic backend minting. We must coordinate with Patrick Madren at CF to map our Supabase Edge Function output to their Dashboard "Flow" triggers.
 - **Avatar Streaming:** Decart LipSync Live (WebSocket).
 - **Database/Auth:** Supabase.
 

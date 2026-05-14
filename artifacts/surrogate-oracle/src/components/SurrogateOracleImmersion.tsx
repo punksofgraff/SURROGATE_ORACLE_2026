@@ -279,9 +279,14 @@ export function SurrogateOracleImmersion() {
   };
 
   const handleAuthSuccess = (user: { id: string; email: string }) => {
+    console.log('✅ handleAuthSuccess fired in main component for user:', user.email);
     setIsAuthenticated(true);
-    setShowAuthOverlay(false);
     setCurrentUserId(user.id);
+    
+    // Explicitly hide the auth overlay first
+    setShowAuthOverlay(false);
+    
+    // Then set the state for the backend/coins
     setOracleState((p) => ({ ...p, userEmail: user.email, debugMode: true }));
     setShowInlineCoins(true);
   };

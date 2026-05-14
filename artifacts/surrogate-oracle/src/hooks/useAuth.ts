@@ -20,6 +20,15 @@ interface UseAuthReturn {
   clearError: () => void;
 }
 
+// Dev & Prod Solution for Redirects
+const getRedirectUrl = () => {
+  // Uses VITE_SITE_URL in prod, falls back to dynamic Replit/local URL in dev
+  let url = import.meta.env.VITE_SITE_URL ?? window.location.origin;
+  // Ensure trailing slash for consistent Supabase redirect matching
+  url = url.endsWith('/') ? url : `${url}/`;
+  return url;
+};
+
 export function useAuth(onSuccess: (user: AuthUser) => void): UseAuthReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +43,7 @@ export function useAuth(onSuccess: (user: AuthUser) => void): UseAuthReturn {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin,
+          redirectTo: getRedirectUrl(),
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -52,27 +61,42 @@ export function useAuth(onSuccess: (user: AuthUser) => void): UseAuthReturn {
   };
 
   const handleEmailSignIn = async (email: string): Promise<boolean> => {
+    console.log('🔄 handleEmailSignIn invoked for:', email);
     setIsLoading(true);
     setError(null);
     try {
+      const redirectUrl = getRedirectUrl();
+      console.log('🔗 Computed redirect URL:', redirectUrl);
+      
+      console.log('📡 Calling supabase.auth.signInWithOtp...');
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
           shouldCreateUser: true,
-          emailRedirectTo: window.location.origin,
+          // Re-added with robust Dev/Prod URL handling in case Supabase forces a redirect flow
+          emailRedirectTo: redirectUrl,
         },
       });
-      if (error) throw error;
+      
+      if (error) {
+        console.error('❌ Supabase signInWithOtp error:', error);
+        throw error;
+      }
+      
+      console.log('✅ OTP requested successfully');
       return true;
     } catch (err: unknown) {
+      console.error('💥 Caught error in handleEmailSignIn:', err);
       setError((err as Error).message);
       return false;
     } finally {
       setIsLoading(false);
+      console.log('🏁 handleEmailSignIn finished');
     }
   };
 
   const handleVerifyOtp = async (email: string, token: string) => {
+    console.log('🔄 handleVerifyOtp invoked for:', email, 'with token:', token);
     setIsLoading(true);
     setError(null);
     try {
@@ -81,17 +105,25 @@ export function useAuth(onSuccess: (user: AuthUser) => void): UseAuthReturn {
         token,
         type: 'email',
       });
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Supabase verifyOtp error:', error);
+        throw error;
+      }
       if (data.user) {
+        console.log('✅ OTP Verified Successfully! Calling onSuccess callback...');
         onSuccess({
           id: data.user.id,
           email: data.user.email || '',
         });
+      } else {
+        console.warn('⚠️ OTP Verified, but no user object returned from Supabase data');
       }
     } catch (err: unknown) {
+      console.error('💥 Caught error in handleVerifyOtp:', err);
       setError((err as Error).message);
     } finally {
       setIsLoading(false);
+      console.log('🏁 handleVerifyOtp finished');
     }
   };
 

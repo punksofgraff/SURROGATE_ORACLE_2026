@@ -28,7 +28,7 @@ import { Mic, MicOff, Send, X, Zap } from 'lucide-react';
 // 🔁 SWAP THIS when Google migrates to 3.0 (target: end of June 2026)
 // Current:    gemini-2.5-flash-live-001
 // Upgrade to: gemini-3.0-flash-live  (confirm name at GA)
-const GEMINI_MODEL = 'gemini-2.5-flash-live-001';
+const GEMINI_MODEL = 'models/gemini-2.5-flash';
 // ──────────────────────────────────────────────────────────────────────────────
 
 // Derive project ref from VITE_SUPABASE_URL — no extra env var needed

@@ -180,7 +180,7 @@ export function SurrogateOracleImmersion() {
 
   // ── Oracle connection ─────────────────────────────────────────────────────
   const validateEnvironment = useCallback(() => {
-    const missing = [];
+    const missing: string[] = [];
     if (!import.meta.env.VITE_SUPABASE_URL && !import.meta.env.SUPABASE_URL) missing.push('VITE_SUPABASE_URL');
     if (!import.meta.env.VITE_SUPABASE_ANON_KEY && !import.meta.env.SUPABASE_ANON_KEY) missing.push('VITE_SUPABASE_ANON_KEY');
     if (!import.meta.env.VITE_DECART_API_KEY && !import.meta.env.DECART_API_KEY) missing.push('VITE_DECART_API_KEY');
@@ -363,11 +363,7 @@ export function SurrogateOracleImmersion() {
         </AnimatePresence>
 
         {/* Cabinet CRT frame */}
-        <div
-          className="oracle-cabinet"
-          onClick={awakened && !isOracleMode && !isConnecting ? initializeOracle : undefined}
-          style={{ cursor: awakened && !isOracleMode && !isConnecting ? 'pointer' : 'default' }}
-        >
+        <div className="oracle-cabinet">
           {/* CRT scanline overlay */}
           <div className="oracle-scanlines" />
 

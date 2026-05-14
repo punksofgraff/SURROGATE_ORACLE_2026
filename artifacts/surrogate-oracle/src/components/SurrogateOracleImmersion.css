@@ -297,7 +297,7 @@
   z-index: 2;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 1s var(--ease-cinematic), filter 1s var(--ease-cinematic);
+  transition: opacity 0.5s ease-out, filter 1s var(--ease-cinematic);
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-video {

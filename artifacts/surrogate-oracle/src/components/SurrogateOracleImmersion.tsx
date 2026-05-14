@@ -180,10 +180,13 @@ export function SurrogateOracleImmersion() {
 
   // ── Oracle connection ─────────────────────────────────────────────────────
   const validateEnvironment = useCallback(() => {
-    const missing = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY', 'VITE_DECART_API_KEY'].filter(
-      (k) => !import.meta.env[k],
-    );
+    const missing = [];
+    if (!import.meta.env.VITE_SUPABASE_URL && !import.meta.env.SUPABASE_URL) missing.push('VITE_SUPABASE_URL');
+    if (!import.meta.env.VITE_SUPABASE_ANON_KEY && !import.meta.env.SUPABASE_ANON_KEY) missing.push('VITE_SUPABASE_ANON_KEY');
+    if (!import.meta.env.VITE_DECART_API_KEY && !import.meta.env.DECART_API_KEY) missing.push('VITE_DECART_API_KEY');
+
     if (missing.length > 0) {
+      console.warn('[Surrogate] Missing environment variables:', missing);
       setOracleState((prev) => ({ ...prev, error: `Missing env vars: ${missing.join(', ')}` }));
       return false;
     }

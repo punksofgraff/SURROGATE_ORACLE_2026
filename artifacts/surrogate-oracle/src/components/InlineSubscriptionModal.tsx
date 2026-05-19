@@ -102,24 +102,24 @@ export function InlineSubscriptionModal({
             </button>
 
             {showSuccess ? (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: '#00ff62' }}>
+              <div style={{ textAlign: 'center', padding: '40px 0', color: '#00ff88' }}>
                 <CheckCircle size={48} style={{ marginBottom: 16 }} />
                 <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>UPGRADE SUCCESSFUL!</div>
-                <div style={{ fontSize: '0.75rem', color: '#888', marginTop: 8 }}>Your consciousness has expanded.</div>
+                <div style={{ fontSize: '0.75rem', color: '#ffffff', opacity: 0.8, marginTop: 8 }}>Your consciousness has expanded.</div>
               </div>
             ) : (
               <>
                 <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                  <Crown size={32} style={{ color: '#fbbf24', marginBottom: 12 }} />
-                  <h2 style={{ fontSize: '1.1rem', color: '#fff', letterSpacing: '0.1em', marginBottom: 6 }}>{ctx?.title}</h2>
-                  <p style={{ fontSize: '0.75rem', color: '#888', marginBottom: 8 }}>{ctx?.subtitle}</p>
-                  <div style={{ fontSize: '0.7rem', color: '#fbbf24', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 20, padding: '4px 12px', display: 'inline-block' }}>
+                  <Crown size={32} style={{ color: '#eab308', marginBottom: 12 }} />
+                  <h2 style={{ fontSize: '1.1rem', color: '#ffffff', letterSpacing: '0.1em', marginBottom: 6 }}>{ctx?.title}</h2>
+                  <p style={{ fontSize: '0.75rem', color: '#ffffff', opacity: 0.8, marginBottom: 8 }}>{ctx?.subtitle}</p>
+                  <div style={{ fontSize: '0.7rem', color: '#eab308', background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.3)', borderRadius: 20, padding: '4px 12px', display: 'inline-block' }}>
                     {ctx?.urgency}
                   </div>
                 </div>
 
                 {error && (
-                  <div style={{ background: 'rgba(255,0,80,0.1)', border: '1px solid #ff0050', borderRadius: 8, padding: '8px 12px', marginBottom: 16, fontSize: '0.75rem', color: '#ff0050' }}>
+                  <div style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid #eab308', borderRadius: 8, padding: '8px 12px', marginBottom: 16, fontSize: '0.75rem', color: '#eab308' }}>
                     {error}
                   </div>
                 )}
@@ -129,32 +129,32 @@ export function InlineSubscriptionModal({
                     <div
                       key={product.id}
                       style={{
-                        background: product.popular ? 'rgba(255,0,255,0.08)' : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${product.popular ? 'rgba(255,0,255,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                        background: product.popular ? 'rgba(176,38,255,0.08)' : 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${product.popular ? 'rgba(176,38,255,0.4)' : 'rgba(255,255,255,0.1)'}`,
                         borderRadius: 12,
                         padding: '16px 20px',
                         position: 'relative',
                       }}
                     >
                       {product.popular && (
-                        <div style={{ position: 'absolute', top: -10, right: 16, background: 'linear-gradient(135deg, #ff00ff, #7c3aed)', borderRadius: 10, padding: '2px 10px', fontSize: '0.6rem', color: '#fff', letterSpacing: '0.1em' }}>
+                        <div style={{ position: 'absolute', top: -10, right: 16, background: 'linear-gradient(135deg, #170529, #b026ff)', borderRadius: 10, padding: '2px 10px', fontSize: '0.6rem', color: '#ffffff', letterSpacing: '0.1em' }}>
                           POPULAR
                         </div>
                       )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                         <div>
-                          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#fff', letterSpacing: '0.08em' }}>{product.title}</div>
-                          <div style={{ fontSize: '0.7rem', color: '#888', marginTop: 2 }}>{product.description}</div>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#ffffff', letterSpacing: '0.08em' }}>{product.title}</div>
+                          <div style={{ fontSize: '0.7rem', color: '#ffffff', opacity: 0.8, marginTop: 2 }}>{product.description}</div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#fbbf24' }}>${product.price}</div>
-                          <div style={{ fontSize: '0.6rem', color: '#666' }}>/mo</div>
+                          <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#eab308' }}>${product.price}</div>
+                          <div style={{ fontSize: '0.6rem', color: '#ffffff', opacity: 0.6 }}>/mo</div>
                         </div>
                       </div>
                       <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {product.features.map((f) => (
-                          <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem', color: '#ccc' }}>
-                            <Zap size={10} style={{ color: '#fbbf24', flexShrink: 0 }} />
+                          <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem', color: '#ffffff' }}>
+                            <Zap size={10} style={{ color: '#eab308', flexShrink: 0 }} />
                             {f}
                           </li>
                         ))}
@@ -166,13 +166,13 @@ export function InlineSubscriptionModal({
                           width: '100%',
                           padding: '10px',
                           background: product.popular
-                            ? 'linear-gradient(135deg, #ff00ff, #7c3aed)'
+                            ? 'linear-gradient(135deg, #170529, #b026ff)'
                             : currentTier === product.id
                               ? 'rgba(255,255,255,0.1)'
-                              : 'rgba(255,255,255,0.08)',
-                          border: 'none',
+                              : 'rgba(0,255,136,0.1)',
+                          border: currentTier === product.id ? 'none' : '1px solid rgba(0,255,136,0.3)',
                           borderRadius: 8,
-                          color: currentTier === product.id ? '#888' : '#fff',
+                          color: currentTier === product.id ? 'rgba(255,255,255,0.5)' : '#ffffff',
                           fontFamily: "'PhillySans', 'Orbitron', monospace",
                           fontSize: '0.75rem',
                           letterSpacing: '0.05em',

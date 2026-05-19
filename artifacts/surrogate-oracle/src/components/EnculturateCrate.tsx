@@ -17,19 +17,19 @@ export function EnculturateCrate({ onClick, isActive = false }: EnculturateCrate
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        filter: 'drop-shadow(0 0 20px #00ff62) drop-shadow(0 0 40px #00ff62)',
+        filter: 'drop-shadow(0 0 20px rgba(0,255,136,0.8)) drop-shadow(0 0 40px rgba(0,255,136,0.5))',
         transition: 'all 0.3s ease',
         userSelect: 'none',
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = 'translateY(-8px) scale(1.08)';
         e.currentTarget.style.filter =
-          'drop-shadow(0 0 30px #00ff62) drop-shadow(0 0 60px #00ff62) brightness(1.3)';
+          'drop-shadow(0 0 30px rgba(0,255,136,1)) drop-shadow(0 0 60px rgba(0,255,136,0.8)) brightness(1.3)';
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = 'translateY(0) scale(1)';
         e.currentTarget.style.filter =
-          'drop-shadow(0 0 20px #00ff62) drop-shadow(0 0 40px #00ff62)';
+          'drop-shadow(0 0 20px rgba(0,255,136,0.8)) drop-shadow(0 0 40px rgba(0,255,136,0.5))';
       }}
     >
       {!imageError ? (
@@ -52,7 +52,7 @@ export function EnculturateCrate({ onClick, isActive = false }: EnculturateCrate
             position: 'absolute',
             inset: -4,
             borderRadius: '50%',
-            border: '2px solid #00ff62',
+            border: '2px solid #00ff88',
             animation: 'pulse 2s infinite',
             opacity: 0.7,
           }}
@@ -63,12 +63,12 @@ export function EnculturateCrate({ onClick, isActive = false }: EnculturateCrate
         style={{
           position: 'absolute',
           bottom: -12,
-          background: 'rgba(0, 255, 98, 0.2)',
-          border: '1px solid #00ff62',
+          background: 'rgba(0,255,136,0.2)',
+          border: '1px solid #00ff88',
           borderRadius: '10px',
           padding: '1px 8px',
           fontSize: '0.6rem',
-          color: '#00ff62',
+          color: '#ffffff',
           letterSpacing: '0.1em',
           fontFamily: "'PhillySans', 'Orbitron', monospace",
           whiteSpace: 'nowrap',

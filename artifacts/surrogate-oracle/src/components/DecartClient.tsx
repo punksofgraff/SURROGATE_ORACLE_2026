@@ -39,15 +39,23 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
       imageUrl: string,
       videoElement: HTMLVideoElement
     ): Promise<{ success: boolean; error?: string }> => {
-      const apiKey = import.meta.env.VITE_DECART_API_KEY;
-      if (!apiKey) {
-        const error = 'Missing VITE_DECART_API_KEY environment variable';
-        callbacksRef.current.onError?.(error);
-        return { success: false, error };
-      }
-
       try {
-        const decartClient = createDecartClient({ apiKey });
+        const { supabase } = await import('../lib/supabase');
+        
+        // Fetch short-lived token from the edge function
+        const { data, error } = await supabase.functions.invoke('decart-live-token', {
+          method: 'POST'
+        });
+
+        if (error) {
+          throw new Error(error.message || 'Failed to fetch Decart token');
+        }
+
+        if (!data?.success || !data?.token) {
+          throw new Error(data?.error || 'Invalid response from Decart token endpoint');
+        }
+
+        const decartClient = createDecartClient({ apiKey: data.token });
 
         callbacksRef.current.onConnected?.();
 

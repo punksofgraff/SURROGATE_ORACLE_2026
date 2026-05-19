@@ -121,16 +121,23 @@
   color: #00ff88;
   margin: 0;
   text-shadow: 
+    2px 2px 0px rgba(176,38,255,0.7),
+    -2px -2px 0px rgba(234,179,8,0.7),
     0 0 10px rgba(0,255,136,0.8),
-    0 0 30px rgba(0,255,255,0.4),
-    0 0 60px rgba(0,255,255,0.2);
-  filter: drop-shadow(2px 2px 0px rgba(255,0,255,0.5));
+    0 0 30px rgba(0,255,136,0.4),
+    0 0 60px rgba(176,38,255,0.2);
+  position: relative;
+}
+
+.oracle-stage[data-oracle-state="awakened"] .oracle-title {
+  animation: text-glitch 4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite both;
 }
 
 .oracle-cursor {
   display: inline-block;
   animation: blink 0.7s step-end infinite;
   color: #00ff88;
+  text-shadow: 0 0 8px rgba(0,255,136,0.8);
 }
 
 .oracle-subtitle {
@@ -139,10 +146,15 @@
   font-weight: 500;
   color: #00ff88;
   margin: 10px 0 0;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.25em;
   text-transform: uppercase;
   text-shadow: 0 0 12px rgba(0,255,136,0.7);
   opacity: 0.9;
+  position: relative;
+}
+
+.oracle-stage[data-oracle-state="awakened"] .oracle-subtitle {
+  animation: sub-glitch 5s infinite;
 }
 
 /* ── Center / Cabinet ─────────────────────────────────────────────────── */
@@ -171,7 +183,7 @@
   color: #00ff88;
   text-shadow: 
     0 0 10px rgba(0,255,136,0.8),
-    0 0 25px rgba(0,255,255,0.4);
+    0 0 25px rgba(176,38,255,0.4);
   white-space: nowrap;
   animation: prompt-pulse 2.5s ease-in-out infinite;
 }
@@ -184,28 +196,28 @@
   padding: 10px;
   border-radius: 12px;
   background: rgba(0,5,15,0.6);
-  border: 1px solid rgba(0,255,255,0.35);
+  border: 1px solid rgba(0,255,136,0.35);
   transition: transform 0.4s var(--ease-cinematic), box-shadow 0.4s var(--ease-cinematic);
   box-shadow: 
-    0 0 25px rgba(0,255,255,0.2),
-    inset 0 0 15px rgba(0,255,255,0.1);
+    0 0 25px rgba(176,38,255,0.2),
+    inset 0 0 15px rgba(0,255,136,0.1);
   backdrop-filter: blur(4px);
   will-change: transform, box-shadow;
 }
 
 .oracle-stage[data-oracle-state="awakened"] .oracle-cabinet {
   animation: cabinet-pulse-zoom 3.5s ease-in-out infinite;
-  border-color: rgba(0,255,255,0.5);
+  border-color: rgba(176,38,255,0.5);
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-cabinet {
   animation: cabinet-breathe 4s ease-in-out infinite;
-  border-color: rgba(0,255,255,0.4);
+  border-color: rgba(0,255,136,0.4);
 }
 
 .oracle-cabinet:hover {
   transform: scale(1.04) rotateX(4deg);
-  box-shadow: 0 0 45px rgba(0,255,255,0.4);
+  box-shadow: 0 0 45px rgba(176,38,255,0.4);
 }
 
 .oracle-cabinet::before {
@@ -226,8 +238,8 @@
     0deg,
     transparent,
     transparent 2px,
-    rgba(0,255,255,0.05) 2px,
-    rgba(0,255,255,0.05) 3px
+    rgba(176,38,255,0.05) 2px,
+    rgba(176,38,255,0.05) 3px
   );
   pointer-events: none;
   z-index: 2;
@@ -249,7 +261,7 @@
 
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-wrapper {
   transform: scale(1.15) translateZ(0);
-  box-shadow: 0 0 50px rgba(0,255,255,0.4);
+  box-shadow: 0 0 50px rgba(0,255,136,0.4);
   z-index: 10;
   overflow: visible; /* Let the pulse zoom break out of the box slightly */
 }
@@ -275,7 +287,7 @@
 
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-img {
   opacity: 1;
-  filter: brightness(1.2) drop-shadow(0 0 25px rgba(0,255,255,0.6));
+  filter: brightness(1.2) drop-shadow(0 0 25px rgba(0,255,136,0.6));
   transform: scale(1.25);
   animation: avatar-zoom-breathe 2s ease-in-out infinite alternate;
 }
@@ -292,7 +304,7 @@
   object-fit: cover;
   position: absolute;
   border-radius: 8px;
-  box-shadow: 0 0 35px rgba(0,255,255,0.3);
+  box-shadow: 0 0 35px rgba(176,38,255,0.3);
   background: #000;
   z-index: 2;
   opacity: 0;
@@ -343,23 +355,42 @@
 }
 
 @keyframes cabinet-pulse-zoom {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 25px rgba(0,255,255,0.2), inset 0 0 15px rgba(0,255,255,0.1); }
-  50% { transform: scale(1.05); box-shadow: 0 0 55px rgba(0,255,255,0.5), inset 0 0 25px rgba(0,255,255,0.2); }
+  0%, 100% { transform: scale(1); box-shadow: 0 0 25px rgba(176,38,255,0.2), inset 0 0 15px rgba(0,255,136,0.1); }
+  50% { transform: scale(1.05); box-shadow: 0 0 55px rgba(176,38,255,0.5), inset 0 0 25px rgba(0,255,136,0.2); }
 }
 
 @keyframes avatar-zoom-breathe {
-  0% { transform: scale(1.25); filter: brightness(1.2) drop-shadow(0 0 25px rgba(0,255,255,0.6)); }
+  0% { transform: scale(1.25); filter: brightness(1.2) drop-shadow(0 0 25px rgba(0,255,136,0.6)); }
   100% { transform: scale(1.35); filter: brightness(1.5) drop-shadow(0 0 55px rgba(0,255,136,0.9)); }
 }
 
 @keyframes cabinet-breathe {
-  0%, 100% { box-shadow: 0 0 25px rgba(0,255,255,0.15), inset 0 0 15px rgba(0,255,255,0.05); border-color: rgba(0,255,255,0.25); }
-  50% { box-shadow: 0 0 45px rgba(0,255,255,0.35), inset 0 0 25px rgba(0,255,255,0.1); border-color: rgba(0,255,255,0.5); }
+  0%, 100% { box-shadow: 0 0 25px rgba(176,38,255,0.15), inset 0 0 15px rgba(0,255,136,0.05); border-color: rgba(176,38,255,0.25); }
+  50% { box-shadow: 0 0 45px rgba(176,38,255,0.35), inset 0 0 25px rgba(0,255,136,0.1); border-color: rgba(176,38,255,0.5); }
 }
 
 @keyframes prompt-pulse {
   0%, 100% { opacity: 0.4; transform: translateX(-50%) scale(1); }
   50% { opacity: 0.9; transform: translateX(-50%) scale(1.05); }
+}
+
+@keyframes text-glitch {
+  0% { transform: translate(0) }
+  20% { transform: translate(-2px, 2px) }
+  40% { transform: translate(-2px, -2px) }
+  60% { transform: translate(2px, 2px) }
+  80% { transform: translate(2px, -2px) }
+  100% { transform: translate(0) }
+}
+
+@keyframes sub-glitch {
+  0% { opacity: 0.9; transform: skewX(0deg); }
+  5% { opacity: 0.5; transform: skewX(10deg); filter: blur(1px); }
+  10% { opacity: 0.9; transform: skewX(0deg); filter: blur(0px); }
+  15% { opacity: 0.9; transform: skewX(0deg); }
+  18% { opacity: 1; transform: skewX(-5deg); text-shadow: 2px 0 0 red, -2px 0 0 blue; }
+  20% { opacity: 0.9; transform: skewX(0deg); text-shadow: 0 0 12px rgba(0,255,136,0.7); }
+  100% { opacity: 0.9; }
 }
 
 @keyframes blink {

@@ -168,7 +168,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
           <h2 style={{ fontSize: '1.2rem', letterSpacing: '0.15em', marginBottom: 8, color: '#00ff88', textShadow: '0 0 10px rgba(0,255,136,0.5)' }}>
             ESTABLISH NEURAL LINK
           </h2>
-          <p style={{ fontSize: '0.75rem', color: '#888', lineHeight: 1.6, letterSpacing: '0.05em' }}>
+          <p style={{ fontSize: '0.75rem', color: '#ffffff', lineHeight: 1.6, letterSpacing: '0.05em' }}>
             {step === 'email' 
               ? 'VERIFY SEEKER FREQUENCY TO ACCESS THE CULTURE CREW ENCLAVE.' 
               : 'ACCESS CODE SENT. CALIBRATE NEURAL FREQUENCY NOW.'}
@@ -177,7 +177,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
 
         <div style={{ position: 'relative', zIndex: 2 }}>
             {error && (
-            <div style={{ background: 'rgba(255,0,80,0.1)', border: '1px solid #ff0050', padding: '8px 12px', marginBottom: 16, fontSize: '0.75rem', color: '#ff0050', letterSpacing: '0.05em' }}>
+            <div style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid #eab308', padding: '8px 12px', marginBottom: 16, fontSize: '0.75rem', color: '#eab308', letterSpacing: '0.05em' }}>
                 FREQUENCY REJECTED — {error.toUpperCase()}
             </div>
             )}
@@ -238,7 +238,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                     <button 
                       type="button" 
                       onClick={() => setStep('email')}
-                      style={{ background: 'none', border: 'none', color: '#555', fontSize: '0.65rem', marginTop: 12, cursor: 'pointer', width: '100%', textAlign: 'center' }}
+                      style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '0.65rem', marginTop: 12, cursor: 'pointer', width: '100%', textAlign: 'center' }}
                     >
                       WRONG IDENTIFIER? ABORT AND RETRY.
                     </button>
@@ -255,7 +255,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                 style={{
                     background: 'none',
                     border: 'none',
-                    color: '#333',
+                    color: '#ffffff',
                     fontSize: '0.6rem',
                     cursor: 'pointer',
                     marginTop: 16,
@@ -268,8 +268,8 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                 </button>
               </form>
             ) : (
-            <div style={{ background: 'rgba(0,255,100,0.05)', border: '1px solid rgba(0,255,100,0.2)', padding: 16 }}>
-                <h3 style={{ fontSize: '0.8rem', color: '#00ff64', marginBottom: 12, letterSpacing: '0.1em' }}>🛠️ MANUAL OVERRIDE</h3>
+            <div style={{ background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.2)', padding: 16 }}>
+                <h3 style={{ fontSize: '0.8rem', color: '#00ff88', marginBottom: 12, letterSpacing: '0.1em' }}>🛠️ MANUAL OVERRIDE</h3>
                 <input
                 type="password"
                 value={devPassword}
@@ -280,9 +280,9 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                 style={{
                     width: '100%',
                     background: 'rgba(0,0,0,0.8)',
-                    border: '1px solid rgba(0,255,100,0.3)',
+                    border: '1px solid rgba(0,255,136,0.3)',
                     padding: '10px 12px',
-                    color: '#00ff64',
+                    color: '#00ff88',
                     fontFamily: 'monospace',
                     fontSize: '0.85rem',
                     marginBottom: 12,
@@ -296,9 +296,9 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                     style={{
                     flex: 1,
                     padding: '10px',
-                    background: 'rgba(0,255,100,0.15)',
-                    border: '1px solid #00ff64',
-                    color: '#00ff64',
+                    background: 'rgba(0,255,136,0.15)',
+                    border: '1px solid #00ff88',
+                    color: '#00ff88',
                     cursor: 'pointer',
                     fontFamily: 'inherit',
                     fontSize: '0.75rem',
@@ -312,8 +312,8 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                     style={{
                     padding: '10px 16px',
                     background: 'none',
-                    border: '1px solid #333',
-                    color: '#666',
+                    border: '1px solid #ffffff',
+                    color: '#ffffff',
                     cursor: 'pointer',
                     fontFamily: 'inherit',
                     fontSize: '0.75rem',

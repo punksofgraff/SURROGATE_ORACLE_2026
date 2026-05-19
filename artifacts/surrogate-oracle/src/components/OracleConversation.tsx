@@ -28,7 +28,7 @@ import { Mic, MicOff, Send, X, Zap } from 'lucide-react';
 // 🔁 SWAP THIS when Google migrates to 3.0 (target: end of June 2026)
 // Current:    gemini-2.5-flash-live-001
 // Upgrade to: gemini-3.0-flash-live  (confirm name at GA)
-const GEMINI_MODEL = 'models/gemini-2.5-flash';
+const GEMINI_MODEL = 'models/gemini-3.1-flash-live';
 // ──────────────────────────────────────────────────────────────────────────────
 
 // Derive project ref from VITE_SUPABASE_URL — no extra env var needed
@@ -527,7 +527,7 @@ const OracleConversation = forwardRef(
         >
           <button
             onClick={handleCloseClick}
-            style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            style={{ background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             aria-label="Close connection"
           >
             <X size={14} />
@@ -543,10 +543,10 @@ const OracleConversation = forwardRef(
               exit={{ opacity: 0 }}
               style={{
                 padding: '8px 16px',
-                background: 'rgba(255,68,68,0.15)',
-                borderBottom: '1px solid rgba(255,68,68,0.3)',
+                background: 'rgba(234,179,8,0.15)',
+                borderBottom: '1px solid rgba(234,179,8,0.3)',
                 fontSize: '12px',
-                color: '#ff4444',
+                color: '#eab308',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
@@ -556,9 +556,9 @@ const OracleConversation = forwardRef(
               <button
                 onClick={connectToGemini}
                 style={{
-                  background: 'rgba(255,68,68,0.2)',
-                  border: '1px solid rgba(255,68,68,0.4)',
-                  color: '#ff4444',
+                  background: 'rgba(234,179,8,0.2)',
+                  border: '1px solid rgba(234,179,8,0.4)',
+                  color: '#eab308',
                   borderRadius: '4px',
                   padding: '2px 8px',
                   fontSize: '11px',
@@ -593,7 +593,7 @@ const OracleConversation = forwardRef(
                     turn.role === 'oracle' ? 'rgba(255,255,255,0.06)' : 'rgba(0,255,136,0.12)',
                   border: `1px solid ${turn.role === 'oracle' ? 'rgba(255,255,255,0.08)' : 'rgba(0,255,136,0.2)'}`,
                   fontSize: '14px',
-                  color: turn.role === 'oracle' ? '#e0e0e0' : '#ffffff',
+                  color: turn.role === 'oracle' ? '#eab308' : '#ffffff',
                   lineHeight: 1.5,
                 }}
               >
@@ -651,7 +651,7 @@ const OracleConversation = forwardRef(
               borderRadius: '8px',
               padding: '10px',
               cursor: isConnected ? 'pointer' : 'not-allowed',
-              color: isListening ? '#00ff88' : '#888',
+              color: isListening ? '#00ff88' : '#ffffff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -673,7 +673,7 @@ const OracleConversation = forwardRef(
               border: '1px solid rgba(255,255,255,0.1)',
               borderRadius: '8px',
               padding: '10px 14px',
-              color: '#ffffff',
+              color: '#eab308',
               fontSize: '14px',
               outline: 'none',
               fontFamily: 'inherit',
@@ -690,7 +690,7 @@ const OracleConversation = forwardRef(
               borderRadius: '8px',
               padding: '10px',
               cursor: inputText.trim() && isConnected ? 'pointer' : 'not-allowed',
-              color: inputText.trim() && isConnected ? '#00ff88' : '#444',
+              color: inputText.trim() && isConnected ? '#00ff88' : '#ffffff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

@@ -41,6 +41,34 @@ function useTypewriter(text: string, active: boolean, speed = 55) {
   return displayed;
 }
 
+// Boot Sequence helper
+const BOOT_SEQUENCE = [
+  'INITIALIZING NEURAL LINK...',
+  'DECRYPTING ORACLE AVATAR...',
+  'ESTABLISHING WEB_RTC UPLINK...',
+  'SYNCING AUDIO PIPELINE...',
+  'AWAITING SIGNAL...'
+];
+
+function useBootSequence(active: boolean) {
+  const [lines, setLines] = useState<string[]>([]);
+  useEffect(() => {
+    if (!active) { setLines([]); return; }
+    let step = 0;
+    setLines([BOOT_SEQUENCE[0]]);
+    const id = setInterval(() => {
+      step++;
+      if (step < BOOT_SEQUENCE.length) {
+        setLines(prev => [...prev, BOOT_SEQUENCE[step]]);
+      } else {
+        clearInterval(id);
+      }
+    }, 600);
+    return () => clearInterval(id);
+  }, [active]);
+  return lines;
+}
+
 interface OracleState {
   isConnected: boolean;
   isReady: boolean;
@@ -87,6 +115,7 @@ export function SurrogateOracleImmersion() {
   // ── Typewriter title ──────────────────────────────────────────────────────
   const titleText = useTypewriter('SURROGATE:ORACLE', awakened, 60);
   const subtitleText = useTypewriter('SNEAKAR XR AI IMMERSION', awakened && titleText.length >= 16, 35);
+  const bootLines = useBootSequence(isConnecting);
 
   // ── Cabinet glow controls ─────────────────────────────────────────────────
   const cabinetControls = useAnimation();
@@ -95,9 +124,9 @@ export function SurrogateOracleImmersion() {
     if (awakened) {
       cabinetControls.start({
         boxShadow: [
-          '0 0 20px rgba(0,255,255,0.25), 0 0 60px rgba(0,255,255,0.12)',
-          '0 0 35px rgba(0,255,255,0.65), 0 0 90px rgba(0,255,255,0.30), 0 0 140px rgba(255,0,255,0.18)',
-          '0 0 25px rgba(0,255,255,0.45), 0 0 70px rgba(0,255,255,0.22)',
+          '0 0 20px rgba(0,255,136,0.25), 0 0 60px rgba(0,255,136,0.12)',
+          '0 0 35px rgba(0,255,136,0.65), 0 0 90px rgba(0,255,136,0.30), 0 0 140px rgba(176,38,255,0.18)',
+          '0 0 25px rgba(0,255,136,0.45), 0 0 70px rgba(0,255,136,0.22)',
         ],
         transition: { duration: 2.2, repeat: Infinity, ease: 'easeInOut' },
       });
@@ -183,7 +212,6 @@ export function SurrogateOracleImmersion() {
     const missing: string[] = [];
     if (!import.meta.env.VITE_SUPABASE_URL && !import.meta.env.SUPABASE_URL) missing.push('VITE_SUPABASE_URL');
     if (!import.meta.env.VITE_SUPABASE_ANON_KEY && !import.meta.env.SUPABASE_ANON_KEY) missing.push('VITE_SUPABASE_ANON_KEY');
-    if (!import.meta.env.VITE_DECART_API_KEY && !import.meta.env.DECART_API_KEY) missing.push('VITE_DECART_API_KEY');
 
     if (missing.length > 0) {
       console.warn('[Surrogate] Missing environment variables:', missing);
@@ -256,6 +284,17 @@ export function SurrogateOracleImmersion() {
     initializeOracle();
   }, [scenePhase, initializeOracle]);
 
+  // Auto-awaken on mount
+  useEffect(() => {
+    if (scenePhase === 'dormant') {
+      // Small delay to allow initial DOM to settle before animating in
+      const timer = setTimeout(() => {
+        awakenScene();
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [scenePhase, awakenScene]);
+
   const handleOracleResponse = async (audioUrl: string) => {
     if (!decartClientRef.current?.isStreamActive()) return;
     await decartClientRef.current.sendAudio(audioUrl);
@@ -301,8 +340,6 @@ export function SurrogateOracleImmersion() {
       data-oracle-state={scenePhase}
       data-oracle-alignment={oracleAlignment || 'neutral'}
       data-debug={oracleState.debugMode}
-      onClick={scenePhase === 'dormant' ? awakenScene : undefined}
-      style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}
     >
       {/* Headless clients */}
       <DecartClient ref={decartClientRef} />
@@ -347,21 +384,6 @@ export function SurrogateOracleImmersion() {
 
       {/* ── Layer 4: Central cabinet + avatar ──────────────────────────── */}
       <div className="oracle-center">
-        {/* Dormant tap prompt */}
-        <AnimatePresence>
-          {scenePhase === 'dormant' && (
-            <motion.div
-              className="oracle-tap-prompt"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: [0.35, 0.9, 0.35] }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-            >
-              ◈ TAP TO ENTER ◈
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* Cabinet CRT frame */}
         <div className="oracle-cabinet">
           {/* CRT scanline overlay */}
@@ -382,6 +404,44 @@ export function SurrogateOracleImmersion() {
               playsInline
               className="oracle-avatar-video"
             />
+
+            {/* Connection Boot Sequence */}
+            <AnimatePresence>
+              {isConnecting && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'rgba(0,0,0,0.8)',
+                    zIndex: 20,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    padding: '20px',
+                    fontFamily: 'monospace',
+                    color: '#00ff88',
+                    textShadow: '0 0 8px rgba(0,255,136,0.8)',
+                    fontSize: 'clamp(0.6rem, 1.2vw, 0.8rem)',
+                  }}
+                >
+                  {bootLines.map((line, i) => (
+                    <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
+                      &gt; {line}
+                    </motion.div>
+                  ))}
+                  <motion.div
+                    animate={{ opacity: [1, 0] }}
+                    transition={{ repeat: Infinity, duration: 0.8 }}
+                    style={{ marginTop: '8px' }}
+                  >
+                    _
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Processing dots */}
@@ -409,7 +469,7 @@ export function SurrogateOracleImmersion() {
           animate={{
             opacity: awakened ? 1 : 0.3,
             filter: awakened
-              ? 'brightness(1.1) saturate(1.2) drop-shadow(0 0 16px rgba(255,0,255,0.5))'
+              ? 'brightness(1.1) saturate(1.2) drop-shadow(0 0 16px rgba(176,38,255,0.5))'
               : 'brightness(0.4) saturate(0.3)',
           }}
           transition={{ duration: 1.1, delay: awakened ? 0.7 : 0 }}

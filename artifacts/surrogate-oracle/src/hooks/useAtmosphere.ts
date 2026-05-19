@@ -51,11 +51,11 @@ export function useAtmosphere(canvasRef: React.RefObject<HTMLCanvasElement | nul
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Determine color based on alignment
-      let baseR = 0, baseG = 255, baseB = 255; // Default cyan/neutral
+      let baseR = 0, baseG = 255, baseB = 136; // Default neon green
       if (alignment === 'sacred') {
-        baseR = 0; baseG = 255; baseB = 136; // Bright Green
+        baseR = 234; baseG = 179; baseB = 8; // Yellow
       } else if (alignment === 'profane') {
-        baseR = 255; baseG = 0; baseB = 0; // Red
+        baseR = 176; baseG = 38; baseB = 255; // Purple
       }
 
       particlesRef.current.forEach((p, index) => {

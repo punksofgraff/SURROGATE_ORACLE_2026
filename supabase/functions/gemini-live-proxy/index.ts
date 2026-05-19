@@ -16,7 +16,7 @@
 const GOOGLE_AI_API_KEY = Deno.env.get('GOOGLE_AI_API_KEY') ?? '';
 
 // Gemini Live BidiGenerateContent WebSocket endpoint
-const GEMINI_LIVE_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${GOOGLE_AI_API_KEY}`;
+const GEMINI_LIVE_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${GOOGLE_AI_API_KEY}`;
 
 Deno.serve(async (req: Request) => {
   const upgrade = req.headers.get('upgrade') ?? '';

@@ -220,21 +220,21 @@ export function PortraitGalleryDashboard({
                 >
                   <button
                     onClick={(e) => { e.stopPropagation(); downloadPortrait(p); }}
-                    style={{ background: 'rgba(0,255,255,0.2)', border: '1px solid rgba(0,255,255,0.5)', borderRadius: 6, padding: 6, color: '#00ffff', cursor: 'pointer' }}
+                    style={{ background: 'rgba(0,255,136,0.2)', border: '1px solid rgba(0,255,136,0.5)', borderRadius: 6, padding: 6, color: '#00ff88', cursor: 'pointer' }}
                     title="Download"
                   >
                     <Download size={14} />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); sharePortrait(p); }}
-                    style={{ background: 'rgba(0,255,98,0.2)', border: '1px solid rgba(0,255,98,0.5)', borderRadius: 6, padding: 6, color: '#00ff62', cursor: 'pointer' }}
+                    style={{ background: 'rgba(176,38,255,0.2)', border: '1px solid rgba(176,38,255,0.5)', borderRadius: 6, padding: 6, color: '#b026ff', cursor: 'pointer' }}
                     title="Share"
                   >
                     <Share size={14} />
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); deletePortrait(p); }}
-                    style={{ background: 'rgba(255,0,80,0.2)', border: '1px solid rgba(255,0,80,0.5)', borderRadius: 6, padding: 6, color: '#ff0050', cursor: 'pointer' }}
+                    style={{ background: 'rgba(234,179,8,0.2)', border: '1px solid rgba(234,179,8,0.5)', borderRadius: 6, padding: 6, color: '#eab308', cursor: 'pointer' }}
                     title="Delete"
                   >
                     <Trash2 size={14} />
@@ -243,7 +243,7 @@ export function PortraitGalleryDashboard({
 
                 {/* AI badge */}
                 {(p.dalle_generated || p.google_ai_generated) && (
-                  <div style={{ position: 'absolute', top: 6, left: 6, background: 'rgba(167,139,250,0.9)', borderRadius: 4, padding: '2px 6px', fontSize: '0.55rem', color: '#fff', fontWeight: 700 }}>
+                  <div style={{ position: 'absolute', top: 6, left: 6, background: 'linear-gradient(135deg, #170529, #b026ff)', borderRadius: 4, padding: '2px 6px', fontSize: '0.55rem', color: '#ffffff', fontWeight: 700 }}>
                     AI
                   </div>
                 )}
@@ -266,7 +266,7 @@ export function PortraitGalleryDashboard({
           <div style={{ maxWidth: '80vw', maxHeight: '80vh', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => setIsViewerOpen(false)}
-              style={{ position: 'absolute', top: -36, right: 0, background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}
+              style={{ position: 'absolute', top: -36, right: 0, background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer' }}
             >
               <XCircle size={24} />
             </button>
@@ -279,20 +279,20 @@ export function PortraitGalleryDashboard({
               {selectedPortrait.conversation_themes?.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
                   {selectedPortrait.conversation_themes.map((t) => (
-                    <span key={t} style={{ background: 'rgba(0,255,255,0.1)', border: '1px solid rgba(0,255,255,0.3)', borderRadius: 10, padding: '2px 8px', fontSize: '0.65rem', color: '#00ffff' }}>
+                    <span key={t} style={{ background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)', borderRadius: 10, padding: '2px 8px', fontSize: '0.65rem', color: '#00ff88' }}>
                       {t}
                     </span>
                   ))}
                 </div>
               )}
-              <div style={{ fontSize: '0.65rem', color: '#555' }}>
+              <div style={{ fontSize: '0.65rem', color: '#ffffff', opacity: 0.6 }}>
                 {new Date(selectedPortrait.created_at).toLocaleDateString()}
               </div>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 10 }}>
-                <button onClick={() => downloadPortrait(selectedPortrait)} style={{ padding: '8px 16px', background: 'rgba(0,255,255,0.15)', border: '1px solid rgba(0,255,255,0.4)', borderRadius: 8, color: '#00ffff', cursor: 'pointer', fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button onClick={() => downloadPortrait(selectedPortrait)} style={{ padding: '8px 16px', background: 'rgba(0,255,136,0.15)', border: '1px solid rgba(0,255,136,0.4)', borderRadius: 8, color: '#00ff88', cursor: 'pointer', fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Download size={14} /> DOWNLOAD
                 </button>
-                <button onClick={() => sharePortrait(selectedPortrait)} style={{ padding: '8px 16px', background: 'rgba(0,255,98,0.15)', border: '1px solid rgba(0,255,98,0.4)', borderRadius: 8, color: '#00ff62', cursor: 'pointer', fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button onClick={() => sharePortrait(selectedPortrait)} style={{ padding: '8px 16px', background: 'rgba(176,38,255,0.15)', border: '1px solid rgba(176,38,255,0.4)', borderRadius: 8, color: '#b026ff', cursor: 'pointer', fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Share size={14} /> SHARE
                 </button>
               </div>

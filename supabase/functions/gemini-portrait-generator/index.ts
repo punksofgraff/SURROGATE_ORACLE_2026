@@ -1,9 +1,25 @@
+/**
+ * gemini-portrait-generator — Supabase Edge Function
+ *
+ * Pipeline:
+ *   1. Gemini 2.5 Flash  → enriches the theme prompt into a vivid art description
+ *   2. DALL-E 3          → generates the actual image (no `style` param — removed for API compat)
+ *   3. Themed static URL → final fallback if both AI providers fail
+ *
+ * Secrets required (set via: npx supabase secrets set KEY=value --project-ref <ref>):
+ *   GOOGLE_AI_API_KEY   — Google AI Studio key (generativelanguage.googleapis.com)
+ *   OPENAI_API_KEY      — OpenAI key with DALL-E 3 access
+ *
+ * Deploy:
+ *   npx supabase functions deploy gemini-portrait-generator --project-ref <ref> --use-api
+ */
+
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey'
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
 };
 
 interface PortraitRequest {
@@ -14,377 +30,211 @@ interface PortraitRequest {
   userPrompt?: string;
 }
 
-interface PortraitResponse {
-  success: boolean;
-  portraitUrl?: string;
-  googleAiGenerated?: boolean;
-  dalleGenerated?: boolean;
-  googleAiError?: string;
-  dalleError?: string;
-  error?: string;
-  costSavings?: string;
-  apiUsed?: string;
-}
-
 Deno.serve(async (req: Request) => {
-  try {
-    // Handle CORS preflight
-    if (req.method === 'OPTIONS') {
-      return new Response(null, {
-        status: 200,
-        headers: corsHeaders,
-      });
-    }
-
-    if (req.method !== 'POST') {
-      return new Response(
-        JSON.stringify({ error: 'Method not allowed' }),
-        {
-          status: 405,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 200, headers: corsHeaders });
+  }
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  }
 
-    const { sessionId, email, themes, style = 'freakdali-graff-punks', userPrompt }: PortraitRequest = await req.json();
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
 
-    if (!sessionId || !themes || themes.length === 0) {
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'Missing required fields: sessionId, themes' 
-        }),
+  let body: PortraitRequest;
+  try {
+    body = await req.json();
+  } catch {
+    return new Response(
+      JSON.stringify({ error: 'Invalid JSON body' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const { sessionId, email, themes, style = 'freakdali-graff-punks', userPrompt } = body;
+
+  if (!sessionId || !themes?.length) {
+    return new Response(
+      JSON.stringify({ error: 'Missing required fields: sessionId, themes' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  console.log(`🎨 Portrait request — session: ${sessionId}, themes: ${themes.join(', ')}`);
+
+  const basePrompt = userPrompt ?? buildBasePrompt(themes);
+  let portraitUrl = '';
+  let googleAiGenerated = false;
+  let dalleGenerated = false;
+  let googleAiError = '';
+  let dalleError = '';
+
+  // ── STEP 1: Enhance prompt with Gemini 2.5 Flash ──────────────────────────
+  let enhancedPrompt = basePrompt;
+  const googleAiApiKey = Deno.env.get('GOOGLE_AI_API_KEY');
+  if (googleAiApiKey) {
+    try {
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${googleAiApiKey}`,
         {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: `You are a visual art prompt engineer. Rewrite this for DALL-E 3 image generation. Keep under 280 characters. Focus on vivid visual details, cyberpunk street art, neon colours. Original: "${basePrompt}"`,
+              }],
+            }],
+            generationConfig: { temperature: 0.85, maxOutputTokens: 180 },
+          }),
         }
       );
-    }
-
-    console.log(`🎨 Portrait generation request: ${themes.join(', ')}`);
-
-    let portraitUrl: string;
-    let googleAiGenerated = false;
-    let dalleGenerated = false;
-    let googleAiError = '';
-    let dalleError = '';
-
-    // PRIMARY: Try Google AI Gemini (Cost-effective primary option)
-    try {
-      // Check for Google AI API key in multiple environment variable formats
-      const googleAiApiKey = Deno.env.get('GOOGLE_AI_API_KEY') || 
-                            Deno.env.get('VITE_GOOGLE_AI_API_KEY') ||
-                            Deno.env.get('GOOGLE_GEMINI_API_KEY');
-      
-      if (!googleAiApiKey) {
-        throw new Error('No Google AI API key found in environment variables');
+      if (!r.ok) throw new Error(`Gemini ${r.status}: ${await r.text()}`);
+      const json = await r.json();
+      const candidate = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      if (candidate) {
+        enhancedPrompt = candidate;
+        googleAiGenerated = true;
+        console.log('✅ Gemini enhanced:', enhancedPrompt.slice(0, 80) + '…');
       }
+    } catch (e: unknown) {
+      googleAiError = e instanceof Error ? e.message : String(e);
+      console.error('❌ Gemini enhancement failed (using base prompt):', googleAiError);
+    }
+  } else {
+    googleAiError = 'GOOGLE_AI_API_KEY not configured';
+    console.warn('⚠️  GOOGLE_AI_API_KEY not set — skipping Gemini enhancement');
+  }
 
-      console.log('🔑 Google AI API key found, length:', googleAiApiKey.length);
-      
-      const prompt = generateFreakDaliPrompt(themes, style, userPrompt);
-      console.log('🎯 Gemini prompt:', prompt.substring(0, 100) + '...');
-
-      // Use Gemini Pro Vision for image generation
-      const googleAiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${googleAiApiKey}`, {
+  // ── STEP 2: Generate image with DALL-E 3 ──────────────────────────────────
+  const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+  if (openaiApiKey) {
+    try {
+      const r = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: `Generate a detailed text description for an AI image generator: ${prompt}`
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.8,
-            maxOutputTokens: 1024,
-            topP: 0.95,
-            topK: 64
-          },
-          safetySettings: [
-            {
-              category: "HARM_CATEGORY_HARASSMENT",
-              threshold: "BLOCK_MEDIUM_AND_ABOVE"
-            },
-            {
-              category: "HARM_CATEGORY_HATE_SPEECH",
-              threshold: "BLOCK_MEDIUM_AND_ABOVE"
-            },
-            {
-              category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-              threshold: "BLOCK_MEDIUM_AND_ABOVE"
-            },
-            {
-              category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-              threshold: "BLOCK_MEDIUM_AND_ABOVE"
-            }
-          ]
-        })
+          model: 'dall-e-3',
+          prompt: enhancedPrompt,
+          n: 1,
+          size: '1024x1024',
+          quality: 'standard',
+          // NOTE: `style` deliberately omitted — rejected by some API tiers
+        }),
       });
-
-      console.log('📡 Google AI response status:', googleAiResponse.status);
-
-      if (!googleAiResponse.ok) {
-        const errorText = await googleAiResponse.text();
-        googleAiError = `Google AI API failed with status ${googleAiResponse.status}: ${errorText}`;
-        console.error('❌ Google AI error:', googleAiError);
-        throw new Error(googleAiError);
-      }
-
-      const googleAiResult = await googleAiResponse.json();
-      
-      if (googleAiResult.candidates && googleAiResult.candidates.length > 0) {
-        const enhancedPrompt = googleAiResult.candidates[0].content.parts[0].text;
-        console.log('✅ Google AI enhanced prompt:', enhancedPrompt.substring(0, 100) + '...');
-        
-        // Now try DALL-E with the enhanced prompt
-        try {
-          const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-          
-          if (!openaiApiKey) {
-            throw new Error('No OpenAI API key configured for DALL-E generation');
-          }
-
-          const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${openaiApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: 'dall-e-3',
-              prompt: enhancedPrompt,
-              n: 1,
-              size: '1024x1024',
-              quality: 'hd',
-              style: 'vivid',
-            }),
-          });
-
-          if (!dalleResponse.ok) {
-            const errorText = await dalleResponse.text();
-            throw new Error(`DALL-E API failed: ${dalleResponse.status} - ${errorText}`);
-          }
-
-          const dalleResult = await dalleResponse.json();
-          portraitUrl = dalleResult.data[0]?.url;
-          
-          if (!portraitUrl) {
-            throw new Error('No image URL in DALL-E response');
-          }
-
-          dalleGenerated = true;
-          googleAiGenerated = true; // Google AI enhanced the prompt
-          console.log('✅ Google AI + DALL-E portrait generated successfully');
-          
-        } catch (dalleError) {
-          console.error('❌ DALL-E generation failed after Google AI enhancement:', dalleError);
-          throw dalleError;
-        }
-      } else {
-        googleAiError = 'No candidates in Google AI response';
-        throw new Error(googleAiError);
-      }
-
-    } catch (googleError) {
-      console.log('❌ Google AI failed, trying DALL-E directly:', googleError.message);
-      
-      // FALLBACK: Try DALL-E 3 directly
-      try {
-        const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-        
-        if (!openaiApiKey) {
-          throw new Error('No OpenAI API key configured');
-        }
-        
-        const prompt = generateFreakDaliPrompt(themes, style, userPrompt);
-        console.log('🎨 DALL-E direct prompt:', prompt);
-
-        const dalleResponse = await fetch('https://api.openai.com/v1/images/generations', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'dall-e-3',
-            prompt: prompt,
-            n: 1,
-            size: '1024x1024',
-            quality: 'standard',
-            style: 'vivid',
-          }),
-        });
-
-        if (!dalleResponse.ok) {
-          const errorText = await dalleResponse.text();
-          dalleError = `DALL-E API failed with status ${dalleResponse.status}: ${errorText}`;
-          throw new Error(dalleError);
-        }
-
-        const dalleResult = await dalleResponse.json();
-        portraitUrl = dalleResult.data[0]?.url;
-        
-        if (!portraitUrl) {
-          dalleError = 'No image URL in DALL-E response';
-          throw new Error(dalleError);
-        }
-
-        dalleGenerated = true;
-        console.log('✅ DALL-E portrait generated successfully as direct fallback');
-        
-      } catch (dalleErrorObj) {
-        console.log('❌ DALL-E direct fallback also failed, using static fallback:', dalleErrorObj.message);
-        dalleError = dalleErrorObj.message;
-        
-        // FINAL FALLBACK: Use themed static images
-        const freakDaliImageMap: Record<string, string> = {
-          'mystical': 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1024&h=1024&fit=crop',
-          'cyberpunk': 'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=1024&h=1024&fit=crop',
-          'graffiti': 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=1024&h=1024&fit=crop',
-          'sneakar': 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1024&h=1024&fit=crop',
-          'culture-coin': 'https://images.unsplash.com/photo-1621932992265-e3df5ee52fb4?w=1024&h=1024&fit=crop',
-          'hip-hop': 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=1024&h=1024&fit=crop',
-          'digital': 'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=1024&h=1024&fit=crop',
-          'neon': 'https://images.unsplash.com/photo-1534330207526-8e81f10ec6fc?w=1024&h=1024&fit=crop',
-          'consciousness': 'https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=1024&h=1024&fit=crop',
-          'oracle': 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1024&h=1024&fit=crop'
-        };
-
-        const primaryTheme = themes[0] || 'mystical';
-        portraitUrl = freakDaliImageMap[primaryTheme] || `https://picsum.photos/1024/1024?random=${Date.now()}`;
-        
-        console.log('✅ Using themed static fallback for:', primaryTheme);
-      }
+      if (!r.ok) throw new Error(`DALL-E ${r.status}: ${await r.text()}`);
+      const json = await r.json();
+      const url = json.data?.[0]?.url;
+      if (!url) throw new Error('No URL in DALL-E response');
+      portraitUrl = url;
+      dalleGenerated = true;
+      console.log('✅ DALL-E portrait generated');
+    } catch (e: unknown) {
+      dalleError = e instanceof Error ? e.message : String(e);
+      console.error('❌ DALL-E failed:', dalleError);
     }
+  } else {
+    dalleError = 'OPENAI_API_KEY not configured';
+    console.warn('⚠️  OPENAI_API_KEY not set — skipping DALL-E generation');
+  }
 
-    // Store portrait in database with complete metadata
-    const { error: dbError } = await supabase
-      .from('surrogate_portraits')
-      .insert({
-        session_id: sessionId,
-        email: email || null,
-        conversation_themes: themes,
-        dalle_prompt: userPrompt || generateFreakDaliPrompt(themes, style, userPrompt),
-        image_url: portraitUrl,
-        dalle_generated: dalleGenerated,
-        google_ai_generated: googleAiGenerated,
-        procedural_framework: {
-          style: 'freakdali-graff-punks',
-          sneakar_branded: true,
-          culture_coin_elements: true,
-          cyberpunk_aesthetic: true,
-          themes: themes,
-          generation_method: googleAiGenerated && dalleGenerated ? 'google-ai-enhanced-dalle' : 
-                            dalleGenerated ? 'dall-e-3' : 'themed-fallback',
-          timestamp: new Date().toISOString(),
-          cost_savings: googleAiGenerated ? 'Google AI prompt enhancement used' : 'DALL-E direct',
-          api_endpoint: googleAiGenerated && dalleGenerated ? 'gemini-pro + dall-e-3' : 
-                       dalleGenerated ? 'dall-e-3' : 'static-fallback'
-        }
-      });
+  // ── STEP 3: Themed static fallback ────────────────────────────────────────
+  if (!portraitUrl) {
+    portraitUrl = getThemedFallback(themes);
+    console.log('ℹ️  Using themed static fallback:', portraitUrl);
+  }
 
-    if (dbError) {
-      console.error('❌ Database storage error:', dbError);
-    } else {
-      console.log('✅ Portrait stored successfully with metadata');
-    }
+  // ── Persist to database ───────────────────────────────────────────────────
+  const { error: dbError } = await supabase.from('surrogate_portraits').insert({
+    session_id: sessionId,
+    email: email ?? null,
+    conversation_themes: themes,
+    dalle_prompt: enhancedPrompt,
+    image_url: portraitUrl,
+    dalle_generated: dalleGenerated,
+    google_ai_generated: googleAiGenerated,
+    procedural_framework: {
+      style,
+      sneakar_branded: true,
+      culture_coin_elements: true,
+      cyberpunk_aesthetic: true,
+      themes,
+      generation_method: googleAiGenerated && dalleGenerated
+        ? 'gemini-enhanced-dalle'
+        : dalleGenerated
+          ? 'dall-e-3'
+          : 'themed-fallback',
+      timestamp: new Date().toISOString(),
+    },
+  });
+  if (dbError) console.error('❌ DB insert error:', dbError);
+  else console.log('✅ Portrait saved to surrogate_portraits');
 
-    const response: PortraitResponse = {
-      success: googleAiGenerated || dalleGenerated || !!portraitUrl,
+  return new Response(
+    JSON.stringify({
+      success: !!portraitUrl,           // true even for fallback — portrait exists
       portraitUrl,
       googleAiGenerated,
       dalleGenerated,
-      googleAiError: googleAiGenerated ? undefined : googleAiError,
-      dalleError: dalleGenerated ? undefined : dalleError,
-      error: (googleAiGenerated || dalleGenerated || portraitUrl) ? undefined : 'All generation methods failed',
-      costSavings: googleAiGenerated ? 'Google AI prompt enhancement + DALL-E generation' : 'DALL-E direct generation',
-      apiUsed: googleAiGenerated && dalleGenerated ? 'Google AI + DALL-E 3' : 
-               dalleGenerated ? 'DALL-E 3' : 'Static fallback'
-    };
-
-    return new Response(
-      JSON.stringify(response),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
-
-  } catch (error) {
-    console.error('❌ Portrait generation error:', error);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        googleAiGenerated: false,
-        dalleGenerated: false,
-        googleAiError: error.message,
-        dalleError: 'Fallback to DALL-E also failed',
-        error: 'Internal server error'
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
-  }
+      ...(googleAiError && { googleAiError }),
+      ...(dalleError && { dalleError }),
+      apiUsed: googleAiGenerated && dalleGenerated
+        ? 'Gemini 2.5 Flash + DALL-E 3'
+        : dalleGenerated
+          ? 'DALL-E 3'
+          : 'Themed static fallback',
+    }),
+    { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
 });
 
-// Enhanced prompt generator optimized for Google AI + DALL-E workflow
-function generateFreakDaliPrompt(themes: string[], style: string, userPrompt?: string): string {
-  let basePrompt = '';
-  
-  // Use user prompt if provided, otherwise generate from themes
-  if (userPrompt) {
-    basePrompt = userPrompt;
-  } else {
-    const freakDaliThemeDescriptions: Record<string, string> = {
-      mystical: "ethereal cyberpunk oracle energy with SNEAKAR branding",
-      cyberpunk: "neon-lit digital rebellion with Culture Coin elements",
-      graffiti: "street art spray paint aesthetics with golden accents",
-      sneakar: "branded streetwear prophet with holographic elements",
-      'culture-coin': "golden cryptocurrency aura with mystical power",
-      'hip-hop': "urban oracle wisdom with geometric face patterns",
-      digital: "pixelated reality consciousness with neon effects",
-      consciousness: "expanded awareness with cyberpunk enhancement",
-      creativity: "artistic inspiration flowing through digital realms",
-      technology: "AI-enhanced street prophet with circuit patterns",
-      wisdom: "ancient knowledge channeled through modern graffiti",
-      future: "evolutionary transcendence in underground trainyard",
-      transformation: "metamorphosis with SNEAKAR branded elements",
-      connection: "interconnected networks of Culture Coin energy",
-      punk: "rebellious aesthetic with holographic bomber jacket",
-      neon: "glowing geometric patterns with alien abduction vibes",
-      oracle: "mystical digital consciousness with prophetic vision"
-    };
+// ── Prompt builder ────────────────────────────────────────────────────────────
 
-    const selectedDescriptions = themes
-      .filter(theme => freakDaliThemeDescriptions[theme])
-      .map(theme => freakDaliThemeDescriptions[theme])
-      .join(', ');
-
-    basePrompt = `FreakDali cyberpunk graffiti portrait featuring ${selectedDescriptions}`;
-  }
-
-  // FreakDali style modifiers optimized for AI generation
-  const freakDaliStyleModifiers: Record<string, string> = {
-    'freakdali-graff-punks': 'with cyberpunk graffiti aesthetic, SNEAKAR branded elements, Culture Coin golden accents, neon geometric face patterns, holographic effects',
-    'mystical-digital': 'with ethereal lighting, SNEAKAR branding, Culture Coin aura, cosmic graffiti energy',
-    'cyberpunk': 'in FreakDali cyberpunk style with SNEAKAR shoes, neon colors, Culture Coin elements, digital graffiti',
-    'street-art': 'as underground graffiti masterpiece with SNEAKAR branding, Culture Coin spray paint, punk aesthetic'
+function buildBasePrompt(themes: string[]): string {
+  const themeMap: Record<string, string> = {
+    oracle:          'mystical digital consciousness with prophetic vision',
+    cyberpunk:       'neon-lit digital rebellion and cyber aesthetic',
+    graffiti:        'street art spray paint with raw urban energy',
+    mystical:        'ethereal cosmic oracle energy and astral glow',
+    consciousness:   'expanded awareness, transcendence, neural webs',
+    wisdom:          'ancient knowledge channelled through modern circuitry',
+    sneakar:         'streetwear prophet with holographic SNEAKAR elements',
+    neon:            'glowing geometric neon light patterns',
+    digital:         'pixelated digital consciousness and data streams',
+    'hip-hop':       'urban oracle, rhythm and cultural power',
+    'culture-coin':  'golden cultural currency aura and mystical wealth',
+    punk:            'rebellious street energy, spikes, spray paint',
+    future:          'evolutionary transcendence in underground trainyard',
+    transformation:  'metamorphosis with SNEAKAR branded wings',
+    connection:      'interconnected culture networks pulsing with light',
   };
+  const desc = themes.map(t => themeMap[t] ?? t).filter(Boolean).join(', ');
+  return `FreakDali cyberpunk graffiti oracle portrait: ${desc}. SNEAKAR branded elements, Culture Coin golden accents, neon geometric face patterns, holographic effects. High quality digital art masterpiece, portrait orientation.`;
+}
 
-  const styleModifier = freakDaliStyleModifiers[style] || freakDaliStyleModifiers['freakdali-graff-punks'];
-  
-  // Optimized prompt structure for AI generation
-  const finalPrompt = `${basePrompt}, ${styleModifier}. High quality digital art, portrait orientation, vivid colors, detailed rendering, professional artwork, masterpiece quality.`;
-  
-  return finalPrompt;
+// ── Themed static fallbacks (used when AI generation is unavailable) ─────────
+
+function getThemedFallback(themes: string[]): string {
+  const fallbacks: Record<string, string> = {
+    mystical:        'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1024&h=1024&fit=crop',
+    cyberpunk:       'https://images.unsplash.com/photo-1518709268805-4e9042af2176?w=1024&h=1024&fit=crop',
+    graffiti:        'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=1024&h=1024&fit=crop',
+    sneakar:         'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=1024&h=1024&fit=crop',
+    'culture-coin':  'https://images.unsplash.com/photo-1621932992265-e3df5ee52fb4?w=1024&h=1024&fit=crop',
+    oracle:          'https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=1024&h=1024&fit=crop',
+    neon:            'https://images.unsplash.com/photo-1534330207526-8e81f10ec6fc?w=1024&h=1024&fit=crop',
+    consciousness:   'https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=1024&h=1024&fit=crop',
+    'hip-hop':       'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=1024&h=1024&fit=crop',
+    punk:            'https://images.unsplash.com/photo-1571867424488-4565932edb41?w=1024&h=1024&fit=crop',
+  };
+  const match = themes.find(t => fallbacks[t]);
+  return match ? fallbacks[match] : `https://picsum.photos/seed/${themes.join('-')}/1024/1024`;
 }

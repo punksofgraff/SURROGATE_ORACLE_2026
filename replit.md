@@ -1,89 +1,133 @@
-# SURROGATE Oracle
+# SURROGATE Oracle — Replit Workspace Guide
 
-Cinematic cyberpunk AI oracle XR experience — users enter an alley, awaken the Oracle, and have a real-time voice conversation powered by Gemini 2.5 Flash Live.
+Cinematic cyberpunk AI oracle XR experience. Users enter a graffiti alley, awaken the Oracle, and have a real-time conversation. Gemini Live audio when available; Claude text fallback always active.
+
+---
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/surrogate-oracle run dev` — start the app (via workflow)
-- `pnpm --filter @workspace/surrogate-oracle run typecheck` — typecheck
-- `pnpm --filter @workspace/surrogate-oracle run deploy:functions` — deploy Supabase Edge Functions (set `SUPABASE_PROJECT_REF=velmmplevfrtrtrypoch`)
-- `pnpm --filter @workspace/surrogate-oracle run set:gemini-secret` — push `GOOGLE_AI_API_KEY` to Supabase Edge Functions secrets
+```bash
+pnpm --filter @workspace/surrogate-oracle run dev       # start dev server → http://localhost:5173
+pnpm --filter @workspace/surrogate-oracle run build     # production build → dist/
+pnpm --filter @workspace/surrogate-oracle run typecheck # tsc --noEmit
+```
+
+> Note: `pnpm run dev` at workspace root has no script. Always target the artifact.
+
+---
+
+## Supabase Edge Functions
+
+### Deploy (no Docker needed)
+```bash
+cd /home/runner/workspace
+npx supabase functions deploy <function-name> --project-ref velmmplevfrtrtrypoch --use-api
+```
+
+Deploy all at once:
+```bash
+npx supabase functions deploy \
+  gemini-live-proxy oracle-conversation gemini-portrait-generator \
+  elevenlabs-tts elevenlabs-conversational-ai \
+  --project-ref velmmplevfrtrtrypoch --use-api
+```
+
+### Key Rotation — Replit → Supabase
+**When Replit secrets are updated, push them to Supabase:**
+```bash
+cd /home/runner/workspace
+npx supabase secrets set \
+  ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
+  GOOGLE_AI_API_KEY="$GEMINI_API_KEY" \
+  --project-ref velmmplevfrtrtrypoch
+```
+
+> ⚠️ Use `$GEMINI_API_KEY` (not `$GOOGLE_AI_API_KEY`) for the Supabase `GOOGLE_AI_API_KEY` secret.
+> The Replit env has both; `GEMINI_API_KEY` is the Google AI Studio key that works with generativelanguage.googleapis.com.
+
+After rotating secrets, **redeploy any function that reads the key at module load time** (top-level `Deno.env.get`):
+```bash
+npx supabase functions deploy gemini-live-proxy --project-ref velmmplevfrtrtrypoch --use-api
+```
+
+### List current secrets
+```bash
+npx supabase secrets list --project-ref velmmplevfrtrtrypoch
+```
+
+---
+
+## Replit Secrets Required
+
+| Replit Secret | Maps to Supabase Secret | Used by |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | `ANTHROPIC_API_KEY` | `oracle-conversation` EFA |
+| `GEMINI_API_KEY` | `GOOGLE_AI_API_KEY` | `gemini-live-proxy`, `gemini-portrait-generator` |
+| `GOOGLE_AI_API_KEY` | (GCP key, not AI Studio) | not used for generativelanguage API |
+| `VITE_SUPABASE_ANON_KEY` | client-side only | Supabase JS client in browser |
+| `VITE_DECART_API_KEY` | `DECART_API_KEY` | Decart WebRTC avatar |
+| `OPENAI_API_KEY` | `OPENAI_API_KEY` | DALL-E 3 portraits — **⚠️ not yet in Replit** |
+
+---
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- Frontend: React + Vite + Tailwind + Framer Motion
-- AI: Gemini 2.5 Flash Live (`gemini-2.5-flash-live-001`) — LLM + STT + TTS in one WebSocket
-- Avatar: Decart SDK WebRTC lip-sync (`@decartai/sdk`)
-- Backend: Supabase (Postgres + Auth + Edge Functions)
-- Gamification: Culture Coins + Sacred/Profane Totem Matrix scoring
+- Frontend: React 18 + Vite + Framer Motion
+- AI (primary): Gemini Live WebSocket via `gemini-live-proxy` EFA
+- AI (fallback): Claude `claude-sonnet-4-6` via `oracle-conversation` EFA
+- Avatar (paid): Decart SDK WebRTC (`@decartai/sdk`)
+- Avatar (freemium): Static face + `VisemeDetector` (Web Audio API lip-sync)
+- Backend: Supabase (Postgres + Auth + Edge Functions in Deno)
+- Gamification: Culture Coins + Sacred/Profane Totem Matrix
 
-## Where things live
+---
+
+## Where Things Live
 
 ```
 artifacts/surrogate-oracle/
   src/
     components/
-      SurrogateOracleImmersion.tsx  — main scene orchestrator (DORMANT→AWAKENED→ORACLE phases)
-      SurrogateOracleImmersion.css  — core CSS variable depth layer architecture + stage styling
-      OracleConversation.tsx        — Gemini 2.5 Flash Live WebSocket client + Sacred/Profane scoring
-      DecartClient.tsx              — Decart WebRTC avatar lip-sync
-      BackendControlPanel.tsx       — dev debug panel (password: 3nculturate!) + ChainFuelz UI
-      CultureCoinInlineDisplay.tsx  — real-time coin counter (hidden until triggered)
-      EnculturateCrate.tsx          — Enculturate CTA crate
-      GraffPunksRadio.tsx           — alley radio player
-      GoogleSignInOverlay.tsx       — styled as "Neural Link Terminal" for immersive auth (Email OTP)
-    hooks/
-      useAtmosphere.ts              — pure canvas RAF loop for scene atmosphere
-      useChainFuelz.ts              — Mock ChainFuelz SDK integration (Awaiting API keys)
-    workers/
-      pcm-encoder.worker.ts         — Web Worker offloading WAV assembly
+      SurrogateOracleImmersion.tsx  — main scene orchestrator (state machine, tier routing)
+      SurrogateOracleImmersion.css  — ALL custom styling (--z-* layers, data-oracle-state CSS)
+      OracleConversation.tsx        — Gemini Live WS client + Claude HTTP fallback + scoring
+      DecartClient.tsx              — Decart WebRTC paid avatar
+      BackendControlPanel.tsx       — dev debug panel (password: 3nculturate!)
     lib/
-      supabase.ts                   — Supabase client + edge function headers
-    index.css                       — Tailwind boilerplate ONLY
+      visemeDetector.ts             — Preston Blair viseme detection (Web Audio API)
+      supabase.ts                   — Supabase client
+    workers/
+      pcm-encoder.worker.ts         — PCM→WAV assembly off main thread
+    hooks/
+      useAtmosphere.ts              — canvas RAF particle atmosphere
 
 supabase/
   functions/
-    gemini-live-proxy/index.ts      — Deno WS proxy: browser ↔ Gemini Live API (keeps API key server-side)
-    mint-culture-coins/index.ts     — Edge Function stub for secure ChainFuelz token minting
-  config.toml
+    gemini-live-proxy/              — WS proxy + message format translation
+    oracle-conversation/            — Claude HTTP fallback with totem scoring
+    gemini-portrait-generator/      — Gemini prompt enhance → DALL-E 3 → Unsplash fallback
+    elevenlabs-tts/                 — TTS synthesis
+    decart-live-token/              — Decart WebRTC auth tokens
+    mint-culture-coins/             — ChainFuelz stub (pending SDK)
 ```
 
-## Architecture decisions
-
-- **Gemini 2.5 Flash Live replaces Claude + ElevenLabs**: single WebSocket handles LLM, STT, and TTS natively — lower latency, simpler stack, no audio stitching needed.
-- **gemini-live-proxy Edge Function**: `GOOGLE_AI_API_KEY` never leaves the server. Browser connects to `wss://<project>.supabase.co/functions/v1/gemini-live-proxy`, proxy relays to Google's BidiGenerateContent endpoint.
-- **PCM→WAV assembly (Web Worker)**: Gemini outputs 24kHz int16 PCM chunks; `pcm-encoder.worker.ts` stitches them into a WAV Blob URL off the main thread, keeping the V8 GC clean and preventing UI stutter.
-- **Sacred/Profane scoring (Subverted UI)**: Oracle embeds `[[ORACLE_SCORE: {...}]]` annotations in responses. These are parsed to drive the hidden economy state, but are stripped from the main UI to preserve immersion. Coins are revealed as a session-end event.
-- **CSS Custom Property State Mapping**: Scene phases (`dormant`, `awakened`, `oracle`) and alignment (`sacred`, `profane`) are applied as `data-*` attributes on the `oracle-stage` wrapper. Global transitions are handled entirely by CSS, replacing heavy React render cycles.
-- **Email OTP over Google OAuth**: Supabase's default Google OAuth keys block remote domains (like Replit) with a 403 error. To maintain a zero-config setup, the Neural Link terminal relies on Email OTP (6-digit code) rather than Google sign-in.
-- **ChainFuelz Ghost Infrastructure**: The app is architecturally prepared for ChainFuelz Web3 wallets. The Supabase DB holds `chainfuelz_wallet_address` columns, and a mock hook (`useChainFuelz`) handles the UI until the official SDK is dropped in.
-  - **⚠️ Integration Blocker:** Investigation confirmed ChainFuelz is a no-code SaaS dashboard (using thirdweb/Alchemy) and does not expose a public server-to-server REST API or Node SDK for dynamic backend minting. We must coordinate with Patrick Madren at CF to map our Supabase Edge Function output to their Dashboard "Flow" triggers.
-
-## Product
-
-Three-phase cinematic UX:
-1. **DORMANT** — dark graffiti alley, glowing Oracle cabinet. One tap to enter.
-2. **AWAKENED** — title types in, boombox + crate light up, Decart WebRTC avatar pulses.
-3. **ORACLE** — full conversation panel. Voice (mic) or text input. Sacred responses earn Culture Coins under the hood and advance Totem level (Wanderer → Seeker → Acolyte → Initiate → Oracle-Touched → Culture Bearer). Total coins are revealed only upon session exit.
-
-## User preferences
-
-- Dev bypass password: `3nculturate!` (BackendControlPanel)
-- Oracle image: `https://i.postimg.cc/D20ctNV0/orackle-only-static.png` (Static)
-- Decart Avatar: `https://i.postimg.cc/hnyNRQLz/static-alley-reduced.png`
-- Viewport is explicitly locked (`user-scalable=no, viewport-fit=cover`)
+---
 
 ## Gotchas
 
-- **Model swap June 2026**: Update `GEMINI_MODEL` constant in `OracleConversation.tsx` to `gemini-3.0-flash-live` (confirm name at GA). See comment anchor at top of file.
-- **Supabase Edge Function deployment** requires `SUPABASE_ACCESS_TOKEN` and `SUPABASE_PROJECT_REF=velmmplevfrtrtrypoch` in env. Use `--use-api` flag (no Docker needed).
-- **CSS Architecture**: `index.css` is strictly Tailwind boilerplate. ALL custom XR immersive styling lives in `SurrogateOracleImmersion.css` leveraging the `--z-*` variable layer system.
-- **`VITE_SUPABASE_ANON_KEY` must be set** for Supabase client. `SUPABASE_SERVICE_ROLE_KEY` is server-only (Supabase Edge Functions), not passed to client.
-- `pnpm run dev` at workspace root has no script — always target the artifact: `pnpm --filter @workspace/surrogate-oracle run dev`.
+- **CSS Architecture**: `index.css` is Tailwind boilerplate ONLY. All XR immersive styling is in `SurrogateOracleImmersion.css`.
+- **Dev mode**: Set `localStorage.setItem('dev_user_session', '1')` in browser console. Forces Decart path; resets to dormant on Decart failure (never falls through to freemium).
+- **DALL-E `style` param**: Do NOT pass `style` to DALL-E 3 — rejected with 400.
+- **Gemini Live model**: `models/gemini-3.1-flash-live-preview`. Older IDs (`2.0-flash-live-001`) return `1008 not found` on v1beta endpoint as of May 2026.
+- **Supabase CLI auth**: Already authenticated in this Replit — no login needed. `npx supabase secrets list` works directly.
+- **`VITE_SUPABASE_ANON_KEY` must be set** in `.env.local` for the browser Supabase client. Service role key is server-only (Supabase EFAs via `SUPABASE_SERVICE_ROLE_KEY` env auto-injected by Supabase).
+- **BackendControlPanel TypeScript errors**: Pre-existing, non-blocking. Build succeeds despite 4 TS errors in that file.
 
-## Pointers
+---
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
-- Supabase project: `velmmplevfrtrtrypoch` → https://supabase.com/dashboard/project/velmmplevfrtrtrypoch
-- Decart avatar SDK docs: https://docs.decart.ai
+## Supabase Project
+
+- Ref: `velmmplevfrtrtrypoch`
+- Dashboard: https://supabase.com/dashboard/project/velmmplevfrtrtrypoch
+- Key tables: `surrogate_sessions`, `surrogate_portraits`, `oracle_interactions`, `culture_crew`

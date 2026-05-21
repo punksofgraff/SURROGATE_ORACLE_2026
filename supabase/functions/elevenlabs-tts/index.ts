@@ -81,30 +81,18 @@ Deno.serve(async (req: Request) => {
     console.log(`🎵 Voice ID: ${voice_id}`);
     console.log(`📝 Text length: ${text.length} characters`);
 
-    // ✅ PRODUCTION ELEVENLABS API KEY CONFIGURED
-    const elevenLabsApiKey = 'sk_afa8f82df7cf54d7eca84f78386642f84e39a42fcd16d822';
-    
-    // Debug API key validation
-    console.log('🔑 API Key validation:');
-    console.log('🔑 - Key exists:', !!elevenLabsApiKey);
-    console.log('🔑 - Key format valid:', elevenLabsApiKey?.startsWith('sk_'));
-    console.log('🔑 - Key length:', elevenLabsApiKey?.length);
-    
-    if (!elevenLabsApiKey || elevenLabsApiKey.trim() === '') {
-      console.error('❌ ElevenLabs API key not found or empty');
+    // Read from secret: npx supabase secrets set ELEVENLABS_API_KEY=sk_...
+    const elevenLabsApiKey = Deno.env.get('ELEVENLABS_API_KEY');
+
+    if (!elevenLabsApiKey) {
+      console.error('❌ ELEVENLABS_API_KEY secret not set');
       return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'ElevenLabs API key not configured. Please set VITE_ELEVEN_LABS_API_KEY in Supabase Edge Functions environment variables with your sk_... key.' 
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+        JSON.stringify({ success: false, error: 'ELEVENLABS_API_KEY not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`🔑 API key found, length: ${elevenLabsApiKey.length} characters`);
+    console.log(`🔑 ElevenLabs key found (length: ${elevenLabsApiKey.length})`);
 
     try {
       // ElevenLabs TTS API call

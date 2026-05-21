@@ -64,20 +64,14 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ✅ PRODUCTION ELEVENLABS API KEY CONFIGURED  
-    const elevenLabsApiKey = 'sk_afa8f82df7cf54d7eca84f78386642f84e39a42fcd16d822';
-    
+    // Read from secret: npx supabase secrets set ELEVENLABS_API_KEY=sk_...
+    const elevenLabsApiKey = Deno.env.get('ELEVENLABS_API_KEY');
+
     if (!elevenLabsApiKey) {
-      console.error('❌ ElevenLabs API key not found');
+      console.error('❌ ELEVENLABS_API_KEY secret not set');
       return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: 'ElevenLabs API key not configured' 
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+        JSON.stringify({ success: false, error: 'ELEVENLABS_API_KEY not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -363,7 +357,7 @@ Deno.serve(async (req: Request) => {
           }
 
           const claudeData = await claudeResponse.json();
-          const oracleResponse = claudeData.response;
+          const oracleResponse = claudeData.oracleResponse; // matches oracle-conversation response shape
 
           // 2. Convert Oracle response to speech using ElevenLabs TTS
           const ttsResponse = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
@@ -374,7 +368,7 @@ Deno.serve(async (req: Request) => {
             },
             body: JSON.stringify({
               text: oracleResponse,
-              model_id: 'eleven_monolingual_v1',
+              model_id: 'eleven_turbo_v2_5', // low-latency, current model
               voice_settings: {
                 stability: 0.5,
                 similarity_boost: 0.5

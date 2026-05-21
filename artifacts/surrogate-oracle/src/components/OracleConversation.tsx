@@ -25,10 +25,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, MicOff, Send, X, Zap } from 'lucide-react';
 
 // ─── MODEL ANCHOR ─────────────────────────────────────────────────────────────
-// 🔁 SWAP THIS when Google migrates to 3.0 (target: end of June 2026)
-// Current:    gemini-2.5-flash-live-001
-// Upgrade to: gemini-3.0-flash-live  (confirm name at GA)
-const GEMINI_MODEL = 'models/gemini-3.1-flash-live';
+// 🔁 SWAP THIS when Google migrates to 3.5+ Live GA
+// Current:    gemini-3.1-flash-live-preview (confirmed GA model ID, May 2026)
+// Upgrade to: gemini-3.5-flash-live  (confirm name at GA)
+const GEMINI_MODEL = 'models/gemini-3.1-flash-live-preview';
 // ──────────────────────────────────────────────────────────────────────────────
 
 // Derive project ref from VITE_SUPABASE_URL — no extra env var needed
@@ -36,6 +36,8 @@ const _supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABA
 const _anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY || '';
 const _projectRef = _supabaseUrl.replace(/^https?:\/\//, '').replace(/\.supabase\.co.*$/, '');
 const GEMINI_PROXY_URL = `wss://${_projectRef}.supabase.co/functions/v1/gemini-live-proxy?apikey=${_anonKey}`;
+// HTTP fallback — used when Gemini Live WS is unavailable (key not set, quota, etc.)
+const ORACLE_HTTP_URL = `${_supabaseUrl}/functions/v1/oracle-conversation`;
 
 // PCM audio config matching Gemini Live output spec
 const SAMPLE_RATE_OUTPUT = 24000; // Hz — Gemini Live outputs 24kHz PCM
@@ -118,6 +120,18 @@ export interface OracleConversationProps {
 export interface OracleConversationHandle {
   sendTextMessage: (text: string) => void;
   disconnect: () => void;
+  getWsDebugInfo: () => GeminiLiveDebugInfo;
+}
+
+export interface GeminiLiveDebugInfo {
+  wsState: 'CONNECTING' | 'OPEN' | 'CLOSING' | 'CLOSED';
+  endpoint: 'proxy';   // 'vertex-ai' when service account lands
+  model: string;
+  connectedAt: number | null;
+  turnCount: number;
+  audioChunksReceived: number;
+  lastError: string | null;
+  recentMessages: string[]; // last 10 "[HH:MM:SS] type" entries
 }
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -134,6 +148,9 @@ const OracleConversation = forwardRef(
     const [totalCoins, setTotalCoins] = useState(0);
     const [connectionError, setConnectionError] = useState<string | null>(null);
     const [currentAlignment, setCurrentAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
+    // HTTP fallback mode — activated when Gemini Live WS fails
+    const [isHttpFallback, setIsHttpFallback] = useState(false);
+    const httpFallbackRef = useRef(false);
 
     // ─── Refs ────────────────────────────────────────────────────────────────
     const wsRef = useRef<WebSocket | null>(null);
@@ -146,6 +163,29 @@ const OracleConversation = forwardRef(
     const sessionBootedRef = useRef(false);
 
     const workerRef = useRef<Worker | null>(null);
+
+    // ─── Conversation theme accumulator (feeds portrait generation) ──────────
+    // Grows with each sacred exchange — extracted from alignment + totem level
+    const conversationThemesRef = useRef<Set<string>>(new Set(['oracle', 'cyberpunk', 'graffiti']));
+
+    // ─── Gemini Live debug tracking ─────────────────────────────────────────
+    const geminiDebugRef = useRef<GeminiLiveDebugInfo>({
+      wsState: 'CLOSED',
+      endpoint: 'proxy',
+      model: GEMINI_MODEL,
+      connectedAt: null,
+      turnCount: 0,
+      audioChunksReceived: 0,
+      lastError: null,
+      recentMessages: [],
+    });
+    const logWsMessage = (type: string) => {
+      const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+      geminiDebugRef.current.recentMessages = [
+        `[${ts}] ${type}`,
+        ...geminiDebugRef.current.recentMessages,
+      ].slice(0, 10);
+    };
 
     // ─── Initialize Worker ───────────────────────────────────────────────────
     useEffect(() => {
@@ -171,6 +211,7 @@ const OracleConversation = forwardRef(
     useImperativeHandle(ref, () => ({
       sendTextMessage: (text: string) => sendText(text),
       disconnect: () => closeConnection(),
+      getWsDebugInfo: () => ({ ...geminiDebugRef.current }),
     }));
 
     // ─── Scroll to bottom on new turns ──────────────────────────────────────
@@ -179,6 +220,11 @@ const OracleConversation = forwardRef(
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       }
     }, [turns]);
+
+    // Keep httpFallbackRef in sync with state
+    useEffect(() => {
+      httpFallbackRef.current = isHttpFallback;
+    }, [isHttpFallback]);
 
     // ─── Connect on mount ────────────────────────────────────────────────────
     useEffect(() => {
@@ -218,6 +264,16 @@ const OracleConversation = forwardRef(
           onCoinsEarned(award);
         }
 
+        // Accumulate themes from sacred engagement for portrait generation
+        if (score.alignment === 'sacred') {
+          conversationThemesRef.current.add('mystical');
+          conversationThemesRef.current.add('consciousness');
+        }
+        if (score.totemLevel >= 2) conversationThemesRef.current.add('wisdom');
+        if (score.totemLevel >= 3) conversationThemesRef.current.add('sneakar');
+        if (score.totemLevel >= 4) conversationThemesRef.current.add('neon');
+        if (score.totemLevel >= 5) conversationThemesRef.current.add('digital');
+
         setTimeout(() => setCurrentAlignment(null), 3000);
 
         if (score.totemAdvancement === 'ascend') {
@@ -235,19 +291,20 @@ const OracleConversation = forwardRef(
         }
 
         if (score.unlockTrigger) {
+          const themes = [...conversationThemesRef.current];
           if (score.unlockTrigger === 'squad_invite') {
             // Phase 3: Lore-Integrated Auth. Let the Oracle speak first, then trigger auth.
             setTimeout(() => {
               window.dispatchEvent(
                 new CustomEvent('oracle:unlock', {
-                  detail: { trigger: score.unlockTrigger, userId, sessionId },
+                  detail: { trigger: score.unlockTrigger, userId, sessionId, themes },
                 })
               );
-            }, 3000); // Wait 3 seconds for the Oracle to deliver the line
+            }, 3000);
           } else {
             window.dispatchEvent(
               new CustomEvent('oracle:unlock', {
-                detail: { trigger: score.unlockTrigger, userId, sessionId },
+                detail: { trigger: score.unlockTrigger, userId, sessionId, themes },
               })
             );
           }
@@ -263,8 +320,13 @@ const OracleConversation = forwardRef(
       try {
         const ws = new WebSocket(GEMINI_PROXY_URL);
         wsRef.current = ws;
+        geminiDebugRef.current.wsState = 'CONNECTING';
+        logWsMessage('CONNECTING');
 
         ws.onopen = () => {
+          geminiDebugRef.current.wsState = 'OPEN';
+          geminiDebugRef.current.connectedAt = Date.now();
+          logWsMessage('OPEN → sending session.config');
           ws.send(
             JSON.stringify({
               type: 'session.config',
@@ -297,11 +359,13 @@ const OracleConversation = forwardRef(
                 break;
 
               case 'server.content': {
+                logWsMessage('server.content');
                 const parts = msg.serverContent?.modelTurn?.parts || [];
                 for (const part of parts) {
                   if (part.text) currentResponseText.current += part.text;
                   // AUDIO — accumulate PCM chunks
                   if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
+                    geminiDebugRef.current.audioChunksReceived += 1;
                     const raw = atob(part.inlineData.data);
                     const bytes = new Uint8Array(raw.length);
                     for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
@@ -318,6 +382,8 @@ const OracleConversation = forwardRef(
                 }
 
                 if (msg.serverContent?.turnComplete) {
+                  geminiDebugRef.current.turnCount += 1;
+                  logWsMessage(`turnComplete #${geminiDebugRef.current.turnCount}`);
                   const fullText = currentResponseText.current;
                   const { clean, score } = parseScore(fullText);
                   if (score) applyScore(score);
@@ -351,14 +417,25 @@ const OracleConversation = forwardRef(
         };
 
         ws.onclose = () => {
+          geminiDebugRef.current.wsState = 'CLOSED';
+          logWsMessage('CLOSED');
           setIsConnected(false);
           setIsListening(false);
           stopMic();
         };
 
         ws.onerror = () => {
-          setConnectionError('Connection to Oracle failed. Please retry.');
-          setIsConnected(false);
+          geminiDebugRef.current.wsState = 'CLOSED';
+          geminiDebugRef.current.lastError = 'WebSocket connection failed';
+          logWsMessage('ERROR → activating HTTP fallback');
+          console.warn('⚠️ Gemini Live unavailable — switching to HTTP oracle fallback');
+          // Silently fall back to HTTP oracle — no error banner shown to user
+          httpFallbackRef.current = true;
+          setIsHttpFallback(true);
+          setIsConnected(true); // text input stays enabled
+          setConnectionError(null);
+          // Boot the oracle via HTTP
+          sendHttpBoot();
         };
       } catch (err: unknown) {
         setConnectionError((err as Error).message);
@@ -366,8 +443,76 @@ const OracleConversation = forwardRef(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [applyScore]);
 
+    // ─── HTTP fallback — oracle-conversation EFA ─────────────────────────────
+    // conversationHistoryRef tracks turns for HTTP context window
+    const httpHistoryRef = useRef<{ role: string; content: string }[]>([]);
+
+    const sendHttpBoot = useCallback(async () => {
+      try {
+        const r = await fetch(ORACLE_HTTP_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': _anonKey, 'Authorization': `Bearer ${_anonKey}` },
+          body: JSON.stringify({
+            userInput: 'Begin the session. Greet the seeker. You speak first.',
+            sessionId,
+            conversationHistory: [],
+            inputSource: 'boot',
+          }),
+        });
+        if (!r.ok) return;
+        const data = await r.json();
+        const text: string = data.oracleResponse ?? '';
+        if (!text) return;
+        const { clean, score } = parseScore(text);
+        if (score) applyScore(score);
+        httpHistoryRef.current.push({ role: 'oracle', content: clean });
+        setTurns((prev) => [...prev, { role: 'oracle', content: clean, timestamp: Date.now(), score: score || undefined }]);
+      } catch (e) {
+        console.error('HTTP boot error:', e);
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId, applyScore]);
+
+    const sendHttpText = useCallback(async (text: string) => {
+      setTurns((prev) => [...prev, { role: 'user', content: text, timestamp: Date.now() }]);
+      setInputText('');
+      setIsOracleSpeaking(true);
+      try {
+        const r = await fetch(ORACLE_HTTP_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'apikey': _anonKey, 'Authorization': `Bearer ${_anonKey}` },
+          body: JSON.stringify({
+            userInput: text,
+            sessionId,
+            conversationHistory: httpHistoryRef.current,
+            inputSource: 'keyboard',
+          }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        const raw: string = data.oracleResponse ?? '';
+        const { clean, score } = parseScore(raw);
+        if (score) applyScore(score);
+        httpHistoryRef.current.push({ role: 'user', content: text });
+        httpHistoryRef.current.push({ role: 'oracle', content: clean });
+        setTurns((prev) => [...prev, { role: 'oracle', content: clean, timestamp: Date.now(), score: score || undefined }]);
+      } catch (e) {
+        console.error('HTTP send error:', e);
+        setConnectionError('Oracle is unreachable. Check Supabase EFA deployment.');
+      } finally {
+        setIsOracleSpeaking(false);
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId, applyScore]);
+
     // ─── Send text to Gemini ─────────────────────────────────────────────────
     const sendText = useCallback((text: string) => {
+      // Route to HTTP fallback when Gemini Live is unavailable
+      if (httpFallbackRef.current) {
+        if (text !== '__ORACLE_BOOT__') sendHttpText(text);
+        return;
+      }
+
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
       const isBoot = text === '__ORACLE_BOOT__';
@@ -387,7 +532,7 @@ const OracleConversation = forwardRef(
           },
         })
       );
-    }, []);
+    }, [sendHttpText]);
 
     // ─── Mic ─────────────────────────────────────────────────────────────────
     const stopMic = useCallback(() => {
@@ -453,6 +598,9 @@ const OracleConversation = forwardRef(
         wsRef.current = null;
       }
       setIsConnected(false);
+      setIsHttpFallback(false);
+      httpFallbackRef.current = false;
+      httpHistoryRef.current = [];
       sessionBootedRef.current = false;
     }, [stopMic]);
 
@@ -525,6 +673,12 @@ const OracleConversation = forwardRef(
             minHeight: '32px',
           }}
         >
+          {/* Subtle fallback badge — only visible when Gemini Live is offline */}
+          {isHttpFallback && (
+            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.08em', marginRight: 'auto' }}>
+              TEXT MODE
+            </span>
+          )}
           <button
             onClick={handleCloseClick}
             style={{ background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}

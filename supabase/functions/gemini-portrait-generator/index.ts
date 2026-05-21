@@ -111,23 +111,20 @@ Deno.serve(async (req: Request) => {
     console.warn('⚠️  GOOGLE_AI_API_KEY not set — skipping Gemini enhancement');
   }
 
-  // ── STEP 2: Generate image with DALL-E 3 ──────────────────────────────────
+  // ── STEP 2a: Generate image with DALL-E 3 (if key available) ────────────────
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-  if (openaiApiKey) {
+  if (openaiApiKey && !portraitUrl) {
     try {
       const r = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Authorization': `Bearer ${openaiApiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: 'dall-e-3',
           prompt: enhancedPrompt,
           n: 1,
           size: '1024x1024',
           quality: 'standard',
-          // NOTE: `style` deliberately omitted — rejected by some API tiers
+          // NOTE: `style` deliberately omitted — rejected by API
         }),
       });
       if (!r.ok) throw new Error(`DALL-E ${r.status}: ${await r.text()}`);
@@ -141,9 +138,142 @@ Deno.serve(async (req: Request) => {
       dalleError = e instanceof Error ? e.message : String(e);
       console.error('❌ DALL-E failed:', dalleError);
     }
-  } else {
+  } else if (!openaiApiKey) {
     dalleError = 'OPENAI_API_KEY not configured';
-    console.warn('⚠️  OPENAI_API_KEY not set — skipping DALL-E generation');
+    console.warn('⚠️  OPENAI_API_KEY not set — trying Replicate');
+  }
+
+  // ── STEP 2b: Replicate flux-schnell (free tier, key already in Supabase) ────
+  const replicateToken = Deno.env.get('REPLICATE_API_TOKEN');
+  if (replicateToken && !portraitUrl) {
+    try {
+      console.log('🎨 Trying Replicate flux-schnell…');
+      // Kick off prediction
+      const startR = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${replicateToken}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'wait',   // wait up to 60s for result synchronously
+        },
+        body: JSON.stringify({
+          input: {
+            prompt: enhancedPrompt,
+            num_outputs: 1,
+            aspect_ratio: '1:1',
+            output_format: 'webp',
+            output_quality: 80,
+          },
+        }),
+      });
+      if (!startR.ok) throw new Error(`Replicate start ${startR.status}: ${await startR.text()}`);
+      const pred = await startR.json();
+
+      // If sync wait succeeded, output is already there
+      let outputUrl: string | null = pred.output?.[0] ?? null;
+
+      // Otherwise poll (max 30s)
+      if (!outputUrl && pred.id) {
+        const pollUrl = `https://api.replicate.com/v1/predictions/${pred.id}`;
+        for (let i = 0; i < 15 && !outputUrl; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          const pollR = await fetch(pollUrl, { headers: { 'Authorization': `Bearer ${replicateToken}` } });
+          const pollData = await pollR.json();
+          if (pollData.status === 'succeeded') outputUrl = pollData.output?.[0] ?? null;
+          if (pollData.status === 'failed') throw new Error(`Replicate prediction failed: ${pollData.error}`);
+        }
+      }
+
+      if (!outputUrl) throw new Error('Replicate returned no output URL');
+      portraitUrl = outputUrl;
+      dalleGenerated = true; // reuse flag — means "AI generated"
+      console.log('✅ Replicate flux-schnell portrait generated:', outputUrl.slice(0, 60));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('❌ Replicate failed:', msg);
+      if (!dalleError) dalleError = `Replicate: ${msg}`;
+    }
+  }
+
+  // ── STEP 2c: Hugging Face Inference API (key already in Supabase) ───────────
+  const hfKey = Deno.env.get('HUGGINGFACE_API_KEY');
+  if (hfKey && !portraitUrl) {
+    try {
+      console.log('🎨 Trying Hugging Face FLUX.1-schnell…');
+      const r = await fetch(
+        'https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell',
+        {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${hfKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inputs: enhancedPrompt }),
+        }
+      );
+      if (!r.ok) throw new Error(`HuggingFace ${r.status}: ${await r.text()}`);
+      const imgBuffer = await r.arrayBuffer();
+      if (imgBuffer.byteLength < 1000) throw new Error('HuggingFace returned empty image');
+      // Store in Supabase Storage if portraits bucket exists, else base64 data URL
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from('portraits')
+        .upload(`${sessionId}-${Date.now()}.jpg`, imgBuffer, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+      if (uploadErr) {
+        // Bucket may not exist — fall back to base64 data URL
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(imgBuffer)));
+        portraitUrl = `data:image/jpeg;base64,${b64}`;
+        console.log('✅ HuggingFace portrait as base64 data URL');
+      } else {
+        const { data: { publicUrl } } = supabase.storage.from('portraits').getPublicUrl(uploadData.path);
+        portraitUrl = publicUrl;
+        console.log('✅ HuggingFace portrait uploaded to Supabase Storage');
+      }
+      dalleGenerated = true;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('❌ HuggingFace failed:', msg);
+      if (!dalleError) dalleError = `HuggingFace: ${msg}`;
+    }
+  }
+
+  // ── STEP 2d: Pollinations.ai — zero config, no key, free forever ────────────
+  if (!portraitUrl) {
+    try {
+      // Pollinations serves the image directly from the URL — no API call needed.
+      // The edge function just constructs the URL; the browser fetches + caches it.
+      const seed = Math.floor(Date.now() / 1000); // unique per second
+      const encoded = encodeURIComponent(enhancedPrompt.slice(0, 400));
+      portraitUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
+      dalleGenerated = true;
+      console.log('✅ Pollinations.ai portrait URL constructed (renders on client load)');
+    } catch (e: unknown) {
+      console.error('❌ Pollinations URL construction failed:', e);
+    }
+  }
+
+  // ── STEP 2e: DeepAI text2img (add DEEPAI_API_KEY to Supabase secrets to enable) ─
+  const deepAiKey = Deno.env.get('DEEPAI_API_KEY');
+  if (deepAiKey && !portraitUrl) {
+    try {
+      console.log('🎨 Trying DeepAI text2img…');
+      const form = new FormData();
+      form.append('text', enhancedPrompt);
+      const r = await fetch('https://api.deepai.org/api/text2img', {
+        method: 'POST',
+        headers: { 'api-key': deepAiKey },
+        body: form,
+      });
+      if (!r.ok) throw new Error(`DeepAI ${r.status}: ${await r.text()}`);
+      const json = await r.json();
+      if (!json.output_url) throw new Error('No output_url in DeepAI response');
+      portraitUrl = json.output_url;
+      dalleGenerated = true;
+      console.log('✅ DeepAI portrait generated');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('❌ DeepAI failed:', msg);
+      if (!dalleError) dalleError = `DeepAI: ${msg}`;
+    }
   }
 
   // ── STEP 3: Themed static fallback ────────────────────────────────────────
@@ -187,9 +317,9 @@ Deno.serve(async (req: Request) => {
       ...(googleAiError && { googleAiError }),
       ...(dalleError && { dalleError }),
       apiUsed: googleAiGenerated && dalleGenerated
-        ? 'Gemini 2.5 Flash + DALL-E 3'
+        ? 'Gemini 2.5 Flash + AI image gen'
         : dalleGenerated
-          ? 'DALL-E 3'
+          ? 'AI image gen'
           : 'Themed static fallback',
     }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

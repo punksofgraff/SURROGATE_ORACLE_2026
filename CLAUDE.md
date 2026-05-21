@@ -51,8 +51,15 @@ Browser
   │    ├─ PRIMARY: Gemini Live WS   → wss://<supabase>/functions/v1/gemini-live-proxy
   │    └─ FALLBACK: Claude HTTP     → https://<supabase>/functions/v1/oracle-conversation
   │
-  └─ Portrait generation
-       triggered by oracle:unlock event → supabase.functions.invoke('gemini-portrait-generator')
+  └─ Portrait generation (cascade, first success wins)
+       oracle:unlock → gemini-portrait-generator
+       1. Gemini 2.5 Flash prompt enhance
+       2a. DALL-E 3 (needs OPENAI_API_KEY)
+       2b. Replicate flux-schnell ✅ active
+       2c. HuggingFace FLUX.1-schnell (HUGGINGFACE_API_KEY in Supabase)
+       2d. Pollinations.ai (zero config, URL-based)
+       2e. DeepAI (needs DEEPAI_API_KEY)
+       3. Unsplash themed fallback
 
 Supabase Edge Functions (Deno)
   gemini-live-proxy          WS proxy + message format translation (session.config→setup, etc.)

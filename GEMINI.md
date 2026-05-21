@@ -41,10 +41,14 @@ This is the canonical team knowledge base for SURROGATE:ORACLE. Update it when a
 - Direct DOM style writes (no React state) — zero re-render overhead
 
 ### Portrait Generation
-`gemini-portrait-generator` EFA pipeline:
-1. Gemini 2.5 Flash (`gemini-2.5-flash:generateContent`) → enriches theme prompt (280 chars max)
-2. DALL-E 3 (`dall-e-3`) → generates image — **NO `style` param** (rejected by API)
-3. Themed Unsplash fallback if either AI fails
+`gemini-portrait-generator` EFA cascade (first success wins):
+1. **Gemini 2.5 Flash** — enriches theme prompt to vivid DALL-E prompt (280 chars)
+2a. **DALL-E 3** — if `OPENAI_API_KEY` set. NO `style` param (rejected by API)
+2b. **Replicate `flux-schnell`** — ✅ active, key in Supabase. Fast, free tier
+2c. **Hugging Face `FLUX.1-schnell`** — if `HUGGINGFACE_API_KEY` set. Binary → Supabase Storage or base64
+2d. **Pollinations.ai** — zero config, no key, URL-based (`image.pollinations.ai/prompt/...`)
+2e. **DeepAI** — if `DEEPAI_API_KEY` set
+3. **Themed Unsplash fallback** — last resort, always succeeds
 
 Triggered by `portrait_unlock` event from OracleConversation when totem threshold hit. Themes accumulate per-conversation in `conversationThemesRef`.
 

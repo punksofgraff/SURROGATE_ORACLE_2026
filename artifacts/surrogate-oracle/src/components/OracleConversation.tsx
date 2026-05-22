@@ -663,6 +663,7 @@ const OracleConversation = forwardRef(
     // Terminal aesthetic: graffiti alley readout, not a chat bubble app.
     return (
       <div
+        className="oc-panel"
         style={{
           position: 'fixed',
           bottom: 0,
@@ -673,7 +674,6 @@ const OracleConversation = forwardRef(
           display: 'flex',
           flexDirection: 'column',
           height: '58vh',
-          // Deep dark panel — blends into the alley floor
           background: 'linear-gradient(180deg, rgba(0,3,8,0) 0%, rgba(0,3,8,0.97) 8%)',
           borderTop: '1px solid rgba(0,255,136,0.18)',
           boxShadow: '0 -4px 40px rgba(0,255,136,0.08), 0 -1px 0 rgba(176,38,255,0.12)',
@@ -701,14 +701,14 @@ const OracleConversation = forwardRef(
               display: 'inline-block', flexShrink: 0,
             }} />
             <span style={{
-              fontSize: '9px', letterSpacing: '0.18em', textTransform: 'uppercase',
+              fontSize: 'clamp(0.62rem, 1.2vw, 0.75rem)', letterSpacing: '0.18em', textTransform: 'uppercase',
               color: isHttpFallback ? 'rgba(176,38,255,0.7)' : 'rgba(0,255,136,0.6)',
             }}>
               {isHttpFallback ? 'TEXT CHANNEL' : isConnected ? 'GEMINI LIVE' : 'CONNECTING…'}
             </span>
             {currentAlignment && (
               <span style={{
-                fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase',
+                fontSize: 'clamp(0.62rem, 1.2vw, 0.75rem)', letterSpacing: '0.12em', textTransform: 'uppercase',
                 color: alignmentColor(currentAlignment),
                 opacity: 0.9,
               }}>
@@ -720,21 +720,21 @@ const OracleConversation = forwardRef(
           {/* Right: totem level + close */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {currentTotemLevel > 0 && (
-              <span style={{ fontSize: '9px', color: 'rgba(234,179,8,0.6)', letterSpacing: '0.1em' }}>
+              <span style={{ fontSize: 'clamp(0.62rem, 1.2vw, 0.75rem)', color: 'rgba(234,179,8,0.6)', letterSpacing: '0.1em' }}>
                 LVL {currentTotemLevel} · {totemLabel(currentTotemLevel).toUpperCase()}
               </span>
             )}
             <button
               onClick={handleCloseClick}
+              aria-label="Exit the Oracle"
               style={{
                 background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
                 color: 'rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center',
-                fontSize: '9px', letterSpacing: '0.15em', gap: '4px',
+                fontSize: 'clamp(0.62rem, 1.2vw, 0.75rem)', letterSpacing: '0.15em', gap: '4px',
                 transition: 'color 0.2s',
               }}
               onMouseEnter={e => (e.currentTarget.style.color = '#ff4444')}
               onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.35)')}
-              aria-label="Exit oracle"
             >
               <X size={12} /> EXIT
             </button>
@@ -752,17 +752,18 @@ const OracleConversation = forwardRef(
                 padding: '6px 14px',
                 background: 'rgba(234,179,8,0.08)',
                 borderBottom: '1px solid rgba(234,179,8,0.2)',
-                fontSize: '10px', color: '#eab308', letterSpacing: '0.08em',
+                fontSize: 'clamp(0.65rem, 1.2vw, 0.78rem)', color: '#eab308', letterSpacing: '0.08em',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}
             >
               <span>⚠ {connectionError}</span>
               <button
                 onClick={connectToGemini}
+                aria-label="Retry connection"
                 style={{
                   background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.3)',
                   color: '#eab308', borderRadius: '3px', padding: '2px 8px',
-                  fontSize: '10px', cursor: 'pointer', letterSpacing: '0.1em',
+                  fontSize: 'clamp(0.65rem, 1.2vw, 0.78rem)', cursor: 'pointer', letterSpacing: '0.1em',
                 }}
               >
                 RETRY
@@ -794,10 +795,11 @@ const OracleConversation = forwardRef(
             >
               {/* Role label */}
               <span style={{
-                fontSize: '8px', letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '3px',
-                color: turn.role === 'oracle' ? 'rgba(0,255,136,0.45)' : 'rgba(255,255,255,0.3)',
+                fontSize: 'clamp(0.6rem, 1.1vw, 0.72rem)', letterSpacing: '0.2em',
+                textTransform: 'uppercase', marginBottom: '4px',
+                color: turn.role === 'oracle' ? 'rgba(0,255,136,0.55)' : 'rgba(255,255,255,0.38)',
               }}>
-                {turn.role === 'oracle' ? '◆ ORACLE' : 'YOU >'}
+                {turn.role === 'oracle' ? '◆ ORACLE' : 'YOU ›'}
               </span>
 
               {/* Message body */}
@@ -805,27 +807,27 @@ const OracleConversation = forwardRef(
                 data-role={turn.role}
                 style={{
                   maxWidth: '88%',
-                  padding: '8px 12px',
+                  padding: '9px 13px',
                   borderRadius: turn.role === 'oracle' ? '0 10px 10px 10px' : '10px 0 10px 10px',
                   background: turn.role === 'oracle'
-                    ? 'rgba(0,255,136,0.05)'
-                    : 'rgba(255,255,255,0.04)',
-                  borderLeft: turn.role === 'oracle' ? '2px solid rgba(0,255,136,0.35)' : 'none',
-                  borderRight: turn.role !== 'oracle' ? '2px solid rgba(255,255,255,0.15)' : 'none',
-                  fontSize: '13px',
-                  color: turn.role === 'oracle' ? '#e8f5e9' : 'rgba(255,255,255,0.75)',
-                  lineHeight: 1.55,
-                  letterSpacing: '0.015em',
+                    ? 'rgba(0,255,136,0.06)'
+                    : 'rgba(255,255,255,0.05)',
+                  borderLeft: turn.role === 'oracle' ? '2px solid rgba(0,255,136,0.40)' : 'none',
+                  borderRight: turn.role !== 'oracle' ? '2px solid rgba(255,255,255,0.18)' : 'none',
+                  fontSize: 'clamp(0.8rem, 1.5vw, 0.9rem)',
+                  color: turn.role === 'oracle' ? '#ddf5e8' : 'rgba(255,255,255,0.80)',
+                  lineHeight: 1.62,
+                  letterSpacing: '0.018em',
                 }}
               >
                 {turn.content}
               </div>
 
-              {/* Score badge (system revelation lines) */}
+              {/* Score badge */}
               {turn.score && turn.score.coinAward > 0 && (
                 <span style={{
-                  fontSize: '8px', marginTop: '3px', letterSpacing: '0.12em',
-                  color: turn.score.alignment === 'sacred' ? 'rgba(0,255,136,0.5)' : 'rgba(255,68,68,0.4)',
+                  fontSize: 'clamp(0.6rem, 1.1vw, 0.70rem)', marginTop: '4px', letterSpacing: '0.14em',
+                  color: turn.score.alignment === 'sacred' ? 'rgba(0,255,136,0.6)' : 'rgba(255,68,68,0.45)',
                 }}>
                   {turn.score.alignment === 'sacred' ? `+${turn.score.coinAward} ◆` : ''}
                 </span>
@@ -842,7 +844,7 @@ const OracleConversation = forwardRef(
                 exit={{ opacity: 0 }}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0' }}
               >
-                <span style={{ fontSize: '8px', color: 'rgba(0,255,136,0.4)', letterSpacing: '0.18em' }}>◆ ORACLE</span>
+                <span style={{ fontSize: 'clamp(0.6rem, 1.1vw, 0.72rem)', color: 'rgba(0,255,136,0.5)', letterSpacing: '0.18em' }}>◆ ORACLE</span>
                 <div style={{ display: 'flex', gap: '3px' }}>
                   {[0, 1, 2].map((i) => (
                     <motion.div
@@ -880,6 +882,7 @@ const OracleConversation = forwardRef(
               type="button"
               onClick={toggleMic}
               disabled={!isConnected}
+              aria-label={isListening ? 'Stop listening' : 'Start voice input'}
               title={isListening ? 'Stop listening' : 'Start listening'}
               style={{
                 background: isListening ? 'rgba(0,255,136,0.15)' : 'transparent',
@@ -907,8 +910,9 @@ const OracleConversation = forwardRef(
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder={isConnected ? 'say something to the oracle...' : 'connecting...'}
+            placeholder={isConnected ? 'speak your truth, seeker…' : 'signal locating…'}
             disabled={!isConnected || isListening}
+            aria-label="Message to the Oracle"
             style={{
               flex: 1,
               background: 'transparent',
@@ -926,13 +930,15 @@ const OracleConversation = forwardRef(
           <button
             type="submit"
             disabled={!isConnected || !inputText.trim()}
+            aria-label="Send message"
             style={{
               background: 'none', border: 'none',
               cursor: inputText.trim() && isConnected ? 'pointer' : 'default',
               color: inputText.trim() && isConnected ? '#00ff88' : 'rgba(255,255,255,0.15)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               padding: '6px 4px', flexShrink: 0,
-              transition: 'color 0.2s',
+              transition: 'color 0.2s, filter 0.2s',
+              filter: inputText.trim() && isConnected ? 'drop-shadow(0 0 4px rgba(0,255,136,0.5))' : 'none',
             }}
           >
             <Send size={14} />

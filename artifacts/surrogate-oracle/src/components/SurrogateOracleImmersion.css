@@ -452,12 +452,12 @@
   animation: ghost-oracle 12s ease-in-out 4s infinite;
 }
 
-/* TERMINAL — CRT screen warming up, face slowly resolves */
+/* TERMINAL — CRT screen warming up, face resolves in from the noise */
 .oracle-stage[data-oracle-state="terminal"] .oracle-avatar-img {
-  opacity: 0.42;
-  filter: brightness(0.55) grayscale(0.45) contrast(1.2);
-  transform: scale(0.96);
-  animation: crt-static 0.18s steps(1) infinite;
+  opacity: 0.62;
+  filter: brightness(0.65) grayscale(0.35) contrast(1.25);
+  transform: scale(0.98);
+  animation: crt-static-warm 0.22s steps(1) infinite;
 }
 
 /* AWAKENED — oracle is fully present, pulsing with energy */
@@ -934,13 +934,15 @@
   }
 }
 
-/* CRT warming static — plays during terminal phase */
-@keyframes crt-static {
-  0%   { opacity: 0.42; filter: brightness(0.55) grayscale(0.45) contrast(1.2); }
-  25%  { opacity: 0.38; filter: brightness(0.50) grayscale(0.55) contrast(1.35) blur(0.4px); }
-  50%  { opacity: 0.45; filter: brightness(0.60) grayscale(0.40) contrast(1.15); }
-  75%  { opacity: 0.35; filter: brightness(0.48) grayscale(0.60) contrast(1.40) blur(0.6px); }
-  100% { opacity: 0.42; filter: brightness(0.55) grayscale(0.45) contrast(1.2); }
+/* CRT warming static — face fights through the noise during terminal phase */
+@keyframes crt-static-warm {
+  0%   { opacity: 0.62; filter: brightness(0.65) grayscale(0.35) contrast(1.25); }
+  20%  { opacity: 0.45; filter: brightness(0.40) grayscale(0.70) contrast(1.50) blur(0.5px); }
+  35%  { opacity: 0.72; filter: brightness(0.80) grayscale(0.20) contrast(1.10); }
+  55%  { opacity: 0.38; filter: brightness(0.35) grayscale(0.80) contrast(1.60) blur(0.8px); }
+  70%  { opacity: 0.90; filter: brightness(1.10) grayscale(0.05) contrast(1.05) drop-shadow(0 0 10px rgba(0,255,136,0.5)); }
+  85%  { opacity: 0.48; filter: brightness(0.45) grayscale(0.65) contrast(1.45) blur(0.3px); }
+  100% { opacity: 0.62; filter: brightness(0.65) grayscale(0.35) contrast(1.25); }
 }
 
 /* Branding blast — chromatic warp resolves as the oracle title appears */
@@ -1140,24 +1142,58 @@
   100% { transform: translateX(-5px) translateY(-10px); }
 }
 
-/* ── Mobile / small-screen tightening ───────────────────────────────────── */
+/* ── Tablet — fragments below the fold hide behind the conversation panel ── */
+@media (max-width: 768px) {
+  /* E (bottom: 24%) and F (bottom: 20%) fall inside the 58vh panel zone */
+  .oracle-sf--e,
+  .oracle-sf--f { display: none; }
+}
+
+/* ── Mobile — narrow viewport, cabinet fills most of the width ─────────── */
 @media (max-width: 480px) {
   .oracle-bottom-bar {
     gap: clamp(28px, 8vw, 60px);
     bottom: 3%;
   }
+  .oracle-tap-prompt { top: -80px; }
+  .oracle-branding   { top: 4%; }
+  .oracle-touch-hint { font-size: 0.55rem; }
 
-  .oracle-tap-prompt {
-    top: -80px;
+  /* Signal fragments:
+     Cabinet = 240px in ~390px viewport = ~62% of width.
+     Only A (top-centre) and C (top-right) survive without overlap.
+     B (left mid) and D (right mid) are too close to cabinet edges.
+     E and F are already hidden by the tablet breakpoint.            */
+  .oracle-sf--a {
+    font-size: clamp(0.78rem, 5.5vw, 1.2rem);
+    white-space: normal;
+    width: 78vw;
+    text-align: center;
+    top: 7%;
+    left: 50%;
   }
-
-  .oracle-branding {
-    top: 4%;
+  .oracle-sf--c {
+    font-size: 0.55rem;
+    top: 7%;
+    right: 3%;
+    letter-spacing: 0.12em;
   }
+  .oracle-sf--b,
+  .oracle-sf--d { display: none; }
 
-  /* Mobile: fewer fragments visible — scale them down */
-  .oracle-sf--a { font-size: clamp(0.9rem, 6vw, 1.6rem); white-space: normal; text-align: center; }
-  .oracle-sf--e { font-size: clamp(0.75rem, 4.5vw, 1.2rem); }
-  .oracle-sf--b, .oracle-sf--d { display: none; }
+  /* Lore terminal on mobile: tighter padding, smaller first line */
+  .oracle-terminal-overlay { padding: 20px 5vw; }
+  .oracle-lore-text        { font-size: clamp(0.9rem, 4.5vw, 1.4rem); }
+  .oracle-lore-line:first-child { font-size: clamp(1rem, 5vw, 1.7rem); }
+
+  /* Conversation panel — limit height on short phones */
+  .oc-panel { height: min(58vh, 340px) !important; }
+}
+
+/* ── Very short screens (landscape phones) ─────────────────────────────── */
+@media (max-height: 500px) {
+  .oc-panel { height: 52vh !important; }
+  .oracle-sf--a, .oracle-sf--b, .oracle-sf--c,
+  .oracle-sf--d, .oracle-sf--e, .oracle-sf--f { display: none; }
 }
 

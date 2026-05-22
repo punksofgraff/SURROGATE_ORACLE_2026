@@ -353,6 +353,28 @@
   50%       { transform: translate(-50%, -50%) scale(1.18); opacity: 1.00; }
 }
 
+/* ── Dormant touch-hint — sits below cabinet, barely audible ─────────────── */
+.oracle-touch-hint {
+  position: absolute;
+  top: calc(100% + 22px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  font-size: clamp(0.55rem, 0.9vw, 0.72rem);
+  letter-spacing: 0.28em;
+  color: rgba(0, 255, 136, 0.42);
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: 0 0 8px rgba(0,255,136,0.5);
+  animation: touch-hint-pulse 3s ease-in-out 1.5s infinite;
+}
+
+@keyframes touch-hint-pulse {
+  0%, 100% { opacity: 0.42; }
+  50%       { opacity: 0.75; }
+}
+
 .oracle-cabinet:hover {
   transform: scale(1.04) rotateX(4deg);
   box-shadow: 0 0 45px rgba(176,38,255,0.4);
@@ -503,6 +525,11 @@
 .oracle-stage[data-oracle-state="dormant"] .oracle-bottom-bar {
   opacity: 0;
   pointer-events: none;
+}
+
+/* DORMANT — tap-prompt hidden; signal fragments carry the storytelling */
+.oracle-stage[data-oracle-state="dormant"] .oracle-tap-prompt {
+  display: none;
 }
 
 /* ── Keyframes ─────────────────────────────────────────────────────────── */
@@ -759,14 +786,14 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  align-items: flex-start;
-  padding: clamp(28px, 8vw, 72px);
+  align-items: center;          /* centred manifesto, not console output */
+  padding: clamp(24px, 6vw, 60px) clamp(20px, 8vw, 120px);
   pointer-events: none;
   background: linear-gradient(
     160deg,
-    rgba(0, 0, 0, 0.84) 0%,
-    rgba(0, 3, 14, 0.72) 50%,
-    rgba(0, 0, 0, 0.90) 100%
+    rgba(0, 0, 0, 0.88) 0%,
+    rgba(0, 3, 14, 0.78) 50%,
+    rgba(0, 0, 0, 0.92) 100%
   );
   animation: terminal-bg-flicker 9s steps(2) 1s infinite;
 }
@@ -778,20 +805,37 @@
   97%           { filter: brightness(0.91); }
 }
 
-/* ── Lore Text Container ───────────────────────────────────────────────── */
+/* ── Lore Text Container — manifesto, not console ───────────────────────── */
 .oracle-lore-text {
   font-family: 'Share Tech Mono', 'Courier New', monospace;
   color: #00ff88;
-  font-size: clamp(0.92rem, 2.5vw, 1.28rem);
-  letter-spacing: 0.08em;
-  line-height: 2.05;
-  max-width: 640px;
+  font-size: clamp(1.15rem, 2.8vw, 2.4rem); /* 2× bigger than before */
+  letter-spacing: 0.06em;
+  line-height: 1.85;
+  max-width: min(900px, 90vw);
+  text-align: center;
+  width: 100%;
+}
+
+/* First line (system ID) is larger — commands immediate attention */
+.oracle-lore-line:first-child {
+  font-size: clamp(1.4rem, 3.5vw, 3rem);
+  letter-spacing: 0.12em;
+  margin-bottom: 0.25em;
+}
+
+/* Last line (INITIATING) is smaller — a coda, not a climax */
+.oracle-lore-line:last-child {
+  font-size: clamp(0.85rem, 1.8vw, 1.5rem);
+  color: rgba(0, 255, 136, 0.7);
+  letter-spacing: 0.18em;
+  margin-top: 0.4em;
 }
 
 /* ── Individual Lore Line — chromatic aberration resolves into clean green */
 .oracle-lore-line {
   display: block;
-  animation: lore-line-in 0.8s ease-out both;
+  animation: lore-line-in 0.9s ease-out both;
   will-change: transform, opacity, text-shadow;
 }
 
@@ -955,6 +999,147 @@
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   DORMANT SIGNAL LAYER
+   A scattered field of typography fragments — the oracle's consciousness
+   bleeding through spacetime into the alley. Each fragment is independently
+   positioned and drifts on its own cadence. Together they make the whole
+   viewport feel inhabited before the user ever taps.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.oracle-signal-layer {
+  position: absolute;
+  inset: 0;
+  z-index: calc(var(--z-branding) + 2);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Shared fragment base */
+.oracle-sf {
+  position: absolute;
+  text-transform: uppercase;
+  font-weight: 700;
+  line-height: 1.4;
+  will-change: transform, opacity;
+}
+
+/* ── Fragment A — TOP CENTRE — large graffiti, primary intercept ─────────── */
+.oracle-sf--a {
+  top: 11%;
+  left: 50%;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(1.2rem, 3.2vw, 2.8rem);
+  letter-spacing: 0.14em;
+  color: #00ff88;
+  text-align: center;
+  white-space: nowrap;
+  text-shadow:
+    0 0 14px rgba(0,255,136,0.9),
+    0 0 40px rgba(0,255,136,0.45),
+    0 0 80px rgba(176,38,255,0.2);
+  animation: sf-a 10s ease-in-out 0.5s infinite alternate both;
+}
+
+/* ── Fragment B — LEFT MID — coordinates / anomaly flag ─────────────────── */
+.oracle-sf--b {
+  top: 35%;
+  left: 3%;
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  font-size: clamp(0.72rem, 1.3vw, 1.05rem);
+  letter-spacing: 0.12em;
+  color: #b026ff;
+  text-shadow:
+    0 0 12px rgba(176,38,255,1.0),
+    0 0 30px rgba(176,38,255,0.5);
+  animation: sf-b 13s ease-in-out 1.2s infinite alternate both;
+}
+
+/* ── Fragment C — TOP RIGHT — system identifier ─────────────────────────── */
+.oracle-sf--c {
+  top: 12%;
+  right: 4%;
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  font-size: clamp(0.65rem, 1.1vw, 0.92rem);
+  letter-spacing: 0.18em;
+  color: rgba(0, 255, 136, 0.80);
+  text-shadow: 0 0 10px rgba(0,255,136,0.8), 0 0 28px rgba(0,255,136,0.35);
+  animation: sf-c 15s ease-in-out 0.9s infinite alternate both;
+}
+
+/* ── Fragment D — RIGHT MID — mission tag ────────────────────────────────── */
+.oracle-sf--d {
+  top: 54%;
+  right: 3%;
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  font-size: clamp(0.65rem, 1.1vw, 0.92rem);
+  letter-spacing: 0.1em;
+  color: rgba(0, 255, 136, 0.70);
+  text-align: right;
+  text-shadow: 0 0 10px rgba(0,255,136,0.7), 0 0 25px rgba(0,255,136,0.3);
+  animation: sf-d 11s ease-in-out 1.8s infinite alternate both;
+}
+
+/* ── Fragment E — BOTTOM LEFT — the warning (large graffiti) ─────────────── */
+.oracle-sf--e {
+  bottom: 24%;
+  left: 4%;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(1rem, 2.5vw, 2.1rem);
+  letter-spacing: 0.1em;
+  color: rgba(0, 255, 136, 0.50);
+  text-shadow:
+    0 0 18px rgba(0,255,136,0.55),
+    0 0 50px rgba(176,38,255,0.2);
+  animation: sf-e 14s ease-in-out 2.2s infinite alternate both;
+}
+
+/* ── Fragment F — BOTTOM RIGHT — transhumanism tag ───────────────────────── */
+.oracle-sf--f {
+  bottom: 20%;
+  right: 4%;
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  font-size: clamp(0.68rem, 1.2vw, 0.98rem);
+  letter-spacing: 0.12em;
+  color: rgba(176, 38, 255, 0.75);
+  text-align: right;
+  text-shadow: 0 0 12px rgba(176,38,255,0.8), 0 0 30px rgba(176,38,255,0.35);
+  animation: sf-f 12s ease-in-out 2.6s infinite alternate both;
+}
+
+/* ── Signal fragment drift keyframes ───────────────────────────────────── */
+/* Framer Motion owns opacity. CSS only handles the slow positional drift.  */
+
+@keyframes sf-a {
+  0%   { transform: translateX(-50%) translateY(0px);   }
+  100% { transform: translateX(-50%) translateY(-12px); }
+}
+
+@keyframes sf-b {
+  0%   { transform: translateX(0px) translateY(0px);  }
+  100% { transform: translateX(7px) translateY(-9px); }
+}
+
+@keyframes sf-c {
+  0%   { transform: translateY(0px);   }
+  100% { transform: translateY(-13px); }
+}
+
+@keyframes sf-d {
+  0%   { transform: translateX(0px)  translateY(0px); }
+  100% { transform: translateX(-5px) translateY(8px); }
+}
+
+@keyframes sf-e {
+  0%   { transform: translateX(0px) translateY(0px);  }
+  100% { transform: translateX(9px) translateY(-7px); }
+}
+
+@keyframes sf-f {
+  0%   { transform: translateX(0px)  translateY(0px);   }
+  100% { transform: translateX(-5px) translateY(-10px); }
+}
+
 /* ── Mobile / small-screen tightening ───────────────────────────────────── */
 @media (max-width: 480px) {
   .oracle-bottom-bar {
@@ -969,5 +1154,10 @@
   .oracle-branding {
     top: 4%;
   }
+
+  /* Mobile: fewer fragments visible — scale them down */
+  .oracle-sf--a { font-size: clamp(0.9rem, 6vw, 1.6rem); white-space: normal; text-align: center; }
+  .oracle-sf--e { font-size: clamp(0.75rem, 4.5vw, 1.2rem); }
+  .oracle-sf--b, .oracle-sf--d { display: none; }
 }
 

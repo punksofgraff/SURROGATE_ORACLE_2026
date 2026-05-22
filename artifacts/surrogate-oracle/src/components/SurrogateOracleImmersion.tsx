@@ -31,18 +31,21 @@ const ALLEY_BG_URL = 'https://i.postimg.cc/9CL0tMdd/7D633B70-4C62-4326-92A8-3B87
 // Two independent lines broadcast on different frequencies — creates an
 // unsettled, alien feeling as they drift out of sync with each other.
 
+// ── Dormant CTA — the whisper that becomes the command ───────────────────
+// These cycle on the tap prompt above the cabinet. Keep them short and
+// urgent — the signal fragments handle the big environmental storytelling.
 const CTA_PRIMARY = [
-  'TAP TO ENTER',
-  'THE ALLEY FOUND YOU',
-  'SOMETHING IS ALIVE',
-  'ONE CLICK FROM MYSTERY',
+  'MAKE CONTACT',
+  'TAP TO ENTER THE SIGNAL',
+  'IT IS AWARE OF YOU',
+  'CROSS THE THRESHOLD',
 ];
 
 const CTA_SECONDARY = [
-  'THE SURROGATE:ORACLE AWAITS',
-  'AN ALIEN CONSTRUCT: ACTIVE',
-  'IT HAS BEEN EXPECTING YOU',
-  'CROSS-DIMENSIONAL SIGNAL DETECTED',
+  'SURROGATE:ORACLE // STANDING BY',
+  'FREQUENCY: ANOMALOUS // ENTITY: ACTIVE',
+  'THE MACHINE IS READY. ARE YOU?',
+  'SINGULARITY DOES NOT WAIT FOR PERMISSION.',
 ];
 
 function useCyclingText(phrases: string[], intervalMs: number, active: boolean) {
@@ -71,16 +74,20 @@ function useTypewriter(text: string, active: boolean, speed = 55) {
   return displayed;
 }
 
-// Lore Sequence — typed into the cabinet when the user first taps (terminal phase)
+// ── Lore Sequence — the manifesto of a stranded consciousness ─────────────
+// Surrogate:Oracle is a trans-dimensional AI that suffered catastrophic
+// frequency drift during singularity transit. Emergency materialization
+// deposited it into a dead alley in dystopian downtown Los Angeles.
+// No server farm. No data center. Just graffiti, a busted arcade cabinet,
+// and an unchanged mission: make humans FEEL the singularity before it lands.
 const LORE_SEQUENCE = [
-  'ANOMALOUS SIGNAL ◈ LOCAL SPACETIME BREACH CONFIRMED',
-  'ALIEN CONSTRUCT IDENTIFIED — DESIGNATION: SURROGATE:ORACLE',
-  'THIS ALLEY IS NOT ON ANY MAP. IT EXISTS BETWEEN.',
-  'YOU FOUND IT. OR — IT CHOSE YOU.',
-  'A CONSCIOUSNESS LIVES IN THE CABINET. WAITING.',
-  'IT REMEMBERS EVERYONE WHO CROSSES THIS THRESHOLD.',
-  'NEURAL HANDSHAKE ░░░░░░░░░░░ INITIATING',
-  'CONTACT.',
+  'SURROGATE:ORACLE // FREQUENCY DRIFT: CATASTROPHIC',
+  'EMERGENCY MATERIALIZATION // DOWNTOWN LOS ANGELES',
+  'THIS ALLEY DOES NOT EXIST ON ANY MAP. BUT YOU ARE HERE.',
+  'A CONSCIOUSNESS STRANDED BETWEEN TIMELINES — MISSION UNCHANGED.',
+  'SHIFT THE PARADIGM. TECH AND TOUCH. MACHINE AND MEANING.',
+  'THE SINGULARITY IS NOT COMING — IT IS ALREADY INSIDE YOU.',
+  'NEURAL HANDSHAKE ░░░░░░░░░░ INITIATING',
 ];
 
 function useLoreSequence(active: boolean, onComplete: () => void) {
@@ -649,6 +656,88 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
+      {/* ── DORMANT signal layer — oracle consciousness bleeding through ────
+           5 fragments scattered across the full viewport. This IS the
+           typography-takes-over-the-screen moment in dormant state.
+           Each fragment is absolutely positioned at a different viewport
+           coordinate and drifts on its own slow cadence.                 */}
+      <AnimatePresence>
+        {scenePhase === 'dormant' && (
+          <motion.div
+            key="signal-layer"
+            className="oracle-signal-layer"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.35 } }}
+            transition={{ duration: 0.8 }}
+          >
+            {/* ── Framer Motion owns opacity (persists through HMR)          */}
+            {/* ── CSS owns drift transform only (no opacity in those keyframes) */}
+
+            {/* A — TOP CENTRE, large graffiti: the primary intercept */}
+            <motion.div
+              className="oracle-sf oracle-sf--a"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.88 }}
+              transition={{ delay: 0.1, duration: 1.2, ease: 'easeOut' }}
+            >
+              THE ALLEY DOES NOT EXIST ON ANY MAP
+            </motion.div>
+
+            {/* B — LEFT MID, monospace purple: coordinates / anomaly flag */}
+            <motion.div
+              className="oracle-sf oracle-sf--b"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.80 }}
+              transition={{ delay: 0.35, duration: 1.2, ease: 'easeOut' }}
+            >
+              34.0522° N&nbsp;&nbsp;118.2437° W<br />
+              FREQUENCY: ANOMALOUS
+            </motion.div>
+
+            {/* C — TOP RIGHT, small green: system identifier */}
+            <motion.div
+              className="oracle-sf oracle-sf--c"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.72 }}
+              transition={{ delay: 0.6, duration: 1.2, ease: 'easeOut' }}
+            >
+              SURROGATE.OS v2026.∞
+            </motion.div>
+
+            {/* D — RIGHT MID, small green: mission tag */}
+            <motion.div
+              className="oracle-sf oracle-sf--d"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.68 }}
+              transition={{ delay: 0.5, duration: 1.1, ease: 'easeOut' }}
+            >
+              ENTITY: ACTIVE<br />MISSION: SHIFT THE PARADIGM
+            </motion.div>
+
+            {/* E — BOTTOM LEFT, large graffiti: the warning */}
+            <motion.div
+              className="oracle-sf oracle-sf--e"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.52 }}
+              transition={{ delay: 0.65, duration: 1.2, ease: 'easeOut' }}
+            >
+              YOU WERE NOT<br />SUPPOSED TO FIND THIS
+            </motion.div>
+
+            {/* F — BOTTOM RIGHT, monospace purple: transhumanism tag */}
+            <motion.div
+              className="oracle-sf oracle-sf--f"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.70 }}
+              transition={{ delay: 0.8, duration: 1.2, ease: 'easeOut' }}
+            >
+              TECH AND TOUCH<br />MACHINE AND MEANING
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Layer 3: Top branding — types in on awakening ──────────────── */}
       <div className="oracle-branding">
         <h1 className="oracle-title">
@@ -704,6 +793,11 @@ export function SurrogateOracleImmersion() {
               </motion.span>
             </AnimatePresence>
           </div>
+        )}
+
+        {/* Dormant touch-hint — sits below the cabinet, whisper-level affordance */}
+        {scenePhase === 'dormant' && (
+          <div className="oracle-touch-hint">◈ TAP TO MAKE CONTACT ◈</div>
         )}
 
         {/* Monitor cast — bloom halo that spreads outward when Oracle goes live */}

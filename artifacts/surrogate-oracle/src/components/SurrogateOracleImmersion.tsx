@@ -18,6 +18,7 @@ import { CultureCoinInlineDisplay } from './CultureCoinInlineDisplay';
 import { ConnectingAnimation } from './ConnectingAnimation';
 import OracleConversation, { OracleConversationHandle } from './OracleConversation';
 import { useAtmosphere } from '../hooks/useAtmosphere';
+import { useParallax } from '../hooks/useParallax';
 import { VisemeDetector } from '../lib/visemeDetector';
 import './SurrogateOracleImmersion.css';
 
@@ -222,7 +223,8 @@ export function SurrogateOracleImmersion() {
   const avatarVideoRef = useRef<HTMLVideoElement>(null);
   const atmosphereCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  useAtmosphere(atmosphereCanvasRef, isAlive, oracleAlignment);
+  useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment);
+  useParallax(scenePhase !== 'terminal');
 
   // Keep isDecartActiveRef in sync
   useEffect(() => { isDecartActiveRef.current = isDecartActive; }, [isDecartActive]);
@@ -615,6 +617,7 @@ export function SurrogateOracleImmersion() {
       data-oracle-state={scenePhase}
       data-oracle-alignment={oracleAlignment || 'neutral'}
       data-debug={oracleState.debugMode}
+      data-activating={isActivating ? 'true' : undefined}
     >
       {/* Headless clients */}
       <DecartClient ref={decartClientRef} />
@@ -626,21 +629,11 @@ export function SurrogateOracleImmersion() {
         style={{ '--bg-url': `url('${ALLEY_BG_URL}')` } as React.CSSProperties}
       />
 
-      {/* ── Layer 2: Atmosphere Canvas (only when awakened) ────────────── */}
-      <canvas
-        ref={atmosphereCanvasRef}
-        className="atmosphere-layer"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          pointerEvents: 'none',
-          zIndex: 'var(--z-atmosphere)',
-          opacity: isAlive ? 1 : 0,
-          transition: 'opacity 2s ease-in-out'
-        }}
-      />
+      {/* ── Layer 2: Atmosphere Canvas — always mounted, masterOpacity via hook ── */}
+      <canvas ref={atmosphereCanvasRef} className="atmosphere-layer" />
+
+      {/* ── Layer 2b: Ground Fog — rising from alley floor ──────────────── */}
+      <div className="oracle-ground-fog" />
 
       {/* ── Activation flash — radial energy burst from cabinet on first tap ── */}
       <AnimatePresence>

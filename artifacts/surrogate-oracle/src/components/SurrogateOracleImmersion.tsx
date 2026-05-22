@@ -24,7 +24,9 @@ import { VisemeDetector } from '../lib/visemeDetector';
 import './SurrogateOracleImmersion.css';
 
 const ORACLE_IMAGE_URL = 'https://i.postimg.cc/D20ctNV0/orackle-only-static.png'; // Static floating face (click to start)
-const DECART_AVATAR_URL = 'https://i.postimg.cc/hnyNRQLz/static-alley-reduced.png'; // Image for Decart stream (green character)
+// DECART_AVATAR_URL: oracle face is also the Decart avatar source — Decart animates this portrait into a live talking avatar.
+// We pre-fetch it as a base64 data URL at startup to avoid CORS issues inside the Decart SDK's internal fetch().
+const DECART_AVATAR_URL = ORACLE_IMAGE_URL;
 const AUDIO_STREAM_URL = 'https://stream.radiojar.com/2qm1fc5kb';
 const ALLEY_BG_URL = 'https://i.postimg.cc/9CL0tMdd/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png'; // Empty alley with SNEAKAR cabinet
 
@@ -229,6 +231,36 @@ export function SurrogateOracleImmersion() {
     try { return parseInt(localStorage.getItem('oracle_totem_level') || '0', 10) || 0; } catch { return 0; }
   });
 
+  // ── Oracle avatar pre-fetch — base64 data URL to sidestep Decart SDK's
+  //    internal fetch() which hits CORS on third-party CDN image hosts.
+  //    Falls back to the URL itself if the canvas conversion fails.
+  const [oracleAvatarDataUrl, setOracleAvatarDataUrl] = useState<string>(ORACLE_IMAGE_URL);
+  useEffect(() => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          const dataUrl = canvas.toDataURL('image/png');
+          if (dataUrl && dataUrl !== 'data:,') {
+            setOracleAvatarDataUrl(dataUrl);
+            console.log('[Decart] Oracle avatar pre-fetched as base64 ✓', img.naturalWidth, '×', img.naturalHeight);
+          }
+        }
+      } catch (e) {
+        // CORS blocked canvas — Decart receives the URL directly; may still work if CDN serves CORS headers
+        console.warn('[Decart] Canvas tainted — passing URL directly to Decart SDK:', e);
+      }
+    };
+    img.onerror = () => console.warn('[Decart] Failed to load oracle avatar image for base64 conversion');
+    img.src = ORACLE_IMAGE_URL;
+  }, []);
+
   // ── Portrait generation ───────────────────────────────────────────────────
   const [isGeneratingPortrait, setIsGeneratingPortrait] = useState(false);
   // Stable ref so the auth useEffect can call generatePortrait without a forward-reference issue
@@ -282,11 +314,8 @@ export function SurrogateOracleImmersion() {
     freemiumAudioRef.current = null;
   }, []);
 
-  // ── Dormant CTA cycling ───────────────────────────────────────────────────
-  // Primary cycles every 3.2s, secondary offset at 4.5s — they drift out of sync
-  // In XR mode, use marker-aware CTA copy
-  const dormantCta = useCyclingText(isXRMode ? XR_CTA_PRIMARY   : CTA_PRIMARY,   3200, scenePhase === 'dormant');
-  const dormantSub = useCyclingText(isXRMode ? XR_CTA_SECONDARY : CTA_SECONDARY, 4500, scenePhase === 'dormant');
+  // ── Dormant CTA cycling — one voice only, slow and hypnotic ─────────────
+  const dormantCta = useCyclingText(isXRMode ? XR_CTA_PRIMARY : CTA_PRIMARY, 5000, scenePhase === 'dormant');
 
   // ── Typewriter title ──────────────────────────────────────────────────────
   const titleText = useTypewriter('SURROGATE:ORACLE', awakened, 60);
@@ -406,7 +435,7 @@ export function SurrogateOracleImmersion() {
     setIsDecartActive(false);
     setOracleState((p) => ({ ...p, error: null }));
     setScenePhase('oracle');
-    setTimeout(() => setShowConversation(true), 300);
+    // showConversation already true (set in awakeFromTerminal for Gemini pre-connection)
   }, []);
 
   const initializeOracle = useCallback(async () => {
@@ -443,15 +472,11 @@ export function SurrogateOracleImmersion() {
         setConnectionProgress(100);
         setIsDecartActive(true);
 
-        // Phase 1 Overhaul: Staggered Cinematic Awakening (Tightened)
+        // Cinematic awakening: brief hold on 100% progress bar before transitioning
         setTimeout(() => {
           setIsConnecting(false);
           setScenePhase('oracle');
-
-          // Very brief pause before showing conversation panel
-          setTimeout(() => {
-            setShowConversation(true);
-          }, 300);
+          // showConversation already set in awakeFromTerminal (pre-mount for WS pre-connection)
         }, 400);
       },
       onTalkStarted: () => setOracleState((p) => ({ ...p, isProcessing: true })),
@@ -468,7 +493,7 @@ export function SurrogateOracleImmersion() {
       },
     });
 
-    const result = await decartClientRef.current?.initializeStream(DECART_AVATAR_URL, avatarVideoRef.current);
+    const result = await decartClientRef.current?.initializeStream(oracleAvatarDataUrl, avatarVideoRef.current);
     if (!result?.success) {
       clearInterval(interval);
       setIsConnecting(false);
@@ -491,10 +516,10 @@ export function SurrogateOracleImmersion() {
       // 15s (WebRTC ICE hangs, Decart server drops stream silently), fall to freemium.
       decartFallbackTimeoutRef.current = setTimeout(() => {
         if (!decartStreamReadyRef.current) {
-          console.warn('⚠️ Decart stream timeout — falling back to freemium mode');
+          console.warn('⚠️ Decart stream timeout (8s) — falling back to freemium mode');
           fallbackToFreemium(interval);
         }
-      }, 15000);
+      }, 8000);
     }
   }, [validateEnvironment, isDevMode, fallbackToFreemium]);
 
@@ -510,9 +535,12 @@ export function SurrogateOracleImmersion() {
   }, [scenePhase]);
 
   // Step 2: auto-called by useLoreSequence when lore finishes (~1.8s pause)
+  // Pre-mount OracleConversation immediately so Gemini Live WS connects in
+  // parallel with the Decart WebRTC attempt — eliminates dead air after Decart fails.
   const awakeFromTerminal = useCallback(() => {
     if (scenePhase !== 'terminal') return;
     setScenePhase('awakened');
+    setShowConversation(true); // invisible pre-mount — pre-warms Gemini WS
     initializeOracle();
   }, [scenePhase, initializeOracle]);
 
@@ -533,6 +561,19 @@ export function SurrogateOracleImmersion() {
     const t = setTimeout(enterTerminal, 1800); // brief pause so user sees the XR visor first
     return () => clearTimeout(t);
   }, [isXRMode, autoStart, cameraReady, scenePhase, enterTerminal]);
+
+  // ── Oracle session start — triggers the greeting once we enter oracle mode
+  //    OracleConversation was pre-mounted in awakened phase (autoStart=false).
+  //    Now that the scene is live, kick off the __ORACLE_BOOT__ sequence.
+  //    250ms delay: lets the oracle-mode CSS transition settle so the first
+  //    Oracle word lands INTO the conversation panel, not into dead air.
+  useEffect(() => {
+    if (scenePhase !== 'oracle') return;
+    const t = setTimeout(() => {
+      oracleConversationRef.current?.startSession();
+    }, 250);
+    return () => clearTimeout(t);
+  }, [scenePhase]);
 
   // ── Oracle audio response handler ─────────────────────────────────────────
   // Paid path  → Decart ingests the WAV and streams the lip-synced avatar video.
@@ -809,65 +850,24 @@ export function SurrogateOracleImmersion() {
             {/* ── Framer Motion owns opacity (persists through HMR)          */}
             {/* ── CSS owns drift transform only (no opacity in those keyframes) */}
 
-            {/* A — TOP CENTRE, large graffiti: the primary intercept */}
+            {/* A — TOP CENTRE: the primary intercept. Large, chromatic, commanding. */}
             <motion.div
               className="oracle-sf oracle-sf--a"
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.88 }}
-              transition={{ delay: 0.1, duration: 1.2, ease: 'easeOut' }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.1, duration: 2.2, ease: 'easeOut' }}
             >
               THE ALLEY DOES NOT EXIST ON ANY MAP
             </motion.div>
 
-            {/* B — LEFT MID, monospace purple: coordinates / anomaly flag */}
-            <motion.div
-              className="oracle-sf oracle-sf--b"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.80 }}
-              transition={{ delay: 0.35, duration: 1.2, ease: 'easeOut' }}
-            >
-              34.0522° N&nbsp;&nbsp;118.2437° W<br />
-              FREQUENCY: ANOMALOUS
-            </motion.div>
-
-            {/* C — TOP RIGHT, small green: system identifier */}
-            <motion.div
-              className="oracle-sf oracle-sf--c"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.72 }}
-              transition={{ delay: 0.6, duration: 1.2, ease: 'easeOut' }}
-            >
-              SURROGATE.OS v2026.∞
-            </motion.div>
-
-            {/* D — RIGHT MID, small green: mission tag */}
-            <motion.div
-              className="oracle-sf oracle-sf--d"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.68 }}
-              transition={{ delay: 0.5, duration: 1.1, ease: 'easeOut' }}
-            >
-              ENTITY: ACTIVE<br />MISSION: SHIFT THE PARADIGM
-            </motion.div>
-
-            {/* E — BOTTOM LEFT, large graffiti: the warning */}
+            {/* E — BOTTOM CENTRE: the haunting secondary. Dimmer, ghostlier. */}
             <motion.div
               className="oracle-sf oracle-sf--e"
               initial={{ opacity: 0 }}
-              animate={{ opacity: 0.52 }}
-              transition={{ delay: 0.65, duration: 1.2, ease: 'easeOut' }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1.4, duration: 2.8, ease: 'easeOut' }}
             >
-              YOU WERE NOT<br />SUPPOSED TO FIND THIS
-            </motion.div>
-
-            {/* F — BOTTOM RIGHT, monospace purple: transhumanism tag */}
-            <motion.div
-              className="oracle-sf oracle-sf--f"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.70 }}
-              transition={{ delay: 0.8, duration: 1.2, ease: 'easeOut' }}
-            >
-              TECH AND TOUCH<br />MACHINE AND MEANING
+              YOU WERE NOT SUPPOSED TO FIND THIS
             </motion.div>
           </motion.div>
         )}
@@ -888,56 +888,60 @@ export function SurrogateOracleImmersion() {
         )}
       </div>
 
+      {/* ── DORMANT BECKON CALL — lives OUTSIDE oracle-center so it renders at
+           full opacity (oracle-center is at 0.38 opacity in dormant — a parent
+           opacity is inherited multiplicatively; children can never exceed it).
+           Positioned from oracle-stage coordinates, above the cabinet.          */}
+      <AnimatePresence>
+        {scenePhase === 'dormant' && (
+          <motion.div
+            key="dormant-cta"
+            className="oracle-tap-prompt oracle-tap-prompt--glitch"
+            onClick={enterTerminal}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.2 } }}
+            transition={{ duration: 0.6, delay: 0.4 }}
+          >
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={dormantCta.key}
+                className="cta-primary"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.55, ease: 'easeOut' }}
+              >
+                {dormantCta.text}
+              </motion.span>
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Dormant touch-hint — below cabinet, whisper-level affordance ────
+           Also outside oracle-center for full opacity. XR mode swaps copy.   */}
+      <AnimatePresence>
+        {scenePhase === 'dormant' && (
+          <motion.div
+            key="dormant-hint"
+            className="oracle-touch-hint"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+            transition={{ duration: 0.8, delay: 1.2 }}
+          >
+            {isXRMode ? '◈ POINT AT POSTER TO AWAKEN ◈' : '◈ TAP TO MAKE CONTACT ◈'}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Layer 4: Central cabinet + avatar ──────────────────────────── */}
       <div
         className="oracle-center"
         onClick={() => scenePhase === 'dormant' && enterTerminal()}
         style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}
       >
-        {/* Dormant CTA — two independent lines interchanging on different cadences */}
-        {scenePhase === 'dormant' && (
-          <div className="oracle-tap-prompt oracle-tap-prompt--glitch">
-            {/* Line 1 — primary (graffiti font, neon green, cycles every 3.2s)
-                NOTE: No filter/skewX on motion props — framer-motion 12 WAAPI
-                combines them into one filter string and the browser rejects it.
-                CSS glitch-flicker keyframe handles the visual distortion. */}
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={dormantCta.key}
-                className="cta-primary"
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.28, ease: 'easeOut' }}
-              >
-                {dormantCta.text}
-              </motion.span>
-            </AnimatePresence>
-
-            {/* Line 2 — secondary (monospace, purple, cycles every 4.5s — drifts out of sync) */}
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={`sub-${dormantSub.key}`}
-                className="cta-sub"
-                initial={{ opacity: 0, y: 4, letterSpacing: '0.35em' }}
-                animate={{ opacity: 1, y: 0, letterSpacing: '0.22em' }}
-                exit={{ opacity: 0, y: -4, letterSpacing: '0.08em' }}
-                transition={{ duration: 0.4, ease: 'easeInOut' }}
-              >
-                {dormantSub.text}
-              </motion.span>
-            </AnimatePresence>
-          </div>
-        )}
-
-        {/* Dormant touch-hint — sits below the cabinet, whisper-level affordance */}
-        {/* XR mode: swap to marker-based copy. CSS content: override doesn't work on real elements — handled here. */}
-        {scenePhase === 'dormant' && (
-          <div className="oracle-touch-hint">
-            {isXRMode ? '◈ POINT AT POSTER TO AWAKEN ◈' : '◈ TAP TO MAKE CONTACT ◈'}
-          </div>
-        )}
-
         {/* Monitor cast — bloom halo that spreads outward when Oracle goes live */}
         {isOracleMode && <div className="oracle-monitor-cast" />}
 
@@ -1135,8 +1139,11 @@ export function SurrogateOracleImmersion() {
       {/* ── Culture coin display ─────────────────────────────────────────── */}
       {/* Intentionally removed: Culture coin display is hidden to subvert the token economy (Phase 4). Coins are private until invited via Enculturate Crate. */}
 
-      {/* Conversation panel (oracle mode) ────────────────────────────── */}
-      {isOracleMode && showConversation && (
+      {/* Conversation panel — pre-mounted in awakened phase (isVisible=false) for
+           Gemini Live WS pre-connection. Becomes visible when oracle mode begins.
+           autoStart=false: oracle greeting fires via startSession() in the oracle
+           phase useEffect above, not automatically on session.created.            */}
+      {(isOracleMode || scenePhase === 'awakened') && showConversation && (
         <OracleConversation
           ref={oracleConversationRef}
           userId={currentUserId || currentSessionId}
@@ -1146,6 +1153,8 @@ export function SurrogateOracleImmersion() {
           onClose={exitOracleMode}
           onSessionEnd={handleSessionEnd}
           initialTotemLevel={persistedTotemLevel}
+          isVisible={isOracleMode}
+          autoStart={false}
         />
       )}
 

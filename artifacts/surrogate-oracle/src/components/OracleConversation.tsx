@@ -126,12 +126,32 @@ export interface OracleConversationProps {
   onSessionEnd?: (totemLevel: number, coins: number, alignment: string | null) => void;
   /** Totem level persisted from previous sessions — Oracle starts aware of the seeker's history */
   initialTotemLevel?: number;
+  /**
+   * When false, component renders null (no DOM) but all hooks run — used for
+   * Gemini Live WS pre-connection during the Decart boot phase.
+   * Parent sets this to true when oracle mode begins.
+   * @default true
+   */
+  isVisible?: boolean;
+  /**
+   * When false, the Oracle greeting (__ORACLE_BOOT__) is NOT sent automatically on
+   * session.created. Parent calls startSession() via ref when the conversation
+   * panel should go live. Prevents the Oracle greeting from playing into the void
+   * during pre-connection while Decart is still attempting WebRTC.
+   * @default true
+   */
+  autoStart?: boolean;
 }
 
 export interface OracleConversationHandle {
   sendTextMessage: (text: string) => void;
   disconnect: () => void;
   getWsDebugInfo: () => GeminiLiveDebugInfo;
+  /**
+   * Trigger the Oracle greeting when autoStart=false.
+   * Safe to call multiple times — only fires once per session.
+   */
+  startSession: () => void;
 }
 
 export interface GeminiLiveDebugInfo {
@@ -148,7 +168,10 @@ export interface GeminiLiveDebugInfo {
 
 const OracleConversation = forwardRef(
   (props: OracleConversationProps, ref: React.ForwardedRef<OracleConversationHandle>) => {
-    const { userId, sessionId, onOracleResponse, onCoinsEarned, onClose, onSessionEnd, initialTotemLevel = 0 } = props;
+    const {
+      userId, sessionId, onOracleResponse, onCoinsEarned, onClose, onSessionEnd,
+      initialTotemLevel = 0, isVisible = true, autoStart = true,
+    } = props;
     // ─── State ──────────────────────────────────────────────────────────────
     const [turns, setTurns] = useState<ConversationTurn[]>([]);
     const [inputText, setInputText] = useState('');
@@ -178,6 +201,10 @@ const OracleConversation = forwardRef(
     const sessionBootedRef = useRef(false);
 
     const workerRef = useRef<Worker | null>(null);
+    // autoStart=false: pendingStartRef is set true by startSession() when the WS
+    // isn't open yet — session.created will pick it up and send __ORACLE_BOOT__.
+    const pendingStartRef = useRef(false);
+    const autoStartRef = useRef(autoStart);
 
     // ─── Conversation theme accumulator (feeds portrait generation) ──────────
     // Grows with each sacred exchange — extracted from alignment + totem level
@@ -227,6 +254,7 @@ const OracleConversation = forwardRef(
       sendTextMessage: (text: string) => sendText(text),
       disconnect: () => closeConnection(),
       getWsDebugInfo: () => ({ ...geminiDebugRef.current }),
+      startSession,
     }));
 
     // ─── Scroll to bottom on new turns ──────────────────────────────────────
@@ -376,9 +404,12 @@ const OracleConversation = forwardRef(
 
             switch (msg.type) {
               case 'session.created':
-                if (!sessionBootedRef.current) {
+                // Only auto-greet if autoStart=true OR startSession() was already
+                // called (pendingStartRef=true) before session.created fired.
+                if ((autoStartRef.current || pendingStartRef.current) && !sessionBootedRef.current) {
                   sessionBootedRef.current = true;
-                  setTimeout(() => sendText('__ORACLE_BOOT__'), 500);
+                  pendingStartRef.current = false;
+                  setTimeout(() => sendText('__ORACLE_BOOT__'), 200); // 200ms (was 500ms)
                 }
                 break;
 
@@ -650,7 +681,31 @@ const OracleConversation = forwardRef(
       httpFallbackRef.current = false;
       httpHistoryRef.current = [];
       sessionBootedRef.current = false;
+      pendingStartRef.current = false;
     }, [stopMic]);
+
+    // ─── Start Session — fires __ORACLE_BOOT__ when autoStart=false ──────────
+    // Safe to call multiple times; only greets once per mount.
+    // Call this when oracle mode becomes visible (parent useEffect on scenePhase).
+    const startSession = useCallback(() => {
+      if (sessionBootedRef.current) return; // already greeted
+
+      if (httpFallbackRef.current) {
+        // HTTP fallback path: send boot via HTTP
+        sessionBootedRef.current = true;
+        sendHttpBoot();
+        return;
+      }
+
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        // WS already open — greet immediately
+        sessionBootedRef.current = true;
+        sendText('__ORACLE_BOOT__');
+      } else {
+        // WS still connecting — set pending flag; session.created will pick it up
+        pendingStartRef.current = true;
+      }
+    }, [sendText, sendHttpBoot]);
 
     const handleCloseClick = useCallback(() => {
       // Always report final session state upward — drives XR sign-off + localStorage persist
@@ -694,6 +749,10 @@ const OracleConversation = forwardRef(
       a === 'sacred' ? '#00ff88' : a === 'profane' ? '#ff4444' : '#888';
 
     // ─── Render ──────────────────────────────────────────────────────────────
+    // isVisible=false: no DOM, but ALL hooks still run — Gemini WS connects,
+    // state is maintained. Parent sets isVisible=true when oracle mode begins.
+    if (!isVisible) return null;
+
     // Terminal aesthetic: graffiti alley readout, not a chat bubble app.
     return (
       <div

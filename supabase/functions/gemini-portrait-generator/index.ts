@@ -1,14 +1,23 @@
 /**
  * gemini-portrait-generator — Supabase Edge Function
  *
- * Pipeline:
- *   1. Gemini 2.5 Flash  → enriches the theme prompt into a vivid art description
- *   2. DALL-E 3          → generates the actual image (no `style` param — removed for API compat)
- *   3. Themed static URL → final fallback if both AI providers fail
+ * Generation cascade (first success wins):
+ *   1. Gemini 2.5 Flash       → enriches the theme prompt into a vivid art description
+ *   2. Gemini 2.0 Flash       → PRIMARY image generation (cheap, same key, no extra cost)
+ *   3. Replicate flux-schnell → free-tier AI image gen
+ *   4. HuggingFace FLUX.1     → free-tier AI image gen
+ *   5. Pollinations.ai        → zero-config, no key needed
+ *   6. DeepAI                 → key-gated fallback
+ *   7. DALL-E 3               → only when request body includes { dalleExplicit: true }
+ *                               (premium path, only call when explicitly requested)
+ *   8. Themed Unsplash        → static fallback if every AI path fails
  *
  * Secrets required (set via: npx supabase secrets set KEY=value --project-ref <ref>):
- *   GOOGLE_AI_API_KEY   — Google AI Studio key (generativelanguage.googleapis.com)
- *   OPENAI_API_KEY      — OpenAI key with DALL-E 3 access
+ *   GOOGLE_AI_API_KEY   — Google AI Studio key (covers both Gemini text + imagen)
+ *   REPLICATE_API_TOKEN — Replicate token (flux-schnell free tier)
+ *   HUGGINGFACE_API_KEY — HuggingFace Inference API key
+ *   OPENAI_API_KEY      — OpenAI key (only used when dalleExplicit = true)
+ *   DEEPAI_API_KEY      — DeepAI text2img key (optional)
  *
  * Deploy:
  *   npx supabase functions deploy gemini-portrait-generator --project-ref <ref> --use-api
@@ -28,6 +37,8 @@ interface PortraitRequest {
   themes: string[];
   style?: string;
   userPrompt?: string;
+  /** Set true to explicitly route to DALL-E 3 (premium, billed per image). */
+  dalleExplicit?: boolean;
 }
 
 Deno.serve(async (req: Request) => {
@@ -56,7 +67,7 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const { sessionId, email, themes, style = 'freakdali-graff-punks', userPrompt } = body;
+  const { sessionId, email, themes, style = 'freakdali-graff-punks', userPrompt, dalleExplicit = false } = body;
 
   if (!sessionId || !themes?.length) {
     return new Response(
@@ -65,18 +76,20 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  console.log(`🎨 Portrait request — session: ${sessionId}, themes: ${themes.join(', ')}`);
+  console.log(`🎨 Portrait request — session: ${sessionId}, themes: ${themes.join(', ')}, dalleExplicit: ${dalleExplicit}`);
 
   const basePrompt = userPrompt ?? buildBasePrompt(themes);
   let portraitUrl = '';
+  let generationMethod = 'themed-fallback';
   let googleAiGenerated = false;
   let dalleGenerated = false;
   let googleAiError = '';
-  let dalleError = '';
+  let imageErrors: string[] = [];
 
-  // ── STEP 1: Enhance prompt with Gemini 2.5 Flash ──────────────────────────
-  let enhancedPrompt = basePrompt;
   const googleAiApiKey = Deno.env.get('GOOGLE_AI_API_KEY');
+
+  // ── STEP 1: Enhance prompt with Gemini 2.5 Flash (text-only) ──────────────
+  let enhancedPrompt = basePrompt;
   if (googleAiApiKey) {
     try {
       const r = await fetch(
@@ -87,14 +100,14 @@ Deno.serve(async (req: Request) => {
           body: JSON.stringify({
             contents: [{
               parts: [{
-                text: `You are a visual art prompt engineer. Rewrite this for DALL-E 3 image generation. Keep under 280 characters. Focus on vivid visual details, cyberpunk street art, neon colours. Original: "${basePrompt}"`,
+                text: `You are a visual art prompt engineer. Rewrite this for AI image generation. Keep under 280 characters. Focus on vivid visual details, cyberpunk street art, neon colours. Original: "${basePrompt}"`,
               }],
             }],
             generationConfig: { temperature: 0.85, maxOutputTokens: 180 },
           }),
         }
       );
-      if (!r.ok) throw new Error(`Gemini ${r.status}: ${await r.text()}`);
+      if (!r.ok) throw new Error(`Gemini text ${r.status}: ${await r.text()}`);
       const json = await r.json();
       const candidate = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
       if (candidate) {
@@ -108,13 +121,203 @@ Deno.serve(async (req: Request) => {
     }
   } else {
     googleAiError = 'GOOGLE_AI_API_KEY not configured';
-    console.warn('⚠️  GOOGLE_AI_API_KEY not set — skipping Gemini enhancement');
+    console.warn('⚠️  GOOGLE_AI_API_KEY not set — skipping prompt enhancement');
   }
 
-  // ── STEP 2a: Generate image with DALL-E 3 (if key available) ────────────────
-  const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-  if (openaiApiKey && !portraitUrl) {
+  // ── STEP 2: Gemini 2.0 Flash Image Generation (PRIMARY — cheapest AI path) ─
+  // Uses the same GOOGLE_AI_API_KEY — no extra billing setup needed.
+  if (googleAiApiKey && !portraitUrl) {
     try {
+      console.log('🎨 Trying Gemini 2.0 Flash image generation…');
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${googleAiApiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{ text: enhancedPrompt }],
+            }],
+            generationConfig: {
+              responseModalities: ['TEXT', 'IMAGE'],
+            },
+          }),
+        }
+      );
+      if (!r.ok) {
+        const errText = await r.text();
+        throw new Error(`Gemini imagen ${r.status}: ${errText}`);
+      }
+      const json = await r.json();
+      // Find the inline image part
+      const parts = json.candidates?.[0]?.content?.parts ?? [];
+      const imgPart = parts.find((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
+      if (!imgPart?.inlineData?.data) throw new Error('Gemini imagen: no inlineData in response');
+
+      const mimeType = imgPart.inlineData.mimeType ?? 'image/png';
+      const b64 = imgPart.inlineData.data;
+      const imgBuffer = Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer;
+
+      // Try to store in Supabase Storage → fall back to data URL
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from('portraits')
+        .upload(`${sessionId}-gemini-${Date.now()}.png`, imgBuffer, {
+          contentType: mimeType,
+          upsert: true,
+        });
+
+      if (uploadErr) {
+        portraitUrl = `data:${mimeType};base64,${b64}`;
+        console.log('✅ Gemini imagen portrait as base64 data URL');
+      } else {
+        const { data: { publicUrl } } = supabase.storage.from('portraits').getPublicUrl(uploadData.path);
+        portraitUrl = publicUrl;
+        console.log('✅ Gemini imagen portrait uploaded to Supabase Storage:', publicUrl.slice(0, 60));
+      }
+      generationMethod = 'gemini-imagen';
+      dalleGenerated = true; // flag = "AI generated"
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('❌ Gemini imagen failed:', msg);
+      imageErrors.push(`Gemini imagen: ${msg}`);
+    }
+  }
+
+  // ── STEP 3: Replicate flux-schnell (free tier) ─────────────────────────────
+  const replicateToken = Deno.env.get('REPLICATE_API_TOKEN');
+  if (replicateToken && !portraitUrl) {
+    try {
+      console.log('🎨 Trying Replicate flux-schnell…');
+      const startR = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${replicateToken}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'wait',
+        },
+        body: JSON.stringify({
+          input: {
+            prompt: enhancedPrompt,
+            num_outputs: 1,
+            aspect_ratio: '1:1',
+            output_format: 'webp',
+            output_quality: 80,
+          },
+        }),
+      });
+      if (!startR.ok) throw new Error(`Replicate start ${startR.status}: ${await startR.text()}`);
+      const pred = await startR.json();
+
+      let outputUrl: string | null = pred.output?.[0] ?? null;
+      if (!outputUrl && pred.id) {
+        const pollUrl = `https://api.replicate.com/v1/predictions/${pred.id}`;
+        for (let i = 0; i < 15 && !outputUrl; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          const pollR = await fetch(pollUrl, { headers: { 'Authorization': `Bearer ${replicateToken}` } });
+          const pollData = await pollR.json();
+          if (pollData.status === 'succeeded') outputUrl = pollData.output?.[0] ?? null;
+          if (pollData.status === 'failed') throw new Error(`Replicate prediction failed: ${pollData.error}`);
+        }
+      }
+      if (!outputUrl) throw new Error('Replicate returned no output URL');
+      portraitUrl = outputUrl;
+      generationMethod = 'replicate-flux-schnell';
+      dalleGenerated = true;
+      console.log('✅ Replicate flux-schnell portrait generated');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('❌ Replicate failed:', msg);
+      imageErrors.push(`Replicate: ${msg}`);
+    }
+  }
+
+  // ── STEP 4: HuggingFace FLUX.1-schnell ────────────────────────────────────
+  const hfKey = Deno.env.get('HUGGINGFACE_API_KEY');
+  if (hfKey && !portraitUrl) {
+    try {
+      console.log('🎨 Trying Hugging Face FLUX.1-schnell…');
+      const r = await fetch(
+        'https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell',
+        {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${hfKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inputs: enhancedPrompt }),
+        }
+      );
+      if (!r.ok) throw new Error(`HuggingFace ${r.status}: ${await r.text()}`);
+      const imgBuffer = await r.arrayBuffer();
+      if (imgBuffer.byteLength < 1000) throw new Error('HuggingFace returned empty image');
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from('portraits')
+        .upload(`${sessionId}-hf-${Date.now()}.jpg`, imgBuffer, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+      if (uploadErr) {
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(imgBuffer)));
+        portraitUrl = `data:image/jpeg;base64,${b64}`;
+        console.log('✅ HuggingFace portrait as base64 data URL');
+      } else {
+        const { data: { publicUrl } } = supabase.storage.from('portraits').getPublicUrl(uploadData.path);
+        portraitUrl = publicUrl;
+        console.log('✅ HuggingFace portrait uploaded to Supabase Storage');
+      }
+      generationMethod = 'huggingface-flux';
+      dalleGenerated = true;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('❌ HuggingFace failed:', msg);
+      imageErrors.push(`HuggingFace: ${msg}`);
+    }
+  }
+
+  // ── STEP 5: Pollinations.ai — zero config, no key, free forever ────────────
+  if (!portraitUrl) {
+    try {
+      const seed = Math.floor(Date.now() / 1000);
+      const encoded = encodeURIComponent(enhancedPrompt.slice(0, 400));
+      portraitUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
+      generationMethod = 'pollinations-flux';
+      dalleGenerated = true;
+      console.log('✅ Pollinations.ai portrait URL constructed');
+    } catch (e: unknown) {
+      console.error('❌ Pollinations URL construction failed:', e);
+    }
+  }
+
+  // ── STEP 6: DeepAI (optional key) ─────────────────────────────────────────
+  const deepAiKey = Deno.env.get('DEEPAI_API_KEY');
+  if (deepAiKey && !portraitUrl) {
+    try {
+      console.log('🎨 Trying DeepAI text2img…');
+      const form = new FormData();
+      form.append('text', enhancedPrompt);
+      const r = await fetch('https://api.deepai.org/api/text2img', {
+        method: 'POST',
+        headers: { 'api-key': deepAiKey },
+        body: form,
+      });
+      if (!r.ok) throw new Error(`DeepAI ${r.status}: ${await r.text()}`);
+      const json = await r.json();
+      if (!json.output_url) throw new Error('No output_url in DeepAI response');
+      portraitUrl = json.output_url;
+      generationMethod = 'deepai';
+      dalleGenerated = true;
+      console.log('✅ DeepAI portrait generated');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('❌ DeepAI failed:', msg);
+      imageErrors.push(`DeepAI: ${msg}`);
+    }
+  }
+
+  // ── STEP 7: DALL-E 3 — ONLY when explicitly requested ─────────────────────
+  // This is a premium path (~$0.04/image). Only called when dalleExplicit = true.
+  // Do NOT add to the automatic freemium cascade.
+  const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+  if (dalleExplicit && openaiApiKey && !portraitUrl) {
+    try {
+      console.log('🎨 DALL-E 3 explicitly requested — generating…');
       const r = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${openaiApiKey}`, 'Content-Type': 'application/json' },
@@ -132,153 +335,23 @@ Deno.serve(async (req: Request) => {
       const url = json.data?.[0]?.url;
       if (!url) throw new Error('No URL in DALL-E response');
       portraitUrl = url;
+      generationMethod = 'dalle-3-explicit';
       dalleGenerated = true;
-      console.log('✅ DALL-E portrait generated');
-    } catch (e: unknown) {
-      dalleError = e instanceof Error ? e.message : String(e);
-      console.error('❌ DALL-E failed:', dalleError);
-    }
-  } else if (!openaiApiKey) {
-    dalleError = 'OPENAI_API_KEY not configured';
-    console.warn('⚠️  OPENAI_API_KEY not set — trying Replicate');
-  }
-
-  // ── STEP 2b: Replicate flux-schnell (free tier, key already in Supabase) ────
-  const replicateToken = Deno.env.get('REPLICATE_API_TOKEN');
-  if (replicateToken && !portraitUrl) {
-    try {
-      console.log('🎨 Trying Replicate flux-schnell…');
-      // Kick off prediction
-      const startR = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${replicateToken}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'wait',   // wait up to 60s for result synchronously
-        },
-        body: JSON.stringify({
-          input: {
-            prompt: enhancedPrompt,
-            num_outputs: 1,
-            aspect_ratio: '1:1',
-            output_format: 'webp',
-            output_quality: 80,
-          },
-        }),
-      });
-      if (!startR.ok) throw new Error(`Replicate start ${startR.status}: ${await startR.text()}`);
-      const pred = await startR.json();
-
-      // If sync wait succeeded, output is already there
-      let outputUrl: string | null = pred.output?.[0] ?? null;
-
-      // Otherwise poll (max 30s)
-      if (!outputUrl && pred.id) {
-        const pollUrl = `https://api.replicate.com/v1/predictions/${pred.id}`;
-        for (let i = 0; i < 15 && !outputUrl; i++) {
-          await new Promise(r => setTimeout(r, 2000));
-          const pollR = await fetch(pollUrl, { headers: { 'Authorization': `Bearer ${replicateToken}` } });
-          const pollData = await pollR.json();
-          if (pollData.status === 'succeeded') outputUrl = pollData.output?.[0] ?? null;
-          if (pollData.status === 'failed') throw new Error(`Replicate prediction failed: ${pollData.error}`);
-        }
-      }
-
-      if (!outputUrl) throw new Error('Replicate returned no output URL');
-      portraitUrl = outputUrl;
-      dalleGenerated = true; // reuse flag — means "AI generated"
-      console.log('✅ Replicate flux-schnell portrait generated:', outputUrl.slice(0, 60));
+      console.log('✅ DALL-E 3 portrait generated (explicit request)');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error('❌ Replicate failed:', msg);
-      if (!dalleError) dalleError = `Replicate: ${msg}`;
+      console.error('❌ DALL-E failed:', msg);
+      imageErrors.push(`DALL-E: ${msg}`);
     }
+  } else if (dalleExplicit && !openaiApiKey) {
+    console.warn('⚠️  dalleExplicit=true but OPENAI_API_KEY not set');
+    imageErrors.push('DALL-E: OPENAI_API_KEY not configured');
   }
 
-  // ── STEP 2c: Hugging Face Inference API (key already in Supabase) ───────────
-  const hfKey = Deno.env.get('HUGGINGFACE_API_KEY');
-  if (hfKey && !portraitUrl) {
-    try {
-      console.log('🎨 Trying Hugging Face FLUX.1-schnell…');
-      const r = await fetch(
-        'https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell',
-        {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${hfKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ inputs: enhancedPrompt }),
-        }
-      );
-      if (!r.ok) throw new Error(`HuggingFace ${r.status}: ${await r.text()}`);
-      const imgBuffer = await r.arrayBuffer();
-      if (imgBuffer.byteLength < 1000) throw new Error('HuggingFace returned empty image');
-      // Store in Supabase Storage if portraits bucket exists, else base64 data URL
-      const { data: uploadData, error: uploadErr } = await supabase.storage
-        .from('portraits')
-        .upload(`${sessionId}-${Date.now()}.jpg`, imgBuffer, {
-          contentType: 'image/jpeg',
-          upsert: true,
-        });
-      if (uploadErr) {
-        // Bucket may not exist — fall back to base64 data URL
-        const b64 = btoa(String.fromCharCode(...new Uint8Array(imgBuffer)));
-        portraitUrl = `data:image/jpeg;base64,${b64}`;
-        console.log('✅ HuggingFace portrait as base64 data URL');
-      } else {
-        const { data: { publicUrl } } = supabase.storage.from('portraits').getPublicUrl(uploadData.path);
-        portraitUrl = publicUrl;
-        console.log('✅ HuggingFace portrait uploaded to Supabase Storage');
-      }
-      dalleGenerated = true;
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error('❌ HuggingFace failed:', msg);
-      if (!dalleError) dalleError = `HuggingFace: ${msg}`;
-    }
-  }
-
-  // ── STEP 2d: Pollinations.ai — zero config, no key, free forever ────────────
-  if (!portraitUrl) {
-    try {
-      // Pollinations serves the image directly from the URL — no API call needed.
-      // The edge function just constructs the URL; the browser fetches + caches it.
-      const seed = Math.floor(Date.now() / 1000); // unique per second
-      const encoded = encodeURIComponent(enhancedPrompt.slice(0, 400));
-      portraitUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
-      dalleGenerated = true;
-      console.log('✅ Pollinations.ai portrait URL constructed (renders on client load)');
-    } catch (e: unknown) {
-      console.error('❌ Pollinations URL construction failed:', e);
-    }
-  }
-
-  // ── STEP 2e: DeepAI text2img (add DEEPAI_API_KEY to Supabase secrets to enable) ─
-  const deepAiKey = Deno.env.get('DEEPAI_API_KEY');
-  if (deepAiKey && !portraitUrl) {
-    try {
-      console.log('🎨 Trying DeepAI text2img…');
-      const form = new FormData();
-      form.append('text', enhancedPrompt);
-      const r = await fetch('https://api.deepai.org/api/text2img', {
-        method: 'POST',
-        headers: { 'api-key': deepAiKey },
-        body: form,
-      });
-      if (!r.ok) throw new Error(`DeepAI ${r.status}: ${await r.text()}`);
-      const json = await r.json();
-      if (!json.output_url) throw new Error('No output_url in DeepAI response');
-      portraitUrl = json.output_url;
-      dalleGenerated = true;
-      console.log('✅ DeepAI portrait generated');
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error('❌ DeepAI failed:', msg);
-      if (!dalleError) dalleError = `DeepAI: ${msg}`;
-    }
-  }
-
-  // ── STEP 3: Themed static fallback ────────────────────────────────────────
+  // ── STEP 8: Themed static fallback ────────────────────────────────────────
   if (!portraitUrl) {
     portraitUrl = getThemedFallback(themes);
+    generationMethod = 'themed-fallback';
     console.log('ℹ️  Using themed static fallback:', portraitUrl);
   }
 
@@ -297,11 +370,7 @@ Deno.serve(async (req: Request) => {
       culture_coin_elements: true,
       cyberpunk_aesthetic: true,
       themes,
-      generation_method: googleAiGenerated && dalleGenerated
-        ? 'gemini-enhanced-dalle'
-        : dalleGenerated
-          ? 'dall-e-3'
-          : 'themed-fallback',
+      generation_method: generationMethod,
       timestamp: new Date().toISOString(),
     },
   });
@@ -310,17 +379,14 @@ Deno.serve(async (req: Request) => {
 
   return new Response(
     JSON.stringify({
-      success: !!portraitUrl,           // true even for fallback — portrait exists
+      success: !!portraitUrl,
       portraitUrl,
       googleAiGenerated,
       dalleGenerated,
+      generationMethod,
       ...(googleAiError && { googleAiError }),
-      ...(dalleError && { dalleError }),
-      apiUsed: googleAiGenerated && dalleGenerated
-        ? 'Gemini 2.5 Flash + AI image gen'
-        : dalleGenerated
-          ? 'AI image gen'
-          : 'Themed static fallback',
+      ...(imageErrors.length && { imageErrors }),
+      apiUsed: generationMethod,
     }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
@@ -350,7 +416,7 @@ function buildBasePrompt(themes: string[]): string {
   return `FreakDali cyberpunk graffiti oracle portrait: ${desc}. SNEAKAR branded elements, Culture Coin golden accents, neon geometric face patterns, holographic effects. High quality digital art masterpiece, portrait orientation.`;
 }
 
-// ── Themed static fallbacks (used when AI generation is unavailable) ─────────
+// ── Themed static fallbacks (used when all AI generation paths fail) ──────────
 
 function getThemedFallback(themes: string[]): string {
   const fallbacks: Record<string, string> = {

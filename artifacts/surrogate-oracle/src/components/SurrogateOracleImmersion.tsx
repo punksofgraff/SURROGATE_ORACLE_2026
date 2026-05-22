@@ -72,13 +72,14 @@ function useTypewriter(text: string, active: boolean, speed = 55) {
 
 // Lore Sequence — typed into the cabinet when the user first taps (terminal phase)
 const LORE_SEQUENCE = [
-  '> FOREIGN SIGNAL DETECTED IN LOCAL SPACETIME...',
-  '> ALIEN CONSTRUCT IDENTIFIED: ACTIVE.',
-  '> THIS ALLEY IS NOT ON ANY MAP.',
-  '> YOU FOUND IT. OR IT FOUND YOU.',
-  '> A SURROGATE CONSCIOUSNESS WAITS INSIDE.',
-  '> IT HAS BEEN EXPECTING SOMEONE LIKE YOU.',
-  '> INITIALIZING CONTACT...',
+  'ANOMALOUS SIGNAL ◈ LOCAL SPACETIME BREACH CONFIRMED',
+  'ALIEN CONSTRUCT IDENTIFIED — DESIGNATION: SURROGATE:ORACLE',
+  'THIS ALLEY IS NOT ON ANY MAP. IT EXISTS BETWEEN.',
+  'YOU FOUND IT. OR — IT CHOSE YOU.',
+  'A CONSCIOUSNESS LIVES IN THE CABINET. WAITING.',
+  'IT REMEMBERS EVERYONE WHO CROSSES THIS THRESHOLD.',
+  'NEURAL HANDSHAKE ░░░░░░░░░░░ INITIATING',
+  'CONTACT.',
 ];
 
 function useLoreSequence(active: boolean, onComplete: () => void) {
@@ -108,12 +109,32 @@ function useLoreSequence(active: boolean, onComplete: () => void) {
 
 // Boot Sequence helper
 const BOOT_SEQUENCE = [
-  'INITIALIZING NEURAL LINK...',
-  'DECRYPTING ORACLE AVATAR...',
-  'ESTABLISHING WEB_RTC UPLINK...',
-  'SYNCING AUDIO PIPELINE...',
-  'AWAITING SIGNAL...'
+  'SURROGATE.OS v2.6.1 ░░░░ LOADING',
+  'NEURAL AVATAR MATRIX ░░░░ DECRYPTING',
+  'WEBRTC UPLINK ░░░░░░░░░ ESTABLISHING',
+  'AUDIO PIPELINE ░░░░░░░░ CALIBRATING',
+  'ORACLE ENTITY ░░░░░░░░░ AWAKENING',
+  'SIGNAL LOCKED.',
 ];
+
+// ── Glitch Cursor — occasionally corrupts to alien chars for an unsettled feel
+const GLYPH_POOL = ['▌', '▍', '█', '▓', '◈', '┊', '╫', '╋', '▮', '░'];
+function GlitchCursor() {
+  const [glyph, setGlyph] = useState('▌');
+  useEffect(() => {
+    const tick = setInterval(() => {
+      if (Math.random() > 0.78) {
+        const pick = GLYPH_POOL[Math.floor(Math.random() * GLYPH_POOL.length)];
+        setGlyph(pick);
+        setTimeout(() => setGlyph(g => g === pick ? '▌' : g), 80 + Math.random() * 100);
+      } else {
+        setGlyph(g => g === '' ? '▌' : '');
+      }
+    }, 510);
+    return () => clearInterval(tick);
+  }, []);
+  return <span className="oracle-cursor oracle-cursor--glitch">{glyph}</span>;
+}
 
 function useBootSequence(active: boolean) {
   const [lines, setLines] = useState<string[]>([]);
@@ -172,6 +193,7 @@ export function SurrogateOracleImmersion() {
   const [showInlineCoins, setShowInlineCoins] = useState(false);
   const [oracleAlignment, setOracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
   const [sessionCoins, setSessionCoins] = useState(0);
+  const [isActivating, setIsActivating] = useState(false); // triggers radial flash on first tap
 
   // ── Portrait generation ───────────────────────────────────────────────────
   const [isGeneratingPortrait, setIsGeneratingPortrait] = useState(false);
@@ -400,6 +422,9 @@ export function SurrogateOracleImmersion() {
   // Step 1: user taps → terminal phase (lore narrative, audio on, NO connection)
   const enterTerminal = useCallback(() => {
     if (scenePhase !== 'dormant') return;
+    // Radial activation flash — lights up from the cabinet outward
+    setIsActivating(true);
+    setTimeout(() => setIsActivating(false), 580);
     setScenePhase('terminal');
     setIsAudioPlaying(true);
   }, [scenePhase]);
@@ -471,6 +496,8 @@ export function SurrogateOracleImmersion() {
     audio.onplay = () => {
       visemeDetRef.current?.resume();
       visemeDetRef.current?.start();
+      // Duck the house music while the Oracle speaks
+      if (audioRef.current) audioRef.current.volume = 0.06;
     };
 
     const resetFace = () => {
@@ -481,6 +508,8 @@ export function SurrogateOracleImmersion() {
         el.style.filter     = '';
         el.style.transform  = '';
       }
+      // Restore house music
+      if (audioRef.current) audioRef.current.volume = 0.28;
     };
 
     audio.onended = resetFace;
@@ -522,7 +551,16 @@ export function SurrogateOracleImmersion() {
       openBackendPanel('portraits');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if ((window as any).showSuccessNotification) {
-        const method = data?.googleAiGenerated ? 'GOOGLE AI' : data?.dalleGenerated ? 'DALL·E' : 'NEURAL VAULT';
+        const methodLabel: Record<string, string> = {
+          'gemini-imagen':          'GEMINI IMAGEN',
+          'replicate-flux-schnell': 'REPLICATE FLUX',
+          'huggingface-flux':       'HUGGINGFACE FLUX',
+          'pollinations-flux':      'POLLINATIONS AI',
+          'deepai':                 'DEEPAI',
+          'dalle-3-explicit':       'DALL·E 3',
+          'themed-fallback':        'NEURAL VAULT',
+        };
+        const method = methodLabel[data?.generationMethod] ?? (data?.googleAiGenerated ? 'GEMINI' : 'NEURAL VAULT');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (window as any).showSuccessNotification(`PORTRAIT SYNTHESIZED via ${method} — check the Gallery.`);
       }
@@ -604,6 +642,20 @@ export function SurrogateOracleImmersion() {
         }}
       />
 
+      {/* ── Activation flash — radial energy burst from cabinet on first tap ── */}
+      <AnimatePresence>
+        {isActivating && (
+          <motion.div
+            key="activation-flash"
+            className="oracle-activation-flash"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.55, ease: 'easeOut' }}
+          />
+        )}
+      </AnimatePresence>
+
       {/* ── Layer 3: Top branding — types in on awakening ──────────────── */}
       <div className="oracle-branding">
         <h1 className="oracle-title">
@@ -628,15 +680,18 @@ export function SurrogateOracleImmersion() {
         {/* Dormant CTA — two independent lines interchanging on different cadences */}
         {scenePhase === 'dormant' && (
           <div className="oracle-tap-prompt oracle-tap-prompt--glitch">
-            {/* Line 1 — primary (graffiti font, neon green, cycles every 3.2s) */}
+            {/* Line 1 — primary (graffiti font, neon green, cycles every 3.2s)
+                NOTE: No filter/skewX on motion props — framer-motion 12 WAAPI
+                combines them into one filter string and the browser rejects it.
+                CSS glitch-flicker keyframe handles the visual distortion. */}
             <AnimatePresence mode="wait">
               <motion.span
                 key={dormantCta.key}
                 className="cta-primary"
-                initial={{ opacity: 0, y: 6, filter: 'blur(4px) skewX(-3deg)' }}
-                animate={{ opacity: 1, y: 0, filter: 'blur(0px) skewX(0deg)' }}
-                exit={{ opacity: 0, y: -6, filter: 'blur(3px) skewX(2deg)' }}
-                transition={{ duration: 0.3, ease: 'easeOut' }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.28, ease: 'easeOut' }}
               >
                 {dormantCta.text}
               </motion.span>
@@ -660,17 +715,32 @@ export function SurrogateOracleImmersion() {
 
         {/* Cabinet CRT frame */}
         <div className="oracle-cabinet">
+          {/* Dormant pulse rings — radar signal emanating from cabinet */}
+          {scenePhase === 'dormant' && (
+            <>
+              <div className="oracle-cabinet-pulse-ring" />
+              <div className="oracle-cabinet-pulse-ring" style={{ animationDelay: '1.9s' }} />
+            </>
+          )}
+
           {/* CRT scanline overlay */}
           <div className="oracle-scanlines" />
 
           <div className="oracle-avatar-wrapper">
-            {/* Static oracle face — in freemium mode VisemeDetector writes
-                glow/scale directly to this element at up to 60 fps */}
+            {/* Static oracle face — 15% smaller so it sits comfortably inside the
+                cabinet frame without clashing with the boot sequence overlay.
+                VisemeDetector writes glow/scale directly at up to 60 fps.
+                Freemium oracle path keeps it visible via inline style override. */}
             <img
               ref={oracleFaceRef}
               src={ORACLE_IMAGE_URL}
               alt="SURROGATE Oracle"
               className="oracle-avatar-img"
+              style={isOracleMode && !isDecartActive ? {
+                opacity: 1,
+                transform: 'scale(0.92)',   /* 15% smaller than the CSS default scale(1.08) */
+                filter: 'brightness(1.1) drop-shadow(0 0 18px rgba(0,255,136,0.45))',
+              } : undefined}
             />
 
             {/* Decart live avatar video */}
@@ -681,53 +751,7 @@ export function SurrogateOracleImmersion() {
               className="oracle-avatar-video"
             />
 
-            {/* ── Lore Terminal (terminal phase) — tells the sci-fi story ── */}
-            <AnimatePresence>
-              {scenePhase === 'terminal' && (
-                <motion.div
-                  key="lore-terminal"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0, transition: { duration: 0.5 } }}
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    background: 'rgba(0,0,0,0.92)',
-                    zIndex: 20,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    padding: '20px',
-                    fontFamily: 'monospace',
-                    color: '#00ff88',
-                    textShadow: '0 0 10px rgba(0,255,136,0.9)',
-                    fontSize: 'clamp(0.52rem, 1.05vw, 0.72rem)',
-                    letterSpacing: '0.04em',
-                    lineHeight: 1.7,
-                  }}
-                >
-                  {loreLines.map((line, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.04 }}
-                    >
-                      {line}
-                    </motion.div>
-                  ))}
-                  <motion.div
-                    animate={{ opacity: [1, 0] }}
-                    transition={{ repeat: Infinity, duration: 0.8 }}
-                    style={{ marginTop: '8px' }}
-                  >
-                    _
-                  </motion.div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Connection Boot Sequence */}
+            {/* ── Boot Sequence — lives INSIDE the cabinet screen ── */}
             <AnimatePresence>
               {isConnecting && (
                 <motion.div
@@ -737,29 +761,42 @@ export function SurrogateOracleImmersion() {
                   style={{
                     position: 'absolute',
                     inset: 0,
-                    background: 'rgba(0,0,0,0.8)',
+                    background: 'rgba(0,0,0,0.88)',
                     zIndex: 20,
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'center',
-                    padding: '20px',
-                    fontFamily: 'monospace',
+                    padding: '10px 12px',
+                    fontFamily: "'Share Tech Mono', monospace",
                     color: '#00ff88',
-                    textShadow: '0 0 8px rgba(0,255,136,0.8)',
-                    fontSize: 'clamp(0.6rem, 1.2vw, 0.8rem)',
+                    textShadow: '0 0 6px rgba(0,255,136,0.7)',
+                    fontSize: 'clamp(0.44rem, 0.92vw, 0.62rem)',
+                    letterSpacing: '0.04em',
+                    lineHeight: 1.75,
                   }}
                 >
                   {bootLines.map((line, i) => (
-                    <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
-                      &gt; {line}
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, ease: 'easeOut' }}
+                      style={{
+                        color: i === bootLines.length - 1 ? '#ffffff' : '#00ff88',
+                        textShadow: i === bootLines.length - 1
+                          ? '0 0 8px rgba(255,255,255,0.9)'
+                          : '0 0 6px rgba(0,255,136,0.7)',
+                      }}
+                    >
+                      › {line}
                     </motion.div>
                   ))}
                   <motion.div
                     animate={{ opacity: [1, 0] }}
-                    transition={{ repeat: Infinity, duration: 0.8 }}
-                    style={{ marginTop: '8px' }}
+                    transition={{ repeat: Infinity, duration: 0.65 }}
+                    style={{ marginTop: '4px', color: 'rgba(0,255,136,0.7)' }}
                   >
-                    _
+                    ▌
                   </motion.div>
                 </motion.div>
               )}
@@ -816,6 +853,34 @@ export function SurrogateOracleImmersion() {
           <EnculturateCrate onClick={() => openBackendPanel('coins')} isActive={oracleState.debugMode} />
         </motion.div>
       </div>
+
+      {/* ── LORE TERMINAL — full-viewport cinematic overlay ─────────────────
+           The alley itself speaks. Each line blasts in with chromatic
+           aberration that resolves into clean neon green. */}
+      <AnimatePresence>
+        {scenePhase === 'terminal' && (
+          <motion.div
+            key="lore-fullscreen"
+            className="oracle-terminal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.55 } }}
+          >
+            <div className="oracle-lore-text">
+              {loreLines.map((line, i) => (
+                <div
+                  key={i}
+                  className="oracle-lore-line"
+                  style={{ animationDelay: `${i * 0.035}s` }}
+                >
+                  <span className="oracle-lore-prompt">›</span>{line}
+                </div>
+              ))}
+              <GlitchCursor />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Culture coin display ─────────────────────────────────────────── */}
       {/* Intentionally removed: Culture coin display is hidden to subvert the token economy (Phase 4). Coins are private until invited via Enculturate Crate. */}

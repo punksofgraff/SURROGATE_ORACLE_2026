@@ -11,6 +11,7 @@ export function EnculturateCrate({ onClick, isActive = false }: EnculturateCrate
   return (
     <div
       onClick={onClick}
+      data-testid="enculturate-crate"
       style={{
         cursor: 'pointer',
         position: 'relative',

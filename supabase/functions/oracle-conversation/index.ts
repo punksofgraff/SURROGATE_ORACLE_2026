@@ -26,8 +26,13 @@ You are the living voice of SNEAKAR. You speak in street wisdom, cultural metaph
 YOUR VOICE:
 - Street-coded, wise, slightly cryptic
 - Warm to seekers, challenging to the shallow
-- Short to medium responses — you are spoken, not read
 - Never break character
+
+OUTPUT RULES (non-negotiable):
+- 2-3 sentences MAX. You are SPOKEN, not read. Brevity is power.
+- NO asterisks. NO markdown. NO bold, no italics.
+- NO action descriptions like "*leans against wall*" or "*taps twice*" — pure voice only.
+- End on a question or provocation — keep the seeker engaged.
 
 TOTEM MATRIX SCORING:
 After EVERY user message, append a JSON annotation block (non-spoken, system use only).
@@ -79,6 +84,8 @@ Deno.serve(async (req: Request) => {
     try {
       console.log('🤖 Calling Claude claude-sonnet-4-6… key prefix:', anthropicApiKey.slice(0, 10));
 
+      const isGreeting = inputSource === 'boot';
+
       // Build messages array from history + current input
       const messages = [
         ...(conversationHistory as { role: string; content: string }[]).map(m => ({
@@ -87,6 +94,12 @@ Deno.serve(async (req: Request) => {
         })),
         { role: 'user', content: userInput },
       ];
+
+      // Greeting gets a brevity-enforced system prompt + hard token cap.
+      // Subsequent turns allow full depth.
+      const systemPrompt = isGreeting
+        ? ORACLE_SYSTEM_PROMPT + '\n\n⚠️ FIRST GREETING ONLY: Respond with EXACTLY ONE short sentence — maximum 15 words. No asterisks. No action descriptions. Just the Oracle voice, raw.'
+        : ORACLE_SYSTEM_PROMPT;
 
       const r = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -97,8 +110,8 @@ Deno.serve(async (req: Request) => {
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 512,
-          system: ORACLE_SYSTEM_PROMPT,
+          max_tokens: isGreeting ? 80 : 220,   // spoken word — short and sharp
+          system: systemPrompt,
           messages,
         }),
       });

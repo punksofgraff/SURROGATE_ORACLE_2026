@@ -10,13 +10,13 @@
   --z-auth: 150;
   --z-error: 200;
 
-  /* 
-   * VISION-BASED CALIBRATION
-   * Anchor the digital monitor over the painted cabinet in 7D633B70...png
+  /*
+   * CABINET ANCHOR — centered, full presence, cinematic scale
+   * Not pixel-matched to background photo — the cabinet IS the stage.
    */
-  --cabinet-top: 45%;
-  --cabinet-left: 50.1%;
-  --cabinet-width: clamp(95px, 11.4vw, 209px);
+  --cabinet-top: 42%;
+  --cabinet-left: 50%;
+  --cabinet-width: clamp(240px, 28vw, 380px);
 
   /* Animation Timings */
   --t-reveal: 1.8s;
@@ -76,6 +76,14 @@
   filter: saturate(0) brightness(0.3) blur(2px);
 }
 
+/* terminal phase — reality tears open, alley slams into sharp focus */
+.oracle-stage[data-oracle-state="terminal"] .oracle-alley {
+  opacity: 0.75;
+  transform: scale(1.0);
+  filter: saturate(0.8) brightness(0.68) blur(0px);
+  transition: all 0.95s var(--ease-cinematic);
+}
+
 .oracle-stage[data-oracle-state="awakened"] .oracle-alley {
   opacity: 0.65;
   transform: scale(1.02);
@@ -83,9 +91,9 @@
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-alley {
-  opacity: 0.4;
+  opacity: 0.54;
   transform: scale(1);
-  filter: saturate(0.3) brightness(0.4) blur(1px);
+  filter: saturate(0.52) brightness(0.54) blur(0px);
 }
 
 /* ── Layer 3: Atmosphere Canvas ───────────────────────────────────────── */
@@ -129,8 +137,11 @@
   position: relative;
 }
 
-.oracle-stage[data-oracle-state="awakened"] .oracle-title {
-  animation: text-glitch 4s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite both;
+.oracle-stage[data-oracle-state="awakened"] .oracle-title,
+.oracle-stage[data-oracle-state="oracle"] .oracle-title {
+  animation:
+    title-chroma-resolve 1.5s ease-out both,
+    text-glitch 4s 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite both;
 }
 
 .oracle-cursor {
@@ -157,6 +168,11 @@
   animation: sub-glitch 5s infinite;
 }
 
+/* Awakened branding — blasts in with chromatic flare as the oracle rises */
+.oracle-stage[data-oracle-state="awakened"] .oracle-branding {
+  animation: branding-blast-in 0.75s ease-out both;
+}
+
 /* ── Center / Cabinet ─────────────────────────────────────────────────── */
 .oracle-center {
   position: absolute;
@@ -169,23 +185,41 @@
   align-items: center;
   justify-content: center;
   perspective: 1000px;
+  transition: top 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* In oracle mode, cabinet shifts up to clear the chat panel */
+.oracle-stage[data-oracle-state="oracle"] .oracle-center {
+  top: 28%;
 }
 
 .oracle-tap-prompt {
   position: absolute;
-  top: -85px;
+  top: -100px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  animation: prompt-pulse 2.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Primary line — big graffiti font, neon green */
+.cta-primary {
+  display: block;
   font-family: 'aAnotherTag', 'Orbitron', monospace;
-  font-size: clamp(1.2rem, 3vw, 2.2rem);
+  font-size: clamp(1.3rem, 3.2vw, 2.4rem);
   font-weight: 900;
   letter-spacing: 0.15em;
   color: #00ff88;
-  text-shadow: 
-    0 0 10px rgba(0,255,136,0.8),
-    0 0 25px rgba(176,38,255,0.4);
-  white-space: nowrap;
-  animation: prompt-pulse 2.5s ease-in-out infinite;
+  text-shadow:
+    0 0 10px rgba(0,255,136,0.9),
+    0 0 28px rgba(0,255,136,0.5),
+    0 0 55px rgba(176,38,255,0.25);
+  text-align: center;
 }
 
 .oracle-cabinet {
@@ -203,6 +237,12 @@
     inset 0 0 15px rgba(0,255,136,0.1);
   backdrop-filter: blur(4px);
   will-change: transform, box-shadow;
+}
+
+/* dormant cabinet — breathes softly to invite the tap */
+.oracle-stage[data-oracle-state="dormant"] .oracle-cabinet {
+  cursor: pointer;
+  animation: dormant-breathe 4s ease-in-out infinite;
 }
 
 .oracle-stage[data-oracle-state="awakened"] .oracle-cabinet {
@@ -279,10 +319,16 @@
   object-fit: cover;
   position: absolute;
   z-index: 1;
-  opacity: 0.25;
+  opacity: 0.55;
   transition: filter 1.5s var(--ease-cinematic), opacity 1.2s var(--ease-cinematic), transform 2.5s cubic-bezier(0.2, 0.8, 0.2, 1);
-  filter: brightness(0.4) grayscale(0.5);
-  transform: scale(0.9);
+  filter: brightness(0.6) grayscale(0.3);
+  transform: scale(0.95);
+}
+
+/* Dormant ghost — rare flicker of life that unsettles the visitor */
+.oracle-stage[data-oracle-state="dormant"] .oracle-avatar-img {
+  opacity: 0.55;
+  animation: ghost-oracle 10s ease-in-out 3s infinite;
 }
 
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-img {
@@ -292,10 +338,11 @@
   animation: avatar-zoom-breathe 2s ease-in-out infinite alternate;
 }
 
+/* Oracle state: hidden when Decart video is active; inline style overrides to 1 in freemium */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-img {
   opacity: 0;
   pointer-events: none;
-  transform: scale(1.5); /* Zoom out towards user as it fades */
+  transform: scale(1.08);
 }
 
 .oracle-avatar-video {
@@ -396,5 +443,374 @@
 @keyframes blink {
   0%, 100% { opacity: 0.9; }
   50% { opacity: 0; }
+}
+
+/* ── Dormant cabinet breathe ──────────────────────────────────────────── */
+@keyframes dormant-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 12px rgba(0,255,136,0.10),
+      0 0 30px rgba(0,255,136,0.05),
+      inset 0 0 10px rgba(0,255,136,0.05);
+  }
+  50% {
+    box-shadow:
+      0 0 22px rgba(0,255,136,0.28),
+      0 0 55px rgba(176,38,255,0.12),
+      inset 0 0 18px rgba(0,255,136,0.08);
+  }
+}
+
+/* ── Glitch-interpolating CTA ─────────────────────────────────────────── */
+.oracle-tap-prompt--glitch {
+  text-align: center;
+  line-height: 1.4;
+  animation: prompt-pulse 2.5s ease-in-out infinite, glitch-flicker 5s steps(1) infinite;
+}
+
+.cta-sub {
+  display: block;
+  font-family: 'Orbitron', 'Share Tech Mono', monospace;
+  font-size: clamp(0.55rem, 1.2vw, 0.78rem);
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  color: #b026ff;
+  text-shadow:
+    0 0 8px rgba(176,38,255,0.95),
+    0 0 22px rgba(176,38,255,0.45),
+    0 0 45px rgba(0,255,136,0.15);
+  text-transform: uppercase;
+  text-align: center;
+  opacity: 0.9;
+}
+
+@keyframes glitch-flicker {
+  0%, 90%, 100% {
+    opacity: 1;
+    transform: translateX(-50%) skewX(0deg);
+    filter: none;
+  }
+  91% {
+    opacity: 0.55;
+    transform: translateX(-50%) skewX(-3deg);
+    filter: blur(0.5px);
+  }
+  92% {
+    opacity: 1;
+    transform: translateX(-50%) skewX(2deg);
+    filter: none;
+  }
+  93% {
+    opacity: 0.35;
+    transform: translateX(-50%) skewX(0deg);
+    filter: blur(1px);
+  }
+  94% {
+    opacity: 1;
+    transform: translateX(-50%) skewX(0deg);
+    filter: none;
+  }
+}
+
+/* ── Processing Dots ─────────────────────────────────────────────────────── */
+.oracle-processing-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 0 4px;
+}
+
+.oracle-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00ff88;
+  box-shadow: 0 0 8px rgba(0,255,136,0.8);
+}
+
+/* ── Error / Notification Toast ──────────────────────────────────────────── */
+.oracle-error-toast {
+  position: fixed;
+  bottom: clamp(16px, 4vh, 36px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-error);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 68, 68, 0.5);
+  background: rgba(255, 30, 30, 0.15);
+  color: #ff6464;
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(0.6rem, 1.3vw, 0.78rem);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  backdrop-filter: blur(8px);
+  white-space: nowrap;
+  max-width: 90vw;
+  box-shadow: 0 0 20px rgba(255, 68, 68, 0.2), inset 0 0 10px rgba(255, 68, 68, 0.05);
+}
+
+.oracle-close-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.oracle-close-btn:hover {
+  opacity: 1;
+}
+
+/* ── Activation Flash — radial burst from cabinet on first tap ────────── */
+.oracle-activation-flash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 55% 60% at var(--cabinet-left) var(--cabinet-top),
+    rgba(0, 255, 136, 0.65) 0%,
+    rgba(176, 38, 255, 0.30) 35%,
+    rgba(0, 0, 0, 0) 65%
+  );
+  pointer-events: none;
+  z-index: calc(var(--z-system) + 1);
+  mix-blend-mode: screen;
+}
+
+/* ── Cabinet Pulse Ring — radar signal in dormant state ───────────────── */
+.oracle-cabinet-pulse-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 90%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 255, 136, 0.55);
+  transform: translate(-50%, -50%) scale(0.5);
+  pointer-events: none;
+  z-index: -1;
+  animation: pulse-ring-expand 3.8s ease-out infinite;
+}
+
+@keyframes pulse-ring-expand {
+  0%   { transform: translate(-50%, -50%) scale(0.5);  opacity: 0.75; border-color: rgba(0,255,136,0.65); }
+  100% { transform: translate(-50%, -50%) scale(4.5);  opacity: 0;    border-color: rgba(0,255,136,0); }
+}
+
+/* ── Lore Terminal Overlay ─────────────────────────────────────────────── */
+.oracle-terminal-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-oracle);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: clamp(28px, 8vw, 72px);
+  pointer-events: none;
+  background: linear-gradient(
+    160deg,
+    rgba(0, 0, 0, 0.84) 0%,
+    rgba(0, 3, 14, 0.72) 50%,
+    rgba(0, 0, 0, 0.90) 100%
+  );
+  animation: terminal-bg-flicker 9s steps(2) 1s infinite;
+}
+
+@keyframes terminal-bg-flicker {
+  0%, 91%, 100% { filter: brightness(1); }
+  92%           { filter: brightness(0.82) contrast(1.08); }
+  94%           { filter: brightness(1.04); }
+  97%           { filter: brightness(0.91); }
+}
+
+/* ── Lore Text Container ───────────────────────────────────────────────── */
+.oracle-lore-text {
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  color: #00ff88;
+  font-size: clamp(0.92rem, 2.5vw, 1.28rem);
+  letter-spacing: 0.08em;
+  line-height: 2.05;
+  max-width: 640px;
+}
+
+/* ── Individual Lore Line — chromatic aberration resolves into clean green */
+.oracle-lore-line {
+  display: block;
+  animation: lore-line-in 0.8s ease-out both;
+  will-change: transform, opacity, text-shadow;
+}
+
+@keyframes lore-line-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-30px);
+    text-shadow:
+      -6px 0 rgba(255, 20, 90, 0.95),
+       6px 0 rgba(0, 210, 255, 0.95),
+       0 0 0px rgba(0, 255, 136, 0);
+    color: rgba(200, 255, 230, 0.2);
+  }
+  32% {
+    opacity: 1;
+    transform: translateX(3px);
+    text-shadow:
+      -3px 0 rgba(255, 20, 90, 0.65),
+       3px 0 rgba(0, 210, 255, 0.65),
+       0 0 10px rgba(0, 255, 136, 0.55);
+    color: rgba(180, 255, 210, 0.85);
+  }
+  68% {
+    transform: translateX(0);
+    text-shadow:
+      -1px 0 rgba(255, 20, 90, 0.18),
+       1px 0 rgba(0, 210, 255, 0.18),
+       0 0 14px rgba(0, 255, 136, 0.80);
+    color: #00ff88;
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+    text-shadow: 0 0 12px rgba(0, 255, 136, 0.85), 0 0 35px rgba(0, 255, 136, 0.28);
+    color: #00ff88;
+  }
+}
+
+/* ── Lore Prompt Glyph (›) ──────────────────────────────────────────────── */
+.oracle-lore-prompt {
+  display: inline;
+  color: rgba(0, 255, 136, 0.50);
+  font-size: 0.85em;
+  margin-right: 0.7em;
+  letter-spacing: 0;
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.9);
+  animation: prompt-flicker 6s ease-in-out infinite;
+}
+
+@keyframes prompt-flicker {
+  0%, 90%, 100% { opacity: 1; }
+  91% { opacity: 0.15; }
+  93% { opacity: 1; }
+  96% { opacity: 0.45; }
+  98% { opacity: 1; }
+}
+
+/* ── Glitch Cursor ──────────────────────────────────────────────────────── */
+.oracle-cursor--glitch {
+  color: #00ff88;
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.85), 0 0 20px rgba(0, 255, 136, 0.4);
+  display: inline-block;
+  min-width: 0.6em;
+  font-size: 0.95em;
+  vertical-align: baseline;
+}
+
+/* ── New Keyframes ─────────────────────────────────────────────────────── */
+
+/* Ghost oracle — surface then vanish, deeply unsettling in dormant state */
+@keyframes ghost-oracle {
+  0%, 76%, 100% {
+    opacity: 0.55;
+    filter: brightness(0.6) grayscale(0.3);
+  }
+  79% {
+    opacity: 1.0;
+    filter: brightness(1.6) grayscale(0) drop-shadow(0 0 32px rgba(0,255,136,0.95))
+            drop-shadow(0 0 60px rgba(176,38,255,0.5));
+  }
+  82% {
+    opacity: 0.06;
+    filter: brightness(0.08) grayscale(1);
+  }
+  85% {
+    opacity: 0.75;
+    filter: brightness(1.1) grayscale(0.1) drop-shadow(0 0 22px rgba(176,38,255,0.8));
+  }
+  88% {
+    opacity: 0.55;
+    filter: brightness(0.6) grayscale(0.3);
+  }
+}
+
+/* Branding blast — chromatic warp resolves as the oracle title appears */
+@keyframes branding-blast-in {
+  0% {
+    filter: brightness(3.5) blur(8px) saturate(2);
+    opacity: 0;
+    transform: translateX(-50%) scaleX(1.06);
+  }
+  28% {
+    filter: brightness(2.2) blur(3px) saturate(1.6);
+    opacity: 1;
+    transform: translateX(-50%) scaleX(1.02);
+  }
+  100% {
+    filter: brightness(1) blur(0) saturate(1);
+    opacity: 1;
+    transform: translateX(-50%) scaleX(1);
+  }
+}
+
+/* Title chromatic aberration resolves to graffiti multi-shadow */
+@keyframes title-chroma-resolve {
+  0% {
+    text-shadow:
+      -8px 0 rgba(255, 20, 90, 1.0),
+       8px 0 rgba(0, 210, 255, 1.0),
+       0 0 0px rgba(0, 255, 136, 0);
+    filter: blur(3px);
+    opacity: 0;
+  }
+  35% {
+    text-shadow:
+      -4px 0 rgba(255, 20, 90, 0.70),
+       4px 0 rgba(0, 210, 255, 0.70),
+       0 0 18px rgba(0, 255, 136, 0.7);
+    filter: blur(1px);
+    opacity: 1;
+  }
+  70% {
+    text-shadow:
+      -1px 0 rgba(255, 20, 90, 0.20),
+       1px 0 rgba(0, 210, 255, 0.20),
+       0 0 12px rgba(0, 255, 136, 0.85);
+    filter: blur(0);
+  }
+  100% {
+    text-shadow:
+      2px 2px 0px rgba(176,38,255,0.7),
+      -2px -2px 0px rgba(234,179,8,0.7),
+      0 0 10px rgba(0,255,136,0.8),
+      0 0 30px rgba(0,255,136,0.4),
+      0 0 60px rgba(176,38,255,0.2);
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+
+/* ── Mobile / small-screen tightening ───────────────────────────────────── */
+@media (max-width: 480px) {
+  .oracle-bottom-bar {
+    gap: clamp(28px, 8vw, 60px);
+    bottom: 3%;
+  }
+
+  .oracle-tap-prompt {
+    top: -80px;
+  }
+
+  .oracle-branding {
+    top: 4%;
+  }
 }
 

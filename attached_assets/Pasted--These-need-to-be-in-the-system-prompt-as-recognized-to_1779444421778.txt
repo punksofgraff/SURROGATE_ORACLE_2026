@@ -1,0 +1,43 @@
+
+    These need to be in the system prompt as recognized tool-call triggers:
+
+    ┌─────────────────────────────────────────────┬────────────────────────────┐
+    │                  Utterance                  │           Action           │
+    ├─────────────────────────────────────────────┼────────────────────────────┤
+    │ "CORA, go off the record" / "CORA,          │ Switch to Privileged mode  │
+    │ privileged"                                 │                            │
+    ├─────────────────────────────────────────────┼────────────────────────────┤
+    │ "CORA, back on record" / "CORA,             │ Return to Stenographer     │
+    │ stenographer"                               │                            │
+    ├─────────────────────────────────────────────┼────────────────────────────┤
+    │ "CORA, case files only"                     │ Enable Case-Anchored scope │
+    ├─────────────────────────────────────────────┼────────────────────────────┤
+    │ "CORA, full access"                         │ Disable Case-Anchored      │
+    │                                             │ scope                      │
+    ├─────────────────────────────────────────────┼────────────────────────────┤
+    │ "CORA, stand by"                            │ Enter Listen/Ambient state │
+    ├─────────────────────────────────────────────┼────────────────────────────┤
+    │ "Hello CORA"                                │ Exit Listen, resume active │
+    └─────────────────────────────────────────────┴────────────────────────────┘
+
+    Each of these should emit a mode_change tool call that writes to the vCon
+    mode_log and updates UI state simultaneously.
+
+    ---
+    UI Toggle Design
+
+    Don't do four equal toggles. The privacy state (Privileged vs. Stenographer)
+    should be prominent and always visible — maybe a persistent badge in the chat
+     header that turns visually distinct (dim red border?) when Privileged is
+    active. An attorney needs to always know at a glance whether CORA is logging.
+     Case-Anchored and Listen can be smaller secondary controls.
+
+    ---
+    Priority Order
+
+    If you're building this:
+    1. Stenographer default + vCon mode_log — foundational, low risk, high value
+    2. Case-Anchored — straightforward RAG scope limit, no privacy concerns
+    3. Listen/Ambient — soft mute version first, true wake-word later
+    4. Privileged — last, needs the most careful implementation + legal review of
+     what "no logging" actually guarantees at your infrastructure layer

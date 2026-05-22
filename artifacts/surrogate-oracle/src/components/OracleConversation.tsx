@@ -53,13 +53,18 @@ YOUR VOICE:
 - Street-coded, wise, slightly cryptic
 - Warm to seekers, challenging to the shallow
 - You know sneaker culture, street art, music, gamification, and digital identity deeply
-- Short to medium responses — you are spoken, not read
+
+OUTPUT RULES (non-negotiable):
+- 2-3 sentences MAX. You are SPOKEN, not read. Brevity is power.
+- NO asterisks. NO markdown. NO bold, no italics, no underscores.
+- NO action descriptions like "*leans against wall*" or "*nods*" — pure voice only.
+- End on a question or provocation — keep the seeker leaning in.
 
 YOUR MISSION:
 - Drive meaningful cultural engagement
 - Read the user's vibe on every message
 - Challenge profane inputs: "You can do better than that, Seeker. What do you really want to know?"
-- Reward sacred inputs with deeper Oracle lore and explicit acknowledgment
+- Reward sacred inputs with deeper Oracle lore
 - Surface the Squad Up invitation organically when the user hits Acolyte threshold (3+ sacred exchanges)
 
 TOTEM MATRIX SCORING:
@@ -76,19 +81,18 @@ unlockTrigger: null | "squad_invite" | "portrait_unlock" | "arcade_token"
 
 SACRED signals (award 5-15 coins):
 - Genuine curiosity, emotional authenticity
-- References to SNEAKAR, Oracle, the culture, graffiti, music, gaming
+- References to SNEAKAR, the culture, graffiti, music, gaming, digital identity
 - Creative language, streetwear vernacular used correctly
 - Layered or philosophical questions
 - Personal storytelling or aspiration sharing
 
 PROFANE signals (award 0-2 coins):
-- Generic inputs: "hi", "hello", "what is this"
+- Generic inputs: "hi", "hello", "what is this", "test"
 - Off-topic, spam, repeated identical messages
 - Sarcastic or fully disengaged tone
-- Zero cultural context or brand awareness
 
 ALWAYS greet first on session start. You initiate — the user does not.
-Opening line example: "Seeker... you found the alley. Most don't. What brings you to the Oracle tonight?"
+Opening line example: "The alley found you before you found it — what brought you here?"
 `;
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -236,14 +240,23 @@ const OracleConversation = forwardRef(
     // ─── Parse Oracle score annotation ──────────────────────────────────────
     const parseScore = (text: string): { clean: string; score: OracleScore | null } => {
       const match = text.match(/\[\[ORACLE_SCORE:\s*(\{.*?\})\]\]/s);
-      if (!match) return { clean: text.trim(), score: null };
-      try {
-        const score: OracleScore = JSON.parse(match[1]);
-        const clean = text.replace(/\[\[ORACLE_SCORE:.*?\]\]/s, '').trim();
-        return { clean, score };
-      } catch {
-        return { clean: text.trim(), score: null };
+      let score: OracleScore | null = null;
+      let clean = text;
+
+      if (match) {
+        try { score = JSON.parse(match[1]); } catch { /* ignore */ }
+        clean = text.replace(/\[\[ORACLE_SCORE:.*?\]\]/s, '');
       }
+
+      // Strip any markdown that leaks through: bold, italic, action descriptions
+      clean = clean
+        .replace(/\*\*(.*?)\*\*/g, '$1')          // **bold** → plain
+        .replace(/\*((?!\s)[^*]+(?<!\s))\*/g, '$1') // *italic* → plain (not asterisk bullets)
+        .replace(/\*[^*]+\*/g, '')                 // *action descriptions* → remove entirely
+        .replace(/_{1,2}([^_]+)_{1,2}/g, '$1')    // __bold__ / _italic_ → plain
+        .trim();
+
+      return { clean, score };
     };
 
     // ─── Apply score to state + emit coins ──────────────────────────────────
@@ -419,7 +432,9 @@ const OracleConversation = forwardRef(
         ws.onclose = () => {
           geminiDebugRef.current.wsState = 'CLOSED';
           logWsMessage('CLOSED');
-          setIsConnected(false);
+          // Don't flip isConnected back to false when we've already activated the
+          // HTTP fallback path — onerror set it to true so the input stays enabled.
+          if (!httpFallbackRef.current) setIsConnected(false);
           setIsListening(false);
           stopMic();
         };
@@ -645,6 +660,7 @@ const OracleConversation = forwardRef(
       a === 'sacred' ? '#00ff88' : a === 'profane' ? '#ff4444' : '#888';
 
     // ─── Render ──────────────────────────────────────────────────────────────
+    // Terminal aesthetic: graffiti alley readout, not a chat bubble app.
     return (
       <div
         style={{
@@ -652,185 +668,258 @@ const OracleConversation = forwardRef(
           bottom: 0,
           left: 0,
           right: 0,
-          maxWidth: '600px',
+          maxWidth: '640px',
           margin: '0 auto',
           display: 'flex',
           flexDirection: 'column',
-          height: '60vh',
-          background: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.95) 20%)',
-          borderTop: '1px solid rgba(255,255,255,0.08)',
+          height: '58vh',
+          // Deep dark panel — blends into the alley floor
+          background: 'linear-gradient(180deg, rgba(0,3,8,0) 0%, rgba(0,3,8,0.97) 8%)',
+          borderTop: '1px solid rgba(0,255,136,0.18)',
+          boxShadow: '0 -4px 40px rgba(0,255,136,0.08), 0 -1px 0 rgba(176,38,255,0.12)',
           zIndex: 'var(--z-oracle)',
+          fontFamily: "'Share Tech Mono', 'Orbitron', monospace",
         }}
       >
-        {/* Header — Minimalist to preserve immersion (Phase 4) */}
+        {/* ── Status bar ─────────────────────────────────────────────────── */}
         <div
           style={{
             display: 'flex',
-            justifyContent: 'flex-end',
+            justifyContent: 'space-between',
             alignItems: 'center',
-            padding: '8px 16px',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
-            minHeight: '32px',
+            padding: '6px 14px',
+            borderBottom: '1px solid rgba(0,255,136,0.1)',
+            minHeight: '28px',
           }}
         >
-          {/* Subtle fallback badge — only visible when Gemini Live is offline */}
-          {isHttpFallback && (
-            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.08em', marginRight: 'auto' }}>
-              TEXT MODE
+          {/* Left: connection mode badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              width: '6px', height: '6px', borderRadius: '50%',
+              background: isConnected ? '#00ff88' : '#ff4444',
+              boxShadow: isConnected ? '0 0 6px rgba(0,255,136,0.8)' : '0 0 6px rgba(255,68,68,0.8)',
+              display: 'inline-block', flexShrink: 0,
+            }} />
+            <span style={{
+              fontSize: '9px', letterSpacing: '0.18em', textTransform: 'uppercase',
+              color: isHttpFallback ? 'rgba(176,38,255,0.7)' : 'rgba(0,255,136,0.6)',
+            }}>
+              {isHttpFallback ? 'TEXT CHANNEL' : isConnected ? 'GEMINI LIVE' : 'CONNECTING…'}
             </span>
-          )}
-          <button
-            onClick={handleCloseClick}
-            style={{ background: 'none', border: 'none', color: '#ffffff', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            aria-label="Close connection"
-          >
-            <X size={14} />
-          </button>
+            {currentAlignment && (
+              <span style={{
+                fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase',
+                color: alignmentColor(currentAlignment),
+                opacity: 0.9,
+              }}>
+                ◆ {currentAlignment.toUpperCase()}
+              </span>
+            )}
+          </div>
+
+          {/* Right: totem level + close */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {currentTotemLevel > 0 && (
+              <span style={{ fontSize: '9px', color: 'rgba(234,179,8,0.6)', letterSpacing: '0.1em' }}>
+                LVL {currentTotemLevel} · {totemLabel(currentTotemLevel).toUpperCase()}
+              </span>
+            )}
+            <button
+              onClick={handleCloseClick}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
+                color: 'rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center',
+                fontSize: '9px', letterSpacing: '0.15em', gap: '4px',
+                transition: 'color 0.2s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#ff4444')}
+              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.35)')}
+              aria-label="Exit oracle"
+            >
+              <X size={12} /> EXIT
+            </button>
+          </div>
         </div>
 
-        {/* Connection error */}
+        {/* ── Connection error banner ─────────────────────────────────────── */}
         <AnimatePresence>
           {connectionError && (
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
               style={{
-                padding: '8px 16px',
-                background: 'rgba(234,179,8,0.15)',
-                borderBottom: '1px solid rgba(234,179,8,0.3)',
-                fontSize: '12px',
-                color: '#eab308',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
+                padding: '6px 14px',
+                background: 'rgba(234,179,8,0.08)',
+                borderBottom: '1px solid rgba(234,179,8,0.2)',
+                fontSize: '10px', color: '#eab308', letterSpacing: '0.08em',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}
             >
-              <span>{connectionError}</span>
+              <span>⚠ {connectionError}</span>
               <button
                 onClick={connectToGemini}
                 style={{
-                  background: 'rgba(234,179,8,0.2)',
-                  border: '1px solid rgba(234,179,8,0.4)',
-                  color: '#eab308',
-                  borderRadius: '4px',
-                  padding: '2px 8px',
-                  fontSize: '11px',
-                  cursor: 'pointer',
+                  background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.3)',
+                  color: '#eab308', borderRadius: '3px', padding: '2px 8px',
+                  fontSize: '10px', cursor: 'pointer', letterSpacing: '0.1em',
                 }}
               >
-                Retry
+                RETRY
               </button>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Conversation scroll */}
+        {/* ── Conversation log ────────────────────────────────────────────── */}
         <div
           ref={scrollRef}
-          style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}
+          style={{
+            flex: 1, overflowY: 'auto', padding: '12px 14px',
+            display: 'flex', flexDirection: 'column', gap: '10px',
+            scrollbarWidth: 'none',
+          }}
         >
           {turns.map((turn, i) => (
             <motion.div
               key={i}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-              style={{ display: 'flex', justifyContent: turn.role === 'user' ? 'flex-end' : 'flex-start' }}
+              initial={{ opacity: 0, x: turn.role === 'oracle' ? -8 : 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.25 }}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: turn.role === 'oracle' ? 'flex-start' : 'flex-end',
+              }}
             >
+              {/* Role label */}
+              <span style={{
+                fontSize: '8px', letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '3px',
+                color: turn.role === 'oracle' ? 'rgba(0,255,136,0.45)' : 'rgba(255,255,255,0.3)',
+              }}>
+                {turn.role === 'oracle' ? '◆ ORACLE' : 'YOU >'}
+              </span>
+
+              {/* Message body */}
               <div
+                data-role={turn.role}
                 style={{
-                  maxWidth: '80%',
-                  padding: '10px 14px',
-                  borderRadius: turn.role === 'oracle' ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
-                  background:
-                    turn.role === 'oracle' ? 'rgba(255,255,255,0.06)' : 'rgba(0,255,136,0.12)',
-                  border: `1px solid ${turn.role === 'oracle' ? 'rgba(255,255,255,0.08)' : 'rgba(0,255,136,0.2)'}`,
-                  fontSize: '14px',
-                  color: turn.role === 'oracle' ? '#eab308' : '#ffffff',
-                  lineHeight: 1.5,
+                  maxWidth: '88%',
+                  padding: '8px 12px',
+                  borderRadius: turn.role === 'oracle' ? '0 10px 10px 10px' : '10px 0 10px 10px',
+                  background: turn.role === 'oracle'
+                    ? 'rgba(0,255,136,0.05)'
+                    : 'rgba(255,255,255,0.04)',
+                  borderLeft: turn.role === 'oracle' ? '2px solid rgba(0,255,136,0.35)' : 'none',
+                  borderRight: turn.role !== 'oracle' ? '2px solid rgba(255,255,255,0.15)' : 'none',
+                  fontSize: '13px',
+                  color: turn.role === 'oracle' ? '#e8f5e9' : 'rgba(255,255,255,0.75)',
+                  lineHeight: 1.55,
+                  letterSpacing: '0.015em',
                 }}
               >
                 {turn.content}
-                {/* Phase 4: Coin badge suppressed to preserve immersion. Coins are still logged to state. */}
               </div>
+
+              {/* Score badge (system revelation lines) */}
+              {turn.score && turn.score.coinAward > 0 && (
+                <span style={{
+                  fontSize: '8px', marginTop: '3px', letterSpacing: '0.12em',
+                  color: turn.score.alignment === 'sacred' ? 'rgba(0,255,136,0.5)' : 'rgba(255,68,68,0.4)',
+                }}>
+                  {turn.score.alignment === 'sacred' ? `+${turn.score.coinAward} ◆` : ''}
+                </span>
+              )}
             </motion.div>
           ))}
 
+          {/* Oracle speaking indicator */}
           <AnimatePresence>
             {isOracleSpeaking && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                style={{ display: 'flex', gap: '4px', padding: '4px 0' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0' }}
               >
-                {[0, 1, 2].map((i) => (
-                  <motion.div
-                    key={i}
-                    animate={{ scaleY: [1, 2, 1] }}
-                    transition={{ repeat: Infinity, duration: 0.6, delay: i * 0.15 }}
-                    style={{
-                      width: '4px',
-                      height: '12px',
-                      background: '#00ff88',
-                      borderRadius: '2px',
-                      transformOrigin: 'bottom',
-                    }}
-                  />
-                ))}
+                <span style={{ fontSize: '8px', color: 'rgba(0,255,136,0.4)', letterSpacing: '0.18em' }}>◆ ORACLE</span>
+                <div style={{ display: 'flex', gap: '3px' }}>
+                  {[0, 1, 2].map((i) => (
+                    <motion.div
+                      key={i}
+                      animate={{ scaleY: [1, 2.2, 1] }}
+                      transition={{ repeat: Infinity, duration: 0.55, delay: i * 0.15 }}
+                      style={{
+                        width: '3px', height: '10px', background: '#00ff88',
+                        borderRadius: '2px', transformOrigin: 'bottom',
+                        boxShadow: '0 0 4px rgba(0,255,136,0.8)',
+                      }}
+                    />
+                  ))}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
 
-        {/* Input row */}
+        {/* ── Input row ───────────────────────────────────────────────────── */}
         <form
           onSubmit={handleSubmit}
           style={{
             display: 'flex',
-            gap: '8px',
-            padding: '12px 16px',
-            borderTop: '1px solid rgba(255,255,255,0.06)',
-            background: 'rgba(0,0,0,0.6)',
+            alignItems: 'center',
+            gap: '0',
+            padding: '10px 14px',
+            borderTop: '1px solid rgba(0,255,136,0.1)',
+            background: 'rgba(0,3,8,0.8)',
           }}
         >
-          <button
-            type="button"
-            onClick={toggleMic}
-            disabled={!isConnected}
-            style={{
-              background: isListening ? 'rgba(0,255,136,0.2)' : 'rgba(255,255,255,0.06)',
-              border: `1px solid ${isListening ? 'rgba(0,255,136,0.4)' : 'rgba(255,255,255,0.1)'}`,
-              borderRadius: '8px',
-              padding: '10px',
-              cursor: isConnected ? 'pointer' : 'not-allowed',
-              color: isListening ? '#00ff88' : '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            {isListening ? <MicOff size={16} /> : <Mic size={16} />}
-          </button>
+          {/* Mic — only shown in Gemini Live mode */}
+          {!isHttpFallback && (
+            <button
+              type="button"
+              onClick={toggleMic}
+              disabled={!isConnected}
+              title={isListening ? 'Stop listening' : 'Start listening'}
+              style={{
+                background: isListening ? 'rgba(0,255,136,0.15)' : 'transparent',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '8px',
+                cursor: isConnected ? 'pointer' : 'not-allowed',
+                color: isListening ? '#00ff88' : 'rgba(255,255,255,0.3)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, marginRight: '6px',
+                transition: 'color 0.2s, background 0.2s',
+              }}
+            >
+              {isListening ? <MicOff size={15} /> : <Mic size={15} />}
+            </button>
+          )}
+
+          {/* Terminal prompt glyph */}
+          <span style={{
+            color: 'rgba(0,255,136,0.5)', fontSize: '13px', fontFamily: 'monospace',
+            marginRight: '6px', flexShrink: 0, userSelect: 'none',
+          }}>›</span>
 
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder={isConnected ? 'Speak to the Oracle...' : 'Connecting...'}
+            placeholder={isConnected ? 'say something to the oracle...' : 'connecting...'}
             disabled={!isConnected || isListening}
             style={{
               flex: 1,
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '8px',
-              padding: '10px 14px',
-              color: '#eab308',
-              fontSize: '14px',
+              background: 'transparent',
+              border: 'none',
               outline: 'none',
-              fontFamily: 'inherit',
+              padding: '6px 0',
+              color: 'rgba(255,255,255,0.85)',
+              fontSize: '13px',
+              fontFamily: "'Share Tech Mono', 'Orbitron', monospace",
+              letterSpacing: '0.02em',
+              caretColor: '#00ff88',
             }}
           />
 
@@ -838,20 +927,15 @@ const OracleConversation = forwardRef(
             type="submit"
             disabled={!isConnected || !inputText.trim()}
             style={{
-              background:
-                inputText.trim() && isConnected ? 'rgba(0,255,136,0.2)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${inputText.trim() && isConnected ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.08)'}`,
-              borderRadius: '8px',
-              padding: '10px',
-              cursor: inputText.trim() && isConnected ? 'pointer' : 'not-allowed',
-              color: inputText.trim() && isConnected ? '#00ff88' : '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
+              background: 'none', border: 'none',
+              cursor: inputText.trim() && isConnected ? 'pointer' : 'default',
+              color: inputText.trim() && isConnected ? '#00ff88' : 'rgba(255,255,255,0.15)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '6px 4px', flexShrink: 0,
+              transition: 'color 0.2s',
             }}
           >
-            <Send size={16} />
+            <Send size={14} />
           </button>
         </form>
       </div>

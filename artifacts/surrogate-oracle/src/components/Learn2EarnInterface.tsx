@@ -164,8 +164,8 @@ export const Learn2EarnInterface = ({ userId, navigateToDebug }: Learn2EarnInter
               <p><strong style={{ color: '#fff' }}>SURROGATE Oracle</strong> — An anthropological AI experience built on:</p>
               <ul style={{ paddingLeft: 16, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <li>Decart LipSync Live — Real-time talking avatar</li>
-                <li>Claude AI — Oracle conversation engine</li>
-                <li>ElevenLabs — Voice synthesis</li>
+                <li>Gemini Live — Neural voice synthesis (Charon voice)</li>
+                <li>Google AI Studio — Portrait generation</li>
                 <li>Supabase — Backend &amp; authentication</li>
                 <li>Culture Coins — Gamification layer</li>
               </ul>

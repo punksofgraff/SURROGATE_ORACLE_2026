@@ -9,6 +9,11 @@
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
   "private": true,
+  "pnpm": {
+    "overrides": {
+      "lodash": "^4.18.1"
+    }
+  },
   "devDependencies": {
     "playwright": "^1.59.1",
     "prettier": "^3.8.1",

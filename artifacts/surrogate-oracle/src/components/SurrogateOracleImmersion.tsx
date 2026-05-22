@@ -706,6 +706,9 @@ export function SurrogateOracleImmersion() {
           </div>
         )}
 
+        {/* Monitor cast — bloom halo that spreads outward when Oracle goes live */}
+        {isOracleMode && <div className="oracle-monitor-cast" />}
+
         {/* Cabinet CRT frame */}
         <div className="oracle-cabinet">
           {/* Dormant pulse rings — radar signal emanating from cabinet */}

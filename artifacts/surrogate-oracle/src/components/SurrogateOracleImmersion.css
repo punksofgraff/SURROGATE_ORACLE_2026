@@ -71,26 +71,30 @@
 }
 
 /* Alley transform is owned by useParallax (inline style) — only opacity/filter here */
+
+/* DORMANT — you have found a secret. The alley is barely visible. */
 .oracle-stage[data-oracle-state="dormant"] .oracle-alley {
-  opacity: 0.42;
-  filter: saturate(0) brightness(0.32) blur(2px);
+  opacity: 0.35;
+  filter: saturate(0) brightness(0.18) blur(3px);
 }
 
-/* terminal — reality tears open, colour bleeds back in */
+/* TERMINAL — reality tears open, colour bleeds back in fast */
 .oracle-stage[data-oracle-state="terminal"] .oracle-alley {
-  opacity: 0.78;
-  filter: saturate(0.8) brightness(0.70) blur(0px);
-  transition: opacity 0.95s var(--ease-cinematic), filter 0.95s var(--ease-cinematic);
+  opacity: 0.82;
+  filter: saturate(0.75) brightness(0.65) blur(0px);
+  transition: opacity 1.1s var(--ease-cinematic), filter 1.1s var(--ease-cinematic);
 }
 
+/* AWAKENED — fully real, fully present */
 .oracle-stage[data-oracle-state="awakened"] .oracle-alley {
-  opacity: 0.68;
-  filter: saturate(0.85) brightness(0.78) blur(0px);
+  opacity: 0.72;
+  filter: saturate(0.88) brightness(0.80) blur(0px);
 }
 
+/* ORACLE — alley dims slightly so the cast from the monitor dominates */
 .oracle-stage[data-oracle-state="oracle"] .oracle-alley {
-  opacity: 0.56;
-  filter: saturate(0.55) brightness(0.56) blur(0px);
+  opacity: 0.50;
+  filter: saturate(0.50) brightness(0.50) blur(0px);
 }
 
 /* ── Alley living breath — slow scale pulse so it never feels static ──── */
@@ -228,12 +232,28 @@
   align-items: center;
   justify-content: center;
   perspective: 1000px;
-  transition: top 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: top 0.7s cubic-bezier(0.22, 1, 0.36, 1), opacity 1.4s var(--ease-cinematic);
+}
+
+/* DORMANT — ghost in the dark. Just barely there. */
+.oracle-stage[data-oracle-state="dormant"] .oracle-center {
+  opacity: 0.38;
+}
+
+/* TERMINAL — materializing */
+.oracle-stage[data-oracle-state="terminal"] .oracle-center {
+  opacity: 0.80;
+}
+
+/* AWAKENED / ORACLE — fully present */
+.oracle-stage[data-oracle-state="awakened"] .oracle-center,
+.oracle-stage[data-oracle-state="oracle"] .oracle-center {
+  opacity: 1;
 }
 
 /* In oracle mode, cabinet shifts up to clear the chat panel */
 .oracle-stage[data-oracle-state="oracle"] .oracle-center {
-  top: 28%;
+  top: 26%;
 }
 
 .oracle-tap-prompt {
@@ -250,19 +270,20 @@
   pointer-events: none;
 }
 
-/* Primary line — big graffiti font, neon green */
+/* Primary line — graffiti whisper, not a shout */
 .cta-primary {
   display: block;
   font-family: 'aAnotherTag', 'Orbitron', monospace;
-  font-size: clamp(1.3rem, 3.2vw, 2.4rem);
+  font-size: clamp(0.95rem, 2.2vw, 1.7rem);
   font-weight: 900;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.18em;
   color: #00ff88;
   text-shadow:
-    0 0 10px rgba(0,255,136,0.9),
-    0 0 28px rgba(0,255,136,0.5),
-    0 0 55px rgba(176,38,255,0.25);
+    0 0 8px rgba(0,255,136,0.7),
+    0 0 22px rgba(0,255,136,0.35),
+    0 0 50px rgba(176,38,255,0.15);
   text-align: center;
+  opacity: 0.85;
 }
 
 .oracle-cabinet {
@@ -295,7 +316,41 @@
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-cabinet {
   animation: cabinet-breathe 4s ease-in-out infinite;
-  border-color: rgba(0,255,136,0.4);
+  border-color: rgba(0,255,136,0.6);
+  /* The monitor cast — bloom spreading outward from the screen */
+  box-shadow:
+    0 0 35px rgba(0,255,136,0.55),
+    0 0 80px rgba(0,255,136,0.30),
+    0 0 160px rgba(0,255,136,0.18),
+    0 0 300px rgba(176,38,255,0.12),
+    inset 0 0 25px rgba(0,255,136,0.18);
+}
+
+/* ── Monitor Cast Halo — environmental bloom on oracle-center in ORACLE state ── */
+.oracle-monitor-cast {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 150%;
+  aspect-ratio: 1 / 0.85;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 255, 136, 0.28) 0%,
+    rgba(0, 255, 136, 0.14) 25%,
+    rgba(176, 38, 255, 0.08) 50%,
+    transparent 72%
+  );
+  pointer-events: none;
+  z-index: -1;
+  mix-blend-mode: screen;
+  animation: monitor-cast-pulse 3.5s ease-in-out infinite;
+}
+
+@keyframes monitor-cast-pulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1.00); opacity: 0.80; }
+  50%       { transform: translate(-50%, -50%) scale(1.18); opacity: 1.00; }
 }
 
 .oracle-cabinet:hover {
@@ -362,22 +417,32 @@
   object-fit: cover;
   position: absolute;
   z-index: 1;
-  opacity: 0.55;
-  transition: filter 1.5s var(--ease-cinematic), opacity 1.2s var(--ease-cinematic), transform 2.5s cubic-bezier(0.2, 0.8, 0.2, 1);
-  filter: brightness(0.6) grayscale(0.3);
-  transform: scale(0.95);
+  /* Start as a ghost — materialises through the phases */
+  opacity: 0.12;
+  transition: filter 1.8s var(--ease-cinematic), opacity 1.6s var(--ease-cinematic), transform 3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  filter: brightness(0.25) grayscale(0.8);
+  transform: scale(0.92);
 }
 
-/* Dormant ghost — rare flicker of life that unsettles the visitor */
+/* DORMANT — barely a face in a dark screen. Ghost flicker every ~10s. */
 .oracle-stage[data-oracle-state="dormant"] .oracle-avatar-img {
-  opacity: 0.55;
-  animation: ghost-oracle 10s ease-in-out 3s infinite;
+  opacity: 0.12;
+  animation: ghost-oracle 12s ease-in-out 4s infinite;
 }
 
+/* TERMINAL — CRT screen warming up, face slowly resolves */
+.oracle-stage[data-oracle-state="terminal"] .oracle-avatar-img {
+  opacity: 0.42;
+  filter: brightness(0.55) grayscale(0.45) contrast(1.2);
+  transform: scale(0.96);
+  animation: crt-static 0.18s steps(1) infinite;
+}
+
+/* AWAKENED — oracle is fully present, pulsing with energy */
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-img {
   opacity: 1;
-  filter: brightness(1.2) drop-shadow(0 0 25px rgba(0,255,136,0.6));
-  transform: scale(1.25);
+  filter: brightness(1.25) drop-shadow(0 0 28px rgba(0,255,136,0.7));
+  transform: scale(1.28);
   animation: avatar-zoom-breathe 2s ease-in-out infinite alternate;
 }
 
@@ -431,6 +496,13 @@
   align-items: flex-end;
   gap: clamp(40px, 10vw, 120px);
   filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
+  transition: opacity 1.2s var(--ease-cinematic);
+}
+
+/* DORMANT — bottom bar invisible. Nothing announces itself. */
+.oracle-stage[data-oracle-state="dormant"] .oracle-bottom-bar {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* ── Keyframes ─────────────────────────────────────────────────────────── */
@@ -791,27 +863,40 @@
 
 /* Ghost oracle — surface then vanish, deeply unsettling in dormant state */
 @keyframes ghost-oracle {
-  0%, 76%, 100% {
-    opacity: 0.55;
-    filter: brightness(0.6) grayscale(0.3);
+  /* sits dark and near-invisible most of the time */
+  0%, 74%, 100% {
+    opacity: 0.12;
+    filter: brightness(0.25) grayscale(0.8);
   }
-  79% {
-    opacity: 1.0;
-    filter: brightness(1.6) grayscale(0) drop-shadow(0 0 32px rgba(0,255,136,0.95))
-            drop-shadow(0 0 60px rgba(176,38,255,0.5));
+  /* brief full materialisation — unsettling */
+  78% {
+    opacity: 0.88;
+    filter: brightness(1.5) grayscale(0) drop-shadow(0 0 30px rgba(0,255,136,0.9))
+            drop-shadow(0 0 55px rgba(176,38,255,0.4));
   }
-  82% {
-    opacity: 0.06;
-    filter: brightness(0.08) grayscale(1);
+  /* flicker to almost nothing */
+  81% {
+    opacity: 0.03;
+    filter: brightness(0.06) grayscale(1);
   }
+  /* second partial materialisation — lower amplitude */
   85% {
-    opacity: 0.75;
-    filter: brightness(1.1) grayscale(0.1) drop-shadow(0 0 22px rgba(176,38,255,0.8));
+    opacity: 0.55;
+    filter: brightness(0.9) grayscale(0.2) drop-shadow(0 0 16px rgba(176,38,255,0.7));
   }
   88% {
-    opacity: 0.55;
-    filter: brightness(0.6) grayscale(0.3);
+    opacity: 0.12;
+    filter: brightness(0.25) grayscale(0.8);
   }
+}
+
+/* CRT warming static — plays during terminal phase */
+@keyframes crt-static {
+  0%   { opacity: 0.42; filter: brightness(0.55) grayscale(0.45) contrast(1.2); }
+  25%  { opacity: 0.38; filter: brightness(0.50) grayscale(0.55) contrast(1.35) blur(0.4px); }
+  50%  { opacity: 0.45; filter: brightness(0.60) grayscale(0.40) contrast(1.15); }
+  75%  { opacity: 0.35; filter: brightness(0.48) grayscale(0.60) contrast(1.40) blur(0.6px); }
+  100% { opacity: 0.42; filter: brightness(0.55) grayscale(0.45) contrast(1.2); }
 }
 
 /* Branding blast — chromatic warp resolves as the oracle title appears */

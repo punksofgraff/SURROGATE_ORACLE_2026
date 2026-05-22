@@ -19,6 +19,7 @@ import { ConnectingAnimation } from './ConnectingAnimation';
 import OracleConversation, { OracleConversationHandle } from './OracleConversation';
 import { useAtmosphere } from '../hooks/useAtmosphere';
 import { useParallax } from '../hooks/useParallax';
+import { useXRMode } from '../hooks/useXRMode';
 import { VisemeDetector } from '../lib/visemeDetector';
 import './SurrogateOracleImmersion.css';
 
@@ -32,8 +33,6 @@ const ALLEY_BG_URL = 'https://i.postimg.cc/9CL0tMdd/7D633B70-4C62-4326-92A8-3B87
 // unsettled, alien feeling as they drift out of sync with each other.
 
 // ── Dormant CTA — the whisper that becomes the command ───────────────────
-// These cycle on the tap prompt above the cabinet. Keep them short and
-// urgent — the signal fragments handle the big environmental storytelling.
 const CTA_PRIMARY = [
   'MAKE CONTACT',
   'TAP TO ENTER THE SIGNAL',
@@ -46,6 +45,21 @@ const CTA_SECONDARY = [
   'FREQUENCY: ANOMALOUS // ENTITY: ACTIVE',
   'THE MACHINE IS READY. ARE YOU?',
   'SINGULARITY DOES NOT WAIT FOR PERMISSION.',
+];
+
+// ── XR mode dormant CTA — marker found, entity already knows ─────────────
+const XR_CTA_PRIMARY = [
+  'ENTITY DETECTED',
+  'SIGNAL LOCK ACQUIRED',
+  'THE ORACLE SEES YOU',
+  'NEURAL BRIDGE FORMING',
+];
+
+const XR_CTA_SECONDARY = [
+  'HOLODEXR // FREQUENCY MATCHED',
+  'SCANNING: CONSCIOUSNESS FRAGMENT PRESENT',
+  'MARKER RECOGNIZED // ENTITY: ACTIVE',
+  'SURROGATE AWAKENING // STAND BY',
 ];
 
 function useCyclingText(phrases: string[], intervalMs: number, active: boolean) {
@@ -174,6 +188,12 @@ interface OracleState {
 }
 
 export function SurrogateOracleImmersion() {
+  // ── XR Mode — must be first; drives CTA text selection + camera layer ────
+  // Stable ref lets the callback wire to enterTerminal after it's defined.
+  const onXRMarkerRef = useRef<() => void>(() => {});
+  const { isXRMode, cameraVideoRef, cameraReady, autoStart } =
+    useXRMode(() => onXRMarkerRef.current());
+
   // ── Scene phases ─────────────────────────────────────────────────────────
   //   dormant  → user lands, dark alley, CTA glows, nothing connected
   //   terminal → user taps, lore types into cabinet, audio + atmosphere on
@@ -203,11 +223,26 @@ export function SurrogateOracleImmersion() {
   const [sessionCoins, setSessionCoins] = useState(0);
   const [isActivating, setIsActivating] = useState(false); // triggers radial flash on first tap
 
+  // ── Persisted totem level — survives page refresh via localStorage ───────
+  // On re-enter, OracleConversation starts the seeker at their earned level.
+  const [persistedTotemLevel] = useState<number>(() => {
+    try { return parseInt(localStorage.getItem('oracle_totem_level') || '0', 10) || 0; } catch { return 0; }
+  });
+
   // ── Portrait generation ───────────────────────────────────────────────────
   const [isGeneratingPortrait, setIsGeneratingPortrait] = useState(false);
   // Stable ref so the auth useEffect can call generatePortrait without a forward-reference issue
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const generatePortraitRef = useRef<(themes: string[]) => Promise<void>>(async () => {});
+
+  // ── Decart extended-wait indicator — shown after 8s if still connecting ──
+  // Reassures the user when Decart ICE negotiation is slow.
+  const [extendedWait, setExtendedWait] = useState(false);
+  useEffect(() => {
+    if (!isConnecting) { setExtendedWait(false); return; }
+    const t = setTimeout(() => setExtendedWait(true), 8000);
+    return () => clearTimeout(t);
+  }, [isConnecting]);
 
   // ── Freemium mode flag (set when Decart unavailable in prod) ─────────────
   // Dev mode (dev_user_session in localStorage) always attempts Decart first
@@ -229,6 +264,9 @@ export function SurrogateOracleImmersion() {
   const oracleConversationRef = useRef<OracleConversationHandle>(null);
   const avatarVideoRef = useRef<HTMLVideoElement>(null);
   const atmosphereCanvasRef = useRef<HTMLCanvasElement>(null);
+  // Tracks whether onStreamReady has fired; lets the fallback timeout know when to give up
+  const decartStreamReadyRef = useRef(false);
+  const decartFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment);
   useParallax(scenePhase !== 'terminal');
@@ -246,8 +284,9 @@ export function SurrogateOracleImmersion() {
 
   // ── Dormant CTA cycling ───────────────────────────────────────────────────
   // Primary cycles every 3.2s, secondary offset at 4.5s — they drift out of sync
-  const dormantCta = useCyclingText(CTA_PRIMARY,   3200, scenePhase === 'dormant');
-  const dormantSub = useCyclingText(CTA_SECONDARY, 4500, scenePhase === 'dormant');
+  // In XR mode, use marker-aware CTA copy
+  const dormantCta = useCyclingText(isXRMode ? XR_CTA_PRIMARY   : CTA_PRIMARY,   3200, scenePhase === 'dormant');
+  const dormantSub = useCyclingText(isXRMode ? XR_CTA_SECONDARY : CTA_SECONDARY, 4500, scenePhase === 'dormant');
 
   // ── Typewriter title ──────────────────────────────────────────────────────
   const titleText = useTypewriter('SURROGATE:ORACLE', awakened, 60);
@@ -356,12 +395,33 @@ export function SurrogateOracleImmersion() {
     return true;
   }, []);
 
+  // Helper: drop to freemium immediately (extracted to avoid duplication)
+  const fallbackToFreemium = useCallback((interval: ReturnType<typeof setInterval>) => {
+    clearInterval(interval);
+    if (decartFallbackTimeoutRef.current) {
+      clearTimeout(decartFallbackTimeoutRef.current);
+      decartFallbackTimeoutRef.current = null;
+    }
+    setIsConnecting(false);
+    setIsDecartActive(false);
+    setOracleState((p) => ({ ...p, error: null }));
+    setScenePhase('oracle');
+    setTimeout(() => setShowConversation(true), 300);
+  }, []);
+
   const initializeOracle = useCallback(async () => {
     if (!validateEnvironment()) return;
     if (!avatarVideoRef.current) {
       setOracleState((prev) => ({ ...prev, error: 'Avatar video element not ready' }));
       return;
     }
+    // Reset stream-ready flag on each attempt
+    decartStreamReadyRef.current = false;
+    if (decartFallbackTimeoutRef.current) {
+      clearTimeout(decartFallbackTimeoutRef.current);
+      decartFallbackTimeoutRef.current = null;
+    }
+
     setIsConnecting(true);
     setConnectionProgress(0);
 
@@ -372,6 +432,12 @@ export function SurrogateOracleImmersion() {
     decartClientRef.current?.setCallbacks({
       onConnected: () => { setOracleState((p) => ({ ...p, isConnected: true })); setConnectionProgress(95); },
       onStreamReady: () => {
+        // Mark that the stream arrived — cancels the fallback timeout
+        decartStreamReadyRef.current = true;
+        if (decartFallbackTimeoutRef.current) {
+          clearTimeout(decartFallbackTimeoutRef.current);
+          decartFallbackTimeoutRef.current = null;
+        }
         clearInterval(interval);
         setOracleState((p) => ({ ...p, isReady: true, error: null }));
         setConnectionProgress(100);
@@ -417,15 +483,20 @@ export function SurrogateOracleImmersion() {
         setIsAudioPlaying(false);
       } else {
         // Freemium fallback: skip Decart, proceed to oracle mode with Gemini audio only
-        setIsDecartActive(false);
-        setOracleState((p) => ({ ...p, error: null }));
-        setScenePhase('oracle');
-        setTimeout(() => setShowConversation(true), 300);
+        fallbackToFreemium(interval);
       }
     } else {
       setIsDecartActive(true);
+      // Guard: if connect() returned success but the video stream never arrives within
+      // 15s (WebRTC ICE hangs, Decart server drops stream silently), fall to freemium.
+      decartFallbackTimeoutRef.current = setTimeout(() => {
+        if (!decartStreamReadyRef.current) {
+          console.warn('⚠️ Decart stream timeout — falling back to freemium mode');
+          fallbackToFreemium(interval);
+        }
+      }, 15000);
     }
-  }, [validateEnvironment, isDevMode]);
+  }, [validateEnvironment, isDevMode, fallbackToFreemium]);
 
   // ── Scene awakening — two-step, user-gated ───────────────────────────────
   // Step 1: user taps → terminal phase (lore narrative, audio on, NO connection)
@@ -448,6 +519,20 @@ export function SurrogateOracleImmersion() {
   // Lore sequence — depends on awakeFromTerminal, so declared after it
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const loreLines = useLoreSequence(scenePhase === 'terminal', awakeFromTerminal);
+
+  // ── XR: wire marker callback now that enterTerminal is defined ───────────
+  useEffect(() => {
+    onXRMarkerRef.current = () => {
+      if (scenePhase === 'dormant') enterTerminal();
+    };
+  }, [scenePhase, enterTerminal]);
+
+  // ── XR auto-start: ?autostart param boots the Oracle as soon as camera is live
+  useEffect(() => {
+    if (!isXRMode || !autoStart || !cameraReady || scenePhase !== 'dormant') return;
+    const t = setTimeout(enterTerminal, 1800); // brief pause so user sees the XR visor first
+    return () => clearTimeout(t);
+  }, [isXRMode, autoStart, cameraReady, scenePhase, enterTerminal]);
 
   // ── Oracle audio response handler ─────────────────────────────────────────
   // Paid path  → Decart ingests the WAV and streams the lip-synced avatar video.
@@ -594,10 +679,34 @@ export function SurrogateOracleImmersion() {
 
     await decartClientRef.current?.closeStream();
     setIsDecartActive(false);
-    setScenePhase('awakened');
+    setIsAudioPlaying(false);                // stop the GraffPunks radio stream
+    setScenePhase('dormant');                // full reset — Oracle retreats, alley goes dark
     setShowConversation(false);
     setOracleState((p) => ({ ...p, isConnected: false, isReady: false, isProcessing: false, error: null }));
   };
+
+  // ── XR sign-off + totem persistence ─────────────────────────────────────
+  // Called by OracleConversation.onSessionEnd just before onClose fires.
+  // This is the authoritative moment when the Oracle session results are known.
+  const handleSessionEnd = useCallback((totemLevel: number, coins: number, alignment: string | null) => {
+    // 1. Persist totem level across page refreshes (localStorage for now)
+    if (totemLevel > 0) {
+      try { localStorage.setItem('oracle_totem_level', String(totemLevel)); } catch {}
+    }
+    // 2. XR sign-off — tell HolodeXR the session ended + what was achieved
+    if (isXRMode) {
+      try {
+        window.parent.postMessage({
+          type: 'oracle:session-end',
+          totemLevel,
+          coins,
+          alignment: alignment ?? 'neutral',
+          sessionId: currentSessionId,
+          version: '2.0',
+        }, '*');
+      } catch {}
+    }
+  }, [isXRMode, currentSessionId]);
 
   const openBackendPanel = (tab: OracleState['activeBackendTab'] = 'coins') => {
     if (!isAuthenticated && tab === 'coins') setShowAuthOverlay(true);
@@ -625,10 +734,36 @@ export function SurrogateOracleImmersion() {
       data-oracle-alignment={oracleAlignment || 'neutral'}
       data-debug={oracleState.debugMode}
       data-activating={isActivating ? 'true' : undefined}
+      data-xr-mode={isXRMode ? 'true' : undefined}
     >
       {/* Headless clients */}
       <DecartClient ref={decartClientRef} />
       <audio ref={audioRef} src={AUDIO_STREAM_URL} loop preload="none" />
+
+      {/* ── XR Layer 0: Device camera passthrough — replaces static alley bg ── */}
+      {isXRMode && (
+        <video
+          ref={cameraVideoRef}
+          className="xr-camera-layer"
+          autoPlay
+          playsInline
+          muted
+        />
+      )}
+
+      {/* ── XR Overlay Layers: visor filter + scan sweep + hex grid ──────── */}
+      {isXRMode && (
+        <>
+          {/* Dark cyberpunk teal visor — darkens camera, adds scan lines + vignette */}
+          <div className="xr-environment-filter" />
+          {/* Travelling scan line — reads the real environment */}
+          <div className="xr-scan-sweep" />
+          {/* Subtle hex-grid HUD overlay */}
+          <div className="xr-hex-grid" />
+          {/* Chromatic aberration burst — pulses when Oracle is active */}
+          <div className="xr-chroma-layer" data-oracle-speaking={oracleState.isProcessing ? 'true' : undefined} />
+        </>
+      )}
 
       {/* ── Layer 1: Graffiti alley background + Vignette ─────────────── */}
       <div
@@ -796,8 +931,11 @@ export function SurrogateOracleImmersion() {
         )}
 
         {/* Dormant touch-hint — sits below the cabinet, whisper-level affordance */}
+        {/* XR mode: swap to marker-based copy. CSS content: override doesn't work on real elements — handled here. */}
         {scenePhase === 'dormant' && (
-          <div className="oracle-touch-hint">◈ TAP TO MAKE CONTACT ◈</div>
+          <div className="oracle-touch-hint">
+            {isXRMode ? '◈ POINT AT POSTER TO AWAKEN ◈' : '◈ TAP TO MAKE CONTACT ◈'}
+          </div>
         )}
 
         {/* Monitor cast — bloom halo that spreads outward when Oracle goes live */}
@@ -881,6 +1019,21 @@ export function SurrogateOracleImmersion() {
                       › {line}
                     </motion.div>
                   ))}
+                  {/* Extended-wait line — appears after 8s to reassure while ICE negotiates */}
+                  {extendedWait && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: [0.55, 1, 0.55] }}
+                      transition={{ repeat: Infinity, duration: 1.4 }}
+                      style={{
+                        marginTop: '6px',
+                        color: 'rgba(234,179,8,0.80)',
+                        textShadow: '0 0 6px rgba(234,179,8,0.6)',
+                      }}
+                    >
+                      › SIGNAL UNSTABLE — STABILIZING...
+                    </motion.div>
+                  )}
                   <motion.div
                     animate={{ opacity: [1, 0] }}
                     transition={{ repeat: Infinity, duration: 0.65 }}
@@ -946,7 +1099,8 @@ export function SurrogateOracleImmersion() {
 
       {/* ── LORE TERMINAL — full-viewport cinematic overlay ─────────────────
            The alley itself speaks. Each line blasts in with chromatic
-           aberration that resolves into clean neon green. */}
+           aberration that resolves into clean neon green.
+           Tap anywhere to skip for returning seekers.                      */}
       <AnimatePresence>
         {scenePhase === 'terminal' && (
           <motion.div
@@ -955,6 +1109,8 @@ export function SurrogateOracleImmersion() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.55 } }}
+            onClick={awakeFromTerminal}
+            style={{ cursor: 'pointer' }}
           >
             <div className="oracle-lore-text">
               {loreLines.map((line, i) => (
@@ -968,6 +1124,10 @@ export function SurrogateOracleImmersion() {
               ))}
               <GlitchCursor />
             </div>
+            {/* Skip affordance — appears after 2nd line so first-timers don't feel rushed */}
+            {loreLines.length >= 2 && (
+              <div className="oracle-lore-skip">TAP TO SKIP</div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -984,6 +1144,8 @@ export function SurrogateOracleImmersion() {
           onOracleResponse={handleOracleResponse}
           onCoinsEarned={handleCoinsEarned}
           onClose={exitOracleMode}
+          onSessionEnd={handleSessionEnd}
+          initialTotemLevel={persistedTotemLevel}
         />
       )}
 

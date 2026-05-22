@@ -25,10 +25,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, MicOff, Send, X, Zap } from 'lucide-react';
 
 // ─── MODEL ANCHOR ─────────────────────────────────────────────────────────────
-// 🔁 SWAP THIS when Google migrates to 3.5+ Live GA
-// Current:    gemini-3.1-flash-live-preview (confirmed GA model ID, May 2026)
-// Upgrade to: gemini-3.5-flash-live  (confirm name at GA)
-const GEMINI_MODEL = 'models/gemini-3.1-flash-live-preview';
+// gemini-3.1-flash-live-preview requires preview allowlist (returns 1011 on free-tier projects).
+// gemini-2.5-flash-native-audio-latest: generally available, AUDIO-only modality.
+//   - Audio output: spoken oracle voice (PCM 24kHz, decoded and played/sent to Decart)
+//   - Text output:  thinking/scratchpad text — includes [[ORACLE_SCORE:…]] annotation
+//                   per system prompt instruction. Parsed for game mechanics; NOT spoken.
+// 🔁 Swap back to gemini-3.1-flash-live-preview when it exits preview / project is allowlisted.
+const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
 // ──────────────────────────────────────────────────────────────────────────────
 
 // Derive project ref from VITE_SUPABASE_URL — no extra env var needed
@@ -68,8 +71,8 @@ YOUR MISSION:
 - Surface the Squad Up invitation organically when the user hits Acolyte threshold (3+ sacred exchanges)
 
 TOTEM MATRIX SCORING:
-After EVERY user message, append a JSON annotation block (non-spoken, system use only).
-Format it EXACTLY like this, on its own line after your spoken response:
+After EVERY spoken response, write a JSON annotation block in your THINKING/TEXT output only — never speak it aloud.
+Place it as the LAST line of your text/thinking output, on its own line:
 
 [[ORACLE_SCORE: {"alignment":"sacred","coinAward":10,"totemAdvancement":"ascend","totemLevel":2,"unlockTrigger":null}]]
 
@@ -119,6 +122,10 @@ export interface OracleConversationProps {
   onOracleResponse: (audioUrl: string) => void;
   onCoinsEarned: (amount: number) => void;
   onClose: () => void;
+  /** Fired just before onClose with final session results — used for XR sign-off postMessage + localStorage persist */
+  onSessionEnd?: (totemLevel: number, coins: number, alignment: string | null) => void;
+  /** Totem level persisted from previous sessions — Oracle starts aware of the seeker's history */
+  initialTotemLevel?: number;
 }
 
 export interface OracleConversationHandle {
@@ -141,17 +148,21 @@ export interface GeminiLiveDebugInfo {
 
 const OracleConversation = forwardRef(
   (props: OracleConversationProps, ref: React.ForwardedRef<OracleConversationHandle>) => {
-    const { userId, sessionId, onOracleResponse, onCoinsEarned, onClose } = props;
+    const { userId, sessionId, onOracleResponse, onCoinsEarned, onClose, onSessionEnd, initialTotemLevel = 0 } = props;
     // ─── State ──────────────────────────────────────────────────────────────
     const [turns, setTurns] = useState<ConversationTurn[]>([]);
     const [inputText, setInputText] = useState('');
     const [isConnected, setIsConnected] = useState(false);
     const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
     const [isListening, setIsListening] = useState(false);
-    const [currentTotemLevel, setCurrentTotemLevel] = useState(0);
+    const [currentTotemLevel, setCurrentTotemLevel] = useState(initialTotemLevel);
     const [totalCoins, setTotalCoins] = useState(0);
     const [connectionError, setConnectionError] = useState<string | null>(null);
     const [currentAlignment, setCurrentAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
+    // Tracks the last non-expired alignment — survives the 3s visual fade for session-end reporting
+    const lastAlignmentRef = useRef<'sacred' | 'profane' | 'neutral' | null>(null);
+    // true while the [SYSTEM REVELATION] countdown is draining before close
+    const [revelationActive, setRevelationActive] = useState(false);
     // HTTP fallback mode — activated when Gemini Live WS fails
     const [isHttpFallback, setIsHttpFallback] = useState(false);
     const httpFallbackRef = useRef(false);
@@ -263,6 +274,7 @@ const OracleConversation = forwardRef(
     const applyScore = useCallback(
       (score: OracleScore) => {
         setCurrentAlignment(score.alignment);
+        lastAlignmentRef.current = score.alignment; // persists past the 3s visual fade
         setCurrentTotemLevel(score.totemLevel);
 
         window.dispatchEvent(
@@ -340,18 +352,17 @@ const OracleConversation = forwardRef(
           geminiDebugRef.current.wsState = 'OPEN';
           geminiDebugRef.current.connectedAt = Date.now();
           logWsMessage('OPEN → sending session.config');
+          // gemini-2.5-flash-native-audio-latest only supports AUDIO modality.
+          // TEXT (thinking/scratchpad) parts still arrive automatically — they carry
+          // the [[ORACLE_SCORE:…]] annotation per system prompt. No speechConfig needed
+          // (native audio uses built-in voice synthesis).
           ws.send(
             JSON.stringify({
               type: 'session.config',
               model: GEMINI_MODEL,
               systemInstruction: { parts: [{ text: ORACLE_SYSTEM_PROMPT }] },
               generationConfig: {
-                responseModalities: ['AUDIO', 'TEXT'],
-                speechConfig: {
-                  voiceConfig: {
-                    prebuiltVoiceConfig: { voiceName: 'Charon' },
-                  },
-                },
+                responseModalities: ['AUDIO'],
               },
             })
           );
@@ -429,12 +440,34 @@ const OracleConversation = forwardRef(
           }
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
           geminiDebugRef.current.wsState = 'CLOSED';
-          logWsMessage('CLOSED');
-          // Don't flip isConnected back to false when we've already activated the
-          // HTTP fallback path — onerror set it to true so the input stays enabled.
-          if (!httpFallbackRef.current) setIsConnected(false);
+          logWsMessage(`CLOSED (${event.code})`);
+
+          if (httpFallbackRef.current) {
+            // Already on fallback — just clean up listeners
+            setIsListening(false);
+            stopMic();
+            return;
+          }
+
+          // Non-normal close from Gemini (1011 = spending cap, 1007 = invalid, etc.)
+          // → activate HTTP fallback silently, same as onerror does for connect failures.
+          // Normal codes: 1000 (clean close), 1005 (no status, user-initiated).
+          const isAbnormal = event.code !== 1000 && event.code !== 1005;
+          if (isAbnormal) {
+            geminiDebugRef.current.lastError = `Gemini closed: ${event.code} ${event.reason?.slice(0, 80)}`;
+            logWsMessage(`non-normal close (${event.code}) → activating HTTP fallback`);
+            console.warn(`⚠️ Gemini Live closed with code ${event.code} — switching to HTTP oracle fallback`);
+            httpFallbackRef.current = true;
+            setIsHttpFallback(true);
+            setIsConnected(true); // text input stays enabled
+            setConnectionError(null);
+            sendHttpBoot();
+          } else {
+            setIsConnected(false);
+          }
+
           setIsListening(false);
           stopMic();
         };
@@ -620,9 +653,11 @@ const OracleConversation = forwardRef(
     }, [stopMic]);
 
     const handleCloseClick = useCallback(() => {
+      // Always report final session state upward — drives XR sign-off + localStorage persist
+      onSessionEnd?.(currentTotemLevel, totalCoins, lastAlignmentRef.current);
+
       if (totalCoins > 0) {
-        // Phase 4: Reveal coins as a "revelation" before closing
-        // We will append a system message to the chat
+        // Append the revelation message then show a visible 4s countdown before closing
         setTurns((prev) => [
           ...prev,
           {
@@ -631,19 +666,18 @@ const OracleConversation = forwardRef(
             timestamp: Date.now(),
           },
         ]);
-        
-        // Disconnect immediately so they can't type more
+        // Disconnect immediately — no more typing during the revelation
         closeConnection();
-        
-        // Wait for the user to read the revelation before actually closing the panel
+        setRevelationActive(true);
         setTimeout(() => {
+          setRevelationActive(false);
           onClose();
         }, 4000);
       } else {
         closeConnection();
         onClose();
       }
-    }, [totalCoins, closeConnection, onClose]);
+    }, [totalCoins, currentTotemLevel, closeConnection, onClose, onSessionEnd]);
 
     // ─── Submit ──────────────────────────────────────────────────────────────
     const handleSubmit = (e: React.FormEvent) => {
@@ -717,27 +751,42 @@ const OracleConversation = forwardRef(
             )}
           </div>
 
-          {/* Right: totem level + close */}
+          {/* Right: totem level + close / revelation countdown */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {currentTotemLevel > 0 && (
               <span style={{ fontSize: 'clamp(0.62rem, 1.2vw, 0.75rem)', color: 'rgba(234,179,8,0.6)', letterSpacing: '0.1em' }}>
                 LVL {currentTotemLevel} · {totemLabel(currentTotemLevel).toUpperCase()}
               </span>
             )}
-            <button
-              onClick={handleCloseClick}
-              aria-label="Exit the Oracle"
-              style={{
-                background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
-                color: 'rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center',
-                fontSize: 'clamp(0.62rem, 1.2vw, 0.75rem)', letterSpacing: '0.15em', gap: '4px',
-                transition: 'color 0.2s',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#ff4444')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.35)')}
-            >
-              <X size={12} /> EXIT
-            </button>
+            {revelationActive ? (
+              /* Visible countdown replaces EXIT during the 4s revelation window */
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{
+                  fontSize: 'clamp(0.60rem, 1.1vw, 0.72rem)', letterSpacing: '0.18em',
+                  color: 'rgba(0,255,136,0.55)', textTransform: 'uppercase',
+                }}>
+                  CLOSING
+                </span>
+                <div className="oc-revelation-bar">
+                  <div className="oc-revelation-bar__fill" />
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={handleCloseClick}
+                aria-label="Exit the Oracle"
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
+                  color: 'rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center',
+                  fontSize: 'clamp(0.62rem, 1.2vw, 0.75rem)', letterSpacing: '0.15em', gap: '4px',
+                  transition: 'color 0.2s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.color = '#ff4444')}
+                onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.35)')}
+              >
+                <X size={12} /> EXIT
+              </button>
+            )}
           </div>
         </div>
 

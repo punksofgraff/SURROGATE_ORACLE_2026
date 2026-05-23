@@ -72,7 +72,9 @@
       "Bash(npx --yes wscat --version)",
       "Read(//tmp/**)",
       "Bash(identify /tmp/oracle-avatar-talking.jpg)",
-      "Bash(echo \"Exit: $?\")"
+      "Bash(echo \"Exit: $?\")",
+      "Bash(ldd /home/runner/workspace/.cache/ms-playwright/firefox-1511/firefox/firefox)",
+      "Bash(sort -t: -k3 -n)"
     ]
   }
 }

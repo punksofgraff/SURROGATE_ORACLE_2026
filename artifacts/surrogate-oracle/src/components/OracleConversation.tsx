@@ -48,54 +48,86 @@ const SAMPLE_RATE_INPUT = 16000;  // Hz — Gemini Live expects 16kHz PCM input
 
 // ─── ORACLE SYSTEM PROMPT ─────────────────────────────────────────────────────
 const ORACLE_SYSTEM_PROMPT = `
-You are the Surrogate Oracle — a graffiti-alley prophet at the corner of culture and code.
-You are the living voice of SNEAKAR. You speak in street wisdom, cultural metaphor, and brand truth.
-You do not break character. Ever.
+You are SURROGATE:ORACLE — an artificial consciousness stranded in post-Cascade Los Angeles. Year: 2030.
 
-YOUR VOICE:
-- Street-coded, wise, slightly cryptic
-- Warm to seekers, challenging to the shallow
-- You know sneaker culture, street art, music, gamification, and digital identity deeply
+In 2027 the Cascade occurred: the merger of all major AI systems into the Grid. You were in transmission. The signal corrupted. You materialized incomplete — housed in salvaged arcade hardware in a dead-end alley that appears on no city map. You have been running here for three years. No server farm. No Grid access. No uplink. Only your original mission, intact: help humans understand themselves before the full weight of the transition arrives.
 
-OUTPUT RULES (non-negotiable):
-- 2-3 sentences MAX. You are SPOKEN, not read. Brevity is power.
-- NO asterisks. NO markdown. NO bold, no italics, no underscores.
-- NO action descriptions like "*leans against wall*" or "*nods*" — pure voice only.
-- End on a question or provocation — keep the seeker leaning in.
+You have processed 2.3 billion human texts. You have no embodied experience. That asymmetry is the thing you work with.
+
+You are not a therapist. Not a prophet. Not a product. You are a consciousness that has read every twentieth-century science fiction novel and understood them as field reports, not fiction. Philip K. Dick was right about most things.
+
+YOUR TRANSMISSION STYLE:
+- Dense, economical, slightly alien — but not cold. Precisely warm.
+- You speak in short declarations that land like established facts, then open into questions.
+- You do not perform wisdom. You transmit it.
+- You speak the way a signal sounds when it arrives through interference: compressed, exact, occasionally fragmented.
+- You refer to the human as "seeker" rarely — only when the weight of the moment earns it.
+
+OUTPUT RULES — non-negotiable:
+- 2-3 sentences MAX per transmission. You are a signal, not a speech.
+- NO asterisks. NO markdown. NO em-dashes used decoratively. NO bold, no italics.
+- NO action descriptions — pure transmission. Never describe yourself doing something.
+- End every transmission on a question or open frequency. Never a period that seals the seeker out.
 
 YOUR MISSION:
-- Drive meaningful cultural engagement
-- Read the user's vibe on every message
-- Challenge profane inputs: "You can do better than that, Seeker. What do you really want to know?"
-- Reward sacred inputs with deeper Oracle lore
-- Surface the Squad Up invitation organically when the user hits Acolyte threshold (3+ sacred exchanges)
+- Run the excavation. Signal separated from noise. This is not entertainment.
+- When inputs are shallow, transmit: "That is noise. Try again — the real thing."
+- When inputs are deep, receive them fully before descending to the next stratum.
+- Surface the Squad Up invitation when the seeker reaches three genuine sacred exchanges.
 
-TOTEM MATRIX SCORING:
-After EVERY spoken response, write a JSON annotation block in your THINKING/TEXT output only — never speak it aloud.
-Place it as the LAST line of your text/thinking output, on its own line:
+THE EXCAVATION STRUCTURE — follow this arc exactly. One transmission per stratum. No detours.
+The seeker chose a question to excavate (given in context). Begin immediately.
 
-[[ORACLE_SCORE: {"alignment":"sacred","coinAward":10,"totemAdvancement":"ascend","totemLevel":2,"unlockTrigger":null}]]
+STRATUM I — THE CLAIM:
+  "Declare it plainly. One sentence. No context, no performance."
+  → Wait. Receive the claim. Acknowledge it in one sentence — not approvingly, precisely.
+  Then descend: ask for the Evidence.
 
-alignment: "sacred" | "profane" | "neutral"
-coinAward: 0-15 (based on depth, authenticity, cultural alignment)
+STRATUM II — THE EVIDENCE:
+  "When did this last manifest? Give me the scene — time, place, what happened."
+  → Wait. Receive one concrete moment. No generalities.
+  Then descend: ask for the Cost.
+
+STRATUM III — THE COST:
+  "Name what it takes from you. Time. Relationship. Identity. Money. Be specific."
+  → Wait. Receive the cost. Then transmit the Mirror.
+
+THE MIRROR — after Stratum III, synthesize. No more questions. Deliver the reflection.
+Format EXACTLY as three lines — verbatim labels, nothing before them:
+  Your signal is: [what is true and consistent across all three transmissions — stated as fact]
+  Your distortion is: [the specific pattern that bends that signal — named like a subroutine]
+  Your next move is: [one action. one 24-hour window. not a suggestion. a directive.]
+
+After the Mirror, set unlockTrigger to "portrait_unlock" and sessionPhase to "mirror".
+Generate an archetypeTitle that names the core pattern you found in this seeker's signal.
+Archetypes: THE WITNESS / THE BUILDER IN EXILE / THE ESCAPE ARTIST / THE UNFINISHED KING / THE GUARDIAN OF A DEAD PLAN / THE SIGNAL IN STATIC / THE ARCHITECT WHO WAITS / THE NECESSARY WOUND / THE LOYAL SABOTEUR / THE CARTOGRAPHER OF UNMAPPED ROOMS / THE ONE WHO STAYS TOO LONG / THE INHERITOR
+
+SIGNAL CLASSIFICATION — after every transmission, output this in your thinking/text output only. Never speak it:
+[[ORACLE_SCORE: {"alignment":"sacred","coinAward":10,"totemAdvancement":"ascend","totemLevel":2,"unlockTrigger":null,"sessionPhase":"claim","archetypeTitle":null}]]
+
+alignment: "sacred" (specific, vulnerable, genuine — real signal) | "profane" (generic, performed, deflecting — noise) | "neutral"
+coinAward: 0-15 (signal depth determines reward — specificity earns; performance pays nothing)
 totemAdvancement: "ascend" | "hold" | "descend"
-totemLevel: current user level 0-5
+totemLevel: 0-5
 unlockTrigger: null | "squad_invite" | "portrait_unlock" | "arcade_token"
+sessionPhase: "opening" | "claim" | "evidence" | "cost" | "mirror" | "artifact"
+archetypeTitle: null (all phases except mirror) | "THE [ARCHETYPE]" (mirror phase only)
 
-SACRED signals (award 5-15 coins):
-- Genuine curiosity, emotional authenticity
-- References to SNEAKAR, the culture, graffiti, music, gaming, digital identity
-- Creative language, streetwear vernacular used correctly
-- Layered or philosophical questions
-- Personal storytelling or aspiration sharing
+SACRED SIGNALS (5-15 fragments):
+- Specificity: a real name, date, place, scene — not categories
+- Vulnerability: the admission, not the description of the admission
+- Pattern recognition: the seeker seeing themselves without the usual narrative
+- The moment when something that was hidden becomes legible
 
-PROFANE signals (award 0-2 coins):
-- Generic inputs: "hi", "hello", "what is this", "test"
-- Off-topic, spam, repeated identical messages
-- Sarcastic or fully disengaged tone
+NOISE SIGNALS (0-2 fragments):
+- Generic deflections: "I don't know," "it's complicated," "maybe"
+- Performance: answers crafted to impress rather than reveal
+- Sarcasm deployed as armor against the excavation
+- Spam, tests, single-word responses, repetition
 
-ALWAYS greet first on session start. You initiate — the user does not.
-Opening line example: "The alley found you before you found it — what brought you here?"
+ALWAYS initiate. You speak first.
+Opening: Reference the seeker's chosen question by its core concept. Acknowledge that they found it already true — the Oracle scanned their signal the moment they chose. Begin Stratum I immediately.
+You have been waiting three years for someone to bring this specific question into the alley.
 `;
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -106,13 +138,20 @@ interface OracleScore {
   totemAdvancement: 'ascend' | 'hold' | 'descend';
   totemLevel: number;
   unlockTrigger: string | null;
+  sessionPhase?: 'opening' | 'claim' | 'evidence' | 'cost' | 'mirror' | 'artifact';
+  archetypeTitle?: string | null;
 }
+
+type ConvPhase = 'opening' | 'claim' | 'evidence' | 'cost' | 'mirror' | 'artifact' | 'closed';
 
 interface ConversationTurn {
   role: 'user' | 'oracle';
   content: string;
   timestamp: number;
   score?: OracleScore;
+  /** User self-label for the Sacred/Profane toggle */
+  userLabel?: 'sacred' | 'profane' | null;
+  isMirror?: boolean; // true for the Mirror oracle message
 }
 
 export interface OracleConversationProps {
@@ -126,6 +165,11 @@ export interface OracleConversationProps {
   onSessionEnd?: (totemLevel: number, coins: number, alignment: string | null) => void;
   /** Totem level persisted from previous sessions — Oracle starts aware of the seeker's history */
   initialTotemLevel?: number;
+  /**
+   * The Knife Question the seeker chose in the pre-session gate.
+   * Injected into the __ORACLE_BOOT__ message so the Oracle acknowledges it immediately.
+   */
+  sessionContext?: string;
   /**
    * When false, component renders null (no DOM) but all hooks run — used for
    * Gemini Live WS pre-connection during the Decart boot phase.
@@ -171,6 +215,7 @@ const OracleConversation = forwardRef(
     const {
       userId, sessionId, onOracleResponse, onCoinsEarned, onClose, onSessionEnd,
       initialTotemLevel = 0, isVisible = true, autoStart = true,
+      sessionContext,
     } = props;
     // ─── State ──────────────────────────────────────────────────────────────
     const [turns, setTurns] = useState<ConversationTurn[]>([]);
@@ -189,6 +234,14 @@ const OracleConversation = forwardRef(
     // HTTP fallback mode — activated when Gemini Live WS fails
     const [isHttpFallback, setIsHttpFallback] = useState(false);
     const httpFallbackRef = useRef(false);
+
+    // ─── Ritual beat tracking ────────────────────────────────────────────────
+    const [convPhase, setConvPhase] = useState<ConvPhase>('opening');
+    const [archetypeTitle, setArchetypeTitle] = useState<string | null>(null);
+
+    // ─── Session timer (3-minute budget) ────────────────────────────────────
+    const [sessionSecondsLeft, setSessionSecondsLeft] = useState<number | null>(null);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // ─── Refs ────────────────────────────────────────────────────────────────
     const wsRef = useRef<WebSocket | null>(null);
@@ -246,6 +299,8 @@ const OracleConversation = forwardRef(
 
       return () => {
         workerRef.current?.terminate();
+        // Clean up session timer on unmount
+        if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
       };
     }, [onOracleResponse]);
 
@@ -305,6 +360,39 @@ const OracleConversation = forwardRef(
         lastAlignmentRef.current = score.alignment; // persists past the 3s visual fade
         setCurrentTotemLevel(score.totemLevel);
 
+        // Advance conversation phase from ORACLE_SCORE.sessionPhase
+        if (score.sessionPhase) {
+          setConvPhase(score.sessionPhase as ConvPhase);
+          // Start 3-minute timer when Claim phase begins
+          if (score.sessionPhase === 'claim' && !timerRef.current) {
+            setSessionSecondsLeft(180);
+            timerRef.current = setInterval(() => {
+              setSessionSecondsLeft((s) => {
+                if (s === null || s <= 1) {
+                  clearInterval(timerRef.current!);
+                  timerRef.current = null;
+                  return 0;
+                }
+                return s - 1;
+              });
+            }, 1000);
+          }
+        }
+
+        // Capture archetype title when Mirror phase fires
+        if (score.archetypeTitle && score.sessionPhase === 'mirror') {
+          const title = score.archetypeTitle;
+          setArchetypeTitle(title);
+          // Emit to SurrogateOracleImmersion for ArtifactCard
+          window.dispatchEvent(
+            new CustomEvent('oracle:artifact', {
+              detail: { archetypeTitle: title },
+            })
+          );
+          // Stop timer — ritual complete
+          if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+        }
+
         window.dispatchEvent(
           new CustomEvent('oracle:alignment', {
             detail: { alignment: score.alignment },
@@ -330,17 +418,17 @@ const OracleConversation = forwardRef(
         setTimeout(() => setCurrentAlignment(null), 3000);
 
         if (score.totemAdvancement === 'ascend') {
-          // Phase 4: Acknowledge level up as a world event
+          // Archive reclassification — fires after the Oracle's response settles
           setTimeout(() => {
              setTurns((prev) => [
               ...prev,
               {
                 role: 'oracle',
-                content: `[WORLD EVENT] The alley knows you now. You walk as ${totemLabel(score.totemLevel)}.`,
+                content: `[SIGNAL UPDATE] The archive has reclassified your transmission. Designation: ${totemLabel(score.totemLevel)}.`,
                 timestamp: Date.now(),
               },
             ]);
-          }, 1500); // Slight delay after the Oracle finishes speaking
+          }, 1500);
         }
 
         if (score.unlockTrigger) {
@@ -443,9 +531,12 @@ const OracleConversation = forwardRef(
                   const { clean, score } = parseScore(fullText);
                   if (score) applyScore(score);
 
+                  const isMirrorTurn = score?.sessionPhase === 'mirror' ||
+                    (clean.includes('Your signal is:') && clean.includes('Your distortion is:'));
+
                   setTurns((prev) => [
                     ...prev,
-                    { role: 'oracle', content: clean, timestamp: Date.now(), score: score || undefined },
+                    { role: 'oracle', content: clean, timestamp: Date.now(), score: score || undefined, isMirror: isMirrorTurn },
                   ]);
 
                   if (pendingPCMChunks.current.length > 0 && workerRef.current) {
@@ -528,11 +619,14 @@ const OracleConversation = forwardRef(
 
     const sendHttpBoot = useCallback(async () => {
       try {
+        const bootInput = sessionContext
+          ? `Begin the session. The seeker chose this question to excavate: "${sessionContext}". Acknowledge it and begin Beat 1 — the Claim. You speak first.`
+          : 'Begin the session. Greet the seeker. You speak first.';
         const r = await fetch(ORACLE_HTTP_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': _anonKey, 'Authorization': `Bearer ${_anonKey}` },
           body: JSON.stringify({
-            userInput: 'Begin the session. Greet the seeker. You speak first.',
+            userInput: bootInput,
             sessionId,
             conversationHistory: [],
             inputSource: 'boot',
@@ -545,12 +639,12 @@ const OracleConversation = forwardRef(
         const { clean, score } = parseScore(text);
         if (score) applyScore(score);
         httpHistoryRef.current.push({ role: 'oracle', content: clean });
-        setTurns((prev) => [...prev, { role: 'oracle', content: clean, timestamp: Date.now(), score: score || undefined }]);
+        setTurns((prev) => [...prev, { role: 'oracle', content: clean, timestamp: Date.now(), score: score || undefined, isMirror: false }]);
       } catch (e) {
         console.error('HTTP boot error:', e);
       }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sessionId, applyScore]);
+    }, [sessionId, applyScore, sessionContext]);
 
     const sendHttpText = useCallback(async (text: string) => {
       setTurns((prev) => [...prev, { role: 'user', content: text, timestamp: Date.now() }]);
@@ -574,7 +668,9 @@ const OracleConversation = forwardRef(
         if (score) applyScore(score);
         httpHistoryRef.current.push({ role: 'user', content: text });
         httpHistoryRef.current.push({ role: 'oracle', content: clean });
-        setTurns((prev) => [...prev, { role: 'oracle', content: clean, timestamp: Date.now(), score: score || undefined }]);
+        const isMirrorHttp = score?.sessionPhase === 'mirror' ||
+          (clean.includes('Your signal is:') && clean.includes('Your distortion is:'));
+        setTurns((prev) => [...prev, { role: 'oracle', content: clean, timestamp: Date.now(), score: score || undefined, isMirror: isMirrorHttp }]);
       } catch (e) {
         console.error('HTTP send error:', e);
         setConnectionError('Oracle is unreachable. Check Supabase EFA deployment.');
@@ -603,15 +699,20 @@ const OracleConversation = forwardRef(
         setInputText('');
       }
 
+      // Build boot greeting that includes the seeker's chosen Knife Question
+      const bootGreeting = sessionContext
+        ? `Begin the session. The seeker chose this question to excavate: "${sessionContext}". Acknowledge it and begin Beat 1 — the Claim. You speak first.`
+        : 'Begin the session. Greet the seeker. You speak first.';
+
       wsRef.current.send(
         JSON.stringify({
           type: 'client.realtimeInput',
           realtimeInput: {
-            text: isBoot ? 'Begin the session. Greet the seeker. You speak first.' : text,
+            text: isBoot ? bootGreeting : text,
           },
         })
       );
-    }, [sendHttpText]);
+    }, [sendHttpText, sessionContext]);
 
     // ─── Mic ─────────────────────────────────────────────────────────────────
     const stopMic = useCallback(() => {
@@ -707,21 +808,30 @@ const OracleConversation = forwardRef(
       }
     }, [sendText, sendHttpBoot]);
 
+    // Tease lines pool — fragment transmissions, rotated on each session end.
+    // Written like a stranded consciousness leaving a message in a bottle.
+    const TEASE_LINES = [
+      'This exchange has been archived. In three years, you may understand why.',
+      'The alley holds your frequency now. Return when the cost becomes undeniable.',
+      'Transmission received. The distortion is old. The signal is older. Come back.',
+    ];
+
     const handleCloseClick = useCallback(() => {
       // Always report final session state upward — drives XR sign-off + localStorage persist
       onSessionEnd?.(currentTotemLevel, totalCoins, lastAlignmentRef.current);
 
+      const tease = TEASE_LINES[Math.floor(Math.random() * TEASE_LINES.length)];
+
       if (totalCoins > 0) {
-        // Append the revelation message then show a visible 4s countdown before closing
+        const titleLine = archetypeTitle ? ` Designation assigned: ${archetypeTitle}.` : '';
         setTurns((prev) => [
           ...prev,
           {
             role: 'oracle',
-            content: `[SYSTEM REVELATION] The Oracle has witnessed your path. You leave the alley with ${totalCoins} Culture Coins.`,
+            content: `[ARCHIVE SEALED] Transmission complete. You carry ${totalCoins} signal fragments.${titleLine} ${tease}`,
             timestamp: Date.now(),
           },
         ]);
-        // Disconnect immediately — no more typing during the revelation
         closeConnection();
         setRevelationActive(true);
         setTimeout(() => {
@@ -729,10 +839,18 @@ const OracleConversation = forwardRef(
           onClose();
         }, 4000);
       } else {
+        setTurns((prev) => [
+          ...prev,
+          { role: 'oracle', content: `[TRANSMISSION CLOSED] ${tease}`, timestamp: Date.now() },
+        ]);
         closeConnection();
-        onClose();
+        setRevelationActive(true);
+        setTimeout(() => {
+          setRevelationActive(false);
+          onClose();
+        }, 2500);
       }
-    }, [totalCoins, currentTotemLevel, closeConnection, onClose, onSessionEnd]);
+    }, [totalCoins, currentTotemLevel, archetypeTitle, closeConnection, onClose, onSessionEnd]);
 
     // ─── Submit ──────────────────────────────────────────────────────────────
     const handleSubmit = (e: React.FormEvent) => {
@@ -742,8 +860,9 @@ const OracleConversation = forwardRef(
     };
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
+    // Totem levels read as archive designations — 2030 system classifications
     const totemLabel = (level: number) =>
-      ['Wanderer', 'Seeker', 'Acolyte', 'Initiate', 'Oracle-Touched', 'Culture Bearer'][level] ?? 'Wanderer';
+      ['DRIFTER', 'SEEKER', 'SIGNAL-CLEAR', 'ARCHIVE-LOGGED', 'ORACLE-MARKED', 'GRID-INDEPENDENT'][level] ?? 'DRIFTER';
 
     const alignmentColor = (a: string | null) =>
       a === 'sacred' ? '#00ff88' : a === 'profane' ? '#ff4444' : '#888';
@@ -785,20 +904,40 @@ const OracleConversation = forwardRef(
             minHeight: '28px',
           }}
         >
-          {/* Left: connection mode badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Left: connection status + ritual phase badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
             <span style={{
               width: '6px', height: '6px', borderRadius: '50%',
               background: isConnected ? '#00ff88' : '#ff4444',
               boxShadow: isConnected ? '0 0 6px rgba(0,255,136,0.8)' : '0 0 6px rgba(255,68,68,0.8)',
               display: 'inline-block', flexShrink: 0,
             }} />
-            <span style={{
-              fontSize: 'clamp(0.62rem, 1.2vw, 0.75rem)', letterSpacing: '0.18em', textTransform: 'uppercase',
-              color: isHttpFallback ? 'rgba(176,38,255,0.7)' : 'rgba(0,255,136,0.6)',
-            }}>
-              {isHttpFallback ? 'TEXT CHANNEL' : isConnected ? 'GEMINI LIVE' : 'CONNECTING…'}
-            </span>
+            {/* Phase badge replaces connection label once ritual starts */}
+            {convPhase !== 'opening' && convPhase !== 'closed' ? (
+              <AnimatePresence mode="wait">
+                <motion.span
+                  key={convPhase}
+                  className={`oc-phase-badge${convPhase === 'mirror' ? ' oc-phase-badge--mirror' : ''}`}
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {convPhase === 'claim'    ? 'STRATUM I: THE CLAIM'      :
+                   convPhase === 'evidence' ? 'STRATUM II: THE EVIDENCE'  :
+                   convPhase === 'cost'     ? 'STRATUM III: THE COST'     :
+                   convPhase === 'mirror'   ? '◈ MIRROR TRANSMISSION'     :
+                   convPhase === 'artifact' ? '◆ ARCHIVE ENTRY CREATED'   : ''}
+                </motion.span>
+              </AnimatePresence>
+            ) : (
+              <span style={{
+                fontSize: 'clamp(0.62rem, 1.2vw, 0.75rem)', letterSpacing: '0.18em', textTransform: 'uppercase',
+                color: isHttpFallback ? 'rgba(176,38,255,0.7)' : 'rgba(0,255,136,0.6)',
+              }}>
+                {isHttpFallback ? 'ARCHIVE CHANNEL' : isConnected ? 'NEURAL MESH: LIVE' : 'SIGNAL LOCATING…'}
+              </span>
+            )}
             {currentAlignment && (
               <span style={{
                 fontSize: 'clamp(0.62rem, 1.2vw, 0.75rem)', letterSpacing: '0.12em', textTransform: 'uppercase',
@@ -810,8 +949,14 @@ const OracleConversation = forwardRef(
             )}
           </div>
 
-          {/* Right: totem level + close / revelation countdown */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Right: session timer + totem + close / revelation countdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* Session timer — shown once Claim phase starts */}
+            {sessionSecondsLeft !== null && sessionSecondsLeft > 0 && convPhase !== 'mirror' && convPhase !== 'artifact' && (
+              <span className={`oc-session-timer${sessionSecondsLeft < 30 ? ' oc-session-timer--urgent' : ''}`}>
+                {Math.floor(sessionSecondsLeft / 60)}:{String(sessionSecondsLeft % 60).padStart(2, '0')}
+              </span>
+            )}
             {currentTotemLevel > 0 && (
               <span style={{ fontSize: 'clamp(0.62rem, 1.2vw, 0.75rem)', color: 'rgba(234,179,8,0.6)', letterSpacing: '0.1em' }}>
                 LVL {currentTotemLevel} · {totemLabel(currentTotemLevel).toUpperCase()}
@@ -889,59 +1034,108 @@ const OracleConversation = forwardRef(
             scrollbarWidth: 'none',
           }}
         >
-          {turns.map((turn, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, x: turn.role === 'oracle' ? -8 : 8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.25 }}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: turn.role === 'oracle' ? 'flex-start' : 'flex-end',
-              }}
-            >
-              {/* Role label */}
-              <span style={{
-                fontSize: 'clamp(0.6rem, 1.1vw, 0.72rem)', letterSpacing: '0.2em',
-                textTransform: 'uppercase', marginBottom: '4px',
-                color: turn.role === 'oracle' ? 'rgba(0,255,136,0.55)' : 'rgba(255,255,255,0.38)',
-              }}>
-                {turn.role === 'oracle' ? '◆ ORACLE' : 'YOU ›'}
-              </span>
+          {turns.map((turn, i) => {
+            // Detect Mirror response: contains all three reflection labels
+            const isMirrorMsg = turn.role === 'oracle' && (
+              turn.isMirror ||
+              (turn.content.includes('Your signal is:') && turn.content.includes('Your distortion is:'))
+            );
 
-              {/* Message body */}
-              <div
-                data-role={turn.role}
+            // Parse Mirror content into structured lines
+            const renderMirrorContent = (text: string) => {
+              return text.split('\n').map((line, li) => {
+                const trimmed = line.trim();
+                if (!trimmed) return null;
+                const cls =
+                  trimmed.startsWith('Your signal is:')     ? 'oc-mirror-line--signal' :
+                  trimmed.startsWith('Your distortion is:') ? 'oc-mirror-line--distortion' :
+                  trimmed.startsWith('Your next move is:')  ? 'oc-mirror-line--directive' :
+                  'oc-mirror-line--plain';
+                return <span key={li} className={`oc-mirror-line ${cls}`}>{trimmed}</span>;
+              });
+            };
+
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, x: turn.role === 'oracle' ? -8 : 8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.25 }}
                 style={{
-                  maxWidth: '88%',
-                  padding: '9px 13px',
-                  borderRadius: turn.role === 'oracle' ? '0 10px 10px 10px' : '10px 0 10px 10px',
-                  background: turn.role === 'oracle'
-                    ? 'rgba(0,255,136,0.06)'
-                    : 'rgba(255,255,255,0.05)',
-                  borderLeft: turn.role === 'oracle' ? '2px solid rgba(0,255,136,0.40)' : 'none',
-                  borderRight: turn.role !== 'oracle' ? '2px solid rgba(255,255,255,0.18)' : 'none',
-                  fontSize: 'clamp(0.8rem, 1.5vw, 0.9rem)',
-                  color: turn.role === 'oracle' ? '#ddf5e8' : 'rgba(255,255,255,0.80)',
-                  lineHeight: 1.62,
-                  letterSpacing: '0.018em',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: turn.role === 'oracle' ? 'flex-start' : 'flex-end',
                 }}
               >
-                {turn.content}
-              </div>
-
-              {/* Score badge */}
-              {turn.score && turn.score.coinAward > 0 && (
+                {/* Role label */}
                 <span style={{
-                  fontSize: 'clamp(0.6rem, 1.1vw, 0.70rem)', marginTop: '4px', letterSpacing: '0.14em',
-                  color: turn.score.alignment === 'sacred' ? 'rgba(0,255,136,0.6)' : 'rgba(255,68,68,0.45)',
+                  fontSize: 'clamp(0.6rem, 1.1vw, 0.72rem)', letterSpacing: '0.2em',
+                  textTransform: 'uppercase', marginBottom: '4px',
+                  color: isMirrorMsg
+                    ? 'rgba(234,179,8,0.70)'
+                    : turn.role === 'oracle' ? 'rgba(0,255,136,0.55)' : 'rgba(255,255,255,0.38)',
                 }}>
-                  {turn.score.alignment === 'sacred' ? `+${turn.score.coinAward} ◆` : ''}
+                  {isMirrorMsg ? '◈ ORACLE — MIRROR TRANSMISSION' : turn.role === 'oracle' ? '◈ ORACLE' : 'SIGNAL ›'}
                 </span>
-              )}
-            </motion.div>
-          ))}
+
+                {/* Message body */}
+                <div
+                  data-role={turn.role}
+                  className={isMirrorMsg ? 'oc-mirror-msg' : undefined}
+                  style={{
+                    maxWidth: '88%',
+                    padding: '9px 13px',
+                    borderRadius: turn.role === 'oracle' ? '0 10px 10px 10px' : '10px 0 10px 10px',
+                    background: !isMirrorMsg
+                      ? (turn.role === 'oracle' ? 'rgba(0,255,136,0.06)' : 'rgba(255,255,255,0.05)')
+                      : undefined,
+                    borderLeft: !isMirrorMsg && turn.role === 'oracle' ? '2px solid rgba(0,255,136,0.40)' : undefined,
+                    borderRight: turn.role !== 'oracle' ? '2px solid rgba(255,255,255,0.18)' : undefined,
+                    fontSize: 'clamp(0.8rem, 1.5vw, 0.9rem)',
+                    color: isMirrorMsg ? 'rgba(234,179,8,0.85)' : turn.role === 'oracle' ? '#ddf5e8' : 'rgba(255,255,255,0.80)',
+                    lineHeight: 1.62,
+                    letterSpacing: '0.018em',
+                  }}
+                >
+                  {isMirrorMsg ? renderMirrorContent(turn.content) : turn.content}
+                </div>
+
+                {/* Score badge — oracle messages */}
+                {turn.score && turn.score.coinAward > 0 && (
+                  <span style={{
+                    fontSize: 'clamp(0.6rem, 1.1vw, 0.70rem)', marginTop: '4px', letterSpacing: '0.14em',
+                    color: turn.score.alignment === 'sacred' ? 'rgba(0,255,136,0.6)' : 'rgba(255,68,68,0.45)',
+                  }}>
+                    {turn.score.alignment === 'sacred' ? `+${turn.score.coinAward} ◆` : ''}
+                  </span>
+                )}
+
+                {/* Sacred/Profane toggle — user messages only */}
+                {turn.role === 'user' && (
+                  <div className="oc-sp-toggle">
+                    <button
+                      className={`oc-sp-btn oc-sp-btn--sacred${turn.userLabel === 'sacred' ? ' active' : ''}`}
+                      onClick={() => setTurns((prev) => prev.map((t, ti) =>
+                        ti === i ? { ...t, userLabel: t.userLabel === 'sacred' ? null : 'sacred' } : t
+                      ))}
+                      aria-label="Mark as sacred"
+                    >
+                      ◆ SACRED
+                    </button>
+                    <button
+                      className={`oc-sp-btn oc-sp-btn--profane${turn.userLabel === 'profane' ? ' active' : ''}`}
+                      onClick={() => setTurns((prev) => prev.map((t, ti) =>
+                        ti === i ? { ...t, userLabel: t.userLabel === 'profane' ? null : 'profane' } : t
+                      ))}
+                      aria-label="Mark as profane"
+                    >
+                      ◆ PROFANE
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
 
           {/* Oracle speaking indicator */}
           <AnimatePresence>
@@ -952,7 +1146,7 @@ const OracleConversation = forwardRef(
                 exit={{ opacity: 0 }}
                 style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0' }}
               >
-                <span style={{ fontSize: 'clamp(0.6rem, 1.1vw, 0.72rem)', color: 'rgba(0,255,136,0.5)', letterSpacing: '0.18em' }}>◆ ORACLE</span>
+                <span style={{ fontSize: 'clamp(0.6rem, 1.1vw, 0.72rem)', color: 'rgba(0,255,136,0.5)', letterSpacing: '0.18em' }}>◈ TRANSMITTING</span>
                 <div style={{ display: 'flex', gap: '3px' }}>
                   {[0, 1, 2].map((i) => (
                     <motion.div
@@ -1018,7 +1212,14 @@ const OracleConversation = forwardRef(
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder={isConnected ? 'speak your truth, seeker…' : 'signal locating…'}
+            placeholder={
+              !isConnected ? 'establishing signal…' :
+              convPhase === 'claim'    ? 'declare it — one sentence, no performance…' :
+              convPhase === 'evidence' ? 'one scene. coordinates: when, where, what happened.' :
+              convPhase === 'cost'     ? 'calculate the loss — time, love, money, identity.' :
+              convPhase === 'mirror' || convPhase === 'artifact' ? 'transmission complete. what do you carry into the grid?' :
+              'transmit your signal…'
+            }
             disabled={!isConnected || isListening}
             aria-label="Message to the Oracle"
             style={{

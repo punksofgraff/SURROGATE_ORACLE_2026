@@ -93,8 +93,10 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
         callbacksRef.current.onConnected?.();
         debugRef.current.connectionState = 'connected';
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const connectOptions: any = {
+        // ⚠️  Decart SDK v0.0.63: connect() only accepts { model, onRemoteStream, initialState, customizeOffer }.
+        //     onDisconnect/onError are NOT in the Zod schema and are stripped silently.
+        //     Post-connect errors and disconnections must be wired via client.on() after connect() resolves.
+        const connectOptions = {
           model: models.realtime('live-avatar'),
           initialState: { image: imageUrl },
           onRemoteStream: (videoStream: MediaStream) => {
@@ -106,22 +108,29 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
             callbacksRef.current.onStreamReady?.();
             activeRef.current = true;
           },
-          onDisconnect: (reason: string) => {
+        };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const realtimeClient = await decartClient.realtime.connect(null, connectOptions as any);
+
+        // Wire post-connect events via the SDK's event emitter (onDisconnect/onError in options are ignored by Zod)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (realtimeClient as any).on('error', (err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          debugRef.current.lastError = msg;
+          debugRef.current.connectionState = 'error';
+          logCallback(`event:error ${msg.slice(0, 40)}`);
+          callbacksRef.current.onError?.(msg);
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (realtimeClient as any).on('connectionChange', (state: string) => {
+          logCallback(`event:connectionChange → ${state}`);
+          if (state === 'disconnected' || state === 'error') {
             activeRef.current = false;
             debugRef.current.isActive = false;
-            debugRef.current.connectionState = 'disconnected';
-            logCallback(`onDisconnected(${reason})`);
-            callbacksRef.current.onDisconnected?.(reason);
-          },
-          onError: (err: unknown) => {
-            const msg = err instanceof Error ? err.message : String(err);
-            debugRef.current.lastError = msg;
-            debugRef.current.connectionState = 'error';
-            logCallback(`onError: ${msg.slice(0, 40)}`);
-            callbacksRef.current.onError?.(msg);
-          },
-        };
-        const realtimeClient = await decartClient.realtime.connect(null, connectOptions);
+            debugRef.current.connectionState = state === 'error' ? 'error' : 'disconnected';
+            callbacksRef.current.onDisconnected?.(state);
+          }
+        });
 
         realtimeClientRef.current = realtimeClient;
         return { success: true };

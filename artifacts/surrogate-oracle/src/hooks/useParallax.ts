@@ -1,9 +1,12 @@
 /**
- * useParallax — mouse-driven depth parallax for XR immersion.
+ * useParallax — depth parallax for XR immersion.
  *
  * Writes CSS transforms directly to DOM elements via RAF (no re-renders).
+ * Input sources (whichever is available, gyro takes precedence on mobile):
+ *   - DeviceOrientation API (gamma/beta tilt) — real gyroscope on mobile
+ *   - mousemove — desktop fallback
  *
- * Depth model (all elements shift in the same direction as the cursor,
+ * Depth model (all elements shift in the same direction as the input,
  * but at different magnitudes — more movement = "closer" to viewer):
  *
  *   oracle-alley    0.028×  far background — barely moves, creates depth anchor
@@ -13,27 +16,46 @@
 import { useEffect } from 'react';
 
 const LERP = 0.06; // interpolation speed — lower = smoother/lazier
+const GYRO_LERP = 0.04; // gyro is noisier — smoother interpolation
+// Max tilt angle (degrees) mapped to [-1, 1] output
+const GYRO_MAX_GAMMA = 25; // left-right
+const GYRO_MAX_BETA  = 20; // front-back
 
 export function useParallax(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
-    if (window.matchMedia('(hover: none)').matches) return; // skip touch
 
     let targetX = 0;
     let targetY = 0;
     let currentX = 0;
     let currentY = 0;
     let rafId = 0;
+    let usingGyro = false;
 
+    // ── Gyro input (mobile) ──────────────────────────────────────────────────
+    // Guard: DeviceOrientationEvent.alpha being non-null indicates real sensor data.
+    const onDeviceOrientation = (e: DeviceOrientationEvent) => {
+      if (e.alpha === null && e.gamma === null) return; // simulated / unsupported
+      usingGyro = true;
+      // gamma: left-right tilt (-90° to +90°). beta: front-back (-180° to +180°).
+      // Clamp to reasonable tilt range, normalise to [-1, 1].
+      const gamma = Math.max(-GYRO_MAX_GAMMA, Math.min(GYRO_MAX_GAMMA, e.gamma ?? 0));
+      const beta  = Math.max(-GYRO_MAX_BETA,  Math.min(GYRO_MAX_BETA,  (e.beta ?? 0) - 45));
+      targetX =  gamma / GYRO_MAX_GAMMA;
+      targetY =  beta  / GYRO_MAX_BETA;
+    };
+
+    // ── Mouse input (desktop) ────────────────────────────────────────────────
     const onMouseMove = (e: MouseEvent) => {
-      // Normalise to [-1, 1] relative to viewport centre
+      if (usingGyro) return; // gyro wins when both are present
       targetX = (e.clientX - window.innerWidth  / 2) / (window.innerWidth  / 2);
       targetY = (e.clientY - window.innerHeight / 2) / (window.innerHeight / 2);
     };
 
     const tick = () => {
-      currentX += (targetX - currentX) * LERP;
-      currentY += (targetY - currentY) * LERP;
+      const lerp = usingGyro ? GYRO_LERP : LERP;
+      currentX += (targetX - currentX) * lerp;
+      currentY += (targetY - currentY) * lerp;
 
       const vw = window.innerWidth;
       const vh = window.innerHeight;
@@ -66,11 +88,17 @@ export function useParallax(enabled: boolean) {
       rafId = requestAnimationFrame(tick);
     };
 
-    window.addEventListener('mousemove', onMouseMove, { passive: true });
+    // Mouse: only register on non-touch (hover capable) devices, but always
+    // allow gyro so mobile gets motion without hover capability check.
+    if (!window.matchMedia('(hover: none)').matches) {
+      window.addEventListener('mousemove', onMouseMove, { passive: true });
+    }
+    window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
     rafId = requestAnimationFrame(tick);
 
     return () => {
       window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('deviceorientation', onDeviceOrientation);
       cancelAnimationFrame(rafId);
       // Reset transforms to CSS defaults
       const alley = document.querySelector('.oracle-alley') as HTMLElement | null;

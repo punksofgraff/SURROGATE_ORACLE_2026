@@ -1,5 +1,6 @@
 /**
  * gemini-live-proxy — Supabase Edge Function
+ * v2 — 2026-05-22 force-redeploy to fix setupComplete→session.created translation
  *
  * Bidirectional WebSocket proxy between the browser and Gemini Live API.
  * Keeps GOOGLE_AI_API_KEY server-side — never exposed to the client.
@@ -7,13 +8,21 @@
  * Message translation:
  *   client → Gemini:  { type:"session.config", model, … }  →  { setup: { model, … } }
  *                     { type:"client.realtimeInput", realtimeInput:{…} }  →  { realtimeInput:{…} }
- *   Gemini → client:  { setupComplete:{} }      → swallowed (session.created sent on open)
+ *   Gemini → client:  { setupComplete:{} }      → triggers { type:"session.created" } to client
  *                     { serverContent:{…} }     → { type:"server.content", serverContent:{…} }
  *                     { error:{…} }             → { type:"error", message:"…" }
  *
+ * ⚠️  RACE-CONDITION FIX (May 2026):
+ *   The browser sends session.config in ws.onopen, which can arrive at the proxy before
+ *   Gemini's WebSocket is OPEN. Previously the proxy dropped it (readyState guard), so
+ *   Gemini never got a setup message and returned 1007 on the first text turn.
+ *   Fix: buffer client messages until Gemini is ready, flush on gemini.onopen.
+ *   Additionally, session.created is now sent only after Gemini confirms setupComplete,
+ *   not prematurely on gemini.onopen, so the browser never sends boot text before setup.
+ *
  * Deploy:
  *   npx supabase functions deploy gemini-live-proxy \
- *     --project-ref $SUPABASE_PROJECT_REF --use-api
+ *     --project-ref $SUPABASE_PROJECT_REF --use-api --no-verify-jwt
  *
  * Set secret:
  *   npx supabase secrets set GOOGLE_AI_API_KEY=AIza... \
@@ -51,19 +60,16 @@ Deno.serve(async (req: Request) => {
 
   const { socket: client, response } = Deno.upgradeWebSocket(req);
 
-  // Connect to Gemini Live API
-  const gemini = new WebSocket(GEMINI_LIVE_URL);
+  // Buffer for messages that arrive before Gemini's WS is OPEN.
+  // Without this, a session.config sent in browser ws.onopen gets silently dropped
+  // (readyState guard fires), Gemini never gets setup, first text turn → 1007.
+  const pendingClientMessages: string[] = [];
+  let geminiReady = false;
 
-  // ── client → Gemini (with message translation) ────────────────────────────
-  client.onopen = () => {
-    console.log('✅ Client connected to proxy');
-  };
-
-  client.onmessage = (event) => {
-    if (gemini.readyState !== WebSocket.OPEN) return;
-
+  // Helper: translate one client message and send it to Gemini
+  const forwardToGemini = (rawData: string) => {
     try {
-      const msg = JSON.parse(event.data as string);
+      const msg = JSON.parse(rawData);
 
       if (msg.type === 'session.config') {
         // Translate to Gemini's native BidiGenerateContentSetup format
@@ -81,12 +87,29 @@ Deno.serve(async (req: Request) => {
 
       } else {
         // Unknown type — pass through as-is for forward compatibility
-        gemini.send(event.data as string);
+        gemini.send(rawData);
       }
     } catch {
       // Not JSON — pass through raw (binary audio frames etc.)
-      gemini.send(event.data);
+      gemini.send(rawData);
     }
+  };
+
+  // Connect to Gemini Live API
+  const gemini = new WebSocket(GEMINI_LIVE_URL);
+
+  // ── client → Gemini (with message translation) ────────────────────────────
+  client.onopen = () => {
+    console.log('✅ Client connected to proxy');
+  };
+
+  client.onmessage = (event) => {
+    if (!geminiReady) {
+      // Gemini not open yet — buffer the message so it isn't lost
+      pendingClientMessages.push(event.data as string);
+      return;
+    }
+    forwardToGemini(event.data as string);
   };
 
   client.onclose = (event) => {
@@ -102,22 +125,44 @@ Deno.serve(async (req: Request) => {
 
   // ── Gemini → client (with message translation) ────────────────────────────
   gemini.onopen = () => {
-    console.log('✅ Connected to Gemini Live API');
-    // Tell the browser the session is ready. The client will send session.config next.
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify({ type: 'session.created' }));
+    console.log('✅ Connected to Gemini Live API — flushing', pendingClientMessages.length, 'buffered messages');
+    geminiReady = true;
+    // Flush any messages that arrived before Gemini was ready (e.g. session.config from browser ws.onopen)
+    for (const raw of pendingClientMessages) {
+      forwardToGemini(raw);
     }
+    pendingClientMessages.length = 0;
+    // NOTE: do NOT send session.created here — wait for Gemini's setupComplete confirmation below.
   };
 
-  gemini.onmessage = (event) => {
+  // Gemini may send JSON as text frames (string) OR binary frames (Blob/ArrayBuffer).
+  // Make the handler async so we can await Blob.text() when needed.
+  gemini.onmessage = async (event) => {
     if (client.readyState !== WebSocket.OPEN) return;
 
+    // Normalise to a string so JSON.parse always has text to work with.
+    let rawText: string;
+    if (typeof event.data === 'string') {
+      rawText = event.data;
+    } else if (event.data instanceof Blob) {
+      rawText = await event.data.text();
+    } else if (event.data instanceof ArrayBuffer) {
+      rawText = new TextDecoder().decode(event.data);
+    } else {
+      // Unknown type — pass through raw and bail
+      client.send(event.data);
+      return;
+    }
+
     try {
-      const msg = JSON.parse(event.data as string);
+      const msg = JSON.parse(rawText);
 
       if (msg.setupComplete !== undefined) {
-        // Swallow — we already sent session.created on gemini.onopen
-        console.log('✅ Gemini setup complete');
+        // Setup is confirmed — NOW tell the browser the session is ready.
+        // Sending session.created here (instead of on gemini.onopen) prevents the browser
+        // from sending boot text before Gemini has finished processing the setup message.
+        console.log('✅ Gemini setup complete — sending session.created to client');
+        client.send(JSON.stringify({ type: 'session.created' }));
         return;
       }
 
@@ -134,11 +179,11 @@ Deno.serve(async (req: Request) => {
         return;
       }
 
-      // Unknown message — pass through as-is
-      client.send(event.data as string);
+      // Unknown JSON message — pass through as normalised text
+      client.send(rawText);
 
     } catch {
-      // Not JSON — pass through raw
+      // Not JSON (e.g. raw binary audio frames) — pass through raw bytes
       client.send(event.data);
     }
   };

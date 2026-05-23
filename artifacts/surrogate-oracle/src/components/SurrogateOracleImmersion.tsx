@@ -399,12 +399,31 @@ export function SurrogateOracleImmersion() {
   const decartClientRef = useRef<DecartClientHandle>(null);
   const oracleConversationRef = useRef<OracleConversationHandle>(null);
   const avatarVideoRef = useRef<HTMLVideoElement>(null);
+  const staticAvatarRef = useRef<HTMLImageElement>(null);
   const atmosphereCanvasRef = useRef<HTMLCanvasElement>(null);
   // Tracks whether onStreamReady has fired; lets the fallback timeout know when to give up
   const decartStreamReadyRef = useRef(false);
   const decartFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Alley ambience stop fn — returned by startAlleyAmbience(), called when lore ends
   const alleyAmbienceStopRef = useRef<(() => void) | null>(null);
+
+  // ── VRF materialize timing — randomize transporter animation each session ──
+  // Sets animation-delay + animation-duration directly on the static avatar
+  // element so each terminal entry feels differently paced and fragmented.
+  useEffect(() => {
+    if (scenePhase !== 'terminal' || !staticAvatarRef.current) return;
+    const delay    = (0.15 + Math.random() * 0.55).toFixed(2) + 's';
+    const duration = (2.6  + Math.random() * 2.0).toFixed(2)  + 's';
+    staticAvatarRef.current.style.animationDelay    = delay;
+    staticAvatarRef.current.style.animationDuration = duration;
+    // Clear on exit so the ghost-oracle cycle in dormant isn't stale
+    return () => {
+      if (staticAvatarRef.current) {
+        staticAvatarRef.current.style.animationDelay    = '';
+        staticAvatarRef.current.style.animationDuration = '';
+      }
+    };
+  }, [scenePhase]);
 
   useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment);
   useParallax(scenePhase !== 'terminal');
@@ -1309,6 +1328,7 @@ export function SurrogateOracleImmersion() {
                 The green alien portrait on white bg. Shows inside the CRT screen
                 while the Oracle warms up. Hidden once the talking face takes over. */}
             <img
+              ref={staticAvatarRef}
               src={ORACLE_STATIC_URL}
               alt=""
               aria-hidden="true"

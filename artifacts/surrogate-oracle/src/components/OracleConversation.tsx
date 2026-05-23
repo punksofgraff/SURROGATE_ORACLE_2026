@@ -271,6 +271,12 @@ const OracleConversation = forwardRef(
     const lastAlignmentRef = useRef<'sacred' | 'profane' | 'neutral' | null>(null);
     // true while the [SYSTEM REVELATION] countdown is draining before close
     const [revelationActive, setRevelationActive] = useState(false);
+
+    // ── Audio-first mode — transcript hidden by default ───────────────────────
+    // This is a 90% audio app. Transcript available but collapsed.
+    // Accessible toggle for deaf/HoH users — the transcript is always there,
+    // just not stealing screen from the Oracle's face.
+    const [transcriptOpen, setTranscriptOpen] = useState(false);
     // HTTP fallback mode — activated when Gemini Live WS fails
     const [isHttpFallback, setIsHttpFallback] = useState(false);
     const httpFallbackRef = useRef(false);
@@ -1170,12 +1176,17 @@ const OracleConversation = forwardRef(
           margin: '0 auto',
           display: 'flex',
           flexDirection: 'column',
-          height: '58vh',
-          background: 'linear-gradient(180deg, rgba(0,3,8,0) 0%, rgba(0,3,8,0.97) 8%)',
+          height: transcriptOpen ? '58vh' : '44px',
+          transition: 'height 0.35s cubic-bezier(0.22, 1, 0.36, 1)',
+          overflow: 'hidden',
+          background: transcriptOpen
+            ? 'linear-gradient(180deg, rgba(0,3,8,0) 0%, rgba(0,3,8,0.97) 8%)'
+            : 'rgba(0,3,8,0.82)',
           borderTop: '1px solid rgba(0,255,136,0.18)',
           boxShadow: '0 -4px 40px rgba(0,255,136,0.08), 0 -1px 0 rgba(176,38,255,0.12)',
           zIndex: 'var(--z-oracle)',
           fontFamily: "'Share Tech Mono', 'Orbitron', monospace",
+          backdropFilter: transcriptOpen ? 'none' : 'blur(4px)',
         }}
       >
         {/* ── Status bar ─────────────────────────────────────────────────── */}
@@ -1247,6 +1258,28 @@ const OracleConversation = forwardRef(
                 LVL {currentTotemLevel} · {totemLabel(currentTotemLevel).toUpperCase()}
               </span>
             )}
+            {/* Transcript toggle — audio-first app, chat is an accessibility layer */}
+            <button
+              onClick={() => setTranscriptOpen(o => !o)}
+              aria-label={transcriptOpen ? 'Hide transcript' : 'Show transcript'}
+              title={transcriptOpen ? 'Hide transcript' : 'Open transcript (accessibility)'}
+              style={{
+                background: transcriptOpen ? 'rgba(0,255,136,0.10)' : 'none',
+                border: '1px solid',
+                borderColor: transcriptOpen ? 'rgba(0,255,136,0.35)' : 'rgba(255,255,255,0.12)',
+                borderRadius: '3px',
+                cursor: 'pointer',
+                padding: '2px 7px',
+                color: transcriptOpen ? 'rgba(0,255,136,0.85)' : 'rgba(255,255,255,0.28)',
+                fontSize: 'clamp(0.52rem, 1.0vw, 0.64rem)',
+                letterSpacing: '0.20em',
+                transition: 'color 0.2s, background 0.2s, border-color 0.2s',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {transcriptOpen ? '◈ HIDE' : '◈ TEXT'}
+            </button>
+
             {revelationActive ? (
               /* Visible countdown replaces EXIT during the 4s revelation window */
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1278,6 +1311,12 @@ const OracleConversation = forwardRef(
             )}
           </div>
         </div>
+
+        {/* ── Transcript body — hidden in audio-first mode ──────────────────
+             Collapsed: panel is 44px (status bar only). Oracle face fills screen.
+             Expanded: messages + input appear. Toggled by ◈ TEXT button.
+             All WS/audio logic runs regardless — this is purely a display gate. */}
+        {transcriptOpen && <>
 
         {/* ── Connection error banner ─────────────────────────────────────── */}
         <AnimatePresence>
@@ -1538,6 +1577,8 @@ const OracleConversation = forwardRef(
             <Send size={14} />
           </button>
         </form>
+
+        </>} {/* end transcriptOpen */}
       </div>
     );
   }

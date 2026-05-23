@@ -547,20 +547,36 @@
   pointer-events: none;
 }
 
-/* DORMANT / CONSENT / KNIFE — ghost static portrait in dark screen */
-.oracle-stage[data-oracle-state="dormant"] .oracle-avatar-static,
-.oracle-stage[data-oracle-state="consent"] .oracle-avatar-static,
-.oracle-stage[data-oracle-state="knife"] .oracle-avatar-static {
-  opacity: 0.28;  /* slightly more present — effective ~0.12 with parent 0.42 */
+/* DORMANT — ghost static portrait. Barely there, surges once every ~12s.
+   Wants to be seen. Can't quite hold the signal.                          */
+.oracle-stage[data-oracle-state="dormant"] .oracle-avatar-static {
+  opacity: 0.28;
   filter: brightness(0.45) grayscale(0.60);
   animation: ghost-oracle 12s ease-in-out 4s infinite;
 }
 
-/* TERMINAL — CRT screen warming up, static portrait resolves from noise */
+/* TERMINAL — Star Trek transporter beam-in. Starts microscopic, scales to full
+   size through chromatic fragmentation. Timing randomized via JS on each entry:
+   inline style overrides animation-delay + animation-duration per session.    */
 .oracle-stage[data-oracle-state="terminal"] .oracle-avatar-static {
-  opacity: 0.62;
-  filter: brightness(0.65) grayscale(0.35) contrast(1.25);
-  animation: crt-static-warm 0.22s steps(1) infinite;
+  animation: oracle-materialize 3.8s 0.3s ease-in-out both;
+}
+
+@keyframes oracle-materialize {
+  0%   { opacity: 0.04; transform: scale(0.03);                filter: blur(18px) saturate(0)    brightness(4.5) hue-rotate(220deg); }
+  6%   { opacity: 0.32; transform: scale(0.14) translateX(10%); filter: blur(11px) saturate(0.06) brightness(3.4) hue-rotate(135deg); }
+  11%  { opacity: 0.05; transform: scale(0.05) translateX(-8%); filter: blur(20px) saturate(0)    brightness(5.5) hue-rotate(295deg); }
+  18%  { opacity: 0.55; transform: scale(0.30) translateY(-4%); filter: blur(8px)  saturate(0.16) brightness(2.8) hue-rotate(72deg);  }
+  25%  { opacity: 0.08; transform: scale(0.09) translateX(14%); filter: blur(16px) saturate(0)    brightness(4.2) hue-rotate(185deg); }
+  34%  { opacity: 0.70; transform: scale(0.48);                filter: blur(5px)  saturate(0.30) brightness(2.2) hue-rotate(36deg);  }
+  42%  { opacity: 0.25; transform: scale(0.33) translateY(7%); filter: blur(11px) saturate(0.10) brightness(3.0) hue-rotate(105deg); }
+  52%  { opacity: 0.82; transform: scale(0.64);                filter: blur(3px)  saturate(0.50) brightness(1.6) hue-rotate(20deg);  }
+  60%  { opacity: 0.40; transform: scale(0.53) translateX(9%); filter: blur(7px)  saturate(0.26) brightness(2.0) hue-rotate(52deg);  }
+  70%  { opacity: 0.90; transform: scale(0.82) translateX(-2%); filter: blur(1.5px) saturate(0.72) brightness(1.24) hue-rotate(10deg); }
+  78%  { opacity: 0.55; transform: scale(0.72) translateX(5%); filter: blur(5px)  saturate(0.42) brightness(1.60) hue-rotate(30deg); }
+  86%  { opacity: 0.95; transform: scale(0.96);                filter: blur(0.5px) saturate(0.88) brightness(1.08);                  }
+  93%  { opacity: 0.68; transform: scale(0.88) translateX(-1%); filter: blur(2.5px) saturate(0.65) brightness(1.20) hue-rotate(7deg); }
+  100% { opacity: 0.62; transform: scale(1.0)  translateX(0);  filter: brightness(0.65) grayscale(0.35) contrast(1.25);              }
 }
 
 /* AWAKENED — static portrait at full presence, pulse-zoom ready */
@@ -595,10 +611,8 @@
   transform: scale(0.92);
 }
 
-/* DORMANT / CONSENT / KNIFE / TERMINAL / AWAKENED — all hidden (static shows instead) */
+/* DORMANT / TERMINAL / AWAKENED — talking face hidden (static cabinet image shows) */
 .oracle-stage[data-oracle-state="dormant"] .oracle-avatar-img,
-.oracle-stage[data-oracle-state="consent"] .oracle-avatar-img,
-.oracle-stage[data-oracle-state="knife"] .oracle-avatar-img,
 .oracle-stage[data-oracle-state="terminal"] .oracle-avatar-img,
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-img {
   opacity: 0;

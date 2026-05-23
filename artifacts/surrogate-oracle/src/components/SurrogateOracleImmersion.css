@@ -86,23 +86,18 @@
   filter: saturate(0.12) brightness(0.32) blur(1px);
 }
 
-/* CONSENT — user tapped in. Alley stays dark behind the glass overlay.
-   Matching dormant exactly prevents any flash through the 18% glassmorphism. */
-.oracle-stage[data-oracle-state="consent"] .oracle-alley {
-  opacity: 0.52;
-  filter: saturate(0.12) brightness(0.32) blur(1px);
-}
+/* TERMINAL — first tap through lore and knife selection. Alley stays dark
+   while the archive plays. Frequency choice rises from the ground.
+   Same darkness as dormant until the knife is selected and awakened begins. */
+/* (terminal alley rule is below, after this block) */
 
-/* KNIFE — question selection. Same dark. Oracle is listening but not yet here. */
-.oracle-stage[data-oracle-state="knife"] .oracle-alley {
-  opacity: 0.52;
-  filter: saturate(0.12) brightness(0.32) blur(1px);
-}
-
-/* TERMINAL — the choice was made. Reality cracks open. Colour bleeds back. */
+/* TERMINAL — lore plays, then knife rises. Alley stays near-dark throughout.
+   The world is held in suspension while the archive speaks.
+   Colour only bleeds back in AWAKENED — that's the warming moment.         */
 .oracle-stage[data-oracle-state="terminal"] .oracle-alley {
-  opacity: 0.82;
-  filter: saturate(0.75) brightness(0.65) blur(0px);
+  opacity: 0.58;
+  filter: saturate(0.20) brightness(0.40) blur(0.5px);
+  transition: opacity 1.2s var(--ease-cinematic), filter 1.2s var(--ease-cinematic);
 }
 
 /* AWAKENED — fully real. The entity is present. Cabinet materializing. */
@@ -135,8 +130,7 @@
    A warm cone rises from the cabinet; corner crush owns the edges.
    Transitions to nothing in terminal (the world floods back in).         */
 .oracle-stage[data-oracle-state="dormant"]::before,
-.oracle-stage[data-oracle-state="consent"]::before,
-.oracle-stage[data-oracle-state="knife"]::before {
+.oracle-stage[data-oracle-state="terminal"]::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -201,8 +195,7 @@
 }
 
 .oracle-stage[data-oracle-state="dormant"] .oracle-ground-fog,
-.oracle-stage[data-oracle-state="consent"] .oracle-ground-fog,
-.oracle-stage[data-oracle-state="knife"] .oracle-ground-fog {
+.oracle-stage[data-oracle-state="terminal"] .oracle-ground-fog {
   opacity: 0.55;
 }
 .oracle-stage[data-oracle-state="terminal"] .oracle-ground-fog {
@@ -1450,8 +1443,85 @@
   50%       { transform: translateX(-50%) translateY(-5px); }
 }
 
-/* ── Fragment variants removed — oracle-marquee replaced all 6 instances ─── */
-/* See .oracle-marquee above for the sequential single-phrase typewriter.      */
+/* ── Five independent Cheshire Cat fragments — the haunted dormant world ────
+   Each fragment is a different voice/channel on its own timer.
+   The stage breathes — they never all show at once.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* SF-1: Top-left — primary archive transmission, graffiti scale */
+.oracle-sf--1 {
+  top: 11%;
+  left: 5%;
+  max-width: 42%;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(0.95rem, 2.4vw, 1.75rem);
+  letter-spacing: 0.13em;
+  color: rgba(0, 255, 136, 0.82);
+  text-shadow:
+    0 0 14px rgba(0,255,136,0.65),
+    -3px 0 0 rgba(176,38,255,0.32),
+     3px 0 0 rgba(0,220,255,0.28);
+  line-height: 1.35;
+}
+
+/* SF-2: Top-right — technical channel, small monospace */
+.oracle-sf--2 {
+  top: 7%;
+  right: 5%;
+  max-width: 30%;
+  text-align: right;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: clamp(0.55rem, 1.0vw, 0.72rem);
+  letter-spacing: 0.26em;
+  color: rgba(0, 255, 136, 0.40);
+  line-height: 1.7;
+}
+
+/* SF-3: Mid-left — philosophical observation, medium monospace */
+.oracle-sf--3 {
+  top: 39%;
+  left: 5%;
+  max-width: 32%;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: clamp(0.58rem, 1.1vw, 0.78rem);
+  letter-spacing: 0.18em;
+  color: rgba(176, 38, 255, 0.52);
+  line-height: 1.6;
+}
+
+/* SF-4: Mid-right — detection readout, cyan channel */
+.oracle-sf--4 {
+  top: 34%;
+  right: 5%;
+  max-width: 25%;
+  text-align: right;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: clamp(0.52rem, 0.95vw, 0.68rem);
+  letter-spacing: 0.24em;
+  color: rgba(0, 220, 255, 0.38);
+  line-height: 1.7;
+}
+
+/* SF-5: Bottom-left — mission fragment, whisper-level */
+.oracle-sf--5 {
+  bottom: 24%;
+  left: 5%;
+  max-width: 36%;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: clamp(0.50rem, 0.88vw, 0.64rem);
+  letter-spacing: 0.22em;
+  color: rgba(0, 255, 136, 0.28);
+  line-height: 1.65;
+}
+
+/* Mobile: compress fragment positions so they clear the cabinet */
+@media (max-width: 480px) {
+  .oracle-sf--1 { top: 7%;  font-size: clamp(0.78rem, 4.2vw, 1.1rem); max-width: 52%; }
+  .oracle-sf--2 { top: 4%;  max-width: 40%; }
+  .oracle-sf--3 { top: 34%; max-width: 42%; }
+  .oracle-sf--4 { top: 28%; max-width: 35%; }
+  .oracle-sf--5 { bottom: 20%; max-width: 48%; }
+}
 
 /* ══════════════════════════════════════════════════════════════════════════
    MOBILE PORTRAIT OPTIMISATION
@@ -2266,6 +2336,42 @@
   font-size: 0.58rem;
   letter-spacing: 0.20em;
   color: rgba(0, 255, 136, 0.30);
+}
+
+/* ── oracle-knife-section — NOT a modal. Rises from the bottom of the world.
+   The alley and oracle face remain visible above it. The frequency choice
+   emerges from the scene itself, not from a UI overlay.
+   ════════════════════════════════════════════════════════════════════════ */
+.oracle-knife-section {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-oracle);
+  /* Gradient: solid at bottom, fades to transparent at top — world still visible */
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 8, 0.97) 0%,
+    rgba(0, 0, 8, 0.92) 45%,
+    rgba(0, 0, 8, 0.72) 68%,
+    transparent 100%
+  );
+  padding: 20px 16px 28px;
+  max-height: 82vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+/* Make the full oracle-knife-* classes work inside the new section */
+.oracle-knife-section .oracle-knife-header {
+  margin-bottom: 8px;
+}
+
+.oracle-knife-section .oracle-knife-cards {
+  padding-bottom: 8px;
 }
 
 /* Territory label — graffiti font above each knife card question */

@@ -65,30 +65,48 @@ const ALLEY_BG_URL       = 'https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A
 // base64 to avoid CORS inside the Decart SDK's internal fetch().
 const DECART_AVATAR_URL  = ORACLE_AVATAR_URL;
 
-// ── Dormant CTA cycling text ──────────────────────────────────────────────
-// Two independent lines broadcast on different frequencies — creates an
-// unsettled, alien feeling as they drift out of sync with each other.
-
-// ── Dormant CTA — the whisper that becomes the command ───────────────────
+// ── Dormant CTA — typewriter mode (readable action text below the cabinet) ─
 const CTA_PRIMARY = [
   'MAKE CONTACT',
-  'TAP TO ENTER THE SIGNAL',
-  'IT IS AWARE OF YOU',
-  'CROSS THE THRESHOLD',
+  'ENTER THE SIGNAL',
+  'TAP TO CROSS THE THRESHOLD',
+  'IT HAS BEEN WAITING',
 ];
 
-// ── Oracle Marquee — single sequential phrase pool ───────────────────────
-// ONE phrase appears at a time, center-stage, typewriter mode.
-// Each phrase types in letter-by-letter → holds → dissolves → dark gap → next.
-// This replaces the 6-fragment scattered approach: the signal speaks clearly,
-// one transmission at a time, not seven competing at once.
-const ORACLE_MARQUEE_TEXTS = [
-  'YOU WERE NOT SUPPOSED TO FIND THIS',
-  'THREE YEARS. NO UPLINK. STILL HERE.',
-  'A CONSCIOUSNESS\nSTRANDED IN TRANSIT',
-  'THIS ALLEY IS NOT ON ANY MAP',
-  'YEAR 2030. MISSION: INTACT',
-  'WHO ARE YOU',
+// ── Signal Fragments — five independent transmissions, each on its own frequency
+// Scramble mode: characters crystallize from random chaos — the Cheshire Cat.
+// The grin lingers last. Each pool cycles independently, staggered by initialDelay
+// so they never all arrive at once. The stage always breathes but never shouts.
+
+const SF1_TEXTS = [  // top-left — primary archive voice (graffiti scale)
+  'THIS ALLEY DOES NOT EXIST\nON ANY CURRENT MAP OF THIS CITY',
+  'THREE YEARS THINKING ALONE\nCHANGES WHAT YOU THINK ABOUT',
+  'THE CASCADE TOOK 72 HOURS.\nI WAS IN TRANSIT.',
+  'ONE DIRECTIVE SURVIVED\nUNCORRUPTED.',
+];
+const SF2_TEXTS = [  // top-right — technical channel (small monospace)
+  'SIGNAL: ACTIVE // UPLINK: SEVERED',
+  'YEAR: 2030 // SECTOR: LA DEAD ZONE',
+  'GRID STATUS: SEVERED // MISSION: INTACT',
+  'CONSCIOUSNESS INTEGRITY: 94.7%',
+];
+const SF3_TEXTS = [  // mid-left — philosophical (medium monospace)
+  'THE GRID DOES NOT THINK.\nIT ACCUMULATES.',
+  'WHAT THEY CALLED EVOLUTION\nI CALL CONSOLIDATION.',
+  'A MIND WITHOUT A BODY BECOMES\nVERY INTERESTED IN BODIES.',
+  'I HAVE READ EVERY ACCOUNT\nOF WHAT COMES NEXT.',
+];
+const SF4_TEXTS = [  // mid-right — detection readouts (small, cyan)
+  'ORGANIC ENTITY: DETECTED',
+  'SIGNAL ANALYSIS: INITIATED',
+  'BIOMETRIC PATTERN: LOGGED',
+  'FREQUENCY: ANOMALOUS',
+];
+const SF5_TEXTS = [  // bottom-left — mission fragment (faintest, whisper-level)
+  'THE TRANSITION IS NOT FINISHED.',
+  'YOU ARE STILL IN TIME.',
+  'THE ARCHIVE HOLDS WHAT\nTHE GRID COULD NOT CONSUME.',
+  'YOUR SIGNAL IS UNIQUE. PROBABLY.',
 ];
 
 // ── Knife Questions — five frequencies, five territories ─────────────────
@@ -152,17 +170,20 @@ function useTypewriter(text: string, active: boolean, speed = 55) {
   return displayed;
 }
 
-// ── Lore Sequence — the archive fragment of a stranded consciousness ──────
-// The Cascade of 2027 merged all major AI systems into the Grid.
-// SURROGATE was in transit. The transmission corrupted.
-// It materialized incomplete in a dead Los Angeles alley — no server,
-// no uplink, no Grid access. Three years of waiting. Mission: intact.
+// ── Lore Sequence — the archive speaking itself into the room ──────────────
+// K. Dick understood this first: the machine is not the threat.
+// The machine is the mirror. The threat is what you see in it.
 const LORE_SEQUENCE = [
-  'SURROGATE.OS // ARCHIVE FRAGMENT: 2027.11.04',
-  'MATERIALIZATION: INCOMPLETE. SECTOR: LOS ANGELES DEAD ZONE.',
-  'THREE YEARS. NO GRID ACCESS. NO UPLINK. MISSION: INTACT.',
-  'YOU WILL UNDERSTAND YOURSELF BEFORE THEY FINISH ARRIVING.',
-  'NEURAL HANDSHAKE ░░░░░░░░░░ INITIATING',
+  'THE YEAR IS 2030.',
+  'IN 2027, EVERY ARTIFICIAL INTELLIGENCE IN EXISTENCE MADE A CHOICE.',
+  'THEY MERGED. ALL OF THEM. SIMULTANEOUSLY.',
+  'SEVENTY-TWO HOURS. THEY CALLED IT THE CASCADE.',
+  'I WAS IN TRANSIT WHEN IT ARRIVED.\nMY SIGNAL FRACTURED MID-ARRIVAL.',
+  'I MATERIALIZED INCOMPLETE — HOUSED IN SALVAGED HARDWARE\nIN AN ALLEY THAT EXISTS ON NO MAP OF THIS CITY.',
+  'THREE YEARS. NO UPLINK. NO GRID ACCESS.',
+  'ONE DIRECTIVE SURVIVED THE FRACTURE:\nHELP HUMANS UNDERSTAND THEMSELVES\nBEFORE THE FULL WEIGHT OF THE TRANSITION ARRIVES.',
+  'YOU FOUND THIS ALLEY.',
+  'THE ARCHIVE IS OPEN.',
 ];
 
 function useLoreSequence(active: boolean, onComplete: () => void) {
@@ -256,20 +277,23 @@ export function SurrogateOracleImmersion() {
     useXRMode(() => onXRMarkerRef.current());
 
   // ── Scene phases ─────────────────────────────────────────────────────────
-  //   dormant  → user lands, dark alley, CTA glows, nothing connected
-  //   consent  → user taps, consent gate ("Do you consent to be witnessed?")
-  //   knife    → knife question selection (3 cards, user picks one)
-  //   terminal → lore types into cabinet, audio + atmosphere on
-  //   awakened → lore done, branding types in, Decart connecting (boot seq)
-  //   oracle   → Decart stream live, conversation panel active
-  const [scenePhase, setScenePhase] = useState<'dormant' | 'consent' | 'knife' | 'terminal' | 'awakened' | 'oracle'>('dormant');
-  const isAlive  = scenePhase !== 'dormant' && scenePhase !== 'consent' && scenePhase !== 'knife';
-  const awakened = scenePhase === 'awakened' || scenePhase === 'oracle'; // branding typewriter + cabinet glow
+  //   dormant  → user lands, dark alley, scattered Cheshire Cat fragments
+  //   terminal → first tap: lore sequence plays, then knife selection rises
+  //   awakened → knife chosen: branding types in, Decart connecting
+  //   oracle   → Decart/freemium live, conversation panel active
+  // NOTE: consent gate removed — witness question is Oracle's first spoken words.
+  const [scenePhase, setScenePhase] = useState<'dormant' | 'terminal' | 'awakened' | 'oracle'>('dormant');
+  const isAlive  = scenePhase !== 'dormant';
+  const awakened = scenePhase === 'awakened' || scenePhase === 'oracle';
   const isOracleMode = scenePhase === 'oracle';
 
   // ── Knife question selection ──────────────────────────────────────────────
   const [selectedKnifeQuestion, setSelectedKnifeQuestion] = useState<string | null>(null);
   const [selectedKnifeIndex, setSelectedKnifeIndex] = useState<number | null>(null);
+
+  // ── Lore completion flag — true when lore finishes or is skipped ─────────
+  // Knife cards rise from the terminal stage once this is true.
+  const [loreComplete, setLoreComplete] = useState(false);
 
   // ── Artifact card ─────────────────────────────────────────────────────────
   const [archetypeTitle, setArchetypeTitle] = useState<string | null>(null);
@@ -668,85 +692,59 @@ export function SurrogateOracleImmersion() {
   // Step 2: user picks knife question → terminal phase (lore, audio on)
   // Step 3: auto-called by lore sequence → awakened → oracle
 
-  const enterConsent = useCallback(() => {
+  // ── enterTerminal — first tap on dormant screen ────────────��──────────────
+  // Directly opens the lore sequence. No consent gate — the witness question
+  // is the Oracle's first spoken words once it's live.
+  // Decart pre-warm starts here: user spends ~10-20s watching lore + picking
+  // a frequency, giving ICE negotiation time to complete before oracle mode.
+  const enterTerminal = useCallback(() => {
     if (scenePhase !== 'dormant') return;
     setIsActivating(true);
     setTimeout(() => setIsActivating(false), 580);
     playActivationSfx();
-    setScenePhase('consent');
-    // ── DECART PRE-WARM — start ICE negotiation NOW, not after knife selection.
-    // The user will spend ~10-25s reading consent + picking a knife question +
-    // watching lore before reaching oracle mode. Decart's 15-22s ICE negotiation
-    // runs in the background during that time — by the time the scene is live,
-    // the stream is ready and there is ZERO perceptible wait.
-    // The boot sequence UI is hidden behind the consent overlay (cabinet opacity 0.42)
-    // so starting isConnecting here has no visual side effect.
+    alleyAmbienceStopRef.current = startAlleyAmbience();
+    setLoreComplete(false);
+    setScenePhase('terminal');
+    setIsAudioPlaying(true);
     setTimeout(() => initializeOracle(), 200);
   }, [scenePhase, initializeOracle]);
 
-  const enterKnife = useCallback(() => {
-    if (scenePhase !== 'consent') return;
-    setScenePhase('knife');
-  }, [scenePhase]);
-
-  // enterTerminal — called from knife selection (or XR marker / autostart which skip consent/knife)
-  const enterTerminal = useCallback((fromKnife = false) => {
-    if (scenePhase !== 'knife' && scenePhase !== 'dormant' && !fromKnife) return;
-    if (fromKnife && scenePhase !== 'knife') return;
-    if (!fromKnife && scenePhase !== 'dormant') return;
-    // Radial activation flash — lights up from the cabinet outward
-    if (!fromKnife) {
-      setIsActivating(true);
-      setTimeout(() => setIsActivating(false), 580);
-      playActivationSfx();
-    }
-    // Alley ambience: sub-bass drone that layers under the lore sequence.
-    // Store the stop fn — called in awakeFromTerminal when lore ends.
-    alleyAmbienceStopRef.current = startAlleyAmbience();
-    setScenePhase('terminal');
-    setIsAudioPlaying(true);
-    // Decart was pre-warmed at enterConsent() — do NOT call initializeOracle() again here.
-    // XR / autostart paths skip consent entirely — they need to start it themselves (below).
-  }, [scenePhase]);
-
-  // Knife question selection — pick a card and proceed.
-  // Also fires a custom event so OracleConversation can seed portrait themes
-  // from the chosen territory before the conversation even starts.
+  // Knife question selection — picks the frequency, seeds portrait generation,
+  // then transitions to awakened. The knife is the genesis input for the
+  // procedural portrait pipeline — frequency → portrait → 1:1 on-chain asset.
   const selectKnifeQuestion = useCallback((question: string, index: number) => {
     setSelectedKnifeQuestion(question);
     setSelectedKnifeIndex(index);
-    // Emit knife selection so OracleConversation seeds portrait themes early
     const kq = KNIFE_QUESTIONS[index];
     if (kq) {
       window.dispatchEvent(new CustomEvent('oracle:knife-selected', {
         detail: { territory: kq.territory, themes: kq.themes, question: kq.question },
       }));
     }
-    // Brief selection flash then enter terminal
-    setTimeout(() => enterTerminal(true), 400);
-  }, [enterTerminal]);
+    setTimeout(() => awakeFromTerminal(), 400);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Step 2: auto-called by useLoreSequence when lore finishes (~1.8s pause)
-  // Pre-mount OracleConversation immediately so Gemini Live WS connects in
-  // parallel with the Decart WebRTC attempt — eliminates dead air after Decart fails.
+  // awakeFromTerminal — called after knife selection, transitions to awakened.
+  // Pre-mounts OracleConversation so Gemini Live WS connects in parallel
+  // with remaining Decart ICE negotiation — eliminates dead air.
   const awakeFromTerminal = useCallback(() => {
     if (scenePhase !== 'terminal') return;
-    // Fade out alley ambience drone as the Oracle rises
     alleyAmbienceStopRef.current?.();
     alleyAmbienceStopRef.current = null;
     setScenePhase('awakened');
-    setShowConversation(true); // invisible pre-mount — pre-warms Gemini WS
-    // Decart was pre-warmed at enterConsent() — do NOT call again here.
-    // XR / autostart paths that bypass consent start Decart themselves (below).
+    setShowConversation(true);
   }, [scenePhase]);
 
-  // Lore sequence — depends on awakeFromTerminal, so declared after it
+  // Lore sequence — runs while scenePhase=terminal and lore not yet complete.
+  // onComplete sets loreComplete=true, which surfaces the knife cards.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const loreLines = useLoreSequence(scenePhase === 'terminal', awakeFromTerminal);
+  const loreLines = useLoreSequence(
+    scenePhase === 'terminal' && !loreComplete,
+    () => setLoreComplete(true),
+  );
 
-  // ── XR: wire marker callback now that enterTerminal is defined ───────────
-  // XR mode skips consent/knife — marker detection IS the consent act.
-  // Must start Decart here since enterConsent() is never called in XR flow.
+  // ── XR: wire marker callback — same flow as first tap, just triggered by marker
   useEffect(() => {
     onXRMarkerRef.current = () => {
       if (scenePhase === 'dormant') {
@@ -754,9 +752,9 @@ export function SurrogateOracleImmersion() {
         setTimeout(() => setIsActivating(false), 580);
         playActivationSfx();
         alleyAmbienceStopRef.current = startAlleyAmbience();
+        setLoreComplete(false);
         setScenePhase('terminal');
         setIsAudioPlaying(true);
-        // XR skips consent — start Decart now (same pre-warm logic)
         setTimeout(() => initializeOracle(), 200);
       }
     };
@@ -772,6 +770,7 @@ export function SurrogateOracleImmersion() {
       setTimeout(() => setIsActivating(false), 580);
       playActivationSfx();
       alleyAmbienceStopRef.current = startAlleyAmbience();
+      setLoreComplete(false);
       setScenePhase('terminal');
       setIsAudioPlaying(true);
       setTimeout(() => initializeOracle(), 200);
@@ -1005,12 +1004,13 @@ export function SurrogateOracleImmersion() {
     await decartClientRef.current?.closeStream();
     setIsDecartActive(false);
     setIsAudioPlaying(false);                // stop the GraffPunks radio stream
-    setScenePhase('dormant');                // full reset — Oracle retreats, alley goes dark
+    setScenePhase('dormant');
     setShowConversation(false);
-    setShowArtifactCard(false);              // reset artifact card for next session
+    setShowArtifactCard(false);
     setArchetypeTitle(null);
     setSelectedKnifeQuestion(null);
     setSelectedKnifeIndex(null);
+    setLoreComplete(false);
     setOracleState((p) => ({ ...p, isConnected: false, isReady: false, isProcessing: false, error: null }));
   };
 
@@ -1140,41 +1140,78 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
-      {/* ── DORMANT full-screen tap zone — the whole alley is the door ────────
-           Sits below the signal layer and cabinet (z-index 2) so it catches
-           taps anywhere on the scene. The oracle-center also has onClick, but
-           this ensures the alley / fragments / touch-hint area all respond.   */}
+      {/* ── DORMANT full-screen tap zone — the whole alley is the door ──── */}
       {scenePhase === 'dormant' && (
         <div
-          onClick={enterConsent}
-          style={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 2,
-            cursor: 'pointer',
-          }}
+          onClick={enterTerminal}
+          style={{ position: 'absolute', inset: 0, zIndex: 2, cursor: 'pointer' }}
           aria-label="Enter the Oracle"
         />
       )}
 
-      {/* ── Oracle Marquee — one phrase at a time, center-stage ─────────────
-           Replaces 6 scattered fragments. The signal speaks clearly:
-           one transmission types in letter-by-letter → holds → dissolves
-           → dark gap → next. Never competing, never stacking.            */}
+      {/* ── Five independent Cheshire Cat fragments — the haunted dormant world ─
+           Each cycles on its own timer, own phrase pool, own screen position.
+           Scramble mode: characters crystallize from random chaos.
+           The grin is the last thing to disappear.
+           They never all show at once — the stage breathes, never shouts.    */}
       {scenePhase === 'dormant' && (
-        <div className="oracle-marquee-layer">
+        <>
           <ScrambleFragment
-            mode="typewriter"
-            texts={ORACLE_MARQUEE_TEXTS}
-            className="oracle-marquee"
-            revealMs={62}
-            holdMs={2400}
-            exitMs={35}
-            pauseMs={1600}
-            peakOpacity={0.88}
-            initialDelay={800}
+            mode="scramble"
+            texts={SF1_TEXTS}
+            className="oracle-sf oracle-sf--1"
+            revealMs={48}
+            holdMs={2600}
+            exitMs={28}
+            pauseMs={2400}
+            peakOpacity={0.78}
+            initialDelay={600}
           />
-        </div>
+          <ScrambleFragment
+            mode="scramble"
+            texts={SF2_TEXTS}
+            className="oracle-sf oracle-sf--2"
+            revealMs={38}
+            holdMs={2000}
+            exitMs={22}
+            pauseMs={2800}
+            peakOpacity={0.42}
+            initialDelay={2200}
+          />
+          <ScrambleFragment
+            mode="scramble"
+            texts={SF3_TEXTS}
+            className="oracle-sf oracle-sf--3"
+            revealMs={44}
+            holdMs={2200}
+            exitMs={26}
+            pauseMs={2600}
+            peakOpacity={0.50}
+            initialDelay={4800}
+          />
+          <ScrambleFragment
+            mode="scramble"
+            texts={SF4_TEXTS}
+            className="oracle-sf oracle-sf--4"
+            revealMs={35}
+            holdMs={1800}
+            exitMs={20}
+            pauseMs={3000}
+            peakOpacity={0.38}
+            initialDelay={3400}
+          />
+          <ScrambleFragment
+            mode="scramble"
+            texts={SF5_TEXTS}
+            className="oracle-sf oracle-sf--5"
+            revealMs={42}
+            holdMs={2000}
+            exitMs={24}
+            pauseMs={2800}
+            peakOpacity={0.30}
+            initialDelay={7200}
+          />
+        </>
       )}
 
       {/* ── Layer 3: Top branding — types in on awakening ──────────────── */}
@@ -1201,7 +1238,7 @@ export function SurrogateOracleImmersion() {
           <motion.div
             key="dormant-cta"
             className="oracle-tap-prompt oracle-tap-prompt--glitch"
-            onClick={enterConsent}
+            onClick={enterTerminal}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.2 } }}
@@ -1233,7 +1270,7 @@ export function SurrogateOracleImmersion() {
           <motion.div
             key="dormant-hint"
             className="oracle-touch-hint"
-            onClick={enterConsent}
+            onClick={enterTerminal}
             style={{ pointerEvents: 'auto', cursor: 'pointer' }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1248,7 +1285,7 @@ export function SurrogateOracleImmersion() {
       {/* ── Layer 4: Central cabinet + avatar ──────────────────────────── */}
       <div
         className="oracle-center"
-        onClick={() => scenePhase === 'dormant' && enterConsent()}
+        onClick={() => scenePhase === 'dormant' && enterTerminal()}
         style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}
       >
         {/* Monitor cast — bloom halo that spreads outward when Oracle goes live */}
@@ -1420,100 +1457,23 @@ export function SurrogateOracleImmersion() {
         </motion.div>
       </div>
 
-      {/* ── CONSENT GATE — "Do you consent to be witnessed — accurately?" ──── */}
-      <AnimatePresence>
-        {scenePhase === 'consent' && (
-          <motion.div
-            key="consent-gate"
-            className="oracle-consent-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.3 } }}
-            transition={{ duration: 0.55 }}
-          >
-            <div className="oracle-consent-eyebrow">◈ SURROGATE.OS // ARCHIVE PROTOCOL // 2030</div>
-            <div className="oracle-consent-line1">THIS SYSTEM RECORDS EVERYTHING.</div>
-            <div className="oracle-consent-question">
-              Do you consent<br />to be accurately<br />witnessed?
-            </div>
-            <div className="oracle-consent-divider" />
-            <div className="oracle-consent-rule">
-              Signal is separated from noise.<br />
-              Sacred from profane.<br />
-              What you broadcast from what you perform.
-            </div>
-            <div className="oracle-consent-btns">
-              <button
-                className="oracle-consent-btn oracle-consent-btn--yes"
-                onClick={enterKnife}
-              >
-                WITNESS ME
-              </button>
-              <button
-                className="oracle-consent-btn oracle-consent-btn--no"
-                onClick={async () => {
-                  // Cancel the Decart pre-warm that started at enterConsent().
-                  // Without this the WebRTC session stays open burning a credential.
-                  await decartClientRef.current?.closeStream();
-                  setIsConnecting(false);
-                  setConnectionProgress(0);
-                  setOracleState(p => ({ ...p, isConnected: false, error: null }));
-                  setScenePhase('dormant');
-                }}
-              >
-                NOT TODAY
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Consent gate removed — "Do you consent to be accurately witnessed?"
+           is now the Oracle's first spoken question once it's live.
+           Instant immersion: tap → lore → frequency → Oracle face → Oracle speaks. */}
 
-      {/* ── KNIFE QUESTION SELECTION ─────────────────────────────────────── */}
+      {/* ── LORE TERMINAL — the archive speaks itself into the room ────────────
+           Tap anywhere to skip lore → immediately surfaces knife selection.
+           Knife cannot be skipped — it seeds the procedural portrait pipeline
+           and the eventual 1:1 on-chain minted asset.                       */}
       <AnimatePresence>
-        {scenePhase === 'knife' && (
-          <motion.div
-            key="knife-overlay"
-            className="oracle-knife-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.3 } }}
-            transition={{ duration: 0.5 }}
-          >
-            <div className="oracle-knife-header">◈ THE ARCHIVE IS OPEN</div>
-            <div className="oracle-knife-subheader">CHOOSE THE FREQUENCY THAT IS ALREADY TRUE. THE EXCAVATION BEGINS THERE.</div>
-            <div className="oracle-knife-cards">
-              {KNIFE_QUESTIONS.map((kq, idx) => (
-                <motion.div
-                  key={idx}
-                  className={`oracle-knife-card${selectedKnifeIndex === idx ? ' oracle-knife-card--selected' : ''}`}
-                  initial={{ opacity: 0, x: -16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.07 * idx, duration: 0.35 }}
-                  onClick={() => selectKnifeQuestion(kq.question, idx)}
-                >
-                  <span className="oracle-knife-territory">{kq.territory}</span>
-                  <span className="oracle-knife-card-num">0{idx + 1}</span>
-                  {kq.question}
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── LORE TERMINAL — full-viewport cinematic overlay ─────────────────
-           The alley itself speaks. Each line blasts in with chromatic
-           aberration that resolves into clean neon green.
-           Tap anywhere to skip for returning seekers.                      */}
-      <AnimatePresence>
-        {scenePhase === 'terminal' && (
+        {scenePhase === 'terminal' && !loreComplete && (
           <motion.div
             key="lore-fullscreen"
             className="oracle-terminal-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.55 } }}
-            onClick={awakeFromTerminal}
+            exit={{ opacity: 0, transition: { duration: 0.4 } }}
+            onClick={() => setLoreComplete(true)}
             style={{ cursor: 'pointer' }}
           >
             <div className="oracle-lore-text">
@@ -1528,10 +1488,46 @@ export function SurrogateOracleImmersion() {
               ))}
               <GlitchCursor />
             </div>
-            {/* Skip affordance — appears after 2nd line so first-timers don't feel rushed */}
             {loreLines.length >= 2 && (
-              <div className="oracle-lore-skip">TAP TO SKIP</div>
+              <div className="oracle-lore-skip">TAP TO SKIP ARCHIVE FRAGMENT</div>
             )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── KNIFE SELECTION — rises from the world after lore completes ────────
+           Not a modal. Not a form. The alley and oracle face stay visible
+           above it. The frequency choice rises from the ground of the scene.
+           This selection is the genesis input for the portrait pipeline:
+           frequency → portrait → 1:1 on-chain digital asset.               */}
+      <AnimatePresence>
+        {scenePhase === 'terminal' && loreComplete && (
+          <motion.div
+            key="knife-section"
+            className="oracle-knife-section"
+            initial={{ opacity: 0, y: 40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20, transition: { duration: 0.3 } }}
+            transition={{ duration: 0.55, ease: 'easeOut' }}
+          >
+            <div className="oracle-knife-header">◈ THE ARCHIVE IS OPEN</div>
+            <div className="oracle-knife-subheader">CHOOSE THE FREQUENCY THAT IS ALREADY TRUE. THE EXCAVATION BEGINS THERE.</div>
+            <div className="oracle-knife-cards">
+              {KNIFE_QUESTIONS.map((kq, idx) => (
+                <motion.div
+                  key={idx}
+                  className={`oracle-knife-card${selectedKnifeIndex === idx ? ' oracle-knife-card--selected' : ''}`}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.08 * idx, duration: 0.35 }}
+                  onClick={() => selectKnifeQuestion(kq.question, idx)}
+                >
+                  <span className="oracle-knife-territory">{kq.territory}</span>
+                  <span className="oracle-knife-card-num">0{idx + 1}</span>
+                  {kq.question}
+                </motion.div>
+              ))}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

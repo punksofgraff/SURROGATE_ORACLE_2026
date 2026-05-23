@@ -31,6 +31,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 
 export interface UseXRModeReturn {
   isXRMode: boolean;
+  /** Camera passthrough is ACTIVE (user opted in). Separate from isXRMode (context). */
+  cameraActive: boolean;
+  /** User explicitly activates camera passthrough — opt-in, not automatic. */
+  activateCamera: () => void;
+  /** User deactivates camera — returns to alley background. */
+  deactivateCamera: () => void;
   cameraVideoRef: React.RefObject<HTMLVideoElement | null>;
   cameraReady: boolean;
   cameraError: string | null;
@@ -54,6 +60,9 @@ function detectXRMode(): boolean {
 
 export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   const [isXRMode, setIsXRMode] = useState(detectXRMode);
+  // Camera passthrough is NOT automatic — user must explicitly opt in.
+  // Exception: holodexr:init postMessage activates it (headset context).
+  const [cameraActive, setCameraActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [markerActive, setMarkerActive] = useState(false);
@@ -85,22 +94,44 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
         vid.play().catch(() => {});
       }
       setCameraReady(true);
+      setCameraActive(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Camera unavailable';
       setCameraError(msg);
+      setCameraActive(false);
       console.warn('[XR] Camera failed:', msg);
     }
   }, []);
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    setCameraReady(false);
+    setCameraActive(false);
+    if (cameraVideoRef.current) {
+      cameraVideoRef.current.srcObject = null;
+    }
+  }, []);
+
+  const activateCamera = useCallback(() => {
+    startCamera();
+  }, [startCamera]);
+
+  const deactivateCamera = useCallback(() => {
+    stopCamera();
+  }, [stopCamera]);
 
   // Main XR setup effect
   useEffect(() => {
     if (!isXRMode) return;
 
-    // Transparent body so WebView overlay composites against the HolodeXR camera feed
+    // Keep body transparent in XR context — WebView overlay may composite against
+    // camera feed when user opts in. Does not auto-start camera.
     document.documentElement.style.background = 'transparent';
     document.body.style.background = 'transparent';
 
-    startCamera();
+    // ── Camera does NOT auto-start here — user must choose their immersion. ──
+    // HolodeXR explicitly sends holodexr:init which will start the camera.
 
     // ── HolodeXR postMessage bridge ──────────────────────────────────────────
     const handleMessage = (e: MessageEvent) => {
@@ -155,12 +186,18 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
 
     return () => {
       window.removeEventListener('message', handleMessage);
-      streamRef.current?.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
     };
   // startCamera is stable (useCallback []), isXRMode triggers re-setup only if it flips
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isXRMode]);
+
+  // Cleanup camera stream on unmount
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    };
+  }, []);
 
   // Notify HolodeXR parent when camera stream is live
   useEffect(() => {
@@ -168,5 +205,5 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     try { window.parent.postMessage({ type: 'oracle:camera-ready' }, '*'); } catch {}
   }, [isXRMode, cameraReady]);
 
-  return { isXRMode, cameraVideoRef, cameraReady, cameraError, markerActive, autoStart };
+  return { isXRMode, cameraActive, activateCamera, deactivateCamera, cameraVideoRef, cameraReady, cameraError, markerActive, autoStart };
 }

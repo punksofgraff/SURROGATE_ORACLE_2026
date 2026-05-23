@@ -31,7 +31,6 @@ npx supabase functions deploy <function-name> --project-ref velmmplevfrtrtrypoch
 
 Deploy all at once:
 ```bash
-# gemini-live-proxy needs --no-verify-jwt (WebSocket auth workaround)
 npx supabase functions deploy gemini-live-proxy \
   --project-ref velmmplevfrtrtrypoch --use-api --no-verify-jwt
 npx supabase functions deploy \
@@ -98,10 +97,11 @@ artifacts/surrogate-oracle/
   src/
     components/
       SurrogateOracleImmersion.tsx  — main scene orchestrator (state machine, tier routing)
-      SurrogateOracleImmersion.css  — ALL custom styling (--z-* layers, data-oracle-state, data-xr-mode CSS)
+      SurrogateOracleImmersion.css  — ALL custom styling (--z-* layers, data-oracle-state, data-camera-active CSS)
       OracleConversation.tsx        — Gemini Live WS client + Gemini REST fallback + scoring
       DecartClient.tsx              — Decart WebRTC paid avatar
       BackendControlPanel.tsx       — dev debug panel (password: 3nculturate!)
+      ScrambleFragment.tsx          — Cheshire Cat text: scramble + typewriter modes, cycling pools
     lib/
       visemeDetector.ts             — Preston Blair viseme detection (Web Audio API)
       supabase.ts                   — Supabase client
@@ -109,7 +109,7 @@ artifacts/surrogate-oracle/
       pcm-encoder.worker.ts         — PCM→WAV assembly off main thread
     hooks/
       useAtmosphere.ts              — canvas RAF particle atmosphere
-      useXRMode.ts                  — HolodeXR detection, camera passthrough, postMessage bridge
+      useXRMode.ts                  — HolodeXR detection, camera passthrough (opt-in), postMessage bridge
 
 supabase/
   functions/
@@ -131,7 +131,18 @@ Three distinct images with fixed roles — do NOT swap them.
 |---|---|---|
 | `ORACLE_STATIC_URL` | `https://i.postimg.cc/26pvW2SN/orackle-only-static.png` | Arcade cabinet screen — shown in **dormant / terminal / awakened**. Green alien portrait on white/alpha bg. The "waking" bridge image. |
 | `ORACLE_AVATAR_URL` | `https://i.postimg.cc/jSGnyZXh/Image-1-(11).jpg` | **The talking face** — used by BOTH Decart (paid lip-sync) and freemium VisemeDetector. 1280×640 JPG. |
-| `ALLEY_BG_URL` | `https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png` | Full SNEAKAR alley scene. Fades to `opacity:0` in oracle state (singularity moment). |
+| `ALLEY_BG_URL` | `https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png` | Full SNEAKAR alley scene (1280×640 PNG). Fades to `opacity:0` in oracle state (singularity moment). |
+
+### Alley Spatial Map — from direct image analysis
+
+```
+Cabinet frame:  X=38-58%  Y=20-95%  (center ~X=48%, slightly left of image center)
+Cabinet screen: X=40-56%  Y=22-45%  (the green CRT area — neon should stay here)
+SNEAKAR graffiti: right wall  X=60-95%
+Freak Misc mural: left wall   X=5-30%
+```
+
+**Neon containment rule**: All cabinet `box-shadow` spreads capped at 34px outer max. `oracle-monitor-cast` at 60% cabinet width. Pulse rings expand to 1.8× (not 4.5×). Glow reads as CRT light spill, not environmental flood.
 
 ### Talking Face Spatial Map (`ORACLE_AVATAR_URL`)
 
@@ -146,10 +157,6 @@ Chin   : X=50%  Y=72%
 ```
 
 Natural mouth width ≈ **14–16%** of square container. Mouth overlay BASE widths (JS): X/B=13%, C/D=15%, A=18%, E=20%, F=11%, G=13%, H=10%.
-
-### Alley Spatial Map (`ALLEY_BG_URL`)
-
-Cabinet centered X=35–65%, occupies Y=25–100% of frame.
 
 ### Avatar Wrapper Z-Index Layer Order
 
@@ -166,21 +173,23 @@ z:3  .oracle-avatar-video    Decart WebRTC stream — oracle + data-decart-activ
 - **CSS Architecture**: `index.css` is Tailwind boilerplate ONLY. All XR immersive styling is in `SurrogateOracleImmersion.css`.
 - **Dev mode**: Set `localStorage.setItem('dev_user_session', '1')` in browser console. Forces Decart path; resets to dormant on Decart failure (never falls through to freemium).
 - **DALL-E `style` param**: Do NOT pass `style` to DALL-E 3 — rejected with 400.
-- **Gemini Live model**: `models/gemini-2.5-flash-native-audio-latest` (set in `OracleConversation.tsx:34`). `gemini-3.1-flash-live-preview` requires preview allowlist and returns **1011** on free-tier projects — do not use until allowlisted. Older IDs (`2.0-flash-live-001`) return `1008 not found` on v1beta.
-- **Gemini Live audio modality**: `gemini-2.5-flash-native-audio-latest` is AUDIO-only. Do NOT add `responseModalities: ['TEXT']` — it breaks the model. Text/thinking parts still arrive automatically and carry the `[[ORACLE_SCORE:…]]` annotation.
-- **Gemini proxy — Blob frames**: Gemini Live sends ALL messages (including JSON control like `setupComplete`) as **binary** WebSocket frames. The proxy `gemini.onmessage` must be `async` and call `event.data.text()` on Blobs before `JSON.parse`. Do NOT revert to synchronous `JSON.parse(event.data as string)` — it silently drops every translation.
-- **Gemini proxy — deploy flag**: Must be deployed with `--no-verify-jwt`. Browsers can't set custom headers on WebSocket upgrades, so JWT verification fails.
-- **Decart SDK event handlers**: `onDisconnect`/`onError` options inside `connect()` are stripped by Zod schema silently. Wire post-connect events via `(client as any).on('error', ...)` and `.on('connectionChange', ...)` instead.
-- **XR mode activation**: add `?xr` to any URL or embed the page in an iframe — `useXRMode` auto-detects both. Rear camera starts automatically. `?autostart` skips the tap gesture and boots Oracle ~1.8s after camera is live.
-- **HolodeXR integration**: `window.SurrogateXR.markerDetected()` triggers the Oracle awaken sequence. `postMessage({ type: 'holodexr:marker-detected' })` from parent frame does the same. Full API: `launch()`, `markerDetected()`, `markerLost()`, `getStatus()`.
-- **XR CSS selector**: all XR overrides use `[data-xr-mode="true"]` on `.oracle-stage`. No JS conditional rendering required — CSS handles layout + visual changes. XR section is clearly delimited at the bottom of `SurrogateOracleImmersion.css`.
-- **XR sign-off postMessage**: `oracle:session-end` fires from `SurrogateOracleImmersion.handleSessionEnd` when the Oracle conversation closes. Payload: `{ type, totemLevel, coins, alignment, sessionId, version: '2.0' }`. HolodeXR parent receives this before the WebView is dismissed. Full outgoing protocol: `oracle:ready` → `oracle:camera-ready` → `oracle:awakened` ↔ `oracle:dormant` → `oracle:session-end`.
-- **XR touch hint copy**: text is swapped in JSX (`isXRMode` conditional). Do NOT use CSS `content:` on non-pseudo-elements — it does nothing.
-- **Totem persistence**: `localStorage('oracle_totem_level')` is written on session end and loaded as `initialTotemLevel` on the next `OracleConversation` mount. The LLM still governs advancement via `ORACLE_SCORE` — localStorage only seeds the counter.
-- **Scene reset on exit**: `exitOracleMode` resets to `dormant` (not `awakened`) and stops the background radio. User can re-enter by tapping again. Lore tap-to-skip is available after the 2nd line.
+- **Gemini Live model**: `models/gemini-2.5-flash-native-audio-latest` (set in `OracleConversation.tsx:34`). `gemini-3.1-flash-live-preview` requires preview allowlist and returns **1011** on free-tier projects. Older IDs return `1008 not found`.
+- **Gemini Live audio modality**: `gemini-2.5-flash-native-audio-latest` is AUDIO-only. Do NOT add `responseModalities: ['TEXT']` — it breaks the model.
+- **Gemini proxy — Blob frames**: All messages arrive as binary frames. Proxy `gemini.onmessage` must be `async` and call `event.data.text()` before `JSON.parse`.
+- **Gemini proxy — deploy flag**: Must use `--no-verify-jwt`. Browsers can't send Authorization headers on WebSocket upgrades.
+- **Decart SDK event handlers**: `onDisconnect`/`onError` inside `connect()` options stripped by Zod. Use `(client as any).on('error', ...)` and `.on('connectionChange', ...)` post-connect.
+- **XR mode = context, camera = choice**: `isXRMode` (URL param / iframe detection) does NOT auto-start camera. Camera only starts when user taps `◈ AR` toggle. `data-camera-active="true"` (not `data-xr-mode`) drives alley-hide and camera layer CSS. HolodeXR `holodexr:init` postMessage is the one case that auto-starts camera (headset context).
+- **XR CSS selectors**: XR cabinet sizing / branding use `[data-xr-mode="true"]`. Camera passthrough / alley-hide use `[data-camera-active="true"]`. These are separate attributes on `.oracle-stage`.
+- **XR immersion toggle**: `oracle-xr-toggle` button top-right corner. Only shown when `isXRMode`. "◈ AR" to activate camera, "◈ ALLEY" to deactivate. Always accessible.
+- **HolodeXR integration**: `window.SurrogateXR.markerDetected()` triggers Oracle awaken. `postMessage({ type: 'holodexr:marker-detected' })` from parent frame does the same. Full API: `launch()`, `markerDetected()`, `markerLost()`, `getStatus()`.
+- **XR sign-off postMessage**: `oracle:session-end` fires from `SurrogateOracleImmersion.handleSessionEnd`. Payload: `{ type, totemLevel, coins, alignment, sessionId, version: '2.0' }`. Full outgoing sequence: `oracle:ready` → `oracle:camera-ready` → `oracle:awakened` ↔ `oracle:dormant` → `oracle:session-end`.
+- **Typography — all Cheshire Cat**: `oracle-touch-hint` static element retired (was clashing with typewriter CTA). One voice in dormant: the ScrambleFragment typewriter CTA. Do not re-add static text in dormant state.
+- **Neon scale**: All cabinet glows are CRT-tight. Outer box-shadow max 34px. Pulse ring max 1.8× cabinet. Monitor-cast 60% width. Do not restore 100px+ spreads.
+- **oracle-phase keyframe**: Applied to `.oracle-avatar-static` in dormant. Replaces ghost-oracle. Continuous 6.5s oscillation, not an infrequent 12s surge.
+- **Totem persistence**: `localStorage('oracle_totem_level')` written on session end, loaded as `initialTotemLevel` on next mount. LLM governs advancement via `ORACLE_SCORE`.
+- **Scene reset on exit**: `exitOracleMode` → `dormant`. Radio stops. Lore tap-to-skip available after 2nd line.
 - **Supabase CLI auth**: Already authenticated in this Replit — no login needed. `npx supabase secrets list` works directly.
-- **`VITE_SUPABASE_ANON_KEY` must be set** in `.env.local` for the browser Supabase client. Service role key is server-only (Supabase EFAs via `SUPABASE_SERVICE_ROLE_KEY` env auto-injected by Supabase).
-- **BackendControlPanel TypeScript errors**: Pre-existing, non-blocking. Build succeeds despite 4 TS errors in that file.
+- **BackendControlPanel TypeScript errors**: Pre-existing, non-blocking. Build succeeds.
 
 ---
 

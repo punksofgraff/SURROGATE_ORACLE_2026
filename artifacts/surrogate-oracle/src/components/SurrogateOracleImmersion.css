@@ -34,6 +34,7 @@
   background: #000;
   font-family: 'PhillySans', 'Orbitron', monospace;
   color: #fff;
+  perspective: 800px; /* Pillar 3 — depth stage for oracle-phase materialization */
 }
 
 /* ── Grain & Noise Overlay ────────────────────────────────────────────── */
@@ -394,9 +395,10 @@
   background: rgba(0,5,15,0.6);
   border: 1px solid rgba(0,255,136,0.35);
   transition: transform 0.4s var(--ease-cinematic), box-shadow 0.4s var(--ease-cinematic);
-  box-shadow: 
-    0 0 25px rgba(176,38,255,0.2),
-    inset 0 0 15px rgba(0,255,136,0.1);
+  /* Base: tight border glow only — no ambient bleed */
+  box-shadow:
+    0 0 8px rgba(176,38,255,0.18),
+    inset 0 0 8px rgba(0,255,136,0.08);
   backdrop-filter: blur(4px);
   will-change: transform, box-shadow;
 }
@@ -417,30 +419,30 @@
 .oracle-stage[data-oracle-state="oracle"] .oracle-cabinet {
   animation: cabinet-breathe 4s ease-in-out infinite;
   border-color: rgba(0,255,136,0.6);
-  /* The monitor cast — bloom spreading outward from the screen */
+  /* Static rule overridden by cabinet-breathe keyframes.
+     cabinet-breathe values below are the actual rendered glow. */
   box-shadow:
-    0 0 35px rgba(0,255,136,0.55),
-    0 0 80px rgba(0,255,136,0.30),
-    0 0 160px rgba(0,255,136,0.18),
-    0 0 300px rgba(176,38,255,0.12),
-    inset 0 0 25px rgba(0,255,136,0.18);
+    0 0 10px rgba(0,255,136,0.72),
+    0 0 22px rgba(0,255,136,0.30),
+    inset 0 0 12px rgba(0,255,136,0.18);
 }
 
-/* ── Monitor Cast Halo — environmental bloom on oracle-center in ORACLE state ── */
+/* ── Monitor Cast Halo — screen-level CRT bloom only ─────────────────────────
+   60% of cabinet width = roughly the screen face area.
+   Very dim — the face is the light, not the bezel.                          */
 .oracle-monitor-cast {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 150%;
+  width: 60%;
   aspect-ratio: 1 / 0.85;
   border-radius: 50%;
   background: radial-gradient(
     ellipse at center,
-    rgba(0, 255, 136, 0.28) 0%,
-    rgba(0, 255, 136, 0.14) 25%,
-    rgba(176, 38, 255, 0.08) 50%,
-    transparent 72%
+    rgba(0, 255, 136, 0.14) 0%,
+    rgba(0, 255, 136, 0.06) 35%,
+    transparent 65%
   );
   pointer-events: none;
   z-index: -1;
@@ -482,7 +484,7 @@
 
 .oracle-cabinet:hover {
   transform: scale(1.04) rotateX(4deg);
-  box-shadow: 0 0 45px rgba(176,38,255,0.4);
+  box-shadow: 0 0 18px rgba(176,38,255,0.35);
 }
 
 .oracle-cabinet::before {
@@ -526,9 +528,9 @@
 
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-wrapper {
   transform: scale(1.15) translateZ(0);
-  box-shadow: 0 0 50px rgba(0,255,136,0.4);
+  box-shadow: 0 0 20px rgba(0,255,136,0.32);
   z-index: 10;
-  overflow: visible; /* Let the pulse zoom break out of the box slightly */
+  overflow: visible;
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-wrapper {
@@ -554,12 +556,13 @@
   pointer-events: none;
 }
 
-/* DORMANT — ghost static portrait. Barely there, surges once every ~12s.
-   Wants to be seen. Can't quite hold the signal.                          */
+/* DORMANT — signal materializing. Continuous oscillation, not a static ghost.
+   Pillar 3: oracle-phase oscillates opacity/blur/saturate/scale over 6.5s —
+   the face assembles itself from fog and returns, endlessly.                */
 .oracle-stage[data-oracle-state="dormant"] .oracle-avatar-static {
   opacity: 0.28;
-  filter: brightness(0.45) grayscale(0.60);
-  animation: ghost-oracle 12s ease-in-out 4s infinite;
+  filter: brightness(0.45) grayscale(0.60) blur(2px) saturate(0.4);
+  animation: oracle-phase 6.5s ease-in-out infinite;
 }
 
 /* TERMINAL — Star Trek transporter beam-in. Starts microscopic, scales to full
@@ -847,25 +850,29 @@
 }
 
 @keyframes cabinet-pulse-zoom {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 25px rgba(176,38,255,0.2), inset 0 0 15px rgba(0,255,136,0.1); }
-  50% { transform: scale(1.05); box-shadow: 0 0 55px rgba(176,38,255,0.5), inset 0 0 25px rgba(0,255,136,0.2); }
+  /* Awakened state — very gentle scale, tight glow */
+  0%, 100% { transform: scale(1);    box-shadow: 0 0 8px rgba(176,38,255,0.22), inset 0 0 8px rgba(0,255,136,0.08); }
+  50%       { transform: scale(1.02); box-shadow: 0 0 18px rgba(176,38,255,0.38), inset 0 0 12px rgba(0,255,136,0.12); }
 }
 
 @keyframes avatar-zoom-breathe {
-  0% { transform: scale(1.25); filter: brightness(1.2) drop-shadow(0 0 25px rgba(0,255,136,0.6)); }
-  100% { transform: scale(1.35); filter: brightness(1.5) drop-shadow(0 0 55px rgba(0,255,136,0.9)); }
+  /* Awakened — face breathes with a tight CRT glow, no bleed */
+  0%   { transform: scale(1.25); filter: brightness(1.2) drop-shadow(0 0 10px rgba(0,255,136,0.55)); }
+  100% { transform: scale(1.35); filter: brightness(1.5) drop-shadow(0 0 20px rgba(0,255,136,0.80)); }
 }
 
 @keyframes cabinet-breathe {
-  0%, 100% { box-shadow: 0 0 25px rgba(176,38,255,0.15), inset 0 0 15px rgba(0,255,136,0.05); border-color: rgba(176,38,255,0.25); }
-  50% { box-shadow: 0 0 45px rgba(176,38,255,0.35), inset 0 0 25px rgba(0,255,136,0.1); border-color: rgba(176,38,255,0.5); }
+  /* Oracle idle — the face is the hero; cabinet is a faint frame around it */
+  0%, 100% { box-shadow: 0 0 8px rgba(176,38,255,0.14), inset 0 0 8px rgba(0,255,136,0.06); border-color: rgba(176,38,255,0.28); }
+  50%       { box-shadow: 0 0 18px rgba(176,38,255,0.26), inset 0 0 12px rgba(0,255,136,0.10); border-color: rgba(176,38,255,0.50); }
 }
 
-/* Cabinet pulses in sync with the Oracle speaking — voice made visible */
+/* Cabinet pulses in sync with Oracle speaking — voice made visible.
+   CRT edge glow: inner 10px + outer 24px. Nothing beyond the cabinet frame. */
 @keyframes cabinet-voice-pulse {
-  0%   { box-shadow: 0 0 35px rgba(0,255,136,0.55), 0 0 80px rgba(0,255,136,0.30), 0 0 160px rgba(0,255,136,0.18), 0 0 300px rgba(176,38,255,0.12), inset 0 0 25px rgba(0,255,136,0.18); }
-  50%  { box-shadow: 0 0 55px rgba(0,255,136,0.80), 0 0 120px rgba(0,255,136,0.50), 0 0 220px rgba(0,255,136,0.28), 0 0 400px rgba(176,38,255,0.20), inset 0 0 40px rgba(0,255,136,0.28); }
-  100% { box-shadow: 0 0 35px rgba(0,255,136,0.55), 0 0 80px rgba(0,255,136,0.30), 0 0 160px rgba(0,255,136,0.18), 0 0 300px rgba(176,38,255,0.12), inset 0 0 25px rgba(0,255,136,0.18); }
+  0%   { box-shadow: 0 0 10px rgba(0,255,136,0.75), 0 0 24px rgba(0,255,136,0.35), inset 0 0 12px rgba(0,255,136,0.18); }
+  50%  { box-shadow: 0 0 15px rgba(0,255,136,0.95), 0 0 34px rgba(0,255,136,0.55), inset 0 0 18px rgba(0,255,136,0.28); }
+  100% { box-shadow: 0 0 10px rgba(0,255,136,0.75), 0 0 24px rgba(0,255,136,0.35), inset 0 0 12px rgba(0,255,136,0.18); }
 }
 
 /* Wire voice pulse to oracle speaking state */
@@ -880,10 +887,10 @@
    The mic button glow is handled inline via JS (vadScore-driven boxShadow).  */
 
 @keyframes cabinet-user-pulse {
-  /* Purple-dominant: "Oracle is receiving your signal" */
-  0%   { box-shadow: 0 0 25px rgba(176,38,255,0.45), 0 0 60px rgba(176,38,255,0.25), inset 0 0 15px rgba(176,38,255,0.12); border-color: rgba(176,38,255,0.60); }
-  50%  { box-shadow: 0 0 45px rgba(176,38,255,0.70), 0 0 100px rgba(176,38,255,0.40), inset 0 0 28px rgba(176,38,255,0.22); border-color: rgba(176,38,255,0.85); }
-  100% { box-shadow: 0 0 25px rgba(176,38,255,0.45), 0 0 60px rgba(176,38,255,0.25), inset 0 0 15px rgba(176,38,255,0.12); border-color: rgba(176,38,255,0.60); }
+  /* Purple-dominant: "Oracle is receiving your signal" — same tight treatment */
+  0%   { box-shadow: 0 0 10px rgba(176,38,255,0.48), 0 0 22px rgba(176,38,255,0.22), inset 0 0 10px rgba(176,38,255,0.12); border-color: rgba(176,38,255,0.60); }
+  50%  { box-shadow: 0 0 15px rgba(176,38,255,0.72), 0 0 30px rgba(176,38,255,0.38), inset 0 0 16px rgba(176,38,255,0.22); border-color: rgba(176,38,255,0.85); }
+  100% { box-shadow: 0 0 10px rgba(176,38,255,0.48), 0 0 22px rgba(176,38,255,0.22), inset 0 0 10px rgba(176,38,255,0.12); border-color: rgba(176,38,255,0.60); }
 }
 
 .oracle-stage[data-oracle-state="oracle"][data-user-speaking="true"] .oracle-cabinet {
@@ -953,20 +960,19 @@
 
 /* ── Dormant cabinet breathe — slow, deep, like something alive waiting ── */
 @keyframes dormant-breathe {
+  /* Ghost signal — barely there, occasional pulse. Tight edge only. */
   0%, 100% {
     box-shadow:
-      0 0 10px rgba(0,255,136,0.08),
-      0 0 28px rgba(0,255,136,0.04),
-      inset 0 0 8px rgba(0,255,136,0.04);
-    border-color: rgba(0,255,136,0.22);
+      0 0 6px rgba(0,255,136,0.08),
+      inset 0 0 6px rgba(0,255,136,0.04);
+    border-color: rgba(0,255,136,0.18);
   }
   50% {
     box-shadow:
-      0 0 30px rgba(0,255,136,0.38),
-      0 0 80px rgba(0,255,136,0.18),
-      0 0 160px rgba(176,38,255,0.12),
-      inset 0 0 25px rgba(0,255,136,0.10);
-    border-color: rgba(0,255,136,0.55);
+      0 0 14px rgba(0,255,136,0.30),
+      0 0 28px rgba(0,255,136,0.12),
+      inset 0 0 12px rgba(0,255,136,0.08);
+    border-color: rgba(0,255,136,0.45);
   }
 }
 
@@ -1133,7 +1139,7 @@
   width: 90%;
   aspect-ratio: 1;
   border-radius: 50%;
-  border: 1px solid rgba(0, 255, 136, 0.55);
+  border: 1px solid rgba(0, 255, 136, 0.45);
   transform: translate(-50%, -50%) scale(0.5);
   pointer-events: none;
   z-index: -1;
@@ -1141,8 +1147,9 @@
 }
 
 @keyframes pulse-ring-expand {
-  0%   { transform: translate(-50%, -50%) scale(0.5);  opacity: 0.75; border-color: rgba(0,255,136,0.65); }
-  100% { transform: translate(-50%, -50%) scale(4.5);  opacity: 0;    border-color: rgba(0,255,136,0); }
+  /* Radar ping — expands to 1.8× cabinet size then fades. Not 4.5×. */
+  0%   { transform: translate(-50%, -50%) scale(0.5);  opacity: 0.60; border-color: rgba(0,255,136,0.55); }
+  100% { transform: translate(-50%, -50%) scale(1.8);  opacity: 0;    border-color: rgba(0,255,136,0); }
 }
 
 /* ── Lore Terminal Overlay ─────────────────────────────────────────────── */
@@ -1272,7 +1279,25 @@
 
 /* ── New Keyframes ─────────────────────────────────────────────────────── */
 
-/* Ghost oracle — surface then vanish, deeply unsettling in dormant state */
+/* Pillar 3: oracle-phase — continuous materialization oscillation.
+   The signal assembles itself from fog (0→60% opacity) and returns to ether.
+   Applied to oracle-avatar-static in dormant state.
+   6.5s period, ease-in-out — unhurried, alien, inevitable.                  */
+@keyframes oracle-phase {
+  0%, 100% {
+    opacity: 0.28;
+    filter: blur(2px) saturate(0.4) brightness(0.40);
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 0.60;
+    filter: blur(0.3px) saturate(0.8) brightness(0.65);
+    transform: scale(1.01);
+  }
+}
+
+/* Ghost oracle — kept for potential use, but retired from dormant state in
+   favour of oracle-phase. It was too infrequent (12s) to feel alive. */
 @keyframes ghost-oracle {
   /* sits dark and near-invisible most of the time */
   0%, 74%, 100% {
@@ -1643,6 +1668,49 @@
    erupting from the poster. Camera feed replaces the static alley background.
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ── XR Immersion Toggle — corner badge for choosing alley vs camera ─────────
+   Available whenever isXRMode=true. Minimal — doesn't distract from the scene.
+   Position: top-right corner, above all layers.                              */
+.oracle-xr-toggle {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: calc(var(--z-system) - 10);
+  background: rgba(0, 5, 15, 0.72);
+  border: 1px solid rgba(0, 255, 136, 0.35);
+  color: rgba(0, 255, 136, 0.70);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: clamp(0.55rem, 1.1vw, 0.68rem);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: border-color 0.3s, color 0.3s, background 0.3s;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.oracle-xr-toggle:hover {
+  border-color: rgba(0, 255, 136, 0.65);
+  color: rgba(0, 255, 136, 1.0);
+  background: rgba(0, 10, 25, 0.85);
+}
+
+/* Active = camera is running — highlight in green */
+.oracle-xr-toggle--active {
+  border-color: rgba(0, 255, 136, 0.60);
+  color: rgba(0, 255, 136, 0.95);
+  background: rgba(0, 255, 136, 0.08);
+  animation: xr-toggle-pulse 3s ease-in-out infinite;
+}
+
+@keyframes xr-toggle-pulse {
+  0%, 100% { border-color: rgba(0, 255, 136, 0.50); }
+  50%       { border-color: rgba(0, 255, 136, 0.80); }
+}
+
 /* ── XR Layer 0: Camera passthrough ─────────────────────────────────────── */
 .xr-camera-layer {
   position: absolute;
@@ -1655,18 +1723,20 @@
   will-change: transform;
 }
 
-/* ── XR: Hide static alley — camera takes its place ─────────────────────── */
-.oracle-stage[data-xr-mode="true"] .oracle-alley {
+/* ── CAMERA ACTIVE: Hide alley — user chose camera passthrough ───────────────
+   Gated on data-camera-active="true" (user choice) NOT data-xr-mode="true"
+   (context detection). Alley is the default immersion even in XR context.   */
+.oracle-stage[data-camera-active="true"] .oracle-alley {
   display: none !important;
 }
 
-/* ── XR: Hide ground fog — wrong depth cue against real camera ───────────── */
-.oracle-stage[data-xr-mode="true"] .oracle-ground-fog {
+/* ── CAMERA ACTIVE: Hide ground fog — wrong depth cue against real camera ── */
+.oracle-stage[data-camera-active="true"] .oracle-ground-fog {
   display: none;
 }
 
-/* ── XR: Transparent root so WebView compositor sees the camera feed ─────── */
-.oracle-stage[data-xr-mode="true"] {
+/* ── CAMERA ACTIVE: Transparent root so compositor sees the camera feed ───── */
+.oracle-stage[data-camera-active="true"] {
   background: transparent;
 }
 

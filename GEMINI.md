@@ -130,7 +130,7 @@ gemini-portrait-generator EFA (cascade — first success wins)
 Oracle responses carry a hidden annotation that the client parses and strips from UI:
 
 ```
-[[ORACLE_SCORE: {"sacred":2,"profane":1,"totem":2,"portrait_unlock":false,"themes":["identity","debt"]}]]
+[[ORACLE_SCORE: {"alignment":"sacred","coinAward":10,"totemAdvancement":"ascend","totemLevel":2,"unlockTrigger":null,"sessionPhase":"claim","archetypeTitle":null}]]
 ```
 
 - Appears in **text/thinking parts** of Gemini Live responses (even though modality is audio-only)

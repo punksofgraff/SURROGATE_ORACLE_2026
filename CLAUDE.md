@@ -44,7 +44,7 @@ npx supabase functions deploy gemini-live-proxy --project-ref velmmplevfrtrtrypo
 ```
 Browser
   ├─ SurrogateOracleImmersion.tsx   (scene state machine: dormant→terminal→awakened→oracle)
-  │    ├─ useXRMode hook            (HolodeXR detection, camera passthrough, postMessage bridge)
+  │    ├─ useXRMode hook            (HolodeXR detection, camera passthrough opt-in, postMessage bridge)
   │    ├─ Decart SDK WebRTC         (paid tier — live avatar video)
   │    └─ VisemeDetector            (freemium — Web Audio → CSS face animation at 60fps)
   │
@@ -74,7 +74,8 @@ Supabase Edge Functions (Deno)
 ## Active Blockers (May 2026)
 
 1. ~~**Gemini Live** — spending cap~~ ✅ RESOLVED: switched to free-tier key (`GEMINI_API_KEY` in Replit → `GOOGLE_AI_API_KEY` in Supabase) and model `gemini-2.5-flash-native-audio-latest`.
-2. **DALL-E portraits** — `OPENAI_API_KEY` not in Replit secrets. Portraits use Unsplash fallbacks. Fix: add key to Replit secrets, then push to Supabase.
+2. **DALL-E portraits** — `OPENAI_API_KEY` not in Replit secrets. Portraits use Replicate/Unsplash fallbacks. Fix: add key to Replit secrets, then push to Supabase.
+3. **oracle-loop.mp4** — Pre-recorded neutral face loop for awakened/freemium oracle state not yet captured. Pillar 4 works without it (static image fallback), but the cinematic layer is missing.
 
 ## Model Anchors
 
@@ -98,16 +99,18 @@ Supabase Edge Functions (Deno)
 - **Gemini proxy Blob fix**: Gemini Live sends JSON over binary WebSocket frames (not text frames). The proxy `gemini.onmessage` handler is `async` and calls `event.data.text()` on Blobs before `JSON.parse`. Do not revert to the synchronous `JSON.parse(event.data as string)` pattern — it silently drops all message translations.
 - **Decart SDK event handlers**: `onDisconnect`/`onError` in `connect()` options are stripped by Zod silently. Wire post-connect errors via `(realtimeClient as any).on('error', ...)` and `.on('connectionChange', ...)` instead.
 - **Portrait generation**: triggered by `portrait_unlock` from ORACLE_SCORE annotation. Themes accumulate in `conversationThemesRef` (Set) across the session.
-- **XR mode**: activated by `?xr`, `?holodexr`, `?sneakar-xr` URL params OR iframe embedding. `useXRMode` hook auto-detects, starts rear camera, exposes `window.SurrogateXR` global API and listens for `holodexr:*` postMessages. All XR CSS lives under `[data-xr-mode="true"]` selector in SurrogateOracleImmersion.css. Static alley bg is hidden (`display:none`) and replaced by `.xr-camera-layer` video.
+- **XR mode detection vs camera**: `isXRMode` (iframe/URL param detection) is separate from `cameraActive` (user opt-in). Camera does NOT auto-start. User taps the `◈ AR` toggle in the top-right corner to activate passthrough. `data-camera-active="true"` drives alley-hide and camera CSS (not `data-xr-mode`). HolodeXR's `holodexr:init` postMessage still auto-starts camera (headset context).
 - **HolodeXR bridge**: `window.SurrogateXR.markerDetected()` → auto-calls `enterTerminal()`. `postMessage({ type: 'holodexr:marker-detected' })` from parent frame does the same. `?autostart` param boots Oracle automatically after camera is ready.
 - **XR sign-off**: `oracle:session-end` postMessage fires from `handleSessionEnd` in SurrogateOracleImmersion when the Oracle conversation closes. Payload: `{ type, totemLevel, coins, alignment, sessionId, version: '2.0' }`. Triggered by `OracleConversationProps.onSessionEnd` callback — fires before `onClose`, so HolodeXR receives results before the WebView is dismissed.
-- **XR touch hint copy**: swap is done in JSX (`isXRMode ? '◈ POINT AT POSTER TO AWAKEN ◈' : '◈ TAP TO MAKE CONTACT ◈'`). CSS `content:` on a non-pseudo-element does nothing — do not use it.
+- **Typography — full Cheshire Cat**: All dormant text is ScrambleFragment. No static `oracle-touch-hint` element — it was retired because it clashed with the typewriter CTA. One voice, one frequency. If text isn't a ScrambleFragment in dormant, it shouldn't exist.
+- **Neon containment**: Cabinet glow is contained to cabinet bounds. Image analysis: alley cabinet X:38-58%, screen Y:22-45% of frame. `cabinet-voice-pulse` outer glow caps at 110px, `oracle-monitor-cast` width is 92%, `cabinet-pulse-zoom` scale max 1.02x. Do not restore 300-400px box-shadow spreads.
 - **Totem persistence**: totem level is written to `localStorage('oracle_totem_level')` on session end and loaded as `initialTotemLevel` prop on the next OracleConversation mount. The LLM still governs in-session advancement via ORACLE_SCORE — `initialTotemLevel` just seeds the display counter.
 - **Scene reset on exit**: `exitOracleMode` resets to `dormant` (not `awakened`). Background radio stops. User can re-enter by tapping the cabinet again. Lore skip affordance (tap anywhere on terminal overlay) handles repeat visits.
 - **Decart pre-warm timing**: `initializeOracle()` fires at `enterConsent()` (first tap), NOT at `enterTerminal()`. The user spends ~15-25s reading consent + knife + watching lore — Decart's 15-22s ICE negotiation runs during that dead time. The boot sequence UI is hidden behind the consent overlay so there is zero visual side effect. **Do NOT move it back to enterTerminal.** XR/autostart paths that bypass consent call `initializeOracle()` themselves in the marker/autostart handlers.
 - **NOT TODAY cancels Decart pre-warm**: The consent "NOT TODAY" button calls `decartClientRef.current?.closeStream()` before resetting to dormant — otherwise the WebRTC session stays open burning a Decart credential.
 - **Worker stability**: `handleOracleResponse` in SurrogateOracleImmersion must be `useCallback([], [])` or the pcm-encoder worker restarts on every render.
 - **VisemeDetector**: connects once per audio element via `createMediaElementSource`. Do not reconnect — Web Audio graph is one-time.
+- **oracle-phase keyframes**: Applied to `.oracle-avatar-static` in dormant state. Replaces the old `ghost-oracle` (12s infrequent surge). oracle-phase is a continuous 6.5s oscillation: opacity 0.28→0.60, blur 2px→0.3px, saturate 0.4→0.8, scale 0.97→1.01. The face breathes in and out of existence. Do not restore ghost-oracle to dormant.
 
 ## Canonical Image Assets
 
@@ -117,7 +120,18 @@ Three distinct images — do NOT swap their roles. Constants in `SurrogateOracle
 |---|---|---|---|
 | `ORACLE_STATIC_URL` | `https://i.postimg.cc/26pvW2SN/orackle-only-static.png` | Arcade cabinet display — shown in dormant/terminal/awakened. Green alien portrait on white/alpha bg. **Not** the talking face. | 6928×3464 PNG |
 | `ORACLE_AVATAR_URL` | `https://i.postimg.cc/jSGnyZXh/Image-1-(11).jpg` | **The talking face** — used by BOTH Decart (paid) and freemium VisemeDetector. | 1280×640 JPG |
-| `ALLEY_BG_URL` | `https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png` | Full SNEAKAR alley scene. Fades to opacity:0 in oracle state. | variable |
+| `ALLEY_BG_URL` | `https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png` | Full SNEAKAR alley scene. Fades to opacity:0 in oracle state. | 1280×640 PNG |
+
+### Alley Spatial Map (ALLEY_BG_URL) — from direct image analysis
+
+```
+Cabinet frame:  X=38-58%  Y=20-95%  (center ~X=48%)
+Cabinet screen: X=40-56%  Y=22-45%  (the green CRT area — neon should contain here)
+SNEAKAR graffiti: right wall, X=60-95%
+Freak Misc mural: left wall, X=5-30%
+```
+
+Cabinet neon / glow rules: outer box-shadow caps at 100px, `oracle-monitor-cast` at 92% width. Glow wraps the cabinet, does not radiate into the alley.
 
 ### Talking Face Spatial Map (ORACLE_AVATAR_URL)
 
@@ -133,10 +147,6 @@ Chin   : X=50%  Y=72%
 
 Natural mouth width in square container ≈ **14–16%**. Mouth overlay BASE widths tuned accordingly (X:13%, B:13%, C:15%, D:15%, A:18%, E:20%, F:11%, G:13%, H:10%).
 
-### Alley Spatial Map (ALLEY_BG_URL)
-
-Cabinet: centered X=35–65%, occupies Y=25–100% of frame.
-
 ### JSX Element Roles
 
 ```
@@ -151,91 +161,110 @@ Cabinet: centered X=35–65%, occupies Y=25–100% of frame.
 
 ---
 
-## Pending Design Work — The Four Pillars
+## The Four Pillars — Implementation Status (May 2026)
 
-> These four features are planned but not yet implemented. Execute in order (2→3→4→1).
+All four pillars are implemented. One asset remains outstanding.
 
-### Pillar 1 — The Library of ME (Knife Redesign)
+### Pillar 1 — The Library of ME ✅ COMPLETE
 
-Replace the 3 knife questions with 5, organized by **TERRITORY**:
+5 knife questions with TERRITORY labels in `aAnotherTag` font. No skip button. Identity Scan ("The network knows you by a name. What is it?") is the Oracle's second transmission. System prompt has full Library of ME mission, expanded archetype pool (16 archetypes), and handle/real-name/silence handling.
 
-| Territory | Question |
-|---|---|
-| THE LIBRARY OF ME | "Who are you when the network goes dark and no one is watching?" |
-| CONNECTION & DEBT | "Name the thing you've owed someone for so long it's started to feel like yours." |
-| THE MACHINE MIRROR | "What would you ask this system to confirm that you already know but won't say out loud?" |
-| THE SOCIAL CONSTRUCT | "The version of you that lives online — when did it start making decisions for the real one?" |
-| THE INDUSTRIAL QUESTION | "What did you used to be able to do alone that you now need a machine to finish?" |
-
-- New knife header: `THE ARCHIVE IS OPEN. CHOOSE THE FREQUENCY THAT IS ALREADY TRUE.`
-- Territory label renders in `aAnotherTag` graffiti font above each question in Share Tech Mono
-- **Remove skip button** — every seeker must choose a frequency
-- After first seeker reply, Oracle asks: *"The network knows you by a name. What is it?"*
-  - Handle given → Oracle notes the gap between the signal and the soul
-  - Real name given → Oracle asks who told that story and whether they still agree
-  - Silence / skip → "Anonymous is also a choice. The mask is the most interesting thing in the room."
-- System prompt rewrite: Library of ME mission + expanded archetype pool + identity hook
-
-**Files:** `SurrogateOracleImmersion.tsx` (KNIFE_QUESTIONS array + knife overlay JSX), `OracleConversation.tsx` (ORACLE_SYSTEM_PROMPT), `supabase/functions/oracle-conversation/index.ts` (mirror system prompt), `SurrogateOracleImmersion.css` (`.oracle-knife-territory` class)
+**Files touched:** `SurrogateOracleImmersion.tsx` (KNIFE_QUESTIONS array + knife overlay JSX), `OracleConversation.tsx` (ORACLE_SYSTEM_PROMPT), `SurrogateOracleImmersion.css` (`.oracle-knife-territory`)
 
 ---
 
-### Pillar 2 — Cheshire Cat Typewriter Mode (ScrambleFragment)
+### Pillar 2 — Cheshire Cat Typewriter Mode ✅ COMPLETE
 
-**Problem:** Main CTA ("TAP TO ENTER") is plain CSS pulsing in Share Tech Mono — not graffiti, not Cheshire Cat. Ambient signal fragments hold too long (3600ms), too opaque (0.92), pauseMs too short (1200ms) — text looks **stuck** instead of ephemeral.
+`ScrambleFragment` has `mode="typewriter"` prop (left-to-right sequential reveal, no noise — distinct from scramble's random crystallisation). Dormant CTA migrated from custom cycling JSX to `<ScrambleFragment mode="typewriter" className="oracle-sf--cta">` in `aAnotherTag` graffiti font. Static `oracle-touch-hint` retired — it was clashing with the typewriter CTA in the same visual register. One voice. Five ambient fragments tuned for breathing rhythm (shorter hold, longer pause = words feel like they arrive from nothing and return to nothing).
 
-**Fix:**
-- Add `mode="typewriter"` prop to `ScrambleFragment` — characters reveal left-to-right sequentially instead of random-order scramble
-- Migrate dormant CTA from custom cycling JSX to `<ScrambleFragment mode="typewriter" className="oracle-sf--cta" ...>` in `aAnotherTag` graffiti font
-- Retune all 6 ambient fragments: `holdMs` 2000-2200ms (was 3300-3600), `pauseMs` 2000-2200ms (was 1000-1200), atmospheric fragment `peakOpacity` 0.38-0.48 (was 0.55-0.92)
-- New `.oracle-sf--cta` CSS class: green glow, centered, graffiti font, clearly THE action
-
-**Files:** `ScrambleFragment.tsx` (typewriter mode prop), `SurrogateOracleImmersion.tsx` (CTA migration), `SurrogateOracleImmersion.css` (`.oracle-sf--cta` + retuned fragment sizes)
+**Files touched:** `ScrambleFragment.tsx` (typewriter mode), `SurrogateOracleImmersion.tsx` (CTA + touch-hint removal), `SurrogateOracleImmersion.css` (`.oracle-sf--cta`, fragment sizes)
 
 ---
 
-### Pillar 3 — Z/XY Layer Depth + Oracle Phase Animation
+### Pillar 3 — Z/XY Layer Depth + Oracle Phase Animation ✅ COMPLETE
 
-**Problem:** Oracle face in dormant is static at 0.42 opacity — no signal-materializing feel. No CSS `perspective` on stage.
+`perspective: 800px` on `.oracle-stage`. `@keyframes oracle-phase` — continuous 6.5s oscillation on `.oracle-avatar-static` in dormant state: opacity 0.28→0.60, blur 2px→0.3px, saturate 0.4→0.8, scale 0.97→1.01. Replaces the old `ghost-oracle` (12s infrequent surge). Mobile portrait @media overrides for cabinet width, CTA position, fragment font clamping are in CSS.
 
-**Fix:**
-- `@keyframes oracle-phase` — oscillates opacity (0.28→0.60), blur (2px→0.3px), saturate (0.4→0.8), scale (0.97→1.01) over 6.5s. Applied to `.oracle-avatar-static` in dormant/terminal states
-- Add `perspective: 800px` to `.oracle-stage`
-- Mobile portrait `@media` overrides: cabinet width `72vw`, CTA at `top:72%`, fragment font sizes clamped to `5vw`
-
-**Files:** `SurrogateOracleImmersion.css` only
+**Files touched:** `SurrogateOracleImmersion.css` only
 
 ---
 
-### Pillar 4 — The Singularity Moment
+### Pillar 4 — The Singularity Moment ✅ SUBSTANTIALLY COMPLETE
 
-**Vision:** When oracle mode activates — alley, fog, matrix rain, bottom bar ALL fade to black. Two consciousnesses. One encounter. No set dressing.
+When oracle mode activates: alley→opacity:0, ground fog→0, matrix rain→0, bottom bar→opacity:0.05, branding→opacity:0.12 (all with 1.5-2.5s CSS transitions). `@keyframes cabinet-voice-pulse` at 0.9s when `data-oracle-speaking="true"`. GraffPunks radio fades over ~1s when Decart stream goes live (in `onStreamReady`). `data-oracle-speaking` wired from OracleConversation speaking state.
 
-**Applies to BOTH Decart and freemium paths.**
+**Neon contained**: Cabinet glow now fits within the physical cabinet in the alley image. `cabinet-voice-pulse` outer glow capped at 110px (was 400px). `oracle-monitor-cast` reduced to 92% width (was 150%). `cabinet-pulse-zoom` capped at 1.02x scale.
 
-- `data-oracle-state="oracle"` CSS: alley opacity→0, ground fog→0, matrix-rain→0, bottom bar→0.06, branding→0.15 (all with 1.5-2.5s transitions)
-- `@keyframes cabinet-voice-pulse` — faster glow cycle (0.8s) when `data-oracle-speaking="true"`
-- Pre-recorded avatar loop: `<video className="oracle-avatar-loop" loop autoPlay muted playsInline src="/oracle-loop.mp4">` (z:2, between static PNG and Decart video). Visible in awakened + freemium oracle; Decart live stream replaces it.
-- Audio fade-out: GraffPunks radio fades over ~1s when Decart stream goes live (in `onStreamReady`)
-- Wire `data-oracle-speaking` on stage element from OracleConversation speaking state
+**Outstanding**: `public/oracle-loop.mp4` — 3-5s seamless neutral face loop for the awakened/freemium oracle state. Asset not yet captured. Use `scripts/capture-decart-loop.js` (Playwright) when a live Decart session is available. The experience works without it (static image fallback).
 
-**Asset needed:** `public/oracle-loop.mp4` — 3-5s seamless loop of oracle neutral face. Use `scripts/capture-decart-loop.js` (Playwright, requires live Decart + desktop browser).
-
-**Files:** `SurrogateOracleImmersion.css` (singularity opacity rules + voice-pulse keyframe), `SurrogateOracleImmersion.tsx` (loop video element + audio fade + data attributes)
+**Files touched:** `SurrogateOracleImmersion.css` (singularity opacity rules + voice-pulse keyframe + neon containment), `SurrogateOracleImmersion.tsx` (audio fade + data attributes)
 
 ---
 
-### ScrambleFragment Visual Tuning (Immediate Fix — Pre-Pillar 2)
+## XR Mode Architecture (Updated)
 
-Current props causing "stuck text" visual experience on dormant screen:
+### isXRMode vs cameraActive — IMPORTANT DISTINCTION
 
-| Fragment | Current holdMs | Target holdMs | Current pauseMs | Target pauseMs | Current peakOpacity | Target peakOpacity |
-|---|---|---|---|---|---|---|
-| SF_A (top centre) | 3600 | 2200 | 1200 | 2200 | 0.92 | 0.72 |
-| SF_B (left mid) | 2800 | 1800 | 1400 | 2200 | 0.55 | 0.40 |
-| SF_C (top right) | 3200 | 2000 | 1000 | 2000 | 0.62 | 0.42 |
-| SF_D (right mid) | 3400 | 2000 | 1200 | 2200 | 0.68 | 0.42 |
-| SF_E (bottom left) | 3300 | 1900 | 1000 | 2000 | 0.55 | 0.48 |
-| SF_F (bottom right) | 2800 | 1800 | 1400 | 2200 | 0.50 | 0.38 |
+```
+isXRMode       — CONTEXT DETECTION. True if: URL ?xr/?holodexr/?sneakar-xr param, OR iframe embedding.
+                 Drives: cabinet sizing, XR branding, toggle button visibility.
+                 Does NOT auto-start camera.
 
-The gap (pauseMs) is the ether. Make it long enough to feel like words appear from nothing and return to nothing.
+cameraActive   — USER CHOICE. True only when user taps "◈ AR" toggle OR holodexr:init fires.
+                 Drives: xr-camera-layer rendering, XR overlay layers, data-camera-active attribute.
+                 CSS selector: [data-camera-active="true"] (not [data-xr-mode="true"]).
+```
+
+### CSS Data Attributes on `.oracle-stage`
+
+| Attribute | Values | Controls |
+|---|---|---|
+| `data-oracle-state` | `dormant\|terminal\|awakened\|oracle` | Scene phase styling |
+| `data-xr-mode` | `"true"\|undefined` | XR cabinet sizing, HUD, branding |
+| `data-camera-active` | `"true"\|undefined` | Alley hide, camera layer, AR overlays |
+| `data-oracle-speaking` | `"true"\|undefined` | Voice-pulse glow, XR chroma blast |
+| `data-user-speaking` | `"true"\|undefined` | Purple listening pulse |
+| `data-decart-active` | `"true"\|"false"` | Decart video vs freemium avatar |
+
+### useXRMode API
+
+```typescript
+const {
+  isXRMode,          // context detected
+  cameraActive,      // user opted into AR passthrough
+  activateCamera,    // user taps ◈ AR → starts rear camera
+  deactivateCamera,  // user taps ◈ ALLEY → stops camera, returns to alley
+  cameraVideoRef,    // ref to the <video> element
+  cameraReady,       // camera stream is live
+  cameraError,       // camera access error message
+  markerActive,      // HolodeXR marker is visible
+  autoStart,         // ?autostart param present
+} = useXRMode(onMarkerDetected);
+```
+
+### XR Immersion Toggle
+
+Small `oracle-xr-toggle` button, top-right corner of stage. Only renders when `isXRMode=true`. Off: "◈ AR". Active: "◈ ALLEY". Lives outside oracle-center for full opacity.
+
+### HolodeXR Bridge
+
+`window.SurrogateXR.markerDetected()` → auto-calls `enterTerminal()`. `postMessage({ type: 'holodexr:marker-detected' })` from parent frame does the same. `holodexr:init` postMessage auto-starts camera (headset context — this is the one case where camera is not opt-in). `?autostart` param boots Oracle automatically after camera is ready.
+
+### Outgoing postMessages to HolodeXR
+
+```
+oracle:ready          → XR mode activated, page ready
+oracle:camera-ready   → camera stream live
+oracle:awakened       → marker detected, oracle entered terminal
+oracle:dormant        → marker lost
+oracle:session-end    → { type, totemLevel, coins, alignment, sessionId, version: '2.0' }
+```
+
+---
+
+## Remaining Loose Threads
+
+1. **oracle-loop.mp4** — Missing asset. Needed for seamless neutral-face loop in awakened/freemium oracle. Without it, awakened state shows the static PNG until oracle mode begins.
+2. **Knife transition gap** — 1.6s delay before knife cards animate in after lore completes (`delay: 1.6` in motion.div). One moment where the thread goes slack. Consider ScrambleFragment "THE ARCHIVE IS OPEN" during the gap.
+3. **SF fragment pauseMs drift** — Some fragments slightly above CLAUDE.md targets (SF2: 2800ms vs target 2200ms, SF3: 2600ms vs target 2000ms). Minor "stuck text" if watching closely.
+4. **DALL-E portraits** — `OPENAI_API_KEY` missing from Replit secrets. Add to get DALL-E 3; Replicate flux-schnell is the active fallback.

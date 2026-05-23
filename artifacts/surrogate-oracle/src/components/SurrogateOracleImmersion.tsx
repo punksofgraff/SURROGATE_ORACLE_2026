@@ -273,7 +273,7 @@ export function SurrogateOracleImmersion() {
   // ── XR Mode — must be first; drives CTA text selection + camera layer ────
   // Stable ref lets the callback wire to enterTerminal after it's defined.
   const onXRMarkerRef = useRef<() => void>(() => {});
-  const { isXRMode, cameraVideoRef, cameraReady, autoStart } =
+  const { isXRMode, cameraActive, activateCamera, deactivateCamera, cameraVideoRef, cameraReady, autoStart } =
     useXRMode(() => onXRMarkerRef.current());
 
   // ── Scene phases ─────────────────────────────────────────────────────────
@@ -1093,6 +1093,7 @@ export function SurrogateOracleImmersion() {
       data-debug={oracleState.debugMode}
       data-activating={isActivating ? 'true' : undefined}
       data-xr-mode={isXRMode ? 'true' : undefined}
+      data-camera-active={cameraActive ? 'true' : undefined}
       data-decart-active={isDecartActive ? 'true' : 'false'}
       data-oracle-speaking={oracleState.isProcessing ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
@@ -1106,7 +1107,7 @@ export function SurrogateOracleImmersion() {
         <div className="oracle-devui">
           <div>BUILD: {import.meta.env.VITE_BUILD_ID ?? '—'}</div>
           <div>STATE: <b>{scenePhase}</b></div>
-          <div>XR: {isXRMode ? '🟢 ON' : '⚫ off'}</div>
+          <div>XR: {isXRMode ? '🟢 ON' : '⚫ off'} / CAM: {cameraActive ? '🎥 ON' : '⚫ off'}</div>
           <div>DECART: {isDecartActive ? '🟢 LIVE' : '⚫ freemium'}</div>
           <div>USER SPK: {isUserSpeaking ? `🎤 YES (${userVadScore.toFixed(2)})` : '—'}</div>
           <div>ORACLE SPK: {oracleState.isProcessing ? '🔊 YES' : '—'}</div>
@@ -1115,8 +1116,10 @@ export function SurrogateOracleImmersion() {
         </div>
       )}
 
-      {/* ── XR Layer 0: Device camera passthrough — replaces static alley bg ── */}
-      {isXRMode && (
+      {/* ── XR Layer 0: Device camera passthrough — only when user opts in ───
+           Camera is CHOICE, not mandatory. Alley is the default immersion.
+           User activates via the immersion toggle in the corner.            */}
+      {isXRMode && cameraActive && (
         <video
           ref={cameraVideoRef}
           className="xr-camera-layer"
@@ -1126,18 +1129,30 @@ export function SurrogateOracleImmersion() {
         />
       )}
 
-      {/* ── XR Overlay Layers: visor filter + scan sweep + hex grid ──────── */}
-      {isXRMode && (
+      {/* ── XR Overlay Layers: visor filter + scan sweep + hex grid ──────────
+           Only render when camera is active — these are AR overlays, not
+           decorations. Without the camera they'd float over the alley wrong. */}
+      {isXRMode && cameraActive && (
         <>
-          {/* Dark cyberpunk teal visor — darkens camera, adds scan lines + vignette */}
           <div className="xr-environment-filter" />
-          {/* Travelling scan line — reads the real environment */}
           <div className="xr-scan-sweep" />
-          {/* Subtle hex-grid HUD overlay */}
           <div className="xr-hex-grid" />
-          {/* Chromatic aberration burst — pulses when Oracle is active */}
           <div className="xr-chroma-layer" data-oracle-speaking={oracleState.isProcessing ? 'true' : undefined} />
         </>
+      )}
+
+      {/* ── XR Immersion Toggle — visible in XR context, always accessible ──
+           Camera off: "◈ AR" to activate passthrough.
+           Camera on:  "◈ ALLEY" to return to digital scene.
+           Lives outside oracle-center so opacity is always 1.              */}
+      {isXRMode && (
+        <button
+          className={`oracle-xr-toggle${cameraActive ? ' oracle-xr-toggle--active' : ''}`}
+          onClick={() => cameraActive ? deactivateCamera() : activateCamera()}
+          aria-label={cameraActive ? 'Switch to Alley Mode' : 'Switch to Camera AR Mode'}
+        >
+          {cameraActive ? '◈ ALLEY' : '◈ AR'}
+        </button>
       )}
 
       {/* ── Layer 1: Graffiti alley background + Vignette ─────────────── */}
@@ -1291,25 +1306,10 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
-      {/* ── Dormant touch-hint — below cabinet, tap-anywhere affordance ────
-           pointer-events: auto so tapping the hint itself also enters consent.
-           Also outside oracle-center for full opacity. XR mode swaps copy.   */}
-      <AnimatePresence>
-        {scenePhase === 'dormant' && (
-          <motion.div
-            key="dormant-hint"
-            className="oracle-touch-hint"
-            onClick={enterTerminal}
-            style={{ pointerEvents: 'auto', cursor: 'pointer' }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.15 } }}
-            transition={{ duration: 0.8, delay: 1.2 }}
-          >
-            {isXRMode ? '◈ POINT AT POSTER TO INITIATE ◈' : '◈ TAP TO INITIATE CONTACT ◈'}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Touch-hint retired — the ScrambleFragment typewriter CTA carries the
+           full dormant voice. A second static text line was clashing with it,
+           creating two competing text layers in the same register.
+           The CTA IS the invitation. One voice. No static backup.           */}
 
       {/* ── Layer 4: Central cabinet + avatar ──────────────────────────── */}
       <div

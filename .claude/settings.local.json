@@ -51,7 +51,28 @@
       "Bash(git -C /home/runner/workspace diff HEAD --stat)",
       "Bash(git -C /home/runner/workspace status --short)",
       "Bash(nix-env -iA nixpkgs.glib nixpkgs.nss nixpkgs.atk nixpkgs.pango nixpkgs.cairo)",
-      "Bash(jobs)"
+      "Bash(jobs)",
+      "Bash(python3 -m json.tool)",
+      "Bash(npm install *)",
+      "Bash(npx --yes playwright list-devices)",
+      "Bash(python3 -c ' *)",
+      "Bash(git commit *)",
+      "Bash(npx vite *)",
+      "Bash(git stash *)",
+      "Bash(npx puppeteer *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('version:', d.get\\('version'\\)\\); print\\('main:', d.get\\('main'\\)\\); print\\('exports:', list\\(d.get\\('exports', {}\\).keys\\(\\)\\)[:5]\\)\")",
+      "Bash(npx should-i-ship *)",
+      "Bash(sed -n '90,100p' /home/runner/workspace/supabase/config.toml)",
+      "Bash(sed -n '316,326p' /home/runner/workspace/supabase/config.toml)",
+      "Bash(npm view)",
+      "Bash(pnpm install *)",
+      "Bash(cat .env)",
+      "Bash(cat ../.env)",
+      "Bash(grep -r \"VITE_SUPABASE\" .env*)",
+      "Bash(npx --yes wscat --version)",
+      "Read(//tmp/**)",
+      "Bash(identify /tmp/oracle-avatar-talking.jpg)",
+      "Bash(echo \"Exit: $?\")"
     ]
   }
 }

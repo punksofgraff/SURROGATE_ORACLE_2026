@@ -6,7 +6,9 @@ import { useRef, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { createDecartClient, models } from '@decartai/sdk';
 
 export interface DecartClientCallbacks {
-  onConnected?: () => void;
+  // onConnected is intentionally removed — DecartClient no longer calls it
+  // (it was firing before connect() started, not after). Parent handles
+  // connected state after initializeStream() returns { success: true }.
   onStreamReady?: () => void;
   onTalkStarted?: () => void;
   onTalkEnded?: () => void;
@@ -88,10 +90,11 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
         }
 
         const decartClient = createDecartClient({ apiKey: data.token });
-
-        logCallback('onConnected');
-        callbacksRef.current.onConnected?.();
-        debugRef.current.connectionState = 'connected';
+        // Note: onConnected is intentionally NOT called here. Firing it after
+        // createDecartClient() is premature — connect() hasn't started yet.
+        // The parent (SurrogateOracleImmersion) fires onConnected semantics after
+        // initializeStream() returns { success: true }, which is the correct point.
+        debugRef.current.connectionState = 'connecting';
 
         // ⚠️  Decart SDK v0.0.63: connect() only accepts { model, onRemoteStream, initialState, customizeOffer }.
         //     onDisconnect/onError are NOT in the Zod schema and are stripped silently.
@@ -151,21 +154,45 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
 
       try {
         debugRef.current.talkCount += 1;
+
+        // Fetch the blob once — used both for playAudio and duration measurement.
+        // Avoids double-fetch and handles revocation: blob URL is consumed here and
+        // doesn't need to remain valid after this function returns.
+        const audioBlob = await fetch(audioUrl).then((r) => r.blob());
+
+        // Estimate speaking duration from WAV blob so we can time onTalkEnded
+        // accurately. playAudio() resolves when audio is *submitted* to Decart, not
+        // when lip-sync is *finished* — without this, the cabinet voice-pulse (and
+        // any speaking-state CSS) stops early while the avatar is still moving.
+        // WAV: 44-byte header, then 16-bit PCM samples at 24kHz.
+        // duration(s) = (blobSize - 44) / (24000 * 2)
+        // Add 400ms for Decart's own internal playback latency / lip-sync tail.
+        const estimatedDurationMs = Math.max(
+          800,
+          ((audioBlob.size - 44) / (24000 * 2)) * 1000 + 400
+        );
+
         logCallback(`onTalkStarted (#${debugRef.current.talkCount})`);
         callbacksRef.current.onTalkStarted?.();
-        const audioBlob = await fetch(audioUrl).then((r) => r.blob());
+
         const client = realtimeClientRef.current as { playAudio?: (b: Blob) => Promise<void> };
         if (client.playAudio) await client.playAudio(audioBlob);
-        logCallback('onTalkEnded');
-        callbacksRef.current.onTalkEnded?.();
+
+        // Hold speaking state for the estimated lip-sync duration before signalling end.
+        setTimeout(() => {
+          logCallback('onTalkEnded');
+          callbacksRef.current.onTalkEnded?.();
+        }, estimatedDurationMs);
+
         return { success: true };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
+        callbacksRef.current.onTalkEnded?.(); // ensure speaking state resets on error
         callbacksRef.current.onError?.(msg);
         return { success: false, error: msg };
       }
     },
-    []
+    [logCallback]
   );
 
   const closeStream = useCallback(async () => {

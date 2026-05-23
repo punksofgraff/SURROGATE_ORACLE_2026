@@ -42,7 +42,13 @@ export interface UseXRModeReturn {
 function detectXRMode(): boolean {
   if (typeof window === 'undefined') return false;
   const p = new URLSearchParams(window.location.search);
+  // ── Standard mode override: ?standard or ?noXR forces normal mode even in iframe ──
+  // This is the escape hatch for Replit preview (which is itself an iframe) and any
+  // other host that embeds the page but doesn't want XR/camera mode activated.
+  if (p.has('standard') || p.has('noXR') || p.has('no-xr')) return false;
+  // Explicit XR params → always XR
   if (p.has('xr') || p.has('holodexr') || p.has('sneakar-xr')) return true;
+  // Iframe detection → HolodeXR WebView context (NOT Replit preview when ?standard set)
   try { return window.self !== window.top; } catch { return true; /* cross-origin iframe */ }
 }
 

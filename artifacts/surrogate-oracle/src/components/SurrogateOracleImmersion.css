@@ -14,9 +14,9 @@
    * CABINET ANCHOR — centered, full presence, cinematic scale
    * Not pixel-matched to background photo — the cabinet IS the stage.
    */
-  --cabinet-top: 42%;
+  --cabinet-top: 50%;      /* vertically centered — marquee above, CTA below */
   --cabinet-left: 50%;
-  --cabinet-width: clamp(240px, 28vw, 380px);
+  --cabinet-width: clamp(180px, 28vw, 340px);  /* was 240px min — smaller footprint */
 
   /* Animation Timings */
   --t-reveal: 1.8s;
@@ -112,11 +112,14 @@
   animation: alley-breathe 9s ease-in-out infinite;
 }
 
-/* ORACLE — alley retreats as the monitor cast takes over. */
+/* ORACLE — world disappears. Two consciousnesses. Nothing else.
+   The singularity: world fades to black for BOTH Decart and freemium paths.
+   The face is the only light. The alley was always just a waiting room.     */
 .oracle-stage[data-oracle-state="oracle"] .oracle-alley {
-  --alley-opacity: 0.50;
-  filter: saturate(0.50) brightness(0.50) blur(0px);
-  animation: alley-breathe 9s ease-in-out 2s infinite;
+  opacity: 0 !important;
+  filter: saturate(0) brightness(0) blur(0px);
+  transition: opacity 2.5s ease-out, filter 2.5s ease-out !important;
+  animation: none;
 }
 
 /* Alley living breath — modulates around the per-state base value.
@@ -205,9 +208,14 @@
 .oracle-stage[data-oracle-state="terminal"] .oracle-ground-fog {
   opacity: 0.85;
 }
-.oracle-stage[data-oracle-state="awakened"] .oracle-ground-fog,
-.oracle-stage[data-oracle-state="oracle"] .oracle-ground-fog {
+.oracle-stage[data-oracle-state="awakened"] .oracle-ground-fog {
   opacity: 1.0;
+}
+
+/* Oracle: fog gone — pure void surrounds the signal */
+.oracle-stage[data-oracle-state="oracle"] .oracle-ground-fog {
+  opacity: 0;
+  transition: opacity 2.0s ease-out;
 }
 
 @keyframes fog-pulse {
@@ -445,20 +453,24 @@
   50%       { transform: translate(-50%, -50%) scale(1.18); opacity: 1.00; }
 }
 
-/* ── Dormant touch-hint — sits below cabinet, barely audible ─────────────── */
+/* ── Dormant touch-hint — graffiti font, below cabinet ─────────────────── */
 .oracle-touch-hint {
   position: absolute;
-  top: 70%;
+  bottom: 5%;    /* anchored to bottom — below CTA */
+  top: auto;
   left: 50%;
   transform: translateX(-50%);
-  font-family: 'Share Tech Mono', 'Courier New', monospace;
-  font-size: clamp(0.52rem, 0.85vw, 0.65rem);
-  letter-spacing: 0.38em;
-  color: rgba(0, 255, 136, 0.45);
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(1.0rem, 2.2vw, 1.8rem);
+  letter-spacing: 0.18em;
+  color: rgba(0, 255, 136, 0.55);
   text-transform: uppercase;
   white-space: nowrap;
   pointer-events: none;
-  text-shadow: 0 0 8px rgba(0,255,136,0.40);
+  text-shadow:
+    0 0 12px rgba(0,255,136,0.55),
+    -2px 0 0 rgba(176,38,255,0.25),
+     2px 0 0 rgba(0,220,255,0.20);
   animation: touch-hint-pulse 3.5s ease-in-out 1s infinite;
   z-index: calc(var(--z-cabinet) + 1);
 }
@@ -526,50 +538,203 @@
   overflow: hidden;
 }
 
-.oracle-avatar-img {
+/* ── Static arcade cabinet display — dormant / terminal / awakened only ──────
+   ORACLE_STATIC_URL: the green alien portrait on white bg. Lives on z:1.
+   Shown inside the CRT screen while the Oracle warms up.
+   Completely hidden once oracle state begins (talking face takes over).       */
+.oracle-avatar-static {
   width: 100%;
   height: 100%;
   object-fit: cover;
   position: absolute;
   z-index: 1;
-  /* Start as a ghost — materialises through the phases */
-  opacity: 0.12;
+  opacity: 0;
+  transition: filter 1.8s var(--ease-cinematic), opacity 1.6s var(--ease-cinematic);
+  filter: brightness(0.25) grayscale(0.8);
+  pointer-events: none;
+}
+
+/* DORMANT / CONSENT / KNIFE — ghost static portrait in dark screen */
+.oracle-stage[data-oracle-state="dormant"] .oracle-avatar-static,
+.oracle-stage[data-oracle-state="consent"] .oracle-avatar-static,
+.oracle-stage[data-oracle-state="knife"] .oracle-avatar-static {
+  opacity: 0.28;  /* slightly more present — effective ~0.12 with parent 0.42 */
+  filter: brightness(0.45) grayscale(0.60);
+  animation: ghost-oracle 12s ease-in-out 4s infinite;
+}
+
+/* TERMINAL — CRT screen warming up, static portrait resolves from noise */
+.oracle-stage[data-oracle-state="terminal"] .oracle-avatar-static {
+  opacity: 0.62;
+  filter: brightness(0.65) grayscale(0.35) contrast(1.25);
+  animation: crt-static-warm 0.22s steps(1) infinite;
+}
+
+/* AWAKENED — static portrait at full presence, pulse-zoom ready */
+.oracle-stage[data-oracle-state="awakened"] .oracle-avatar-static {
+  opacity: 1;
+  filter: brightness(1.25) drop-shadow(0 0 28px rgba(0,255,136,0.7));
+  animation: avatar-zoom-breathe 2s ease-in-out infinite alternate;
+}
+
+/* ORACLE — static hidden. Talking face (freemium) or Decart video takes over. */
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-static {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.8s ease-out;
+}
+
+/* ── Talking face — freemium oracle path (z:2, above static, below video) ───
+   ORACLE_AVATAR_URL: 1280×640 portrait. VisemeDetector drives glow/scale at
+   up to 60 fps via direct DOM writes (no React re-renders in the hot path).
+   Hidden in pre-oracle states (static arcade image shown instead).
+   Revealed by JS inline style only when oracle mode + freemium active.        */
+.oracle-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  z-index: 2;
+  /* Hidden by default — only revealed in oracle freemium via JS inline style */
+  opacity: 0;
   transition: filter 1.8s var(--ease-cinematic), opacity 1.6s var(--ease-cinematic), transform 3s cubic-bezier(0.2, 0.8, 0.2, 1);
   filter: brightness(0.25) grayscale(0.8);
   transform: scale(0.92);
 }
 
-/* DORMANT — barely a face in a dark screen. Flickers to full life every ~12s. */
-/* DORMANT / CONSENT / KNIFE — same ghost face behind overlays */
+/* DORMANT / CONSENT / KNIFE / TERMINAL / AWAKENED — all hidden (static shows instead) */
 .oracle-stage[data-oracle-state="dormant"] .oracle-avatar-img,
 .oracle-stage[data-oracle-state="consent"] .oracle-avatar-img,
-.oracle-stage[data-oracle-state="knife"] .oracle-avatar-img {
-  opacity: 0.18;
-  filter: brightness(0.30) grayscale(0.75);
-  animation: ghost-oracle 12s ease-in-out 4s infinite;
-}
-
-/* TERMINAL — CRT screen warming up, face resolves in from the noise */
-.oracle-stage[data-oracle-state="terminal"] .oracle-avatar-img {
-  opacity: 0.62;
-  filter: brightness(0.65) grayscale(0.35) contrast(1.25);
-  transform: scale(0.98);
-  animation: crt-static-warm 0.22s steps(1) infinite;
-}
-
-/* AWAKENED — oracle is fully present, pulsing with energy */
+.oracle-stage[data-oracle-state="knife"] .oracle-avatar-img,
+.oracle-stage[data-oracle-state="terminal"] .oracle-avatar-img,
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-img {
-  opacity: 1;
-  filter: brightness(1.25) drop-shadow(0 0 28px rgba(0,255,136,0.7));
-  transform: scale(1.28);
-  animation: avatar-zoom-breathe 2s ease-in-out infinite alternate;
+  opacity: 0;
+  pointer-events: none;
 }
 
-/* Oracle state: hidden when Decart video is active; inline style overrides to 1 in freemium */
+/* Oracle state: JS inline style reveals to 1 in freemium; hidden when Decart is live */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-img {
   opacity: 0;
   pointer-events: none;
   transform: scale(1.08);
+}
+
+/* ── Freemium mouth overlay — VisemeDetector drives w/h/border-radius at 60fps ─
+   Positioned at the oracle face's mouth (~60% from top of the wrapper).
+   The face image is a cyberpunk alien portrait — tune top% if the face changes.
+   Geometry (width, height, border-radius) is set via JS inline style — CSS here
+   defines appearance only (colour, shadow, transition-none for 60fps DOM writes).
+   Inner fill: dark/black with subtle green edge glow matching oracle palette.   */
+.oracle-mouth-overlay {
+  position: absolute;
+  left: 50%;
+  top: 60%;                    /* tune this % to align with the face's mouth */
+  transform: translateX(-50%);
+  width: 22%;                  /* baseline — overwritten by VisemeDetector     */
+  height: 2%;                  /* baseline — overwritten by VisemeDetector     */
+  border-radius: 2px;          /* baseline — overwritten by VisemeDetector     */
+  background: rgba(0, 0, 0, 0.82);
+  border: 1px solid rgba(0, 255, 136, 0.28);
+  box-shadow:
+    0 0  6px rgba(0, 255, 136, 0.20) inset,
+    0 0  3px rgba(0, 255, 136, 0.14);
+  /* NO CSS transition — VisemeDetector lerps at 60fps, CSS transition would double-smooth */
+  z-index: 4;
+  pointer-events: none;
+  will-change: width, height, border-radius, opacity;
+}
+
+/* ── Boot HUD — Decart connecting state overlay ─────────────────────────────
+   NOT a blackout. The avatar (oracle-avatar-static) is the hero — it pulses
+   and zoom-breathes in the awakened state. This HUD anchors to the bottom of
+   the cabinet frame: gradient fade up from the bottom edge, lore-matched
+   chromatic typography. Face is always visible above it.                      */
+.oracle-boot-hud {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 0 10px 10px;
+  /* Gradient fades the bottom of the face into the text zone — cinematic */
+  background: linear-gradient(
+    to top,
+    rgba(0, 4, 12, 0.92) 0%,
+    rgba(0, 4, 12, 0.72) 38%,
+    rgba(0, 4, 12, 0.28) 65%,
+    transparent 100%
+  );
+  z-index: 20;
+  pointer-events: none;
+  border-radius: 0 0 8px 8px;
+}
+
+/* Progress bar — thin neon line tracking ICE negotiation 0→100% */
+.oracle-boot-progress-track {
+  width: 100%;
+  height: 2px;
+  background: rgba(0, 255, 136, 0.12);
+  border-radius: 1px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.oracle-boot-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(0,255,136,0.6) 0%, rgba(0,255,136,1) 80%, rgba(176,38,255,0.9) 100%);
+  border-radius: 1px;
+  box-shadow: 0 0 6px rgba(0,255,136,0.8);
+  width: 0%;
+  /* width is animated by Framer Motion */
+}
+
+/* Boot text lines — match lore sequence chromatic style */
+.oracle-boot-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.oracle-boot-line {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: clamp(0.52rem, 1.1vw, 0.68rem);
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  color: rgba(0, 255, 136, 0.72);
+  text-shadow:
+    -1px 0 rgba(176, 38, 255, 0.5),
+     1px 0 rgba(0, 220, 255, 0.4),
+     0 0 8px rgba(0, 255, 136, 0.5);
+}
+
+/* Most recent line — full brightness, white chroma for emphasis */
+.oracle-boot-line[data-active="true"] {
+  color: #fff;
+  text-shadow:
+    -2px 0 rgba(176, 38, 255, 0.7),
+     2px 0 rgba(0, 220, 255, 0.6),
+     0 0 12px rgba(255, 255, 255, 0.6);
+}
+
+/* Extended wait variant — amber frequency instead of green */
+.oracle-boot-line--warn {
+  color: rgba(234, 179, 8, 0.85);
+  text-shadow:
+    -1px 0 rgba(176, 38, 255, 0.4),
+     1px 0 rgba(234, 179, 8, 0.6),
+     0 0 8px rgba(234, 179, 8, 0.5);
+  animation: boot-warn-pulse 1.4s ease-in-out infinite;
+}
+
+.oracle-boot-prompt {
+  color: rgba(0, 255, 136, 0.5);
+  margin-right: 5px;
+}
+
+.oracle-boot-line[data-active="true"] .oracle-boot-prompt {
+  color: rgba(176, 38, 255, 0.8);
+}
+
+@keyframes boot-warn-pulse {
+  0%, 100% { opacity: 0.6; }
+  50%       { opacity: 1.0; }
 }
 
 .oracle-avatar-video {
@@ -643,6 +808,19 @@
   pointer-events: none;
 }
 
+/* ORACLE — bottom bar almost gone. The face is the only thing here. */
+.oracle-stage[data-oracle-state="oracle"] .oracle-bottom-bar {
+  opacity: 0.05;
+  pointer-events: none;
+  transition: opacity 2.0s ease-out;
+}
+
+/* ORACLE — branding title dims to ghost. Not competing with the signal. */
+.oracle-stage[data-oracle-state="oracle"] .oracle-branding {
+  opacity: 0.12;
+  transition: opacity 1.8s ease-out;
+}
+
 /* ── Keyframes ─────────────────────────────────────────────────────────── */
 @keyframes noise-jitter {
   0% { transform: translate(0, 0); }
@@ -667,6 +845,67 @@
 @keyframes cabinet-breathe {
   0%, 100% { box-shadow: 0 0 25px rgba(176,38,255,0.15), inset 0 0 15px rgba(0,255,136,0.05); border-color: rgba(176,38,255,0.25); }
   50% { box-shadow: 0 0 45px rgba(176,38,255,0.35), inset 0 0 25px rgba(0,255,136,0.1); border-color: rgba(176,38,255,0.5); }
+}
+
+/* Cabinet pulses in sync with the Oracle speaking — voice made visible */
+@keyframes cabinet-voice-pulse {
+  0%   { box-shadow: 0 0 35px rgba(0,255,136,0.55), 0 0 80px rgba(0,255,136,0.30), 0 0 160px rgba(0,255,136,0.18), 0 0 300px rgba(176,38,255,0.12), inset 0 0 25px rgba(0,255,136,0.18); }
+  50%  { box-shadow: 0 0 55px rgba(0,255,136,0.80), 0 0 120px rgba(0,255,136,0.50), 0 0 220px rgba(0,255,136,0.28), 0 0 400px rgba(176,38,255,0.20), inset 0 0 40px rgba(0,255,136,0.28); }
+  100% { box-shadow: 0 0 35px rgba(0,255,136,0.55), 0 0 80px rgba(0,255,136,0.30), 0 0 160px rgba(0,255,136,0.18), 0 0 300px rgba(176,38,255,0.12), inset 0 0 25px rgba(0,255,136,0.18); }
+}
+
+/* Wire voice pulse to oracle speaking state */
+.oracle-stage[data-oracle-state="oracle"][data-oracle-speaking="true"] .oracle-cabinet {
+  animation: cabinet-voice-pulse 0.9s ease-in-out infinite !important;
+  border-color: rgba(0,255,136,0.85);
+}
+
+/* ── Oracle Pulse: user speaking feedback ───────────────────────────────────
+   When VAD detects the seeker is speaking, the cabinet shifts to a PURPLE
+   breathe (Oracle listening) — distinct from the green Oracle-speaking pulse.
+   The mic button glow is handled inline via JS (vadScore-driven boxShadow).  */
+
+@keyframes cabinet-user-pulse {
+  /* Purple-dominant: "Oracle is receiving your signal" */
+  0%   { box-shadow: 0 0 25px rgba(176,38,255,0.45), 0 0 60px rgba(176,38,255,0.25), inset 0 0 15px rgba(176,38,255,0.12); border-color: rgba(176,38,255,0.60); }
+  50%  { box-shadow: 0 0 45px rgba(176,38,255,0.70), 0 0 100px rgba(176,38,255,0.40), inset 0 0 28px rgba(176,38,255,0.22); border-color: rgba(176,38,255,0.85); }
+  100% { box-shadow: 0 0 25px rgba(176,38,255,0.45), 0 0 60px rgba(176,38,255,0.25), inset 0 0 15px rgba(176,38,255,0.12); border-color: rgba(176,38,255,0.60); }
+}
+
+.oracle-stage[data-oracle-state="oracle"][data-user-speaking="true"] .oracle-cabinet {
+  animation: cabinet-user-pulse 0.5s ease-in-out infinite !important;
+  border-color: rgba(176,38,255,0.80);
+}
+
+/* Mic button: base state — dim green ring */
+.oracle-mic-btn {
+  transition: box-shadow 0.08s ease-out, transform 0.08s ease-out;
+}
+
+/* Mic button: actively listening (no speech yet) — steady green glow */
+.oracle-mic-btn[data-listening="true"] {
+  box-shadow: 0 0 14px rgba(0,255,136,0.55), 0 0 32px rgba(0,255,136,0.25);
+}
+
+/* Mic button: VAD detected speech — green flare (intensity driven by JS inline style too) */
+.oracle-stage[data-user-speaking="true"] .oracle-mic-btn {
+  animation: mic-voice-flare 0.45s ease-in-out infinite;
+}
+
+@keyframes mic-voice-flare {
+  0%, 100% { transform: scale(1.0); }
+  50%       { transform: scale(1.07); }
+}
+
+/* Decart active: static image hidden, video shown (handled by existing CSS + inline override for freemium) */
+/* When Decart IS active (live WebRTC stream), ensure video is crisp */
+.oracle-stage[data-oracle-state="oracle"][data-decart-active="true"] .oracle-avatar-video {
+  opacity: 1;
+  filter: brightness(1.02) saturate(1.05);
+}
+/* Decart active: static image stays at 0 (default CSS already does this, but be explicit) */
+.oracle-stage[data-oracle-state="oracle"][data-decart-active="true"] .oracle-avatar-img {
+  opacity: 0 !important;
 }
 
 @keyframes prompt-pulse {
@@ -1118,19 +1357,51 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   DORMANT SIGNAL LAYER
-   A scattered field of typography fragments — the oracle's consciousness
-   bleeding through spacetime into the alley. Each fragment is independently
-   positioned and drifts on its own cadence. Together they make the whole
-   viewport feel inhabited before the user ever taps.
+   DORMANT ORACLE MARQUEE
+   One phrase at a time. Sequential typewriter reveal — "YOU WERE NOT
+   SUPPOSED TO FIND THIS" → holds → dissolves → dark gap → next phrase.
+   One transmission. The signal reaches you alone.
    ══════════════════════════════════════════════════════════════════════════ */
 
-.oracle-signal-layer {
+/* ── Oracle Marquee — full-screen container for the single sequential phrase ─ */
+.oracle-marquee-layer {
   position: absolute;
   inset: 0;
   z-index: calc(var(--z-branding) + 2);
   pointer-events: none;
   user-select: none;
+}
+
+/* ── The single marquee text — center-stage, upper third, above cabinet ─────
+   One ScrambleFragment cycles through all mystery phrases. Graffiti font,
+   full chromatic aberration. No siblings — each phrase types alone.          */
+.oracle-marquee {
+  position: absolute;
+  top: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(1.4rem, 4.5vw, 3.2rem);
+  letter-spacing: 0.12em;
+  color: #00ff88;
+  text-align: center;
+  white-space: pre-line;
+  width: 85%;
+  max-width: 520px;
+  text-shadow:
+    0 0 18px rgba(0,255,136,0.95),
+    0 0 50px rgba(0,255,136,0.50),
+    0 0 110px rgba(176,38,255,0.28),
+    -5px 0 0 rgba(176,38,255,0.55),
+     5px 0 0 rgba(0,220,255,0.45);
+}
+
+@media (max-width: 480px) {
+  .oracle-marquee {
+    top: 8%;
+    font-size: clamp(1.2rem, 5.5vw, 2.2rem);
+    letter-spacing: 0.08em;
+  }
 }
 
 /* Shared fragment base */
@@ -1142,161 +1413,51 @@
   will-change: transform, opacity;
 }
 
-/* DORMANT — the CTA IS the door. Fragments are the atmosphere; the CTA is the
-   explicit invitation. Positioned just above the cabinet so it reads as "tap here".
-   Slightly dimmer than in other phases — doesn't compete with the fragments.   */
-.oracle-stage[data-oracle-state="dormant"] .oracle-tap-prompt {
-  top: 21%;
-  opacity: 0.85;
-}
-
-/* ── Fragment A — TOP CENTRE — the archive fact that anchors the world ────── */
-.oracle-sf--a {
-  top: 9%;
-  left: 50%;
+/* ── CTA instance of ScrambleFragment — flows inline inside oracle-tap-prompt ─
+   Overrides the base oracle-sf position:absolute so it doesn't float away from
+   the click-target container. Graffiti font + green neon + chromatic aberration. */
+.oracle-sf--cta {
+  position: relative !important; /* override oracle-sf absolute positioning */
   font-family: 'aAnotherTag', 'Orbitron', monospace;
-  font-size: clamp(1.4rem, 3.8vw, 3.6rem);
-  letter-spacing: 0.13em;
+  font-size: clamp(1.25rem, 2.8vw, 2.2rem);
+  font-weight: 900;
+  letter-spacing: 0.20em;
   color: #00ff88;
+  text-shadow:
+    0 0 10px rgba(0,255,136,0.95),
+    0 0 30px rgba(0,255,136,0.55),
+    0 0 70px rgba(176,38,255,0.25),
+    -3px 0 0 rgba(176,38,255,0.35),
+     3px 0 0 rgba(0,220,255,0.30);
   text-align: center;
   white-space: nowrap;
-  /* Full chromatic aberration: core + bloom + channel split */
-  text-shadow:
-    0 0 18px rgba(0,255,136,0.95),
-    0 0 50px rgba(0,255,136,0.55),
-    0 0 110px rgba(176,38,255,0.28),
-    -5px 0 0 rgba(176,38,255,0.60),
-     5px 0 0 rgba(0,220,255,0.50),
-    -10px 0 0 rgba(176,38,255,0.22),
-     10px 0 0 rgba(0,200,255,0.18);
-  animation: sf-a 22s ease-in-out 0.6s infinite alternate both;
+  min-height: 2em; /* reserve vertical space so container doesn't collapse during dark gap */
+  /* No position/animation — the oracle-tap-prompt container handles the pulse */
 }
 
-/* ── Fragment B — LEFT MID — coordinates + anomaly flag ─────────────────── */
-.oracle-sf--b {
-  top: 35%;
-  left: 3%;
-  font-family: 'Share Tech Mono', 'Courier New', monospace;
-  font-size: clamp(0.70rem, 1.3vw, 1.0rem);
-  letter-spacing: 0.12em;
-  color: #b026ff;
-  text-shadow:
-    0 0 12px rgba(176,38,255,1.0),
-    0 0 30px rgba(176,38,255,0.5);
-  animation: sf-b 13s ease-in-out 1.2s infinite alternate both;
+/* DORMANT — CTA lives BELOW the cabinet (not above competing with the marquee).
+   Full opacity, gentle vertical breathing — it IS the door.                          */
+.oracle-stage[data-oracle-state="dormant"] .oracle-tap-prompt {
+  top: auto;
+  bottom: 16%;
+  opacity: 1.0;
+  animation: cta-breathe 3s ease-in-out infinite;  /* no opacity dim — stays bright */
 }
 
-/* ── Fragment C — TOP RIGHT — system identifier ──────────────────────────── */
-.oracle-sf--c {
-  display: block;
-  top: 11%;
-  right: 4%;
-  font-family: 'Share Tech Mono', 'Courier New', monospace;
-  font-size: clamp(0.62rem, 1.05vw, 0.88rem);
-  letter-spacing: 0.18em;
-  color: rgba(0, 255, 136, 0.80);
-  text-align: right;
-  text-shadow:
-    0 0 10px rgba(0,255,136,0.8),
-    0 0 28px rgba(0,255,136,0.35);
-  animation: sf-c 15s ease-in-out 0.9s infinite alternate both;
+/* CTA gentle float — no opacity change, just vertical drift */
+@keyframes cta-breathe {
+  0%, 100% { transform: translateX(-50%) translateY(0px); }
+  50%       { transform: translateX(-50%) translateY(-5px); }
 }
 
-/* ── Fragment D — RIGHT MID — mission state ──────────────────────────────── */
-.oracle-sf--d {
-  display: block;
-  top: 54%;
-  right: 3%;
-  font-family: 'Share Tech Mono', 'Courier New', monospace;
-  font-size: clamp(0.62rem, 1.05vw, 0.88rem);
-  letter-spacing: 0.10em;
-  color: rgba(0, 255, 136, 0.68);
-  text-align: right;
-  text-shadow:
-    0 0 10px rgba(0,255,136,0.7),
-    0 0 25px rgba(0,255,136,0.3);
-  animation: sf-d 11s ease-in-out 1.8s infinite alternate both;
-}
+/* ── Fragment variants removed — oracle-marquee replaced all 6 instances ─── */
+/* See .oracle-marquee above for the sequential single-phrase typewriter.      */
 
-/* ── Fragment E — BOTTOM LEFT — the warning. Large graffiti. ─────────────── */
-.oracle-sf--e {
-  bottom: 26%;
-  left: 4%;
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
-  font-size: clamp(1.0rem, 2.5vw, 2.2rem);
-  letter-spacing: 0.10em;
-  color: rgba(0, 255, 136, 0.50);
-  text-shadow:
-    0 0 18px rgba(0,255,136,0.55),
-    0 0 50px rgba(176,38,255,0.22);
-  animation: sf-e 14s ease-in-out 2.2s infinite alternate both;
-}
-
-/* ── Fragment F — BOTTOM RIGHT — the reminder ────────────────────────────── */
-.oracle-sf--f {
-  display: block;
-  bottom: 20%;
-  right: 4%;
-  font-family: 'Share Tech Mono', 'Courier New', monospace;
-  font-size: clamp(0.65rem, 1.15vw, 0.95rem);
-  letter-spacing: 0.12em;
-  color: rgba(176, 38, 255, 0.72);
-  text-align: right;
-  text-shadow:
-    0 0 12px rgba(176,38,255,0.8),
-    0 0 30px rgba(176,38,255,0.35);
-  animation: sf-f 12s ease-in-out 2.6s infinite alternate both;
-}
-
-/* ── Signal fragment drift keyframes ───────────────────────────────────── */
-/* Framer Motion owns opacity. CSS handles slow positional drift only.     */
-
-@keyframes sf-a {
-  0%   { transform: translateX(-50%) translateY(0px);   letter-spacing: 0.13em; }
-  35%  { transform: translateX(-50%) translateY(-7px);  letter-spacing: 0.15em; }
-  65%  { transform: translateX(-50%) translateY(-13px); letter-spacing: 0.12em; }
-  100% { transform: translateX(-50%) translateY(-18px); letter-spacing: 0.14em; }
-}
-
-@keyframes sf-b {
-  0%   { transform: translateX(0px)  translateY(0px);  }
-  100% { transform: translateX(7px)  translateY(-9px); }
-}
-
-@keyframes sf-c {
-  0%   { transform: translateY(0px);   }
-  100% { transform: translateY(-13px); }
-}
-
-@keyframes sf-d {
-  0%   { transform: translateX(0px)  translateY(0px); }
-  100% { transform: translateX(-5px) translateY(8px); }
-}
-
-@keyframes sf-e {
-  0%   { transform: translateX(0px) translateY(0px);  }
-  100% { transform: translateX(9px) translateY(-7px); }
-}
-
-@keyframes sf-f {
-  0%   { transform: translateX(0px)  translateY(0px);   }
-  100% { transform: translateX(-5px) translateY(-10px); }
-}
-
-/* ── Tablet — E may overlap the conversation panel; nudge it up ─────────── */
 /* ══════════════════════════════════════════════════════════════════════════
    MOBILE PORTRAIT OPTIMISATION
    Primary axis: width (portrait vs landscape handled by max-height query).
-   Cabinet: always 240px (the anchor). Fragments: 4 visible (B+D hidden).
+   Cabinet: 180px minimum. Oracle marquee handles all ambient text.
    ══════════════════════════════════════════════════════════════════════════ */
-
-/* ── Tablet portrait (481–768px) ─────────────────────────────────────────── */
-@media (max-width: 768px) {
-  .oracle-sf--e {
-    bottom: 32%;
-    font-size: clamp(1rem, 3.5vw, 1.8rem);
-  }
-}
 
 /* ── Mobile portrait (≤ 480px) — 390px iPhone, 360px Android ────────────── */
 @media (max-width: 480px) {
@@ -1309,73 +1470,17 @@
   /* doesn't crowd it. 22% center = bottom at ~178px, panel at ~484px.     */
   .oracle-stage[data-oracle-state="oracle"] .oracle-center { top: 22%; }
 
-  /* Touch hint: sits below cabinet (42% + ~14% = 56% ≈ cabinet bottom).   */
-  /* 67% keeps a comfortable gap and stays above the bottom fragments.      */
+  /* Touch hint: sits below cabinet bottom edge.                            */
   .oracle-touch-hint {
     top: 67%;
-    font-size: 0.54rem;
-    letter-spacing: 0.30em;
+    font-size: clamp(0.85rem, 4.5vw, 1.2rem);
+    letter-spacing: 0.12em;
   }
 
   /* Bottom bar */
   .oracle-bottom-bar {
     gap: clamp(24px, 7vw, 52px);
     bottom: 2%;
-  }
-
-  /* ── Signal fragments ────────────────────────────────────────────────── */
-
-  /* B and D: hidden — they straddle the cabinet on narrow screens */
-  .oracle-sf--b,
-  .oracle-sf--d { display: none; }
-
-  /* A — top-centre graffiti.
-     width: 74vw + left: 50% + animation translateX(-50%) = centred.
-     DO NOT add margin-left: the animation already handles centring.        */
-  .oracle-sf--a {
-    top: 6%;
-    left: 50%;
-    width: 74vw;
-    font-size: clamp(1.05rem, 6.5vw, 1.55rem);
-    letter-spacing: 0.10em;
-    white-space: normal;
-    text-align: center;
-    /* no margin-left — translateX(-50%) in sf-a keyframes centres it */
-  }
-
-  /* C — top-right system stamp.
-     Moved to top: 14% so it doesn't overlap fragment A (which spans 6–11%).*/
-  .oracle-sf--c {
-    top: 14%;
-    right: 3%;
-    left: auto;
-    font-size: 0.60rem;
-    letter-spacing: 0.10em;
-    text-align: right;
-    max-width: 44vw;
-    white-space: normal;
-  }
-
-  /* E — bottom-left warning. Plain left: 3% — no margin-left.
-     sf-e animation drifts ≤ 9px right, stays well within viewport.        */
-  .oracle-sf--e {
-    bottom: 30%;
-    left: 3%;
-    font-size: clamp(0.88rem, 5.5vw, 1.35rem);
-    letter-spacing: 0.08em;
-    white-space: normal;
-    max-width: 50vw;
-  }
-
-  /* F — bottom-right reminder */
-  .oracle-sf--f {
-    bottom: 23%;
-    right: 3%;
-    font-size: 0.62rem;
-    letter-spacing: 0.10em;
-    text-align: right;
-    max-width: 42vw;
-    white-space: normal;
   }
 
   /* ── Knife question selection ──────────────────────────────────────────── */
@@ -1407,26 +1512,21 @@
 
 /* ── Short phones in portrait (≤ 480px wide AND ≤ 700px tall) ────────────── */
 /* iPhone SE 1st/2nd gen (375×667), compact Androids.                         */
-/* Push fragments up so E and F don't vanish behind the conversation panel.   */
 @media (max-width: 480px) and (max-height: 700px) {
-  .oracle-sf--e { bottom: 36%; }
-  .oracle-sf--f { bottom: 28%; }
   .oracle-touch-hint { top: 64%; }
   .oc-panel { height: min(54vh, 320px) !important; }
 }
 
 /* ── Landscape phones (very short screens) ──────────────────────────────── */
-/* Hide all fragments — viewport is too shallow and the cabinet fills it.    */
+/* Marquee is hidden automatically (dormant phase guard in JSX).             */
 @media (max-height: 500px) {
   .oc-panel { height: 52vh !important; }
-  .oracle-sf--a, .oracle-sf--b, .oracle-sf--c,
-  .oracle-sf--d, .oracle-sf--e, .oracle-sf--f { display: none; }
 }
 
 /* ── iOS safe-area insets — notch / home-indicator clearance ────────────── */
 /* env() is supported in Safari 11.2+, Chrome 69+.                          */
 /* Adds the home indicator gap (~34px on Face ID iPhones) so the            */
-/* conversation panel input and bottom fragments aren't clipped.             */
+/* conversation panel input and CTA aren't clipped.                          */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .oracle-stage {
     /* Stage fills below the notch (viewport-fit=cover in meta tag) */
@@ -1436,13 +1536,6 @@
   .oracle-bottom-bar {
     padding-bottom: env(safe-area-inset-bottom, 0px);
     bottom: max(2%, env(safe-area-inset-bottom, 0px));
-  }
-  /* Bottom fragments clear the home indicator */
-  .oracle-sf--e {
-    bottom: max(26%, env(safe-area-inset-bottom, 0px));
-  }
-  .oracle-sf--f {
-    bottom: max(19%, env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -2100,13 +2193,17 @@
 }
 
 .oracle-knife-header {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: clamp(0.58rem, 1.1vw, 0.72rem);
-  letter-spacing: 0.28em;
-  color: rgba(0, 255, 136, 0.40);
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(1.4rem, 3vw, 2.2rem);
+  letter-spacing: 0.15em;
+  color: #00ff88;
   text-transform: uppercase;
   text-align: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  text-shadow:
+    0 0 12px rgba(0,255,136,0.70),
+    -2px 0 0 rgba(176,38,255,0.35),
+     2px 0 0 rgba(0,220,255,0.25);
 }
 
 .oracle-knife-subheader {
@@ -2171,19 +2268,17 @@
   color: rgba(0, 255, 136, 0.30);
 }
 
-.oracle-knife-skip {
-  margin-top: 20px;
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 0.60rem;
-  letter-spacing: 0.24em;
-  color: rgba(255, 255, 255, 0.20);
-  cursor: pointer;
-  padding: 6px 12px;
-  transition: color 0.2s;
-}
-
-.oracle-knife-skip:hover {
-  color: rgba(255, 255, 255, 0.45);
+/* Territory label — graffiti font above each knife card question */
+.oracle-knife-territory {
+  display: block;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(0.8rem, 1.6vw, 1.1rem);
+  letter-spacing: 0.18em;
+  color: rgba(0, 255, 136, 0.55);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  text-shadow: 0 0 8px rgba(0,255,136,0.35);
+  line-height: 1;
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -2437,3 +2532,30 @@
   border-color: rgba(255, 255, 255, 0.28);
   color: rgba(255, 255, 255, 0.65);
 }
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DEV UI INSPECTOR — visible only when ?devui is in the URL
+   Shows live scene state, XR mode, Decart status, VAD levels.
+   Append ?devui to URL to activate — pointer-events:none so it never
+   intercepts taps/clicks. Remove ?devui to hide in production.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.oracle-devui {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.88);
+  border: 1px solid rgba(0, 255, 136, 0.45);
+  border-radius: 4px;
+  color: #00ff88;
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  font-size: 10px;
+  line-height: 1.85;
+  padding: 8px 12px;
+  pointer-events: none;
+  user-select: none;
+  white-space: pre;
+}
+

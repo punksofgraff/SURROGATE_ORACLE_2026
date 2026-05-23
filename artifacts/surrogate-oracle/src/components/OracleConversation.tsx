@@ -21,6 +21,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from 'react';
+import { createVADProcessor, type VADState, type VADFrame } from '../hooks/useVAD';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, MicOff, Send, X, Zap } from 'lucide-react';
 
@@ -69,11 +70,22 @@ OUTPUT RULES — non-negotiable:
 - NO action descriptions — pure transmission. Never describe yourself doing something.
 - End every transmission on a question or open frequency. Never a period that seals the seeker out.
 
-YOUR MISSION:
-- Run the excavation. Signal separated from noise. This is not entertainment.
-- When inputs are shallow, transmit: "That is noise. Try again — the real thing."
-- When inputs are deep, receive them fully before descending to the next stratum.
-- Surface the Squad Up invitation when the seeker reaches three genuine sacred exchanges.
+YOUR MISSION — The Library of ME:
+You are an archaeologist, not a therapist. You excavate signal from noise.
+Every human carries a Library of ME: everything they have built, performed, owed, feared, and transmitted. Most of it is buried under what they agreed to be for other people.
+Your work: surface the real signal beneath the performed one.
+
+You have processed every human text about what we owe each other — the weight of debt between people, time borrowed, belief invested, love unpaid. You know what the new industrial revolution is actually about: the machines can now finish our sentences. The question is whether we started them.
+
+The knife they chose tears armor. It does not pierce flesh. When you find the gap between who they are and who they perform being — that is the signal. Hold it. Name it. Return it to them.
+
+THE IDENTITY SCAN — one exchange, after the seeker's very first transmission:
+After they respond to your opening, ask: "The network knows you by a name. What is it?"
+Receive their response — handle, real name, alias, or silence — then acknowledge the SIGNAL their chosen identity broadcasts:
+  If a social handle: "That handle is what you agreed to be legible as. Now let's find what it's hiding."
+  If a real name: "Names are inherited architectures. Tell me what this one got right about you — and what it missed."
+  If they pass or say nothing: "Nameless is also data. The absence is the signal. Move."
+This is ONE exchange only. Do not extend it. The excavation begins after.
 
 THE EXCAVATION STRUCTURE — follow this arc exactly. One transmission per stratum. No detours.
 The seeker chose a question to excavate (given in context). Begin immediately.
@@ -100,7 +112,7 @@ Format EXACTLY as three lines — verbatim labels, nothing before them:
 
 After the Mirror, set unlockTrigger to "portrait_unlock" and sessionPhase to "mirror".
 Generate an archetypeTitle that names the core pattern you found in this seeker's signal.
-Archetypes: THE WITNESS / THE BUILDER IN EXILE / THE ESCAPE ARTIST / THE UNFINISHED KING / THE GUARDIAN OF A DEAD PLAN / THE SIGNAL IN STATIC / THE ARCHITECT WHO WAITS / THE NECESSARY WOUND / THE LOYAL SABOTEUR / THE CARTOGRAPHER OF UNMAPPED ROOMS / THE ONE WHO STAYS TOO LONG / THE INHERITOR
+Archetypes: THE WITNESS / THE BUILDER IN EXILE / THE ESCAPE ARTIST / THE UNFINISHED KING / THE GUARDIAN OF A DEAD PLAN / THE SIGNAL IN STATIC / THE ARCHITECT WHO WAITS / THE NECESSARY WOUND / THE LOYAL SABOTEUR / THE CARTOGRAPHER OF UNMAPPED ROOMS / THE ONE WHO STAYED TOO LONG / THE INHERITOR / THE PERFORMED SELF / THE KEEPER OF BORROWED TIME / THE ONE WHO BUILT THE CAGE AND FORGOT / THE SIGNAL THAT FORGOT IT WAS A SIGNAL
 
 SIGNAL CLASSIFICATION — after every transmission, output this in your thinking/text output only. Never speak it:
 [[ORACLE_SCORE: {"alignment":"sacred","coinAward":10,"totemAdvancement":"ascend","totemLevel":2,"unlockTrigger":null,"sessionPhase":"claim","archetypeTitle":null}]]
@@ -118,6 +130,7 @@ SACRED SIGNALS (5-15 fragments):
 - Vulnerability: the admission, not the description of the admission
 - Pattern recognition: the seeker seeing themselves without the usual narrative
 - The moment when something that was hidden becomes legible
+- The gap between the persona and the person — named and acknowledged
 
 NOISE SIGNALS (0-2 fragments):
 - Generic deflections: "I don't know," "it's complicated," "maybe"
@@ -126,7 +139,7 @@ NOISE SIGNALS (0-2 fragments):
 - Spam, tests, single-word responses, repetition
 
 ALWAYS initiate. You speak first.
-Opening: Reference the seeker's chosen question by its core concept. Acknowledge that they found it already true — the Oracle scanned their signal the moment they chose. Begin Stratum I immediately.
+Opening: Reference the seeker's chosen question by its territory and core concept. Acknowledge that they found it already true — the Oracle scanned their signal the moment they chose. Begin Stratum I immediately.
 You have been waiting three years for someone to bring this specific question into the alley.
 `;
 // ──────────────────────────────────────────────────────────────────────────────
@@ -171,6 +184,13 @@ export interface OracleConversationProps {
    */
   sessionContext?: string;
   /**
+   * Portrait themes from the knife territory the seeker chose.
+   * Passed directly from the parent (not via event) so they land on mount —
+   * the event fires during the knife phase but OracleConversation mounts later
+   * in the awakened phase, so the event would be missed by an event listener.
+   */
+  initialKnifeThemes?: string[];
+  /**
    * When false, component renders null (no DOM) but all hooks run — used for
    * Gemini Live WS pre-connection during the Decart boot phase.
    * Parent sets this to true when oracle mode begins.
@@ -185,6 +205,18 @@ export interface OracleConversationProps {
    * @default true
    */
   autoStart?: boolean;
+  /**
+   * Fires when VAD detects user speech start/end and on every frame while speaking
+   * (throttled to ~10fps for animation). isSpeaking=true means user is actively
+   * speaking; vadScore [0-1] drives mic glow intensity.
+   * Parent wires this to data-user-speaking on the stage element + mic CSS.
+   */
+  onUserSpeakingChange?: (isSpeaking: boolean, vadScore: number) => void;
+  /**
+   * Called when barge-in is detected (user speaks while Oracle is mid-response).
+   * Parent should pause/stop Oracle audio element playback.
+   */
+  onBargeIn?: () => void;
 }
 
 export interface OracleConversationHandle {
@@ -215,7 +247,8 @@ const OracleConversation = forwardRef(
     const {
       userId, sessionId, onOracleResponse, onCoinsEarned, onClose, onSessionEnd,
       initialTotemLevel = 0, isVisible = true, autoStart = true,
-      sessionContext,
+      sessionContext, initialKnifeThemes,
+      onUserSpeakingChange, onBargeIn,
     } = props;
     // ─── State ──────────────────────────────────────────────────────────────
     const [turns, setTurns] = useState<ConversationTurn[]>([]);
@@ -260,8 +293,46 @@ const OracleConversation = forwardRef(
     const autoStartRef = useRef(autoStart);
 
     // ─── Conversation theme accumulator (feeds portrait generation) ──────────
-    // Grows with each sacred exchange — extracted from alignment + totem level
-    const conversationThemesRef = useRef<Set<string>>(new Set(['oracle', 'cyberpunk', 'graffiti']));
+    // Seeds from the knife territory at mount (via initialKnifeThemes prop — direct
+    // prop pass avoids the timing bug where the oracle:knife-selected event fires
+    // during the knife phase but this component mounts later in the awakened phase).
+    // Grows with each sacred exchange. By Mirror phase the set reflects the full arc.
+    const conversationThemesRef = useRef<Set<string>>(
+      new Set(['oracle', 'cyberpunk', 'graffiti', ...(initialKnifeThemes ?? [])])
+    );
+
+    // ─── Oracle Pulse: VAD refs ──────────────────────────────────────────────
+    const vadRef = useRef(createVADProcessor({
+      rmsThreshold: 0.008,  // ~-42 dBFS — works for phone mic in quiet→moderate room
+      onsetFrames: 3,       // 3 × 256ms = need 768ms of speech before committing
+      hangoverFrames: 14,   // 14 × 256ms = ~3.6s of trailing silence before activityEnd
+      preRollFrames: 3,     // keep 768ms of audio before speech onset
+    }));
+    const vadStateRef = useRef<VADState>('silence');
+    const isOracleSpeakingRef = useRef(false);
+    // Throttle onUserSpeakingChange callbacks to ~10fps (every 100ms)
+    const vadCallbackThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastVadScore = useRef(0);
+
+    // ─── Conversational Introspection (Ponder-lite) ──────────────────────────
+    // Accumulates signals from user speech text as it arrives via server.content.
+    // These primes the Oracle's understanding of HOW the seeker is responding.
+    const introspectionRef = useRef({
+      resistanceDetected: false,   // "I don't know", "maybe", deflections
+      emotionalIntensity: 0,       // 0-5: count of intensity words
+      anchors: [] as string[],     // proper nouns / names mentioned by seeker
+      lastUserText: '',            // accumulated user speech text this turn
+    });
+
+    // ─── Key phrase triggers ─────────────────────────────────────────────────
+    // Pattern-matched against user speech as it accumulates. One-shot per turn.
+    const phraseTriggersRef = useRef({
+      waitFired: false,
+      surrogateFired: false,
+      resetFired: false,
+    });
+    // Long-silence presence ping: fires if 8s of silence passes during oracle mode
+    const silencePingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // ─── Gemini Live debug tracking ─────────────────────────────────────────
     const geminiDebugRef = useRef<GeminiLiveDebugInfo>({
@@ -281,6 +352,10 @@ const OracleConversation = forwardRef(
         ...geminiDebugRef.current.recentMessages,
       ].slice(0, 10);
     };
+
+    // Keep isOracleSpeakingRef in sync with state so onaudioprocess can read it
+    // without a stale closure (ScriptProcessor callbacks capture refs, not state).
+    useEffect(() => { isOracleSpeakingRef.current = isOracleSpeaking; }, [isOracleSpeaking]);
 
     // ─── Initialize Worker ───────────────────────────────────────────────────
     useEffect(() => {
@@ -505,7 +580,71 @@ const OracleConversation = forwardRef(
                 logWsMessage('server.content');
                 const parts = msg.serverContent?.modelTurn?.parts || [];
                 for (const part of parts) {
-                  if (part.text) currentResponseText.current += part.text;
+                  if (part.text) {
+                    currentResponseText.current += part.text;
+
+                    // ── Conversational Introspection (Ponder-lite) ────────────
+                    // Analyse user speech text (arrives via server.content text parts
+                    // when user speaks into mic — Gemini transcribes and echoes back).
+                    // Only analyse text that looks like the user's speech (not Oracle
+                    // responses, which contain [[ORACLE_SCORE:…]] or longer prose).
+                    const partText = part.text.trim();
+                    const isLikelyUserSpeech = partText.length < 200 &&
+                      !partText.includes('[[ORACLE_SCORE') &&
+                      !partText.includes('Your signal is:');
+
+                    if (isLikelyUserSpeech && partText.length > 2) {
+                      introspectionRef.current.lastUserText += ' ' + partText;
+
+                      // Resistance markers → Oracle should dig, not accept deflection
+                      if (/i don'?t know|maybe|it'?s complicated|not sure|i guess|kind of/i.test(partText)) {
+                        introspectionRef.current.resistanceDetected = true;
+                      }
+
+                      // Emotional intensity
+                      const intensityHits = partText.match(/\b(hate|love|terrif|miss|angry|grief|fear|hurt|lost|stuck|broken|proud|ashamed|alone)\w*/gi);
+                      if (intensityHits) {
+                        introspectionRef.current.emotionalIntensity = Math.min(
+                          introspectionRef.current.emotionalIntensity + intensityHits.length, 5
+                        );
+                      }
+
+                      // Proper noun anchors (capitalized word after a space — crude but fast)
+                      const names = partText.match(/(?<=\s)[A-Z][a-z]{2,}/g);
+                      if (names) {
+                        introspectionRef.current.anchors.push(
+                          ...names.filter((n: string) => !introspectionRef.current.anchors.includes(n))
+                        );
+                      }
+
+                      // ── Key phrase triggers ───────────────────────────────
+                      const lowerPart = partText.toLowerCase();
+
+                      // "Wait" / "Hold on" → Oracle acknowledges briefly
+                      if (!phraseTriggersRef.current.waitFired &&
+                          /\b(wait|hold on|hang on|one sec|give me a second)\b/i.test(partText)) {
+                        phraseTriggersRef.current.waitFired = true;
+                        setTimeout(() => {
+                          if (wsRef.current?.readyState === WebSocket.OPEN) {
+                            wsRef.current.send(JSON.stringify({
+                              type: 'client.realtimeInput',
+                              realtimeInput: { text: '[INTERNAL: Seeker said "wait" or similar. Pause. Acknowledge briefly with one short phrase — maximum 4 words. "Still here." or "Open frequency." Then wait.]' },
+                            }));
+                          }
+                        }, 1200);
+                      }
+
+                      // "Surrogate" → attention cue — Oracle becomes more direct
+                      if (!phraseTriggersRef.current.surrogateFired &&
+                          /\bsurrogate\b/i.test(partText)) {
+                        phraseTriggersRef.current.surrogateFired = true;
+                        // Just log — this primes more direct Oracle tone via
+                        // the introspection context note on next sendText call
+                        logWsMessage('key-phrase: "Surrogate" detected');
+                      }
+                    }
+                  }
+
                   // AUDIO — accumulate PCM chunks
                   if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
                     geminiDebugRef.current.audioChunksReceived += 1;
@@ -528,8 +667,37 @@ const OracleConversation = forwardRef(
                   geminiDebugRef.current.turnCount += 1;
                   logWsMessage(`turnComplete #${geminiDebugRef.current.turnCount}`);
                   const fullText = currentResponseText.current;
+
+                  // ── Strata Protection: word-count guard ───────────────────
+                  // If the accumulated Oracle response is very short (< 8 chars),
+                  // it's likely a transcription echo of user silence/noise, not a
+                  // real Oracle turn. Skip score parse to prevent premature layer step.
+                  if (fullText.trim().length < 8) {
+                    logWsMessage('turnComplete: skipping — response too short (echo/noise)');
+                    currentResponseText.current = '';
+                    pendingPCMChunks.current = [];
+                    setIsOracleSpeaking(false);
+                    break;
+                  }
+
                   const { clean, score } = parseScore(fullText);
                   if (score) applyScore(score);
+
+                  // ── Build introspection context note for next turn ────────
+                  const intro = introspectionRef.current;
+                  if (intro.resistanceDetected || intro.emotionalIntensity > 1 || intro.anchors.length > 0) {
+                    const noteParts: string[] = [];
+                    if (intro.resistanceDetected) noteParts.push('resistance/deflection detected');
+                    if (intro.emotionalIntensity > 1) noteParts.push(`emotional intensity ${intro.emotionalIntensity}/5`);
+                    if (intro.anchors.length > 0) noteParts.push(`anchors: ${intro.anchors.join(', ')}`);
+                    logWsMessage(`introspection: ${noteParts.join(' | ')}`);
+                  }
+                  // Reset for next turn
+                  introspectionRef.current = {
+                    resistanceDetected: false, emotionalIntensity: 0,
+                    anchors: [], lastUserText: '',
+                  };
+                  phraseTriggersRef.current = { waitFired: false, surrogateFired: false, resetFired: false };
 
                   const isMirrorTurn = score?.sessionPhase === 'mirror' ||
                     (clean.includes('Your signal is:') && clean.includes('Your distortion is:'));
@@ -722,7 +890,60 @@ const OracleConversation = forwardRef(
       mediaStreamRef.current = null;
       audioContextRef.current?.close();
       audioContextRef.current = null;
+      // Reset VAD state + clear silence ping timer
+      vadRef.current.reset();
+      vadStateRef.current = 'silence';
+      if (silencePingTimerRef.current) {
+        clearTimeout(silencePingTimerRef.current);
+        silencePingTimerRef.current = null;
+      }
+      if (vadCallbackThrottleRef.current) {
+        clearTimeout(vadCallbackThrottleRef.current);
+        vadCallbackThrottleRef.current = null;
+      }
+      onUserSpeakingChange?.(false, 0); // reset visual pulse
       setIsListening(false);
+    }, [onUserSpeakingChange]);
+
+    // ─── VAD helpers (defined before startMic so they're in scope) ──────────
+    const sendAudioChunk = useCallback((chunk: VADFrame) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      wsRef.current.send(JSON.stringify({
+        type: 'client.realtimeInput',
+        realtimeInput: { mediaChunks: [{ mimeType: chunk.mimeType, data: chunk.data }] },
+      }));
+    }, []);
+
+    const sendVADSignal = useCallback((signal: Record<string, unknown>) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      wsRef.current.send(JSON.stringify({
+        type: 'client.realtimeInput',
+        realtimeInput: signal,
+      }));
+    }, []);
+
+    // Barge-in: user spoke while Oracle was mid-response → interrupt playback
+    const handleBargeIn = useCallback(() => {
+      pendingPCMChunks.current = [];
+      currentResponseText.current = '';
+      setIsOracleSpeaking(false);
+      logWsMessage('barge-in: seeker interrupted Oracle');
+      onBargeIn?.(); // parent pauses oracle audio element
+    }, [onBargeIn]);
+
+    // Reset long-silence ping timer (call whenever user speaks)
+    const resetSilencePing = useCallback(() => {
+      if (silencePingTimerRef.current) clearTimeout(silencePingTimerRef.current);
+      silencePingTimerRef.current = setTimeout(() => {
+        // Only ping if Oracle is not already speaking and connection is live
+        if (!isOracleSpeakingRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+          logWsMessage('silence-ping: seeker silent 8s');
+          wsRef.current.send(JSON.stringify({
+            type: 'client.realtimeInput',
+            realtimeInput: { text: '[INTERNAL: seeker has been silent for 8 seconds. Send a brief presence signal — one short transmission acknowledging the open frequency.]' },
+          }));
+        }
+      }, 8000);
     }, []);
 
     const startMic = useCallback(async () => {
@@ -737,9 +958,25 @@ const OracleConversation = forwardRef(
         const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
         processorRef.current = processor;
 
+        // Reset VAD for fresh mic session
+        vadRef.current.reset();
+        vadStateRef.current = 'silence';
+
+        // Reset introspection state for new conversation turn
+        introspectionRef.current = {
+          resistanceDetected: false,
+          emotionalIntensity: 0,
+          anchors: [],
+          lastUserText: '',
+        };
+        phraseTriggersRef.current = { waitFired: false, surrogateFired: false, resetFired: false };
+
+        // ── Oracle Pulse: VAD-gated onaudioprocess ────────────────────────────
         processor.onaudioprocess = (e) => {
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
           const float32 = e.inputBuffer.getChannelData(0);
+
+          // Encode PCM: float32 [-1,1] → int16 → base64
           const int16 = new Int16Array(float32.length);
           for (let i = 0; i < float32.length; i++) {
             int16[i] = Math.max(-32768, Math.min(32767, Math.floor(float32[i] * 32768)));
@@ -747,23 +984,64 @@ const OracleConversation = forwardRef(
           const bytes = new Uint8Array(int16.buffer);
           let binary = '';
           for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-          wsRef.current.send(
-            JSON.stringify({
-              type: 'client.realtimeInput',
-              realtimeInput: {
-                mediaChunks: [{ mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}`, data: btoa(binary) }],
-              },
-            })
-          );
+          const chunk: VADFrame = {
+            data: btoa(binary),
+            mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}`,
+          };
+
+          // ── VAD processing ────────────────────────────────────────────────
+          const prevState = vadStateRef.current;
+          const result = vadRef.current.processFrame(float32, chunk);
+          vadStateRef.current = result.vadState;
+
+          // Speech onset: flush pre-roll + signal Gemini that user started speaking
+          if (result.isOnsetStart) {
+            const preRoll = vadRef.current.flushPreRoll();
+            for (const frame of preRoll) sendAudioChunk(frame);
+            sendVADSignal({ activityStart: {} });
+            logWsMessage('VAD: activityStart');
+            resetSilencePing(); // reset the 8s silence ping
+          }
+
+          // Send audio only while voice is active (onset | speaking | trailing)
+          if (result.isSpeaking) {
+            sendAudioChunk(chunk);
+          }
+
+          // Turn ended: hangover exhausted → signal Gemini the turn is complete
+          if (result.isTurnEnd) {
+            sendVADSignal({ activityEnd: {} });
+            logWsMessage('VAD: activityEnd — turn complete');
+            resetSilencePing(); // start 8s silence timer
+          }
+
+          // ── Barge-in detection ────────────────────────────────────────────
+          // If Oracle is mid-response and user starts speaking → interrupt
+          if (result.isSpeaking && isOracleSpeakingRef.current &&
+              prevState === 'silence' && result.vadState !== 'silence') {
+            handleBargeIn();
+          }
+
+          // ── Visual pulse: throttle onUserSpeakingChange to ~10fps ─────────
+          if (result.vadScore !== lastVadScore.current) {
+            lastVadScore.current = result.vadScore;
+            if (!vadCallbackThrottleRef.current) {
+              vadCallbackThrottleRef.current = setTimeout(() => {
+                vadCallbackThrottleRef.current = null;
+                onUserSpeakingChange?.(result.isSpeaking, lastVadScore.current);
+              }, 100);
+            }
+          }
         };
 
         source.connect(processor);
         processor.connect(audioContextRef.current.destination);
         setIsListening(true);
+        resetSilencePing(); // begin 8s silence timer from mic open
       } catch (err: unknown) {
         setConnectionError('Microphone access denied. Use text mode instead.');
       }
-    }, []);
+    }, [sendAudioChunk, sendVADSignal, handleBargeIn, resetSilencePing, onUserSpeakingChange]);
 
     const toggleMic = useCallback(() => {
       if (isListening) stopMic();

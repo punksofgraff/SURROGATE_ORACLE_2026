@@ -56,6 +56,13 @@ export interface ScrambleFragmentProps {
   pauseMs?: number;
   /** 0-1 opacity for the crystallised (fully-visible) state */
   peakOpacity?: number;
+  /**
+   * 'scramble' (default): random-order crystallisation — letters pop in from
+   *  unpredictable positions, Cheshire Cat effect.
+   * 'typewriter': left-to-right sequential reveal — each character types in
+   *  order, like a terminal printing text. Same hold + dissolve lifecycle.
+   */
+  mode?: 'scramble' | 'typewriter';
 }
 
 export function ScrambleFragment({
@@ -67,6 +74,7 @@ export function ScrambleFragment({
   exitMs       = 30,
   pauseMs      = 1000,
   peakOpacity  = 1,
+  mode         = 'scramble',
 }: ScrambleFragmentProps) {
   const [display,   setDisplay]   = useState<string>('');
   const [shown,     setShown]     = useState(false);
@@ -100,8 +108,8 @@ export function ScrambleFragment({
         .map((c, i) => i)
         .filter(i => chars[i] !== ' ' && chars[i] !== '\n');
 
-      // Shuffle for random crystallisation order
-      const revealOrder = shuffle(charPositions);
+      // Typewriter: sequential left-to-right. Scramble: random order.
+      const revealOrder = mode === 'typewriter' ? [...charPositions] : shuffle(charPositions);
       const resolved    = new Set<number>();
       let   revealIdx   = 0;
 
@@ -118,7 +126,9 @@ export function ScrambleFragment({
         const out = chars.map((c, i) => {
           if (c === '\n' || c === ' ') return c;
           if (resolved.has(i)) return c;         // crystallised — locked in
-          return randGlyph();                    // still noise
+          // Typewriter: unresolved chars are invisible (sequential reveal, no noise)
+          // Scramble: unresolved chars show random glyphs (Cheshire Cat effect)
+          return mode === 'typewriter' ? ' ' : randGlyph();
         }).join('');
 
         setDisplay(out);

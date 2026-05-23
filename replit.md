@@ -1,6 +1,6 @@
 # SURROGATE Oracle — Replit Workspace Guide
 
-Cinematic cyberpunk AI oracle XR experience. Users enter a graffiti alley, awaken the Oracle, and have a real-time conversation. Gemini Live audio when available; Claude text fallback always active.
+Cinematic cyberpunk AI oracle XR experience. Users enter a graffiti alley, awaken the Oracle, and have a real-time conversation. Gemini Live audio when available; Gemini REST text fallback when Live WS drops. All LLM routing under the same `GOOGLE_AI_API_KEY`.
 
 ---
 
@@ -69,11 +69,11 @@ npx supabase secrets list --project-ref velmmplevfrtrtrypoch
 
 | Replit Secret | Maps to Supabase Secret | Used by |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | `ANTHROPIC_API_KEY` | `oracle-conversation` EFA |
-| `GEMINI_API_KEY` | `GOOGLE_AI_API_KEY` | `gemini-live-proxy`, `gemini-portrait-generator` — **use this one** (free-tier AI Studio key) |
-| `GOOGLE_AI_API_KEY` | — | GCP service key, not used for generativelanguage.googleapis.com |
+| `GEMINI_API_KEY` | `GOOGLE_AI_API_KEY` | `gemini-live-proxy`, `oracle-conversation`, `gemini-portrait-generator` — **use this one** (free-tier AI Studio key) |
+| `GOOGLE_AI_API_KEY` | — | GCP service key, NOT used for generativelanguage.googleapis.com |
 | `VITE_SUPABASE_ANON_KEY` | client-side only | Supabase JS client in browser |
 | `VITE_DECART_API_KEY` | `DECART_API_KEY` | Decart WebRTC avatar |
+| `ANTHROPIC_API_KEY` | `ANTHROPIC_API_KEY` | Not currently used — Claude fallback retired, Gemini REST is the fallback |
 | `OPENAI_API_KEY` | `OPENAI_API_KEY` | DALL-E 3 portraits — **⚠️ not yet in Replit secrets** |
 
 ---
@@ -82,10 +82,10 @@ npx supabase secrets list --project-ref velmmplevfrtrtrypoch
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - Frontend: React 18 + Vite + Framer Motion
-- AI (primary): Gemini Live WebSocket via `gemini-live-proxy` EFA
-- AI (fallback): Claude `claude-sonnet-4-6` via `oracle-conversation` EFA
-- Avatar (paid): Decart SDK WebRTC (`@decartai/sdk`)
-- Avatar (freemium): Static face + `VisemeDetector` (Web Audio API lip-sync)
+- AI (primary): Gemini Live WebSocket via `gemini-live-proxy` EFA (`gemini-2.5-flash-native-audio-latest`)
+- AI (fallback): Gemini REST `gemini-2.5-flash` via `oracle-conversation` EFA — same `GOOGLE_AI_API_KEY`, text-only on WS drop
+- Avatar (paid): Decart SDK WebRTC (`@decartai/sdk`) — takes `ORACLE_AVATAR_URL` → live lip-sync stream
+- Avatar (freemium): Talking face img + `VisemeDetector` (Web Audio API → Preston Blair viseme → mouth overlay DOM writes at 60fps)
 - Backend: Supabase (Postgres + Auth + Edge Functions in Deno)
 - Gamification: Culture Coins + Sacred/Profane Totem Matrix
 
@@ -99,7 +99,7 @@ artifacts/surrogate-oracle/
     components/
       SurrogateOracleImmersion.tsx  — main scene orchestrator (state machine, tier routing)
       SurrogateOracleImmersion.css  — ALL custom styling (--z-* layers, data-oracle-state, data-xr-mode CSS)
-      OracleConversation.tsx        — Gemini Live WS client + Claude HTTP fallback + scoring
+      OracleConversation.tsx        — Gemini Live WS client + Gemini REST fallback + scoring
       DecartClient.tsx              — Decart WebRTC paid avatar
       BackendControlPanel.tsx       — dev debug panel (password: 3nculturate!)
     lib/
@@ -114,11 +114,49 @@ artifacts/surrogate-oracle/
 supabase/
   functions/
     gemini-live-proxy/              — WS proxy + message format translation
-    oracle-conversation/            — Claude HTTP fallback with totem scoring
+    oracle-conversation/            — Gemini REST fallback (text-only when Live WS drops)
     gemini-portrait-generator/      — Gemini prompt enhance → DALL-E 3 → Unsplash fallback
     elevenlabs-tts/                 — TTS synthesis
     decart-live-token/              — Decart WebRTC auth tokens
     mint-culture-coins/             — ChainFuelz stub (pending SDK)
+```
+
+---
+
+## Canonical Image Assets
+
+Three distinct images with fixed roles — do NOT swap them.
+
+| Constant | URL | Role |
+|---|---|---|
+| `ORACLE_STATIC_URL` | `https://i.postimg.cc/26pvW2SN/orackle-only-static.png` | Arcade cabinet screen — shown in **dormant / terminal / awakened**. Green alien portrait on white/alpha bg. The "waking" bridge image. |
+| `ORACLE_AVATAR_URL` | `https://i.postimg.cc/jSGnyZXh/Image-1-(11).jpg` | **The talking face** — used by BOTH Decart (paid lip-sync) and freemium VisemeDetector. 1280×640 JPG. |
+| `ALLEY_BG_URL` | `https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png` | Full SNEAKAR alley scene. Fades to `opacity:0` in oracle state (singularity moment). |
+
+### Talking Face Spatial Map (`ORACLE_AVATAR_URL`)
+
+Displayed in a square container via `object-fit:cover` — height fills, sides crop ~20% each side:
+
+```
+Crown  : X=50%  Y= 8%
+Eyes   : X=50%  Y=33%
+Nose   : X=50%  Y=52%
+MOUTH  : X=50%  Y=61%  ← .oracle-mouth-overlay top: 60%
+Chin   : X=50%  Y=72%
+```
+
+Natural mouth width ≈ **14–16%** of square container. Mouth overlay BASE widths (JS): X/B=13%, C/D=15%, A=18%, E=20%, F=11%, G=13%, H=10%.
+
+### Alley Spatial Map (`ALLEY_BG_URL`)
+
+Cabinet centered X=35–65%, occupies Y=25–100% of frame.
+
+### Avatar Wrapper Z-Index Layer Order
+
+```
+z:1  .oracle-avatar-static   ORACLE_STATIC_URL — visible dormant/terminal/awakened, CSS-hidden in oracle
+z:2  .oracle-avatar-img      ORACLE_AVATAR_URL — CSS-hidden always; JS inline style reveals in oracle freemium
+z:3  .oracle-avatar-video    Decart WebRTC stream — oracle + data-decart-active="true"
 ```
 
 ---

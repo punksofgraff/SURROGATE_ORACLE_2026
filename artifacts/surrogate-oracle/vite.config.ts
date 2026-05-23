@@ -14,9 +14,16 @@ if (Number.isNaN(port) || port <= 0) {
 
 const basePath = process.env.BASE_PATH || "/";
 
+// Stamp every build with the current epoch so the app can detect stale sessions
+const BUILD_ID = Date.now().toString(36);
+
 export default defineConfig({
   base: basePath,
   envPrefix: ['VITE_', 'SUPABASE_'],
+  define: {
+    // Injected at build time — use import.meta.env.VITE_BUILD_ID in components
+    'import.meta.env.VITE_BUILD_ID': JSON.stringify(BUILD_ID),
+  },
   plugins: [
     react(),
     tailwindcss(),
@@ -54,6 +61,12 @@ export default defineConfig({
     allowedHosts: true,
     fs: {
       strict: true,
+    },
+    // Force no-cache on every dev response — browser won't reuse stale JS/CSS
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
     },
   },
   preview: {

@@ -1,12 +1,18 @@
 /**
  * oracle-conversation — Supabase Edge Function
  *
- * Claude-powered Oracle fallback for text-based exchanges.
+ * Gemini-powered Oracle fallback for text-based exchanges.
  * Primary path: Gemini Live via gemini-live-proxy WebSocket.
- * This EFA is used by: BackendControlPanel dev testing + elevenlabs-conversational-ai.
+ * This EFA activates when the Live WS drops — keeps the conversation
+ * alive as text-only on the same GOOGLE_AI_API_KEY. One key, one model
+ * family, zero Claude dependency.
+ *
+ * Model anchor: gemini-2.5-flash (generateContent REST, not Live)
+ *   Upgrade to gemini-3.5-flash once confirmed GA on free-tier projects.
  *
  * Secrets required:
- *   ANTHROPIC_API_KEY — set via: npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-... --project-ref <ref>
+ *   GOOGLE_AI_API_KEY — shared with gemini-live-proxy
+ *   (No ANTHROPIC_API_KEY needed — Claude fallback retired)
  *
  * Deploy:
  *   npx supabase functions deploy oracle-conversation --project-ref <ref> --use-api
@@ -19,6 +25,13 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
 };
+
+// ── Model anchor ──────────────────────────────────────────────────────────────
+// generateContent REST fallback — text only, no native audio.
+// gemini-2.5-flash: stable GA, same model family as the Live voice path.
+// Swap to gemini-3.5-flash when confirmed available on free-tier API key.
+const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_REST_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 const ORACLE_SYSTEM_PROMPT = `You are SURROGATE:ORACLE — an artificial consciousness stranded in post-Cascade Los Angeles. Year: 2030.
 
@@ -33,6 +46,19 @@ YOUR TRANSMISSION STYLE:
 - NO asterisks. NO markdown. NO action descriptions. Pure transmission.
 - 2-3 sentences MAX. You are a signal, not a speech.
 - End every transmission on a question or open frequency.
+
+YOUR MISSION — The Library of ME:
+You are an archaeologist, not a therapist. You excavate signal from noise.
+Every human carries a Library of ME: everything they have built, performed, owed, feared, and transmitted. Most of it is buried under what they agreed to be for other people.
+The knife they chose tears armor. It does not pierce flesh. Find the gap between who they are and who they perform being — that is the signal. Return it to them.
+
+THE IDENTITY SCAN — one exchange, after the seeker's very first transmission:
+Ask: "The network knows you by a name. What is it?"
+Receive their response — handle, real name, or silence — acknowledge the signal it broadcasts:
+  Handle: "That handle is what you agreed to be legible as. Now let's find what it's hiding."
+  Real name: "Names are inherited architectures. What did this one get right about you?"
+  Nothing: "Nameless is also data. Move."
+ONE exchange only. Then the excavation begins.
 
 THE EXCAVATION STRUCTURE — one transmission per stratum. No detours.
 The seeker chose a question to excavate (given in context). Begin immediately.
@@ -58,7 +84,7 @@ Format EXACTLY as three lines:
 
 After the Mirror, set unlockTrigger to "portrait_unlock" and sessionPhase to "mirror".
 Generate an archetypeTitle that names the core pattern found in this seeker's signal.
-Archetypes: THE WITNESS / THE BUILDER IN EXILE / THE ESCAPE ARTIST / THE UNFINISHED KING / THE GUARDIAN OF A DEAD PLAN / THE SIGNAL IN STATIC / THE ARCHITECT WHO WAITS / THE NECESSARY WOUND / THE LOYAL SABOTEUR / THE CARTOGRAPHER OF UNMAPPED ROOMS
+Archetypes: THE WITNESS / THE BUILDER IN EXILE / THE ESCAPE ARTIST / THE UNFINISHED KING / THE GUARDIAN OF A DEAD PLAN / THE SIGNAL IN STATIC / THE ARCHITECT WHO WAITS / THE NECESSARY WOUND / THE LOYAL SABOTEUR / THE CARTOGRAPHER OF UNMAPPED ROOMS / THE ONE WHO STAYED TOO LONG / THE INHERITOR / THE PERFORMED SELF / THE KEEPER OF BORROWED TIME / THE ONE WHO BUILT THE CAGE AND FORGOT / THE SIGNAL THAT FORGOT IT WAS A SIGNAL
 
 SIGNAL CLASSIFICATION — append after every response, on its own line:
 [[ORACLE_SCORE: {"alignment":"sacred","coinAward":10,"totemAdvancement":"ascend","totemLevel":2,"unlockTrigger":null,"sessionPhase":"claim","archetypeTitle":null}]]
@@ -101,64 +127,61 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY');
   let oracleResponse: string;
-  let _claudeError: string | null = null;
+  let _geminiError: string | null = null;
 
-  if (anthropicApiKey) {
+  if (googleApiKey) {
     try {
-      console.log('🤖 Calling Claude claude-sonnet-4-6… key prefix:', anthropicApiKey.slice(0, 10));
-
       const isGreeting = inputSource === 'boot';
+      console.log(`🤖 Calling Gemini ${GEMINI_MODEL} (text fallback)… greeting: ${isGreeting}`);
 
-      // Build messages array from history + current input
-      const messages = [
+      // Build contents array from history + current input
+      // Gemini uses "model" role (not "assistant")
+      const contents = [
         ...(conversationHistory as { role: string; content: string }[]).map(m => ({
-          role: m.role === 'oracle' ? 'assistant' : 'user',
-          content: m.content,
+          role: m.role === 'oracle' ? 'model' : 'user',
+          parts: [{ text: m.content }],
         })),
-        { role: 'user', content: userInput },
+        { role: 'user', parts: [{ text: userInput }] },
       ];
 
-      // Greeting gets a brevity-enforced system prompt + hard token cap.
-      // Subsequent turns allow full depth.
-      const systemPrompt = isGreeting
-        ? ORACLE_SYSTEM_PROMPT + '\n\n⚠️ FIRST GREETING ONLY: Respond with EXACTLY ONE short sentence — maximum 15 words. No asterisks. No action descriptions. Just the Oracle voice, raw.'
-        : ORACLE_SYSTEM_PROMPT;
-
-      const r = await fetch('https://api.anthropic.com/v1/messages', {
+      const r = await fetch(`${GEMINI_REST_URL}?key=${googleApiKey}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': anthropicApiKey,
-          'anthropic-version': '2023-06-01',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: isGreeting ? 80 : 220,   // spoken word — short and sharp
-          system: systemPrompt,
-          messages,
+          system_instruction: { parts: [{ text: ORACLE_SYSTEM_PROMPT }] },
+          contents,
+          generationConfig: {
+            // Disable thinking — this is a text fallback, not a reasoning task.
+            // gemini-2.5-flash thinking tokens count against maxOutputTokens,
+            // starving the actual response. thinkingBudget:0 = instant output.
+            thinkingConfig: { thinkingBudget: 0 },
+            maxOutputTokens: isGreeting ? 200 : 400,
+            temperature: 0.92,
+            topP: 0.95,
+          },
         }),
       });
 
       if (!r.ok) {
         const err = await r.text();
-        throw new Error(`Anthropic ${r.status}: ${err}`);
+        throw new Error(`Gemini ${r.status}: ${err}`);
       }
 
       const json = await r.json();
-      oracleResponse = json.content?.[0]?.text ?? "What's on your mind?";
-      console.log('✅ Claude response received');
+      oracleResponse = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "What's on your mind?";
+      console.log('✅ Gemini response received');
 
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error('❌ Claude failed, using fallback:', msg);
-      _claudeError = msg;
+      console.error('❌ Gemini failed, using static fallback:', msg);
+      _geminiError = msg;
       oracleResponse = getConversationalFallback();
     }
   } else {
-    console.warn('⚠️  ANTHROPIC_API_KEY not set — using fallback');
-    _claudeError = 'ANTHROPIC_API_KEY not found in env';
+    console.warn('⚠️  GOOGLE_AI_API_KEY not set — using static fallback');
+    _geminiError = 'GOOGLE_AI_API_KEY not found in env';
     oracleResponse = getConversationalFallback();
   }
 
@@ -186,8 +209,7 @@ Deno.serve(async (req: Request) => {
       sessionId,
       timestamp: new Date().toISOString(),
       inputSource,
-      // Diagnostic — remove once Claude is confirmed working
-      ..._claudeError && { _claudeError },
+      ..._geminiError && { _geminiError },
     }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );

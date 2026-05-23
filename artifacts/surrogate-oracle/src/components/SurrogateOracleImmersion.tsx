@@ -728,23 +728,9 @@ export function SurrogateOracleImmersion() {
     setTimeout(() => initializeOracle(), 200);
   }, [scenePhase, initializeOracle]);
 
-  // Knife question selection — picks the frequency, seeds portrait generation,
-  // then transitions to awakened. The knife is the genesis input for the
-  // procedural portrait pipeline — frequency → portrait → 1:1 on-chain asset.
-  const selectKnifeQuestion = useCallback((question: string, index: number) => {
-    setSelectedKnifeQuestion(question);
-    setSelectedKnifeIndex(index);
-    const kq = KNIFE_QUESTIONS[index];
-    if (kq) {
-      window.dispatchEvent(new CustomEvent('oracle:knife-selected', {
-        detail: { territory: kq.territory, themes: kq.themes, question: kq.question },
-      }));
-    }
-    setTimeout(() => awakeFromTerminal(), 400);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // awakeFromTerminal — called after knife selection, transitions to awakened.
+  // awakeFromTerminal — lore finishes → awakened.
+  // Oracle face resolves fully. Knife selection rises in awakened state so
+  // the seeker sees the entity before being asked to choose a frequency.
   // Pre-mounts OracleConversation so Gemini Live WS connects in parallel
   // with remaining Decart ICE negotiation — eliminates dead air.
   const awakeFromTerminal = useCallback(() => {
@@ -756,12 +742,36 @@ export function SurrogateOracleImmersion() {
   }, [scenePhase]);
 
   // Lore sequence — runs while scenePhase=terminal and lore not yet complete.
-  // onComplete sets loreComplete=true, which surfaces the knife cards.
+  // onComplete: loreComplete=true triggers the awakened transition below.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const loreLines = useLoreSequence(
     scenePhase === 'terminal' && !loreComplete,
     () => setLoreComplete(true),
   );
+
+  // Auto-transition terminal → awakened the moment lore finishes.
+  // Knife selection now rises inside awakened — oracle face is fully resolved
+  // before the seeker is asked to choose a frequency.
+  useEffect(() => {
+    if (loreComplete && scenePhase === 'terminal') {
+      awakeFromTerminal();
+    }
+  }, [loreComplete, scenePhase, awakeFromTerminal]);
+
+  // Knife question selection — picks the frequency, seeds portrait generation,
+  // then opens oracle conversation. Knife is now chosen AFTER the oracle
+  // face materialises — the entity presents itself before asking.
+  const selectKnifeQuestion = useCallback((question: string, index: number) => {
+    setSelectedKnifeQuestion(question);
+    setSelectedKnifeIndex(index);
+    const kq = KNIFE_QUESTIONS[index];
+    if (kq) {
+      window.dispatchEvent(new CustomEvent('oracle:knife-selected', {
+        detail: { territory: kq.territory, themes: kq.themes, question: kq.question },
+      }));
+    }
+    setTimeout(() => setScenePhase('oracle'), 400);
+  }, []);
 
   // ── XR: wire marker callback — same flow as first tap, just triggered by marker
   useEffect(() => {
@@ -1521,14 +1531,14 @@ export function SurrogateOracleImmersion() {
            This selection is the genesis input for the portrait pipeline:
            frequency → portrait → 1:1 on-chain digital asset.               */}
       <AnimatePresence>
-        {scenePhase === 'terminal' && loreComplete && (
+        {scenePhase === 'awakened' && !selectedKnifeQuestion && (
           <motion.div
             key="knife-section"
             className="oracle-knife-section"
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20, transition: { duration: 0.3 } }}
-            transition={{ duration: 0.55, ease: 'easeOut' }}
+            transition={{ duration: 0.7, ease: 'easeOut', delay: 1.6 }}
           >
             <div className="oracle-knife-header">◈ THE ARCHIVE IS OPEN</div>
             <div className="oracle-knife-subheader">CHOOSE THE FREQUENCY THAT IS ALREADY TRUE. THE EXCAVATION BEGINS THERE.</div>
@@ -1539,7 +1549,7 @@ export function SurrogateOracleImmersion() {
                   className={`oracle-knife-card${selectedKnifeIndex === idx ? ' oracle-knife-card--selected' : ''}`}
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.08 * idx, duration: 0.35 }}
+                  transition={{ delay: 1.6 + 0.10 * idx, duration: 0.38 }}
                   onClick={() => selectKnifeQuestion(kq.question, idx)}
                 >
                   <span className="oracle-knife-territory">{kq.territory}</span>

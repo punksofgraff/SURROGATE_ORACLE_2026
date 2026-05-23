@@ -282,6 +282,13 @@
   animation: branding-blast-in 0.75s ease-out both;
 }
 
+/* During knife selection (awakened state), reduce subtitle opacity so it
+   doesn't compete with the knife-section header directly below it. */
+.oracle-stage[data-oracle-state="awakened"] .oracle-subtitle {
+  opacity: 0.35;
+  transition: opacity 0.4s ease;
+}
+
 /* ── Center / Cabinet ─────────────────────────────────────────────────── */
 .oracle-center {
   position: absolute;
@@ -1528,12 +1535,15 @@
   line-height: 1.65;
 }
 
-/* Mobile: compress fragment positions so they clear the cabinet */
+/* Mobile: compress fragment positions so they clear the cabinet.
+   SF-3 (mid-left, top 39%) and SF-4 (mid-right, top 34%) overlap the
+   cabinet on narrow viewports — hide them. SF-1/2 are in the top 10%
+   and clear the cabinet naturally. SF-5 only renders in dormant (no panel). */
 @media (max-width: 480px) {
-  .oracle-sf--1 { top: 7%;  font-size: clamp(0.78rem, 4.2vw, 1.1rem); max-width: 52%; }
-  .oracle-sf--2 { top: 4%;  max-width: 40%; }
-  .oracle-sf--3 { top: 34%; max-width: 42%; }
-  .oracle-sf--4 { top: 28%; max-width: 35%; }
+  .oracle-sf--1 { top: 8%;  font-size: clamp(0.78rem, 4.2vw, 1.1rem); max-width: 52%; }
+  .oracle-sf--2 { top: 5%;  max-width: 38%; font-size: clamp(0.48rem, 2.2vw, 0.60rem); }
+  .oracle-sf--3,
+  .oracle-sf--4 { display: none; }
   .oracle-sf--5 { bottom: 20%; max-width: 48%; }
 }
 
@@ -1550,9 +1560,10 @@
   .oracle-branding   { top: 3%; }
   .oracle-tap-prompt { top: 21%; }
 
-  /* On mobile, oracle mode needs the cabinet higher so the chat panel      */
-  /* doesn't crowd it. 22% center = bottom at ~178px, panel at ~484px.     */
-  .oracle-stage[data-oracle-state="oracle"] .oracle-center { top: 22%; }
+  /* On mobile, push the oracle face down so the gap between cabinet bottom  */
+  /* and panel top is minimised. 40% center on 844px = ~338px center;       */
+  /* cabinet bottom ~438px, panel top ~484px → only ~46px breathing room.   */
+  .oracle-stage[data-oracle-state="oracle"] .oracle-center { top: 40%; }
 
   /* Touch hint: sits below cabinet bottom edge.                            */
   .oracle-touch-hint {
@@ -2377,6 +2388,13 @@
   flex-direction: column;
   align-items: center;
   gap: 0;
+}
+
+/* Push knife content below the top branding (SURROGATE:ORACLE + subtitle)
+   so they don't overlap. The gradient background extends from bottom up
+   so extra padding-top is transparent — world still shows above. */
+.oracle-stage[data-oracle-state="awakened"] .oracle-knife-section {
+  padding-top: clamp(100px, 18vh, 160px);
 }
 
 /* Make the full oracle-knife-* classes work inside the new section */

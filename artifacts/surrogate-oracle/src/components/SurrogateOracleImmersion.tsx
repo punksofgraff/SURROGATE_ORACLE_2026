@@ -81,6 +81,7 @@ const GHOST_TEXTS = [
   'signal integrity: compromised',
   'grid status: severed — local node active',
   'one directive survived',
+  'tap to enter construct',
 ];
 
 // 10 zones spread across the full mobile viewport.

@@ -83,8 +83,8 @@
 
 /* DORMANT — barely a place. Text fragments are the only light. */
 .oracle-stage[data-oracle-state="dormant"] .oracle-alley {
-  opacity: 0.52;
-  filter: saturate(0.12) brightness(0.32) blur(1px);
+  opacity: 0.65;
+  filter: saturate(0.25) brightness(0.42) blur(0.8px);
 }
 
 /* TERMINAL — first tap through lore and knife selection. Alley stays dark
@@ -96,8 +96,8 @@
    The world is held in suspension while the archive speaks.
    Colour only bleeds back in AWAKENED — that's the warming moment.         */
 .oracle-stage[data-oracle-state="terminal"] .oracle-alley {
-  opacity: 0.58;
-  filter: saturate(0.20) brightness(0.40) blur(0.5px);
+  opacity: 0.72;
+  filter: saturate(0.35) brightness(0.50) blur(0.4px);
   transition: opacity 1.2s var(--ease-cinematic), filter 1.2s var(--ease-cinematic);
 }
 

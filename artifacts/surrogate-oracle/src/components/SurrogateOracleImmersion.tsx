@@ -81,7 +81,6 @@ const GHOST_TEXTS = [
   'signal integrity: compromised',
   'grid status: severed — local node active',
   'one directive survived',
-  'tap to enter construct',
 ];
 
 // 10 zones spread across the full mobile viewport.
@@ -110,12 +109,10 @@ interface GhostInstance {
   x: number;
   y: number;
   zoneIdx: number;
-  sticky?: boolean;
   rightAlign?: boolean; // when true: x is CSS `right` %, text flows left — prevents right-edge overflow
 }
 
 // Single ghost text — manages its own typing/hold/fade lifecycle
-// When sticky=true: types itself in, holds forever, never fades — used for the CTA
 function GhostText({
   inst,
   onDone,
@@ -131,7 +128,7 @@ function GhostText({
   useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
 
   useEffect(() => {
-    const speed = inst.sticky ? 60 : 52 + Math.random() * 18; // sticky CTA: 60ms/char — deliberate
+    const speed = 52 + Math.random() * 18;
     let c = 0;
     let holdTimer: ReturnType<typeof setTimeout>;
     let fadeTimer: ReturnType<typeof setTimeout>;
@@ -142,56 +139,38 @@ function GhostText({
       if (c >= inst.text.length) {
         clearInterval(typer);
         setPhase('holding');
-        if (!inst.sticky) {
-          // Regular ghost: fade after hold, then signal done to spawner
-          holdTimer = setTimeout(() => {
-            setPhase('fading');
-            // Call onDone after CSS fade (1.4s) + tiny buffer
-            fadeTimer = setTimeout(() => onDoneRef.current(inst.id, inst.zoneIdx), 1500);
-          }, 2800 + Math.random() * 1800); // 2.8–4.6s hold
-        }
-        // sticky: hold forever — onDone never fires, CTA stays on screen
+        // Regular ghost: fade after hold, then signal done to spawner
+        holdTimer = setTimeout(() => {
+          setPhase('fading');
+          // Call onDone after CSS fade (1.4s) + tiny buffer
+          fadeTimer = setTimeout(() => onDoneRef.current(inst.id, inst.zoneIdx), 1500);
+        }, 2800 + Math.random() * 1800); // 2.8–4.6s hold
       }
     }, speed);
 
     return () => { clearInterval(typer); clearTimeout(holdTimer); clearTimeout(fadeTimer); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const cls = inst.sticky
-    ? `ghost-tx ghost-tx--${phase} ghost-tx--cta`
-    : `ghost-tx ghost-tx--${phase}`;
-
-  const style: React.CSSProperties = inst.sticky
-    ? { left: `${inst.x}%`, top: `${inst.y}%`, transform: 'translateX(-50%)' }
-    : inst.rightAlign
-      ? { right: `${inst.x}%`, top: `${inst.y}%`, textAlign: 'right' }
-      : { left: `${inst.x}%`, top: `${inst.y}%` };
+  const cls = `ghost-tx ghost-tx--${phase}`;
+  const style: React.CSSProperties = inst.rightAlign
+    ? { right: `${inst.x}%`, top: `${inst.y}%`, textAlign: 'right' }
+    : { left: `${inst.x}%`, top: `${inst.y}%` };
 
   return (
-    <div className={cls} style={style} onClick={inst.sticky ? onClick : undefined} role={inst.sticky ? 'button' : undefined}>
+    <div className={cls} style={style} onClick={onClick}>
       {inst.text.slice(0, chars)}
       {phase === 'typing' && <span className="ghost-tx__cur" />}
     </div>
   );
 }
 
-// The CTA text that types itself at the end of the phrase run and stays permanently.
-// Lowercase graffiti style — blends with the transmissions until its permanence marks it.
-const GHOST_CTA_TEXT = 'tap to enter construct';
-// Spawn CTA after this many regular phrases have fully dissipated (first run through)
-const GHOST_CTA_AFTER = 0;
-
 // Spawner — manages the field of ghost transmissions.
-// After GHOST_CTA_AFTER phrases complete, a sticky CTA appears centered on screen
-// and remains permanently as the tap-to-enter invitation.
 function DormantTransmissions({ active, onCtaClick }: { active: boolean; onCtaClick?: () => void }) {
   const [instances, setInstances] = useState<GhostInstance[]>([]);
   const activeZones    = useRef(new Set<number>());
   const textHistory    = useRef<number[]>([]);
   const spawnCount     = useRef(0);
   const spawnTimers    = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const phraseDoneCount = useRef(0);   // how many regular phrases have fully exited
-  const ctaSpawnedRef  = useRef(false); // CTA is one-shot — never re-spawn
 
   const clearAll = () => { spawnTimers.current.forEach(clearTimeout); spawnTimers.current = []; };
 
@@ -209,27 +188,8 @@ function DormantTransmissions({ active, onCtaClick }: { active: boolean; onCtaCl
     return idx;
   };
 
-  const spawnCta = useCallback(() => {
-    if (ctaSpawnedRef.current) return;
-    ctaSpawnedRef.current = true;
-    logStep('GHOST CTA SPAWNED', 'ok');
-    console.log('[Dormant] Spawning sticky CTA:', GHOST_CTA_TEXT);
-    const ctaId = ++_gtId;
-    // Center-bottom of the stage — below the cabinet, above any bottom bar
-    setInstances(prev => [...prev, {
-      id: ctaId,
-      text: GHOST_CTA_TEXT,
-      x: 50,   // left: 50% + translateX(-50%) = centered
-      y: 82,   // 82% down — bottom third of screen, clear of cabinet
-      zoneIdx: -1,
-      sticky: true,
-    }]);
-  }, []);
-
   const spawn = useCallback(() => {
     // ONE at a time — Cheshire Cat: one phrase types, dissipates, then next appears
-    // Stop spawning regular phrases once the CTA has appeared
-    if (ctaSpawnedRef.current) return;
     if (instances.length >= 1) return;
 
     const zoneIdx    = pickZone();
@@ -243,29 +203,17 @@ function DormantTransmissions({ active, onCtaClick }: { active: boolean; onCtaCl
       id, text: GHOST_TEXTS[pickText()], x, y, zoneIdx,
       rightAlign: zone.rightAlign ?? false,
     }]);
-  }, [instances.length, spawnCta]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [instances.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDone = useCallback((id: number, zoneIdx: number) => {
     setInstances(prev => prev.filter(g => g.id !== id));
     activeZones.current.delete(zoneIdx);
 
-    phraseDoneCount.current++;
-
-    // After GHOST_CTA_AFTER phrases have dissipated, spawn the sticky CTA
-    if (phraseDoneCount.current >= GHOST_CTA_AFTER && !ctaSpawnedRef.current) {
-      // Short pause so the last phrase fully fades before the CTA types in
-      const t = setTimeout(spawnCta, 600);
-      spawnTimers.current.push(t);
-      return; // don't spawn another regular phrase
-    }
-
-    if (!ctaSpawnedRef.current) {
-      // Short gap between phrases — the alley breathes, then the next signal leaks
-      const gap = 400 + Math.random() * 600; // 400–1000ms between transmissions
-      const t = setTimeout(spawn, gap);
-      spawnTimers.current.push(t);
-    }
-  }, [spawn, spawnCta]);
+    // Short gap between phrases — the alley breathes, then the next signal leaks
+    const gap = 400 + Math.random() * 600; // 400–1000ms between transmissions
+    const t = setTimeout(spawn, gap);
+    spawnTimers.current.push(t);
+  }, [spawn]);
 
   useEffect(() => {
     if (!active) {
@@ -273,27 +221,19 @@ function DormantTransmissions({ active, onCtaClick }: { active: boolean; onCtaCl
       clearAll();
       activeZones.current.clear();
       spawnCount.current = 0;
-      phraseDoneCount.current = 0;
-      ctaSpawnedRef.current = false;
       return;
-    }
-
-    // If threshold is 0, spawn CTA immediately (after a short settles delay)
-    if (GHOST_CTA_AFTER === 0) {
-      const tc = setTimeout(spawnCta, 1000);
-      spawnTimers.current.push(tc);
     }
 
     // First transmission starts after 1.2s so the alley settles before signal leaks
     const t1 = setTimeout(spawn, 1200);
     spawnTimers.current.push(t1);
     return clearAll;
-  }, [active, spawn, spawnCta]);
+  }, [active, spawn]);
 
   return (
     <>
       {instances.map(inst => (
-        <GhostText key={inst.id} inst={inst} onDone={handleDone} onClick={inst.sticky ? onCtaClick : undefined} />
+        <GhostText key={inst.id} inst={inst} onDone={handleDone} onClick={onCtaClick} />
       ))}
     </>
   );

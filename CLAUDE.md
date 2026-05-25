@@ -15,7 +15,7 @@ Canonical mandates for the Surrogate project. Follow strictly.
 ## Core Mandates
 
 ### 1. The Seeker's Journey
-- **Dormant:** High-atmosphere alley. Static bridge avatar visible. CTA: **"tap to enter construct"** (immediate).
+- **Dormant:** High-atmosphere alley. Static bridge avatar visible. Continuous random "Cheshire" phrase phasing.
 - **Terminal:** Immediate **"Greetings... Seeker"** (Charon voice). Parallel lore display.
 - **Awakened:** Lore complete → Oracle asks for frequency → Knife cards appear.
 - **Oracle:** Full conversation mode. Viseme-synced face visible.

@@ -153,19 +153,6 @@ async function testDormant(page, pass, fail) {
   if (ghostCount > 0) { pass.push('dormant: ghost transmissions spawning'); console.log('    ✓  ghost-tx elements spawning (' + ghostCount + ')'); }
   else                { fail.push('dormant: no ghost-tx elements'); console.log('    ✗  ghost-tx elements MISSING after 3s'); }
 
-  // CTA Ghost text present — wait up to 30s for 1 phrase to cycle
-  var cta = 0;
-  for (var j = 0; j < 60; j++) {
-    cta = await page.locator('.ghost-tx--cta').count();
-    if (cta > 0) break;
-    await page.waitForTimeout(500);
-  }
-  var steps = await getSteps(page);
-  var ctaStep = steps.find(function(s) { return s.label.includes('GHOST CTA SPAWNED'); });
-
-  if (cta > 0 || ctaStep) { pass.push('dormant: CTA fragment present'); console.log('    ✓  ghost-tx--cta present (or logStep confirmed)'); }
-  else         { fail.push('dormant: CTA fragment MISSING'); console.log('    ✗  ghost-tx--cta MISSING'); }
-
   // Pre-warm steps (OracleConversation MOUNTED, GEMINI WS CONNECTING etc.) now fire
   // ~600ms after page load in dormant state. Confirm they appear.
   await page.waitForTimeout(1500); // give pre-warm time to fire
@@ -231,7 +218,7 @@ async function testTerminal(page, viewport, pass, fail) {
     console.log('    ✓  step: LORE SEQUENCE COMPLETE — skipped via __oracle_skipLore (expected)');
   }
   var sAwk  = assertStep(steps, 'LORE DONE → AWAKENED',  pass, fail, 'step: LORE DONE → AWAKENED');
-             assertStep(steps, 'AWAKENED — knife',        pass, fail, 'step: AWAKENED knife visible (Gemini warm)');
+             assertStep(steps, 'ORACLE ASKS FOR FREQUENCY', pass, fail, 'step: ORACLE ASKS FOR FREQUENCY');
 
   // Order: TAP before AWAKENED
   if (sTap && sAwk) assertBefore(sTap, sAwk, pass, fail, 'TAP fires before AWAKENED');

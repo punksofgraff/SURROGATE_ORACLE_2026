@@ -21,7 +21,7 @@ Canonical knowledge base for the Gemini integration. Update when anything struct
 
 The experience follows a strict "Research -> Strategy -> Execution" flow controlled by the Oracle:
 
-1. **Dormant:** Signal materializes in the alley. Sticky CTA: **"tap to enter construct"** appears immediately.
+1. **Dormant:** Signal materializes in the alley. Atmospheric "Cheshire" phrases type and dissipate in a continuous random loop. Seekers tap the alley intuitively to enter.
 2. **Terminal (Greeting):** Tap triggers immediate **"Greetings... Seeker"** (Charon voice). Lore sequence begins.
 3. **Awakened (The Ask):** Lore finishes. Oracle asks: *"The archive fragment is complete. Now, choose the frequency that is already true."*
 4. **Oracle (The Mirror):** Seeker picks a "knife" question. Full conversation begins.

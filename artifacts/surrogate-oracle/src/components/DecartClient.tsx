@@ -31,11 +31,12 @@ export interface DecartClientHandle {
     imageUrl: string,
     videoElement: HTMLVideoElement
   ) => Promise<{ success: boolean; error?: string }>;
-  sendAudio: (audioUrl: string) => Promise<{ success: boolean; error?: string }>;
+  sendAudio: (audioSource: string | Blob) => Promise<{ success: boolean; error?: string }>;
   closeStream: () => Promise<void>;
   isStreamActive: () => boolean;
   setCallbacks: (callbacks: DecartClientCallbacks) => void;
   getDebugInfo: () => DecartDebugInfo;
+  setAvatar: (imageUrl: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
@@ -53,6 +54,9 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
     talkCount: 0,
     recentCallbacks: [],
   });
+
+  // Track active talking segments to prevent flickering during chunked streaming
+  const activeTalkSegmentsRef = useRef(0);
 
   const logCallback = useCallback((name: string) => {
     const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
@@ -97,8 +101,8 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
         debugRef.current.connectionState = 'connecting';
 
         // ⚠️  Decart SDK v0.0.63: connect() only accepts { model, onRemoteStream, initialState, customizeOffer }.
-        //     onDisconnect/onError are NOT in the Zod schema and are stripped silently.
         //     Post-connect errors and disconnections must be wired via client.on() after connect() resolves.
+        //     Model ID 'live-avatar' is the 2026 standard for audio-driven animation.
         const connectOptions = {
           model: models.realtime('live-avatar'),
           initialState: { image: imageUrl },
@@ -147,7 +151,7 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
   );
 
   const sendAudio = useCallback(
-    async (audioUrl: string): Promise<{ success: boolean; error?: string }> => {
+    async (audioSource: string | Blob): Promise<{ success: boolean; error?: string }> => {
       if (!realtimeClientRef.current || !activeRef.current) {
         return { success: false, error: 'No active Decart stream' };
       }
@@ -155,39 +159,42 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
       try {
         debugRef.current.talkCount += 1;
 
-        // Fetch the blob once — used both for playAudio and duration measurement.
-        // Avoids double-fetch and handles revocation: blob URL is consumed here and
-        // doesn't need to remain valid after this function returns.
-        const audioBlob = await fetch(audioUrl).then((r) => r.blob());
+        // Use the Blob directly if provided, otherwise fetch the URL
+        const audioBlob = audioSource instanceof Blob 
+          ? audioSource 
+          : await fetch(audioSource).then((r) => r.blob());
 
-        // Estimate speaking duration from WAV blob so we can time onTalkEnded
-        // accurately. playAudio() resolves when audio is *submitted* to Decart, not
-        // when lip-sync is *finished* — without this, the cabinet voice-pulse (and
-        // any speaking-state CSS) stops early while the avatar is still moving.
-        // WAV: 44-byte header, then 16-bit PCM samples at 24kHz.
-        // duration(s) = (blobSize - 44) / (24000 * 2)
-        // Add 400ms for Decart's own internal playback latency / lip-sync tail.
+        // Estimate speaking duration from WAV blob
         const estimatedDurationMs = Math.max(
           800,
           ((audioBlob.size - 44) / (24000 * 2)) * 1000 + 400
         );
 
-        logCallback(`onTalkStarted (#${debugRef.current.talkCount})`);
-        callbacksRef.current.onTalkStarted?.();
+        activeTalkSegmentsRef.current += 1;
+        if (activeTalkSegmentsRef.current === 1) {
+          logCallback(`onTalkStarted (#${debugRef.current.talkCount})`);
+          callbacksRef.current.onTalkStarted?.();
+        }
 
         const client = realtimeClientRef.current as { playAudio?: (b: Blob) => Promise<void> };
         if (client.playAudio) await client.playAudio(audioBlob);
 
         // Hold speaking state for the estimated lip-sync duration before signalling end.
         setTimeout(() => {
-          logCallback('onTalkEnded');
-          callbacksRef.current.onTalkEnded?.();
+          activeTalkSegmentsRef.current = Math.max(0, activeTalkSegmentsRef.current - 1);
+          if (activeTalkSegmentsRef.current === 0) {
+            logCallback('onTalkEnded');
+            callbacksRef.current.onTalkEnded?.();
+          }
         }, estimatedDurationMs);
 
         return { success: true };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        callbacksRef.current.onTalkEnded?.(); // ensure speaking state resets on error
+        activeTalkSegmentsRef.current = Math.max(0, activeTalkSegmentsRef.current - 1);
+        if (activeTalkSegmentsRef.current === 0) {
+          callbacksRef.current.onTalkEnded?.(); // ensure speaking state resets on error
+        }
         callbacksRef.current.onError?.(msg);
         return { success: false, error: msg };
       }
@@ -208,6 +215,24 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
 
   const isStreamActive = useCallback(() => activeRef.current, []);
 
+  const setAvatar = useCallback(async (imageUrl: string) => {
+    if (!realtimeClientRef.current || !activeRef.current) {
+      return { success: false, error: 'No active Decart stream' };
+    }
+    try {
+      logCallback(`setAvatar → ${imageUrl.slice(0, 40)}...`);
+      const client = realtimeClientRef.current as { setImage?: (url: string, opts: any) => Promise<void> };
+      if (client.setImage) {
+        await client.setImage(imageUrl, { enhance: true });
+      }
+      return { success: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logCallback(`setAvatar error: ${msg}`);
+      return { success: false, error: msg };
+    }
+  }, [logCallback]);
+
   const getDebugInfo = useCallback((): DecartDebugInfo => ({
     ...debugRef.current,
     streamUptimeMs: debugRef.current.streamStartedAt
@@ -222,6 +247,7 @@ const DecartClient = forwardRef<DecartClientHandle>((_, ref) => {
     isStreamActive,
     setCallbacks,
     getDebugInfo,
+    setAvatar,
   }));
 
   return null;

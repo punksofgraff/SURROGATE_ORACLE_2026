@@ -14,9 +14,9 @@
    * CABINET ANCHOR — centered, full presence, cinematic scale
    * Not pixel-matched to background photo — the cabinet IS the stage.
    */
-  --cabinet-top: 50%;      /* vertically centered — marquee above, CTA below */
-  --cabinet-left: 50%;
-  --cabinet-width: clamp(180px, 28vw, 340px);  /* was 240px min — smaller footprint */
+  --cabinet-top: 44%;
+  --cabinet-left: 50%;     /* 45% + 5pp right */
+  --cabinet-width: clamp(114px, 18vw, 214px);  /* −12% area: prev × √0.88 ≈ 0.938× */
 
   /* Animation Timings */
   --t-reveal: 1.8s;
@@ -175,6 +175,74 @@
   /* opacity is managed by useAtmosphere masterOpacity — no CSS transition needed */
 }
 
+/* ── Ghost Transmissions — Cheshire Cat signal field (dormant) ──────────
+   Absolutely positioned across the full stage; each phrase types letter-
+   by-letter then dissipates before the next appears.
+   z-index 8 = above atmosphere (5) and alley (0), below cabinet (15).   */
+.ghost-tx {
+  position: absolute;
+  z-index: 8;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(28px, 8vw, 42px);
+  color: rgba(0, 255, 136, 0.78);
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.35);
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  pointer-events: none;
+  max-width: 60vw;   /* increased width for larger text */
+  white-space: normal;
+  word-break: break-word;
+  transition: opacity 1.4s ease, filter 1.4s ease;
+}
+.ghost-tx--typing  { opacity: 0.78; filter: none; }
+.ghost-tx--holding { opacity: 0.68; filter: none; }
+.ghost-tx--fading  { opacity: 0;    filter: blur(4px) saturate(0.3); }
+
+/* ── Sticky CTA variant — appears after 7 phrases, stays permanently ────── */
+.ghost-tx--cta {
+  font-size: clamp(36px, 10vw, 56px);
+  color: rgba(0, 255, 136, 1.0);
+  text-shadow:
+    0 0 14px rgba(0, 255, 136, 0.7),
+    0 0 30px rgba(0, 255, 136, 0.3);
+  max-width: 94vw;
+  text-align: center;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 12; /* above ghost phrases (z:8) and atmosphere (z:5) */
+  /* override fading rule — CTA is always fully present once typed */
+  transition: opacity 0.4s ease, text-shadow 0.3s ease;
+}
+.ghost-tx--cta.ghost-tx--holding {
+  opacity: 1.0;
+  animation: ghost-cta-breathe 3.2s ease-in-out infinite;
+}
+@keyframes ghost-cta-breathe {
+  0%, 100% { text-shadow: 0 0 14px rgba(0, 255, 136, 0.7), 0 0 30px rgba(0, 255, 136, 0.3); }
+  50%       { text-shadow: 0 0 22px rgba(0, 255, 136, 0.95), 0 0 50px rgba(0, 255, 136, 0.55); }
+}
+.ghost-tx--cta:hover {
+  opacity: 1.0;
+  text-shadow: 0 0 22px rgba(0, 255, 136, 1.0), 0 0 55px rgba(0, 255, 136, 0.7);
+}
+/* CTA stays fully visible while it's still typing */
+.ghost-tx--cta.ghost-tx--typing { opacity: 1.0; }
+
+/* Blinking block cursor while typing */
+.ghost-tx__cur {
+  display: inline-block;
+  width: 0.55em;
+  height: 0.85em;
+  background: rgba(0, 255, 136, 0.9);
+  vertical-align: middle;
+  margin-left: 2px;
+  animation: ghost-cur-blink 0.65s steps(1) infinite;
+}
+@keyframes ghost-cur-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 /* ── Ground Fog — environmental depth anchoring the alley floor ────────── */
 .oracle-ground-fog {
   position: absolute;
@@ -220,30 +288,30 @@
 /* ── Branding ─────────────────────────────────────────────────────────── */
 .oracle-branding {
   position: absolute;
-  top: 6%;
+  top: 5%;
   left: 50%;
   transform: translateX(-50%);
   z-index: var(--z-branding);
   text-align: center;
   pointer-events: none;
   user-select: none;
-  min-height: 80px;
+  min-height: 100px;
   white-space: nowrap;
 }
 
 .oracle-title {
   font-family: 'aAnotherTag', 'Orbitron', monospace;
-  font-size: clamp(2.5rem, 6vw, 6rem);
+  font-size: clamp(4rem, 10vw, 10rem);
   font-weight: 900;
-  letter-spacing: 0.15em;
+  letter-spacing: 0.10em;
   color: #00ff88;
   margin: 0;
   text-shadow: 
-    2px 2px 0px rgba(176,38,255,0.7),
-    -2px -2px 0px rgba(234,179,8,0.7),
-    0 0 10px rgba(0,255,136,0.8),
-    0 0 30px rgba(0,255,136,0.4),
-    0 0 60px rgba(176,38,255,0.2);
+    3px 3px 0px rgba(176,38,255,0.7),
+    -3px -3px 0px rgba(234,179,8,0.7),
+    0 0 20px rgba(0,255,136,0.85),
+    0 0 50px rgba(0,255,136,0.5),
+    0 0 100px rgba(176,38,255,0.3);
   position: relative;
 }
 
@@ -263,14 +331,14 @@
 
 .oracle-subtitle {
   font-family: 'adrip1', 'Orbitron', monospace;
-  font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+  font-size: clamp(2rem, 5.5vw, 4.5rem);
   font-weight: 500;
   color: #00ff88;
-  margin: 10px 0 0;
-  letter-spacing: 0.25em;
+  margin: 20px 0 0;
+  letter-spacing: 0.20em;
   text-transform: uppercase;
-  text-shadow: 0 0 12px rgba(0,255,136,0.7);
-  opacity: 0.9;
+  text-shadow: 0 0 20px rgba(0,255,136,0.8);
+  opacity: 0.95;
   position: relative;
 }
 
@@ -283,10 +351,9 @@
   animation: branding-blast-in 0.75s ease-out both;
 }
 
-/* During knife selection (awakened state), reduce subtitle opacity so it
-   doesn't compete with the knife-section header directly below it. */
+/* During knife selection (awakened state), keep subtitle readable but secondary */
 .oracle-stage[data-oracle-state="awakened"] .oracle-subtitle {
-  opacity: 0.35;
+  opacity: 0.72;
   transition: opacity 0.4s ease;
 }
 
@@ -324,7 +391,8 @@
 }
 
 /* In oracle mode, cabinet slides up to clear the conversation panel.
-   Longer transition (0.9s) feels intentional — a rising, not a snap.       */
+   Longer transition (0.9s) feels intentional — a rising, not a snap.
+   Base is now 44% → oracle slides to 26% (18pp up, clears conversation panel). */
 .oracle-stage[data-oracle-state="oracle"] .oracle-center {
   top: 26%;
   transition: top 0.9s var(--ease-cinematic), opacity 1.4s var(--ease-cinematic);
@@ -560,9 +628,18 @@
    Pillar 3: oracle-phase oscillates opacity/blur/saturate/scale over 6.5s —
    the face assembles itself from fog and returns, endlessly.                */
 .oracle-stage[data-oracle-state="dormant"] .oracle-avatar-static {
-  opacity: 0.28;
-  filter: brightness(0.45) grayscale(0.60) blur(2px) saturate(0.4);
-  animation: oracle-phase 6.5s ease-in-out infinite;
+  opacity: 0.65;
+  filter: brightness(0.85) grayscale(0.40) blur(0.5px) saturate(0.6);
+  animation: oracle-glitch-phase 8s infinite;
+}
+
+@keyframes oracle-glitch-phase {
+  0%, 100% { opacity: 0.28; filter: blur(2.5px) brightness(0.4); transform: scale(0.98); }
+  48%       { opacity: 0.35; filter: blur(1.8px) brightness(0.5); transform: scale(0.99); }
+  50%       { opacity: 0.60; filter: blur(0.2px) brightness(1.4) contrast(1.4); transform: scale(1.03) translate(2px, -1px); }
+  52%       { opacity: 0.40; filter: blur(1px) brightness(0.7); transform: scale(1.0) translate(-2px, 1px); }
+  54%       { opacity: 0.60; filter: blur(0px) brightness(1.6); transform: scale(1.05) translate(1px, -2px); }
+  56%       { opacity: 0.32; filter: blur(2.5px) brightness(0.4); transform: scale(0.98); }
 }
 
 /* TERMINAL — Star Trek transporter beam-in. Starts microscopic, scales to full
@@ -589,11 +666,11 @@
   100% { opacity: 0.62; transform: scale(1.0)  translateX(0);  filter: brightness(0.65) grayscale(0.35) contrast(1.25);              }
 }
 
-/* AWAKENED — static portrait at full presence, pulse-zoom ready */
+/* AWAKENED — static RECEDES. Living face rises. Static is the ghost of what was. */
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-static {
-  opacity: 1;
-  filter: brightness(1.25) drop-shadow(0 0 28px rgba(0,255,136,0.7));
-  animation: avatar-zoom-breathe 2s ease-in-out infinite alternate;
+  opacity: 0.22;
+  filter: brightness(0.4) grayscale(0.5) blur(1.8px);
+  transition: opacity 1.8s var(--ease-cinematic), filter 1.8s var(--ease-cinematic);
 }
 
 /* ORACLE — static hidden. Talking face (freemium) or Decart video takes over. */
@@ -768,7 +845,8 @@
   transition: opacity 0.5s ease-out, filter 1s var(--ease-cinematic);
 }
 
-.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-video {
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-video,
+.oracle-stage[data-oracle-speaking="true"] .oracle-avatar-video {
   opacity: 1;
   pointer-events: auto;
 }
@@ -1103,6 +1181,41 @@
   mix-blend-mode: screen;
 }
 
+/* ── Exit Button ─────────────────────────────────────────────────────────── */
+.oracle-exit-btn {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: var(--z-system);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 5, 15, 0.72);
+  border: 1px solid rgba(255, 68, 68, 0.35);
+  color: rgba(255, 100, 100, 0.70);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: clamp(0.65rem, 1.2vw, 0.78rem);
+  letter-spacing: 0.15em;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: all 0.3s ease;
+  pointer-events: auto;
+}
+
+.oracle-exit-btn:hover {
+  border-color: rgba(255, 68, 68, 0.75);
+  color: #ff6464;
+  background: rgba(40, 5, 10, 0.85);
+  box-shadow: 0 0 12px rgba(255, 68, 68, 0.25);
+  transform: translateY(-1px);
+}
+
+.oracle-exit-btn svg {
+  opacity: 0.8;
+}
+
 /* ── Chromatic Reality-Tear — whole-stage aberration on activation tap ── */
 .oracle-stage[data-activating="true"] {
   animation: reality-tear 0.55s ease-out both;
@@ -1283,21 +1396,8 @@
    The signal assembles itself from fog (0→60% opacity) and returns to ether.
    Applied to oracle-avatar-static in dormant state.
    6.5s period, ease-in-out — unhurried, alien, inevitable.                  */
-@keyframes oracle-phase {
-  0%, 100% {
-    opacity: 0.28;
-    filter: blur(2px) saturate(0.4) brightness(0.40);
-    transform: scale(0.97);
-  }
-  50% {
-    opacity: 0.60;
-    filter: blur(0.3px) saturate(0.8) brightness(0.65);
-    transform: scale(1.01);
-  }
-}
-
 /* Ghost oracle — kept for potential use, but retired from dormant state in
-   favour of oracle-phase. It was too infrequent (12s) to feel alive. */
+   favour of oracle-glitch-phase. It was too infrequent (12s) to feel alive. */
 @keyframes ghost-oracle {
   /* sits dark and near-invisible most of the time */
   0%, 74%, 100% {
@@ -1581,7 +1681,20 @@
 @media (max-width: 480px) {
 
   /* ── Branding / CTA anchors ──────────────────────────────────────────── */
-  .oracle-branding   { top: 3%; }
+  .oracle-branding {
+    top: 3%;
+    white-space: normal;      /* allow wrap — prevents overflow clip on 390px */
+    width: 92vw;              /* constrain so translateX(-50%) stays in-frame */
+    left: 50%;
+  }
+  .oracle-title {
+    font-size: clamp(2rem, 9.5vw, 3rem); /* increased for impact */
+  }
+  .oracle-subtitle {
+    font-size: clamp(1rem, 4.5vw, 1.6rem);   /* increased for visibility */
+    letter-spacing: 0.18em;
+    margin-top: 6px;
+  }
   .oracle-tap-prompt { top: 21%; }
 
   /* On mobile, push the oracle face down so the gap between cabinet bottom  */
@@ -2765,3 +2878,188 @@
   white-space: pre;
 }
 
+
+/* ── Oracle Conversation v2 (Audio-First) ─────────────────────────────── */
+
+.oc-panel-v2 {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 45%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 20px;
+  background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%);
+  z-index: var(--z-oracle);
+  pointer-events: none; /* so we can click the alley behind if needed, but inner elements will override */
+}
+
+.oc-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  pointer-events: auto;
+  margin-bottom: 20px;
+}
+
+.oc-mic-trigger {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: rgba(0, 255, 136, 0.1);
+  border: 2px solid rgba(0, 255, 136, 0.4);
+  color: #00ff88;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.oc-mic-trigger:hover {
+  background: rgba(0, 255, 136, 0.2);
+  border-color: rgba(0, 255, 136, 0.8);
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+}
+
+.oc-mic-label {
+  position: absolute;
+  bottom: -25px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+
+.oc-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(0, 255, 136, 0.1);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  border-radius: 20px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+  color: #00ff88;
+  letter-spacing: 0.1em;
+}
+
+.oc-log {
+  flex: 1;
+  width: 100%;
+  max-width: 600px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 20%);
+}
+
+.oc-turn {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  padding: 10px 15px;
+  border-radius: 8px;
+  max-width: 85%;
+}
+
+.oc-turn-oracle {
+  align-self: flex-start;
+  background: rgba(0, 255, 136, 0.05);
+  border-left: 2px solid #00ff88;
+  color: #fff;
+  text-shadow: 0 0 5px rgba(0, 255, 136, 0.3);
+}
+
+.oc-turn-user {
+  align-self: flex-end;
+  background: rgba(176, 38, 255, 0.05);
+  border-right: 2px solid #b026ff;
+  color: rgba(255,255,255,0.8);
+  text-align: right;
+}
+
+.oc-signal-pad {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: auto;
+  z-index: 100;
+}
+
+.oc-signal-pad-toggle {
+  background: rgba(0,0,0,0.6);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  color: #00ff88;
+  padding: 8px 12px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+}
+
+.oc-signal-pad-toggle:hover {
+  border-color: #00ff88;
+  background: rgba(0, 255, 136, 0.1);
+}
+
+.oc-signal-input-wrap {
+  display: flex;
+  gap: 8px;
+  background: rgba(0,0,0,0.8);
+  border: 1px solid #00ff88;
+  padding: 10px;
+  border-radius: 8px;
+  width: 300px;
+  box-shadow: 0 0 30px rgba(0,0,0,0.5);
+}
+
+.oc-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.oc-send-btn {
+  background: #00ff88;
+  color: #000;
+  border: none;
+  padding: 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 480px) {
+  .oc-panel-v2 { height: 50%; }
+  .oc-signal-pad { bottom: 10px; right: 10px; }
+  .oc-signal-input-wrap { width: calc(100vw - 40px); }
+  .oc-mic-trigger { width: 60px; height: 60px; }
+  .oc-turn { font-size: 0.8rem; }
+}

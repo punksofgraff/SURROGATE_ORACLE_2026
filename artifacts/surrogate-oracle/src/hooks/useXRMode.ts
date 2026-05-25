@@ -79,11 +79,13 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   const startCamera = useCallback(async () => {
     if (streamRef.current) return; // already running
     try {
+      // AR oracle = selfie mode: front camera so the Surrogate appears in front of the user.
+      // (HolodeXR poster scanning uses its own native camera pipeline, not this stream.)
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          facingMode: { ideal: 'user' },
+          width: { ideal: 1280 },
+          height: { ideal: 1280 },
         },
         audio: false,
       });

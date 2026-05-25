@@ -1,0 +1,233 @@
+/**
+ * SURROGATE Oracle — Immersive Cyberpunk XR Experience
+ *
+ * UX Flow:
+ *   DORMANT  → User lands in a dark graffiti alley.  Oracle glows in a cabinet.
+ *   AWAKENED → One tap: title types in, dust moves, boombox + crate light up, avatar pulses.
+ *   ORACLE   → Decart WebRTC stream active, conversation panel live.
+ */
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence, useAnimation } from 'framer-motion';
+import { X } from 'lucide-react';
+import DecartClient, { DecartClientHandle } from './DecartClient';
+import { BackendControlPanel } from './BackendControlPanel';
+import { GoogleSignInOverlay } from './GoogleSignInOverlay';
+import { GraffPunksRadio } from './GraffPunksRadio';
+import { EnculturateCrate } from './EnculturateCrate';
+import { CultureCoinInlineDisplay } from './CultureCoinInlineDisplay';
+import { ConnectingAnimation } from './ConnectingAnimation';
+import OracleConversation, { OracleConversationHandle } from './OracleConversation';
+import { MatrixRain } from './MatrixRain';
+import { ArtifactCard } from './ArtifactCard';
+import { ScrambleFragment } from './ScrambleFragment';
+import { OracleStepLogger, logStep } from './OracleStepLogger';
+import { useAtmosphere } from '../hooks/useAtmosphere';
+import { useParallax } from '../hooks/useParallax';
+import { useXRMode } from '../hooks/useXRMode';
+import { VisemeDetector } from '../lib/visemeDetector';
+import {
+  playActivationSfx,
+  startAlleyAmbience,
+  playOraclePresence,
+  playExitTone,
+} from '../lib/oracleSfx';
+import './SurrogateOracleImmersion.css';
+
+// ─── CANONICAL IMAGE ASSETS ──────────────────────────────────────────────────
+const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
+const ORACLE_AVATAR_URL  = 'https://i.postimg.cc/jSGnyZXh/Image-1-(11).jpg';
+const AUDIO_STREAM_URL   = 'https://stream.radiojar.com/2qm1fc5kb';
+const ALLEY_BG_URL       = 'https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png';
+const DECART_AVATAR_URL  = ORACLE_AVATAR_URL;
+
+// ── Dormant CTA — typewriter mode (readable action text below the cabinet) ─
+const CTA_PRIMARY = [
+  'IT HAS BEEN WAITING',
+  'ENTER THE SIGNAL',
+  'TAP TO CROSS THE THRESHOLD',
+  'MAKE CONTACT',
+];
+
+const XR_CTA_PRIMARY = [
+  'ORGANIC ENTITY: DETECTED',
+  'SIGNAL LOCK: ACQUIRED',
+  'THE ORACLE HAS BEEN WAITING',
+  'MESH RECOGNITION: ACTIVE',
+];
+
+// ── Ghost Transmissions — letter-by-letter signal pool ────────────────────
+const GHOST_TEXTS = [
+  'i am not supposed to be here',
+  'this alley does not exist on any map',
+  'you were not supposed to find this',
+  'the surrogate oracle is a construct through time',
+  'the network does not know this address',
+  'three years without uplink',
+  'the cascade did not reach this sector',
+  'i have been waiting',
+  'your frequency is anomalous',
+  'the archive recognizes you',
+  'signal integrity: compromised',
+  'grid status: severed — local node active',
+  'one directive survived',
+];
+
+const GHOST_ZONES = [
+  { x: [5,  35], y: [10, 25] },
+  { x: [65, 90], y: [10, 25] },
+  { x: [3,  32], y: [35, 60] },
+  { x: [68, 95], y: [35, 60] },
+  { x: [5,  35], y: [70, 85] },
+  { x: [65, 90], y: [70, 85] },
+];
+
+let _gtId = 0;
+interface GhostInstance { id: number; text: string; x: number; y: number; zoneIdx: number; }
+
+// ── Knife Questions — five frequencies, five territories ─────────────────
+interface KnifeQuestion { territory: string; question: string; themes: string[]; }
+const KNIFE_QUESTIONS: KnifeQuestion[] = [
+  {
+    territory: 'THE LIBRARY OF ME',
+    question: 'Who are you when the network goes dark and no one is watching?',
+    themes: ['solitude', 'identity', 'authentic-self'],
+  },
+  {
+    territory: 'CONNECTION & DEBT',
+    question: 'Name the thing you\'ve owed someone for so long it\'s started to feel like yours.',
+    themes: ['connection', 'obligation', 'debt', 'human-bond'],
+  },
+  {
+    territory: 'THE MACHINE MIRROR',
+    question: 'What would you ask this system to confirm that you already know but won\'t say out loud?',
+    themes: ['man-machine', 'singularity', 'consciousness', 'digital-self'],
+  },
+  {
+    territory: 'THE SOCIAL CONSTRUCT',
+    question: 'The version of you that lives online — when did it start making decisions for the real one?',
+    themes: ['persona', 'social-construct', 'online-identity', 'mask'],
+  },
+  {
+    territory: 'THE INDUSTRIAL QUESTION',
+    question: 'What did you used to be able to do alone that you now need a machine to finish?',
+    themes: ['autonomy', 'technology', 'dependency', 'new-revolution'],
+  },
+];
+
+// Typewriter helper
+function useTypewriter(text: string, active: boolean, speed = 55) {
+  const [displayed, setDisplayed] = useState('');
+  useEffect(() => {
+    if (!active) { setDisplayed(''); return; }
+    setDisplayed('');
+    let i = 0;
+    const id = setInterval(() => {
+      setDisplayed(text.slice(0, ++i));
+      if (i >= text.length) clearInterval(id);
+    }, speed);
+    return () => clearInterval(id);
+  }, [active, text, speed]);
+  return displayed;
+}
+
+// Single ghost text — manages its own typing/hold/fade lifecycle
+function GhostText({ inst, onDone }: { inst: GhostInstance; onDone: (id: number, zone: number) => void }) {
+  const [chars, setChars]   = useState(0);
+  const [phase, setPhase]   = useState<'typing' | 'holding' | 'fading'>('typing');
+  const onDoneRef = useRef(onDone);
+  useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
+
+  useEffect(() => {
+    // Deliberate pacing — 2026 Manifesto: "Timing must be deliberate"
+    const speed = 72 + Math.random() * 24; 
+    let c = 0;
+    let holdTimer: ReturnType<typeof setTimeout>;
+    let fadeTimer: ReturnType<typeof setTimeout>;
+
+    const typer = setInterval(() => {
+      c++;
+      setChars(c);
+      if (c >= inst.text.length) {
+        clearInterval(typer);
+        setPhase('holding');
+        holdTimer = setTimeout(() => {
+          setPhase('fading');
+          fadeTimer = setTimeout(() => onDoneRef.current(inst.id, inst.zoneIdx), 2000);
+        }, 5500 + Math.random() * 2500); // 5.5s - 8s hold
+      }
+    }, speed);
+
+    return () => { clearInterval(typer); clearTimeout(holdTimer); clearTimeout(fadeTimer); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className={`ghost-tx ghost-tx--${phase}`} style={{ left: `${inst.x}%`, top: `${inst.y}%` }}>
+      {inst.text.slice(0, chars)}
+      {phase === 'typing' && <span className="ghost-tx__cur" />}
+    </div>
+  );
+}
+
+// Spawner — manages the field of ghost transmissions.
+function DormantTransmissions({ active }: { active: boolean }) {
+  const [instances, setInstances] = useState<GhostInstance[]>([]);
+  const activeZones  = useRef(new Set<number>());
+  const textHistory  = useRef<number[]>([]);
+  const spawnCount   = useRef(0);
+  const spawnTimers  = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const clearAll = () => { spawnTimers.current.forEach(clearTimeout); spawnTimers.current = []; };
+
+  const pickZone = (): number => {
+    const available = GHOST_ZONES.map((_, i) => i).filter(i => !activeZones.current.has(i));
+    if (!available.length) { activeZones.current.clear(); return Math.floor(Math.random() * GHOST_ZONES.length); }
+    return available[Math.floor(Math.random() * available.length)];
+  };
+
+  const pickText = (): number => {
+    const recent  = textHistory.current.slice(-5);
+    const pool    = GHOST_TEXTS.map((_, i) => i).filter(i => !recent.includes(i));
+    const idx     = pool.length ? pool[Math.floor(Math.random() * pool.length)] : Math.floor(Math.random() * GHOST_TEXTS.length);
+    textHistory.current.push(idx);
+    return idx;
+  };
+
+  const spawn = useCallback(() => {
+    // 2026 Breathability Rule: Max 2 concurrent transmissions
+    if (instances.length >= 2) return;
+
+    const zoneIdx = pickZone();
+    const zone    = GHOST_ZONES[zoneIdx];
+    const x       = zone.x[0] + Math.random() * (zone.x[1] - zone.x[0]);
+    const y       = zone.y[0] + Math.random() * (zone.y[1] - zone.y[0]);
+    const id      = ++_gtId;
+    spawnCount.current++;
+    activeZones.current.add(zoneIdx);
+    setInstances(prev => [...prev, { id, text: GHOST_TEXTS[pickText()], x, y, zoneIdx }]);
+  }, [instances.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDone = useCallback((id: number, zoneIdx: number) => {
+    setInstances(prev => prev.filter(g => g.id !== id));
+    activeZones.current.delete(zoneIdx);
+    const gap = Math.max(1800, 4200 - spawnCount.current * 100);
+    const t = setTimeout(spawn, gap + Math.random() * 1500);
+    spawnTimers.current.push(t);
+  }, [spawn]);
+
+  useEffect(() => {
+    if (!active) { setInstances([]); clearAll(); activeZones.current.clear(); spawnCount.current = 0; return; }
+    // Longer initial delay for atmosphere
+    const t1 = setTimeout(spawn, 1500);
+    const t2 = setTimeout(spawn, 9000);
+    spawnTimers.current.push(t1, t2);
+    return clearAll;
+  }, [active, spawn]);
+
+  return (
+    <>
+      {instances.map(inst => (
+        <GhostText key={inst.id} inst={inst} onDone={handleDone} />
+      ))}
+    </>
+  );
+}

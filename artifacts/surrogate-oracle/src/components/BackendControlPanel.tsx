@@ -515,9 +515,14 @@ export const BackendControlPanel = ({
                     <>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
                         <StatusBadge
-                          label={geminiInfo.wsState}
-                          ok={geminiInfo.wsState === 'OPEN'}
-                          warn={geminiInfo.wsState === 'CONNECTING'}
+                          label={
+                            geminiInfo.wsState === 0 ? 'CONNECTING' :
+                            geminiInfo.wsState === 1 ? 'OPEN' :
+                            geminiInfo.wsState === 2 ? 'CLOSING' :
+                            geminiInfo.wsState === 3 ? 'CLOSED' : 'UNKNOWN'
+                          }
+                          ok={geminiInfo.wsState === 1}
+                          warn={geminiInfo.wsState === 0 || geminiInfo.wsState === 2}
                         />
                         <StatusBadge
                           label="FREE API"

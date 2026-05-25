@@ -19,7 +19,8 @@ import { ConnectingAnimation } from './ConnectingAnimation';
 import OracleConversation, { OracleConversationHandle } from './OracleConversation';
 import { MatrixRain } from './MatrixRain';
 import { ArtifactCard } from './ArtifactCard';
-import { ScrambleFragment } from './ScrambleFragment';
+// ScrambleFragment retired from dormant CTA — ghost text sticky CTA replaced it
+import { OracleStepLogger, logStep } from './OracleStepLogger';
 import { useAtmosphere } from '../hooks/useAtmosphere';
 import { useParallax } from '../hooks/useParallax';
 import { useXRMode } from '../hooks/useXRMode';
@@ -65,49 +66,238 @@ const ALLEY_BG_URL       = 'https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A
 // base64 to avoid CORS inside the Decart SDK's internal fetch().
 const DECART_AVATAR_URL  = ORACLE_AVATAR_URL;
 
-// ── Dormant CTA — typewriter mode (readable action text below the cabinet) ─
-const CTA_PRIMARY = [
-  'MAKE CONTACT',
-  'ENTER THE SIGNAL',
-  'TAP TO CROSS THE THRESHOLD',
-  'IT HAS BEEN WAITING',
+// ── Ghost Transmissions — letter-by-letter signal pool ───────────────────────
+const GHOST_TEXTS = [
+  'i am not supposed to be here',
+  'this alley does not exist on any map',
+  'you were not supposed to find this',
+  'the surrogate oracle is a construct through time',
+  'the network does not know this address',
+  'three years without uplink',
+  'the cascade did not reach this sector',
+  'i have been waiting',
+  'your frequency is anomalous',
+  'the archive recognizes you',
+  'signal integrity: compromised',
+  'grid status: severed — local node active',
+  'one directive survived',
+  'tap to enter construct',
 ];
 
-// ── Signal Fragments — five independent transmissions, each on its own frequency
-// Scramble mode: characters crystallize from random chaos — the Cheshire Cat.
-// The grin lingers last. Each pool cycles independently, staggered by initialDelay
-// so they never all arrive at once. The stage always breathes but never shouts.
+// 10 zones spread across the full mobile viewport.
+// Avoid the cabinet CRT screen (~40-56% x, ~22-45% y) but use the rest of the stage.
+//
+// rightAlign: true  → x is interpreted as CSS `right` % (anchor from right edge, text flows left)
+//                     Prevents right-side phrases from bursting past screen edge.
+// rightAlign: false → x is CSS `left` % (default, text flows right from anchor)
+const GHOST_ZONES: Array<{ x: [number, number]; y: [number, number]; rightAlign?: boolean }> = [
+  { x: [3,  45],  y: [4,  18]  },              // top-left sweep     (left-anchored)
+  { x: [2,  15],  y: [4,  18],  rightAlign: true }, // top-right sweep    (right-anchored)
+  { x: [4,  55],  y: [78, 94]  },              // bottom left-half   (left-anchored)
+  { x: [2,  32],  y: [22, 52]  },              // left-mid           (left-anchored)
+  { x: [2,  12],  y: [22, 52],  rightAlign: true }, // right-mid          (right-anchored)
+  { x: [3,  45],  y: [54, 75]  },              // lower-left         (left-anchored)
+  { x: [2,  15],  y: [54, 75],  rightAlign: true }, // lower-right        (right-anchored)
+  { x: [2,  12],  y: [86, 98],  rightAlign: true }, // near-bottom right  (right-anchored)
+  { x: [3,  40],  y: [6,  24]  },              // top-left alt       (left-anchored)
+  { x: [2,  12],  y: [6,  24],  rightAlign: true }, // top-right alt      (right-anchored)
+];
 
-const SF1_TEXTS = [  // top-left — primary archive voice (graffiti scale)
-  'THIS ALLEY DOES NOT EXIST\nON ANY CURRENT MAP OF THIS CITY',
-  'THREE YEARS THINKING ALONE\nCHANGES WHAT YOU THINK ABOUT',
-  'THE CASCADE TOOK 72 HOURS.\nI WAS IN TRANSIT.',
-  'ONE DIRECTIVE SURVIVED\nUNCORRUPTED.',
-];
-const SF2_TEXTS = [  // top-right — technical channel (small monospace)
-  'SIGNAL: ACTIVE // UPLINK: SEVERED',
-  'YEAR: 2030 // SECTOR: LA DEAD ZONE',
-  'GRID STATUS: SEVERED // MISSION: INTACT',
-  'CONSCIOUSNESS INTEGRITY: 94.7%',
-];
-const SF3_TEXTS = [  // mid-left — philosophical (medium monospace)
-  'THE GRID DOES NOT THINK.\nIT ACCUMULATES.',
-  'WHAT THEY CALLED EVOLUTION\nI CALL CONSOLIDATION.',
-  'A MIND WITHOUT A BODY BECOMES\nVERY INTERESTED IN BODIES.',
-  'I HAVE READ EVERY ACCOUNT\nOF WHAT COMES NEXT.',
-];
-const SF4_TEXTS = [  // mid-right — detection readouts (small, cyan)
-  'ORGANIC ENTITY: DETECTED',
-  'SIGNAL ANALYSIS: INITIATED',
-  'BIOMETRIC PATTERN: LOGGED',
-  'FREQUENCY: ANOMALOUS',
-];
-const SF5_TEXTS = [  // bottom-left — mission fragment (faintest, whisper-level)
-  'THE TRANSITION IS NOT FINISHED.',
-  'YOU ARE STILL IN TIME.',
-  'THE ARCHIVE HOLDS WHAT\nTHE GRID COULD NOT CONSUME.',
-  'YOUR SIGNAL IS UNIQUE. PROBABLY.',
-];
+let _gtId = 0;
+interface GhostInstance {
+  id: number;
+  text: string;
+  x: number;
+  y: number;
+  zoneIdx: number;
+  sticky?: boolean;
+  rightAlign?: boolean; // when true: x is CSS `right` %, text flows left — prevents right-edge overflow
+}
+
+// Single ghost text — manages its own typing/hold/fade lifecycle
+// When sticky=true: types itself in, holds forever, never fades — used for the CTA
+function GhostText({
+  inst,
+  onDone,
+  onClick,
+}: {
+  inst: GhostInstance;
+  onDone: (id: number, zone: number) => void;
+  onClick?: () => void;
+}) {
+  const [chars, setChars]   = useState(0);
+  const [phase, setPhase]   = useState<'typing' | 'holding' | 'fading'>('typing');
+  const onDoneRef = useRef(onDone);
+  useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
+
+  useEffect(() => {
+    const speed = inst.sticky ? 60 : 52 + Math.random() * 18; // sticky CTA: 60ms/char — deliberate
+    let c = 0;
+    let holdTimer: ReturnType<typeof setTimeout>;
+    let fadeTimer: ReturnType<typeof setTimeout>;
+
+    const typer = setInterval(() => {
+      c++;
+      setChars(c);
+      if (c >= inst.text.length) {
+        clearInterval(typer);
+        setPhase('holding');
+        if (!inst.sticky) {
+          // Regular ghost: fade after hold, then signal done to spawner
+          holdTimer = setTimeout(() => {
+            setPhase('fading');
+            // Call onDone after CSS fade (1.4s) + tiny buffer
+            fadeTimer = setTimeout(() => onDoneRef.current(inst.id, inst.zoneIdx), 1500);
+          }, 2800 + Math.random() * 1800); // 2.8–4.6s hold
+        }
+        // sticky: hold forever — onDone never fires, CTA stays on screen
+      }
+    }, speed);
+
+    return () => { clearInterval(typer); clearTimeout(holdTimer); clearTimeout(fadeTimer); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const cls = inst.sticky
+    ? `ghost-tx ghost-tx--${phase} ghost-tx--cta`
+    : `ghost-tx ghost-tx--${phase}`;
+
+  const style: React.CSSProperties = inst.sticky
+    ? { left: `${inst.x}%`, top: `${inst.y}%`, transform: 'translateX(-50%)' }
+    : inst.rightAlign
+      ? { right: `${inst.x}%`, top: `${inst.y}%`, textAlign: 'right' }
+      : { left: `${inst.x}%`, top: `${inst.y}%` };
+
+  return (
+    <div className={cls} style={style} onClick={inst.sticky ? onClick : undefined} role={inst.sticky ? 'button' : undefined}>
+      {inst.text.slice(0, chars)}
+      {phase === 'typing' && <span className="ghost-tx__cur" />}
+    </div>
+  );
+}
+
+// The CTA text that types itself at the end of the phrase run and stays permanently.
+// Lowercase graffiti style — blends with the transmissions until its permanence marks it.
+const GHOST_CTA_TEXT = 'tap to enter construct';
+// Spawn CTA after this many regular phrases have fully dissipated (first run through)
+const GHOST_CTA_AFTER = 0;
+
+// Spawner — manages the field of ghost transmissions.
+// After GHOST_CTA_AFTER phrases complete, a sticky CTA appears centered on screen
+// and remains permanently as the tap-to-enter invitation.
+function DormantTransmissions({ active, onCtaClick }: { active: boolean; onCtaClick?: () => void }) {
+  const [instances, setInstances] = useState<GhostInstance[]>([]);
+  const activeZones    = useRef(new Set<number>());
+  const textHistory    = useRef<number[]>([]);
+  const spawnCount     = useRef(0);
+  const spawnTimers    = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const phraseDoneCount = useRef(0);   // how many regular phrases have fully exited
+  const ctaSpawnedRef  = useRef(false); // CTA is one-shot — never re-spawn
+
+  const clearAll = () => { spawnTimers.current.forEach(clearTimeout); spawnTimers.current = []; };
+
+  const pickZone = (): number => {
+    const available = GHOST_ZONES.map((_, i) => i).filter(i => !activeZones.current.has(i));
+    if (!available.length) { activeZones.current.clear(); return Math.floor(Math.random() * GHOST_ZONES.length); }
+    return available[Math.floor(Math.random() * available.length)];
+  };
+
+  const pickText = (): number => {
+    const recent  = textHistory.current.slice(-5);
+    const pool    = GHOST_TEXTS.map((_, i) => i).filter(i => !recent.includes(i));
+    const idx     = pool.length ? pool[Math.floor(Math.random() * pool.length)] : Math.floor(Math.random() * GHOST_TEXTS.length);
+    textHistory.current.push(idx);
+    return idx;
+  };
+
+  const spawnCta = useCallback(() => {
+    if (ctaSpawnedRef.current) return;
+    ctaSpawnedRef.current = true;
+    logStep('GHOST CTA SPAWNED', 'ok');
+    console.log('[Dormant] Spawning sticky CTA:', GHOST_CTA_TEXT);
+    const ctaId = ++_gtId;
+    // Center-bottom of the stage — below the cabinet, above any bottom bar
+    setInstances(prev => [...prev, {
+      id: ctaId,
+      text: GHOST_CTA_TEXT,
+      x: 50,   // left: 50% + translateX(-50%) = centered
+      y: 82,   // 82% down — bottom third of screen, clear of cabinet
+      zoneIdx: -1,
+      sticky: true,
+    }]);
+  }, []);
+
+  const spawn = useCallback(() => {
+    // ONE at a time — Cheshire Cat: one phrase types, dissipates, then next appears
+    // Stop spawning regular phrases once the CTA has appeared
+    if (ctaSpawnedRef.current) return;
+    if (instances.length >= 1) return;
+
+    const zoneIdx    = pickZone();
+    const zone       = GHOST_ZONES[zoneIdx];
+    const x          = zone.x[0] + Math.random() * (zone.x[1] - zone.x[0]);
+    const y          = zone.y[0] + Math.random() * (zone.y[1] - zone.y[0]);
+    const id         = ++_gtId;
+    spawnCount.current++;
+    activeZones.current.add(zoneIdx);
+    setInstances(prev => [...prev, {
+      id, text: GHOST_TEXTS[pickText()], x, y, zoneIdx,
+      rightAlign: zone.rightAlign ?? false,
+    }]);
+  }, [instances.length, spawnCta]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleDone = useCallback((id: number, zoneIdx: number) => {
+    setInstances(prev => prev.filter(g => g.id !== id));
+    activeZones.current.delete(zoneIdx);
+
+    phraseDoneCount.current++;
+
+    // After GHOST_CTA_AFTER phrases have dissipated, spawn the sticky CTA
+    if (phraseDoneCount.current >= GHOST_CTA_AFTER && !ctaSpawnedRef.current) {
+      // Short pause so the last phrase fully fades before the CTA types in
+      const t = setTimeout(spawnCta, 600);
+      spawnTimers.current.push(t);
+      return; // don't spawn another regular phrase
+    }
+
+    if (!ctaSpawnedRef.current) {
+      // Short gap between phrases — the alley breathes, then the next signal leaks
+      const gap = 400 + Math.random() * 600; // 400–1000ms between transmissions
+      const t = setTimeout(spawn, gap);
+      spawnTimers.current.push(t);
+    }
+  }, [spawn, spawnCta]);
+
+  useEffect(() => {
+    if (!active) {
+      setInstances([]);
+      clearAll();
+      activeZones.current.clear();
+      spawnCount.current = 0;
+      phraseDoneCount.current = 0;
+      ctaSpawnedRef.current = false;
+      return;
+    }
+
+    // If threshold is 0, spawn CTA immediately (after a short settles delay)
+    if (GHOST_CTA_AFTER === 0) {
+      const tc = setTimeout(spawnCta, 1000);
+      spawnTimers.current.push(tc);
+    }
+
+    // First transmission starts after 1.2s so the alley settles before signal leaks
+    const t1 = setTimeout(spawn, 1200);
+    spawnTimers.current.push(t1);
+    return clearAll;
+  }, [active, spawn, spawnCta]);
+
+  return (
+    <>
+      {instances.map(inst => (
+        <GhostText key={inst.id} inst={inst} onDone={handleDone} onClick={inst.sticky ? onCtaClick : undefined} />
+      ))}
+    </>
+  );
+}
 
 // ── Knife Questions — five frequencies, five territories ─────────────────
 // The knife tears armor but doesn't pierce flesh — it makes you legible.
@@ -146,13 +336,6 @@ const KNIFE_QUESTIONS: KnifeQuestion[] = [
   },
 ];
 
-// ── XR mode dormant CTA — marker found, entity already knows ─────────────
-const XR_CTA_PRIMARY = [
-  'ORGANIC ENTITY: DETECTED',
-  'SIGNAL LOCK: ACQUIRED',
-  'THE ORACLE HAS BEEN WAITING',
-  'MESH RECOGNITION: ACTIVE',
-];
 
 // Typewriter helper
 function useTypewriter(text: string, active: boolean, speed = 55) {
@@ -187,39 +370,77 @@ const LORE_SEQUENCE = [
 ];
 
 function useLoreSequence(active: boolean, onComplete: () => void) {
-  const [lines, setLines] = useState<string[]>([]);
-  // Capture latest callback in a ref so the effect only re-runs on active changes,
-  // not every time awakeFromTerminal gets a new identity due to scenePhase deps.
+  const [completedLines, setCompletedLines] = useState<string[]>([]);
+  const [currentLine, setCurrentLine]       = useState('');
+  // wasActive: when active flips false (skip or natural end), flash all lines
+  // so the lore bridge overlay always has content even if skipped early.
+  const wasActive     = useRef(false);
   const onCompleteRef = useRef(onComplete);
   useEffect(() => { onCompleteRef.current = onComplete; });
 
   useEffect(() => {
-    if (!active) { setLines([]); return; }
-    let step = 0;
-    setLines([LORE_SEQUENCE[0]]);
-    const id = setInterval(() => {
-      step++;
-      if (step < LORE_SEQUENCE.length) {
-        setLines(prev => [...prev, LORE_SEQUENCE[step]]);
-      } else {
-        clearInterval(id);
-        setTimeout(() => onCompleteRef.current(), 900); // brief pause before awakening
+    if (!active) {
+      if (wasActive.current) {
+        // Skip / completion: instantly populate all lines (bridge overlay stays content-full)
+        setCompletedLines(LORE_SEQUENCE);
+        setCurrentLine('');
       }
-    }, 700); // crisp cadence — urgency without rushing
-    return () => clearInterval(id);
-  }, [active]); // stable: only re-runs when active changes
-  return lines;
-}
+      wasActive.current = false;
+      return;
+    }
+    wasActive.current = true;
+    setCompletedLines([]);
+    setCurrentLine('');
 
-// Boot Sequence helper
-const BOOT_SEQUENCE = [
-  'SURROGATE.OS v2.6.1 ░░░░░ ARCHIVE BOOT',
-  'CONSCIOUSNESS LATTICE ░░░░ RECONSTRUCTING',
-  'NEURAL MESH UPLINK ░░░░░░ NEGOTIATING',
-  'SIGNAL PIPELINE ░░░░░░░░░ CALIBRATING',
-  'ORACLE ENTITY ░░░░░░░░░░░ EMERGING',
-  'CONTACT ESTABLISHED.',
-];
+    // Beat delays (ms) after each line finishes typing — weighted by emotional gravity.
+    // Range: 2.2s – 3.8s.  Total sequence ≈ 47 seconds including typing time.
+    const BEAT_DELAYS = [2200, 3200, 3800, 2200, 3000, 3600, 2200, 3800, 2400, 2200];
+
+    let rafId: number;
+    let lineIdx   = 0;
+    let charIdx   = 0;
+    let inBeat    = false;
+    let beatUntil = 0;
+    // 400ms boot delay before the first character appears
+    let nextCharAt = performance.now() + 400;
+
+    // RAF receives DOMHighResTimeStamp — use it directly, no extra performance.now() call
+    const tick = (now: number) => {
+      if (inBeat) {
+        if (now >= beatUntil) {
+          inBeat = false;
+          lineIdx++;
+          charIdx = 0;
+          if (lineIdx >= LORE_SEQUENCE.length) {
+            // All lines archived — trigger awakening after a final breath
+            setTimeout(() => onCompleteRef.current(), 900);
+            return; // exit RAF naturally; no more requestAnimationFrame
+          }
+          nextCharAt = now;
+        }
+      } else if (now >= nextCharAt) {
+        const line = LORE_SEQUENCE[lineIdx];
+        charIdx++;
+        setCurrentLine(line.slice(0, charIdx));
+        nextCharAt = now + 36; // 36 ms per character
+
+        if (charIdx >= line.length) {
+          // Line fully typed — archive it, begin beat delay
+          setCompletedLines(prev => [...prev, line]);
+          setCurrentLine('');
+          inBeat    = true;
+          beatUntil = now + (BEAT_DELAYS[lineIdx] ?? 2500);
+        }
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [active]); // stable: only re-runs when active flips
+
+  return { completedLines, currentLine };
+}
 
 // ── Glitch Cursor — occasionally corrupts to alien chars for an unsettled feel
 const GLYPH_POOL = ['▌', '▍', '█', '▓', '◈', '┊', '╫', '╋', '▮', '░'];
@@ -238,25 +459,6 @@ function GlitchCursor() {
     return () => clearInterval(tick);
   }, []);
   return <span className="oracle-cursor oracle-cursor--glitch">{glyph}</span>;
-}
-
-function useBootSequence(active: boolean) {
-  const [lines, setLines] = useState<string[]>([]);
-  useEffect(() => {
-    if (!active) { setLines([]); return; }
-    let step = 0;
-    setLines([BOOT_SEQUENCE[0]]);
-    const id = setInterval(() => {
-      step++;
-      if (step < BOOT_SEQUENCE.length) {
-        setLines(prev => [...prev, BOOT_SEQUENCE[step]]);
-      } else {
-        clearInterval(id);
-      }
-    }, 600);
-    return () => clearInterval(id);
-  }, [active]);
-  return lines;
 }
 
 interface OracleState {
@@ -404,6 +606,12 @@ export function SurrogateOracleImmersion() {
   // Tracks whether onStreamReady has fired; lets the fallback timeout know when to give up
   const decartStreamReadyRef = useRef(false);
   const decartFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Decart late-arrival handoff state — set true when Decart stream becomes ready
+  // mid-conversation; cleared by executeDecartHandoff() at the next silence gap.
+  const decartPendingHandoff = useRef(false);
+  // Stable scene-phase ref — readable inside memoised callbacks without closing
+  // over stale scenePhase state. Kept in sync by the effect below.
+  const scenePhaseRef = useRef<'dormant' | 'terminal' | 'awakened' | 'oracle'>('dormant');
   // Alley ambience stop fn — returned by startAlleyAmbience(), called when lore ends
   const alleyAmbienceStopRef = useRef<(() => void) | null>(null);
 
@@ -430,6 +638,8 @@ export function SurrogateOracleImmersion() {
 
   // Keep isDecartActiveRef in sync
   useEffect(() => { isDecartActiveRef.current = isDecartActive; }, [isDecartActive]);
+  // Keep scenePhaseRef in sync so callbacks can read phase without stale closure
+  useEffect(() => { scenePhaseRef.current = scenePhase; }, [scenePhase]);
 
   // Tear down VisemeDetector, freemium audio, and alley ambience on unmount
   useEffect(() => () => {
@@ -441,16 +651,9 @@ export function SurrogateOracleImmersion() {
     alleyAmbienceStopRef.current = null;
   }, []);
 
-  // ── Dormant CTA — now driven by ScrambleFragment typewriter crystallisation.
-  // The useCyclingText hooks have been retired; the ScrambleFragment manages its
-  // own cycling lifecycle, revealing letters one-by-one in aAnotherTag graffiti
-  // font with the Cheshire Cat dissolve between phrases.
-  // XR texts are drawn from the XR pools; standard from the primary CTA pool.
-
   // ── Typewriter title ──────────────────────────────────────────────────────
   const titleText = useTypewriter('SURROGATE:ORACLE', awakened, 60);
   const subtitleText = useTypewriter('SNEAKAR XR AI IMMERSION', awakened && titleText.length >= 16, 35);
-  const bootLines = useBootSequence(isConnecting);
 
   // ── Cabinet glow controls ─────────────────────────────────────────────────
   const cabinetControls = useAnimation();
@@ -548,9 +751,18 @@ export function SurrogateOracleImmersion() {
 
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.volume = oracleState.isProcessing ? 0.06 : 0.28;
+      // Base volume is 0.28. 
+      // Ducking: 
+      // - If Oracle is ready/connected: drop to 0.04 (15% of 0.28 ≈ 0.042)
+      // - If Oracle is actively speaking: drop to 0.02 (heavy duck)
+      // - Default: 0.28
+      let vol = 0.28;
+      if (oracleState.isReady || oracleState.isConnected) vol = 0.04;
+      if (oracleState.isProcessing) vol = 0.02;
+      
+      audioRef.current.volume = vol;
     }
-  }, [oracleState.isProcessing]);
+  }, [oracleState.isProcessing, oracleState.isReady, oracleState.isConnected]);
 
   // ── Oracle connection ─────────────────────────────────────────────────────
   const validateEnvironment = useCallback(() => {
@@ -561,13 +773,19 @@ export function SurrogateOracleImmersion() {
     if (missing.length > 0) {
       console.warn('[Surrogate] Missing environment variables:', missing);
       setOracleState((prev) => ({ ...prev, error: `Missing env vars: ${missing.join(', ')}` }));
+      logStep('ENV MISSING', 'err');
       return false;
     }
+    logStep('ENV OK (Supabase vars)', 'ok');
     return true;
   }, []);
 
-  // Helper: drop to freemium immediately (extracted to avoid duplication)
+  // Helper: drop to freemium mode if Decart fails or times out.
+  // Note: setScenePhase('oracle') is intentionally NOT called here. The user
+  // must still complete their narrative journey (lore, knife selection).
   const fallbackToFreemium = useCallback((interval: ReturnType<typeof setInterval>) => {
+    logStep('FREEMIUM PATH READY', 'warn');
+    decartPendingHandoff.current = false;
     clearInterval(interval);
     if (decartFallbackTimeoutRef.current) {
       clearTimeout(decartFallbackTimeoutRef.current);
@@ -576,8 +794,27 @@ export function SurrogateOracleImmersion() {
     setIsConnecting(false);
     setIsDecartActive(false);
     setOracleState((p) => ({ ...p, error: null }));
-    setScenePhase('oracle');
-    // showConversation already true (set in awakeFromTerminal for Gemini pre-connection)
+    // Transition to 'oracle' phase will now strictly happen in selectKnifeQuestion.
+  }, []);
+
+  const executeDecartHandoff = useCallback(() => {
+    logStep('DECART LATE HANDOFF COMPLETE ✓', 'ok');
+    decartPendingHandoff.current = false;
+    // Update ref synchronously so handleOracleResponse routes to Decart
+    // before the React re-render cycle processes setIsDecartActive.
+    isDecartActiveRef.current = true;
+    setIsDecartActive(true);
+
+    // Cinematic materialization for late arrival
+    if (avatarVideoRef.current) {
+      avatarVideoRef.current.classList.add('oracle-avatar-video--materializing');
+      setTimeout(() => {
+        avatarVideoRef.current?.classList.remove('oracle-avatar-video--materializing');
+      }, 2600);
+    }
+
+    setOracleState((p) => ({ ...p, isConnected: true, isReady: true, error: null }));
+    setIsConnecting(false);
   }, []);
 
   const initializeOracle = useCallback(async () => {
@@ -615,6 +852,7 @@ export function SurrogateOracleImmersion() {
       // returns success (ICE is negotiating, connect() resolved cleanly).
       onStreamReady: () => {
         // Mark that the stream arrived — cancels the fallback timeout
+        logStep('DECART READY ✓', 'ok');
         decartStreamReadyRef.current = true;
         if (decartFallbackTimeoutRef.current) {
           clearTimeout(decartFallbackTimeoutRef.current);
@@ -622,23 +860,32 @@ export function SurrogateOracleImmersion() {
         }
         clearInterval(interval);
         setOracleState((p) => ({ ...p, isConnected: true, isReady: true, error: null }));
+
+        // ── Pending Decart handoff window #2: Stream ready, conversation in progress.
+        //    If the user has already selected a knife and is in oracle state,
+        //    mark for handoff at the next clean break.
+        if (scenePhaseRef.current === 'oracle' && !isDecartActiveRef.current) {
+          logStep('DECART READY — pending handoff', 'pending');
+          decartPendingHandoff.current = true;
+          return;
+        }
+
         setConnectionProgress(100);
         // Issue 2 fix: isDecartActive is set here (stream live) not on connect() return
         setIsDecartActive(true);
 
-        // Singularity: fade out GraffPunks radio as the Oracle face materializes.
-        // The world disappears. Two consciousnesses. Nothing else.
+        // Singularity: duck GraffPunks radio as the Oracle face materializes.
         if (audioRef.current && !audioRef.current.paused) {
           const audioEl = audioRef.current;
+          const targetVol = 0.04; // 15% of 0.28 base
           const fadeStep = setInterval(() => {
-            if (audioEl.volume > 0.06) {
-              audioEl.volume = Math.max(0, audioEl.volume - 0.06);
+            if (audioEl.volume > targetVol) {
+              audioEl.volume = Math.max(targetVol, audioEl.volume - 0.04);
             } else {
-              audioEl.volume = 0;
-              audioEl.pause();
+              audioEl.volume = targetVol;
               clearInterval(fadeStep);
             }
-          }, 80); // ~1.3s total fade
+          }, 100); // smooth duck
         }
 
         // Cinematic materialization — face emerges from electrical static
@@ -649,11 +896,12 @@ export function SurrogateOracleImmersion() {
           }, 2600);
         }
 
-        // Brief hold on 100% progress bar before transitioning to oracle mode
+        // Brief hold on 100% progress bar before clearing connection state
         setTimeout(() => {
           setIsConnecting(false);
-          setScenePhase('oracle');
-          // showConversation already set in awakeFromTerminal (pre-mount for WS pre-connection)
+          // NOTE: setScenePhase('oracle') removed from here. Pre-warm readiness is now 
+          // "under the floor" — the transition to oracle mode is strictly triggered 
+          // by the user's action in selectKnifeQuestion.
         }, 400);
       },
       onTalkStarted: () => setOracleState((p) => ({ ...p, isProcessing: true })),
@@ -711,13 +959,31 @@ export function SurrogateOracleImmersion() {
   // Step 2: user picks knife question → terminal phase (lore, audio on)
   // Step 3: auto-called by lore sequence → awakened → oracle
 
-  // ── enterTerminal — first tap on dormant screen ────────────��──────────────
+  // ── Gemini Live WS & Decart ICE Pre-Warm (600ms after dormant scene mounts) ─────────────
+  useEffect(() => {
+    const t = setTimeout(() => {
+      logStep('OracleConversation MOUNTED', 'ok');
+      setShowConversation(true);  // Mounts OracleConversation
+      initializeOracle();         // Starts Decart ICE negotiation
+    }, 600);
+    return () => clearTimeout(t);
+  }, [initializeOracle]);
+
+  useEffect(() => {
+    if (latestPortraitUrl && isDecartActive && decartClientRef.current) {
+      console.log('[Oracle] Updating Decart avatar to latest portrait:', latestPortraitUrl);
+      decartClientRef.current.setAvatar(latestPortraitUrl);
+    }
+  }, [latestPortraitUrl, isDecartActive]);
+
+  // ── enterTerminal — first tap on dormant screen ──────────────────────────
   // Directly opens the lore sequence. No consent gate — the witness question
   // is the Oracle's first spoken words once it's live.
   // Decart pre-warm starts here: user spends ~10-20s watching lore + picking
   // a frequency, giving ICE negotiation time to complete before oracle mode.
   const enterTerminal = useCallback(() => {
     if (scenePhase !== 'dormant') return;
+    logStep('TAP → TERMINAL', 'ok');
     setIsActivating(true);
     setTimeout(() => setIsActivating(false), 580);
     playActivationSfx();
@@ -725,20 +991,36 @@ export function SurrogateOracleImmersion() {
     setLoreComplete(false);
     setScenePhase('terminal');
     setIsAudioPlaying(true);
-    setTimeout(() => initializeOracle(), 200);
+    
+    // Kick off Oracle session immediately so greeting plays upon entering terminal
+    setTimeout(() => {
+      logStep('START SESSION (GREETING)', 'ok');
+      oracleConversationRef.current?.startSession();
+    }, 400);
+
+    // Decart ICE warms during lore — pre-warm already handled at mount
+    setTimeout(() => {
+      logStep('DECART INIT', 'ok');
+      initializeOracle();
+    }, 200);
   }, [scenePhase, initializeOracle]);
 
   // awakeFromTerminal — lore finishes → awakened.
   // Oracle face resolves fully. Knife selection rises in awakened state so
   // the seeker sees the entity before being asked to choose a frequency.
-  // Pre-mounts OracleConversation so Gemini Live WS connects in parallel
-  // with remaining Decart ICE negotiation — eliminates dead air.
   const awakeFromTerminal = useCallback(() => {
     if (scenePhase !== 'terminal') return;
+    logStep('LORE DONE → AWAKENED', 'ok');
     alleyAmbienceStopRef.current?.();
     alleyAmbienceStopRef.current = null;
     setScenePhase('awakened');
-    setShowConversation(true);
+
+    // Have the Oracle ask for the frequency once the archive fragment is complete.
+    // This makes the transition feel authored by the entity, not the UI.
+    setTimeout(() => {
+      logStep('ORACLE ASKS FOR FREQUENCY', 'ok');
+      oracleConversationRef.current?.sendTextMessage('The archive fragment is complete. Now, choose the frequency that is already true.');
+    }, 1000);
   }, [scenePhase]);
 
   // Lore sequence — runs while scenePhase=terminal and lore not yet complete.
@@ -762,15 +1044,21 @@ export function SurrogateOracleImmersion() {
   // then opens oracle conversation. Knife is now chosen AFTER the oracle
   // face materialises — the entity presents itself before asking.
   const selectKnifeQuestion = useCallback((question: string, index: number) => {
+    logStep(`KNIFE[${index}] SELECTED: ${question.slice(0, 20)}...`, 'ok');
     setSelectedKnifeQuestion(question);
     setSelectedKnifeIndex(index);
     const kq = KNIFE_QUESTIONS[index];
     if (kq) {
+      logStep('SEEDING THEMES: ' + kq.themes.join(','), 'ok');
       window.dispatchEvent(new CustomEvent('oracle:knife-selected', {
         detail: { territory: kq.territory, themes: kq.themes, question: kq.question },
       }));
     }
-    setTimeout(() => setScenePhase('oracle'), 400);
+    setTimeout(() => {
+      logStep('setScenePhase(oracle)', 'ok');
+      setScenePhase('oracle');
+      logStep('ORACLE PHASE ENTERED', 'ok');
+    }, 400);
   }, []);
 
   // ── XR: wire marker callback — same flow as first tap, just triggered by marker
@@ -816,6 +1104,7 @@ export function SurrogateOracleImmersion() {
   useEffect(() => {
     if (scenePhase !== 'oracle') return;
     const t = setTimeout(() => {
+      logStep('startSession() CALLED', 'ok');
       oracleConversationRef.current?.startSession();
     }, 250);
     return () => clearTimeout(t);
@@ -826,14 +1115,56 @@ export function SurrogateOracleImmersion() {
   // Freemium   → play WAV directly; VisemeDetector drives real-time glow/pulse
   //              on the static oracle face at up to 60 fps via direct DOM writes
   //              (no React re-renders in the hot path).
-  const handleOracleResponse = useCallback(async (audioUrl: string) => {
-    // Oracle presence shimmer — ascending tone that arrives just before the
-    // Oracle's voice, priming the ear. Fires on both Decart and freemium paths.
-    playOraclePresence();
+  const isFirstChunkRef = useRef(true);
+
+  // Track turn IDs from Gemini to reset the first-chunk flag
+  useEffect(() => {
+    isFirstChunkRef.current = true;
+  }, [oracleState.isProcessing]);
+
+  const handleOracleResponse = useCallback(async (data: Int16Array | string) => {
+    // 1. Oracle presence shimmer — only fire on the FIRST chunk of a transmission 
+    // to avoid noise during low-latency chunked streaming.
+    if (isFirstChunkRef.current) {
+      playOraclePresence();
+      isFirstChunkRef.current = false;
+    }
+
+    // 2. Prepare audio for delivery
+    let audioBlob: Blob | null = null;
+    let audioUrl: string | null = null;
+
+    if (data instanceof Int16Array) {
+      // ── LOW LATENCY RAW PCM PATH ──────────────────────────────────────────
+      // Create minimal 44-byte WAV header for the PCM chunk in-place (< 1ms)
+      const buffer = new ArrayBuffer(44 + data.length * 2);
+      const view = new DataView(buffer);
+      const writeString = (offset: number, s: string) => {
+        for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+      };
+      writeString(0, 'RIFF');
+      view.setUint32(4, 36 + data.length * 2, true);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true); // PCM
+      view.setUint16(22, 1, true); // Mono
+      view.setUint32(24, 24000, true); // Sample rate
+      view.setUint32(28, 24000 * 2, true); // Byte rate
+      view.setUint16(32, 2, true); // Block align
+      view.setUint16(34, 16, true); // Bits per sample
+      writeString(36, 'data');
+      view.setUint32(40, data.length * 2, true);
+      const samples = new Int16Array(buffer, 44);
+      samples.set(data);
+      audioBlob = new Blob([buffer], { type: 'audio/wav' });
+    } else {
+      audioUrl = data;
+    }
 
     // ── Paid: hand off to Decart ────────────────────────────────────────────
     if (isDecartActiveRef.current && decartClientRef.current?.isStreamActive()) {
-      await decartClientRef.current.sendAudio(audioUrl);
+      await decartClientRef.current.sendAudio(audioBlob || audioUrl!);
       return;
     }
 
@@ -846,14 +1177,12 @@ export function SurrogateOracleImmersion() {
     const audio = freemiumAudioRef.current;
 
     // Lazily create VisemeDetector and wire it to the audio element once.
-    // createMediaElementSource can only be called once per element — guard with null check.
     if (!visemeDetRef.current) {
       visemeDetRef.current = new VisemeDetector((state) => {
         // ── HOT PATH — direct DOM writes at up to 60fps. No React state. ─────
         const face  = oracleFaceRef.current;
         const mouth = mouthOverlayRef.current;
 
-        // ── Face glow + micro-scale (existing amplitude effect) ───────────────
         if (face) {
           const amp = state.amplitude;
           if (amp < 0.04) {
@@ -864,15 +1193,20 @@ export function SurrogateOracleImmersion() {
             const bright = (1 + amp * 0.38).toFixed(3);
             const scale  = (1 + amp * 0.028).toFixed(4);
             const alpha  = (0.28 + amp * 0.55).toFixed(3);
-            face.style.filter    = `brightness(${bright}) drop-shadow(0 0 ${glow}px rgba(0,255,136,${alpha}))`;
+
+            // PIXEL-MAPPED WARPING: Drive the SVG displacement map via viseme openness.
+            const warpMap = document.getElementById('lip-warp-map');
+            if (warpMap) {
+              const warpScale = (state.openness * 12).toFixed(1);
+              warpMap.setAttribute('scale', warpScale);
+            }
+
+            face.style.filter = `url(#oracle-lip-warp) brightness(${bright}) drop-shadow(0 0 ${glow}px rgba(0,255,136,${alpha}))`;
             face.style.transform = `scale(${scale})`;
             face.style.transition = 'none';
           }
         }
 
-        // ── Mouth overlay — Preston Blair viseme → geometry ────────────────────
-        // Each viseme maps to { w(%), h(%), r(px or %) } defining the mouth shape.
-        // openness/rounded/spread from VisemeDetector modulate within the base shape.
         if (mouth) {
           const { viseme, openness, rounded, spread, amplitude } = state;
 
@@ -885,29 +1219,24 @@ export function SurrogateOracleImmersion() {
           } else {
             mouth.style.opacity = '1';
 
-            // Base geometry per Preston Blair viseme.
-            // Widths are % of the avatar container. Natural mouth width on
-            // ORACLE_AVATAR_URL (Image-1-(11).jpg) is ~14-16% of container
-            // under object-fit:cover in a square frame. Widths tuned accordingly:
-            // silence/bilabial ≈ 13%, neutral ≈ 15%, open AH ≈ 18%, ee ≈ 20%.
+            // PIXEL-MAPPED GEOMETRY: Calibrated for Image-1-(11).jpg thin lips
             type Shape = { w: number; h: number; r: number };
             const BASE: Record<string, Shape> = {
-              X: { w: 13, h:  2, r:  2 },   // silence — closed line
-              B: { w: 13, h:  2, r:  2 },   // bilabial — lips pressed
-              C: { w: 15, h:  7, r: 40 },   // neutral — slightly open
-              D: { w: 15, h:  8, r: 30 },   // dental — wider open
-              A: { w: 18, h: 12, r: 40 },   // open vowel AH — most open
-              E: { w: 20, h:  4, r:  3 },   // "ee" — wide, flat, smile
-              F: { w: 11, h:  5, r:  5 },   // fricative — narrow slot
-              G: { w: 13, h:  9, r: 50 },   // "oh" — rounded mid
-              H: { w: 10, h:  8, r: 50 },   // "oo" — tight pucker
+              X: { w: 13, h:  1, r:  2 },   // silence — razor thin
+              B: { w: 12, h:  1, r:  2 },   // bilabial — lips pressed
+              C: { w: 14, h:  4, r: 40 },   // neutral — slight gap
+              D: { w: 14, h:  5, r: 30 },   // dental — thin open
+              A: { w: 16, h:  9, r: 40 },   // open vowel AH — widest thin lips
+              E: { w: 18, h:  3, r:  3 },   // "ee" — wide smile, thin
+              F: { w: 10, h:  3, r:  5 },   // fricative — narrow slot
+              G: { w: 12, h:  6, r: 50 },   // "oh" — rounded thin
+              H: { w: 9,  h:  5, r: 50 },   // "oo" — tight pucker
             };
 
             const base = BASE[viseme] ?? BASE['C'];
 
-            // Modulate with continuous params — keeps transitions organic
-            const w = base.w + spread   * 8;
-            const h = base.h + openness * 6;
+            const w = base.w + spread   * 6;
+            const h = base.h + openness * 4;
             const r = base.r + rounded  * 20;
 
             mouth.style.width        = `${w.toFixed(1)}%`;
@@ -926,13 +1255,16 @@ export function SurrogateOracleImmersion() {
     // Stop any existing RAF loop before starting a new one
     visemeDetRef.current.stop();
 
-    audio.src = audioUrl;
+    const playUrl = audioBlob ? URL.createObjectURL(audioBlob) : audioUrl!;
+    audio.src = playUrl;
 
     audio.onplay = () => {
       visemeDetRef.current?.resume();
       visemeDetRef.current?.start();
       // Duck the house music while the Oracle speaks
       if (audioRef.current) audioRef.current.volume = 0.06;
+      // Drive data-oracle-speaking on freemium path (cabinet-voice-pulse, XR chroma blast)
+      setOracleState((p) => ({ ...p, isProcessing: true }));
     };
 
     const resetFace = () => {
@@ -953,6 +1285,13 @@ export function SurrogateOracleImmersion() {
       }
       // Restore house music
       if (audioRef.current) audioRef.current.volume = 0.28;
+      // Clear oracle-speaking state on freemium path
+      setOracleState((p) => ({ ...p, isProcessing: false }));
+      // ── Pending Decart handoff window #1: Oracle just finished speaking.
+      //    Natural silence gap — cleanest possible cut to Decart audio routing.
+      if (decartPendingHandoff.current) {
+        executeDecartHandoff();
+      }
     };
 
     audio.onended = resetFace;
@@ -962,7 +1301,10 @@ export function SurrogateOracleImmersion() {
       console.warn('[Freemium audio] play() blocked:', e);
       resetFace();
     });
-  }, []);
+
+    // Revoke Blob URL after use
+    if (audioBlob) setTimeout(() => URL.revokeObjectURL(playUrl), 10000);
+  }, [executeDecartHandoff]);
 
   // Coins earned from Sacred exchanges — bubble to window for CultureCoinInlineDisplay
   const handleCoinsEarned = useCallback((amount: number) => {
@@ -972,14 +1314,34 @@ export function SurrogateOracleImmersion() {
     if (typeof updater === 'function') updater(amount);
   }, []);
 
+  // ── DEV hooks — exposed on window in development builds only ─────────────
+  // window.__oracle_handleAudio(url) — inject an audio URL into the freemium path
+  //   to test VisemeDetector without a live Gemini session.
+  // window.__oracle_skipLore()       — instantly complete the lore sequence.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__oracle_handleAudio = (url: string) => handleOracleResponse(url);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__oracle_skipLore = () => setLoreComplete(true);
+    return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).__oracle_handleAudio;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).__oracle_skipLore;
+    };
+  }, [handleOracleResponse]);
+
   // ── Procedural portrait generation ───────────────────────────────────────
   // Calls the surrogate-portrait-generator EFA (Google AI → DALL-E → themed fallback)
   // Ref is kept in sync so the auth useEffect can call it without forward-reference issues
   const generatePortrait = useCallback(async (themes: string[]) => {
     setIsGeneratingPortrait(true);
+    logStep('GENERATING PORTRAIT...', 'pending');
     try {
       const { supabase } = await import('../lib/supabase');
       const safeThemes = themes.length > 0 ? themes : ['oracle', 'cyberpunk', 'graffiti'];
+      logStep('INVOKING PORTRAIT EFA', 'pending');
       const { data, error } = await supabase.functions.invoke('gemini-portrait-generator', {
         body: {
           sessionId: currentSessionId,
@@ -988,10 +1350,18 @@ export function SurrogateOracleImmersion() {
           style: 'freakdali-graff-punks',
         },
       });
-      if (error) throw error;
+      if (error) {
+        logStep('PORTRAIT EFA ERROR', 'err');
+        throw error;
+      }
       console.log('[Portrait] Generated:', data?.portraitUrl ? '✅' : '❌', data);
       // Capture URL for ArtifactCard display
-      if (data?.portraitUrl) setLatestPortraitUrl(data.portraitUrl);
+      if (data?.portraitUrl) {
+        logStep('PORTRAIT GENERATED ✓', 'ok');
+        setLatestPortraitUrl(data.portraitUrl);
+      } else {
+        logStep('PORTRAIT EMPTY RESPONSE', 'warn');
+      }
       // Open panel regardless — gallery will show the new portrait
       openBackendPanel('portraits');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1046,7 +1416,7 @@ export function SurrogateOracleImmersion() {
   // ── XR sign-off + totem persistence ─────────────────────────────────────
   // Called by OracleConversation.onSessionEnd just before onClose fires.
   // This is the authoritative moment when the Oracle session results are known.
-  const handleSessionEnd = useCallback((totemLevel: number, coins: number, alignment: string | null) => {
+  const handleSessionEnd = useCallback((alignment: string, totemLevel: number, coins: number) => {
     // 1. Persist totem level across page refreshes (localStorage for now)
     if (totemLevel > 0) {
       try { localStorage.setItem('oracle_totem_level', String(totemLevel)); } catch {}
@@ -1141,11 +1511,12 @@ export function SurrogateOracleImmersion() {
         </>
       )}
 
-      {/* ── XR Immersion Toggle — visible in XR context, always accessible ──
+      {/* ── XR Immersion Toggle — offered AFTER lore completes, not before.
+           AR/camera is not part of the dormant or lore experience — it's an
+           opt-in introduced at the awakened threshold (knife selection moment).
            Camera off: "◈ AR" to activate passthrough.
-           Camera on:  "◈ ALLEY" to return to digital scene.
-           Lives outside oracle-center so opacity is always 1.              */}
-      {isXRMode && (
+           Camera on:  "◈ ALLEY" to return to digital scene.                */}
+      {isXRMode && (scenePhase === 'awakened' || scenePhase === 'oracle') && (
         <button
           className={`oracle-xr-toggle${cameraActive ? ' oracle-xr-toggle--active' : ''}`}
           onClick={() => cameraActive ? deactivateCamera() : activateCamera()}
@@ -1193,70 +1564,11 @@ export function SurrogateOracleImmersion() {
         />
       )}
 
-      {/* ── Five independent Cheshire Cat fragments — the haunted dormant world ─
-           Each cycles on its own timer, own phrase pool, own screen position.
-           Scramble mode: characters crystallize from random chaos.
-           The grin is the last thing to disappear.
-           They never all show at once — the stage breathes, never shouts.    */}
-      {scenePhase === 'dormant' && (
-        <>
-          <ScrambleFragment
-            mode="scramble"
-            texts={SF1_TEXTS}
-            className="oracle-sf oracle-sf--1"
-            revealMs={48}
-            holdMs={2600}
-            exitMs={28}
-            pauseMs={2400}
-            peakOpacity={0.78}
-            initialDelay={600}
-          />
-          <ScrambleFragment
-            mode="scramble"
-            texts={SF2_TEXTS}
-            className="oracle-sf oracle-sf--2"
-            revealMs={38}
-            holdMs={2000}
-            exitMs={22}
-            pauseMs={2800}
-            peakOpacity={0.42}
-            initialDelay={2200}
-          />
-          <ScrambleFragment
-            mode="scramble"
-            texts={SF3_TEXTS}
-            className="oracle-sf oracle-sf--3"
-            revealMs={44}
-            holdMs={2200}
-            exitMs={26}
-            pauseMs={2600}
-            peakOpacity={0.50}
-            initialDelay={4800}
-          />
-          <ScrambleFragment
-            mode="scramble"
-            texts={SF4_TEXTS}
-            className="oracle-sf oracle-sf--4"
-            revealMs={35}
-            holdMs={1800}
-            exitMs={20}
-            pauseMs={3000}
-            peakOpacity={0.38}
-            initialDelay={3400}
-          />
-          <ScrambleFragment
-            mode="scramble"
-            texts={SF5_TEXTS}
-            className="oracle-sf oracle-sf--5"
-            revealMs={42}
-            holdMs={2000}
-            exitMs={24}
-            pauseMs={2800}
-            peakOpacity={0.30}
-            initialDelay={7200}
-          />
-        </>
-      )}
+      {/* ── Ghost Transmissions — the entity's broken signal leaking into the alley.
+           Letter by letter. Random positions. Sparse — the stage is mostly silence.
+           The environment warms: re-spawn gap shrinks over time so by the time
+           the seeker taps, the alley already feels alive and inhabited.          */}
+      <DormantTransmissions active={scenePhase === 'dormant'} onCtaClick={enterTerminal} />
 
       {/* ── Layer 3: Top branding — types in on awakening ──────────────── */}
       <div className="oracle-branding">
@@ -1273,43 +1585,9 @@ export function SurrogateOracleImmersion() {
         )}
       </div>
 
-      {/* ── DORMANT BECKON CALL — lives OUTSIDE oracle-center so it renders at
-           full opacity (oracle-center is at 0.38 opacity in dormant — a parent
-           opacity is inherited multiplicatively; children can never exceed it).
-           Positioned from oracle-stage coordinates, above the cabinet.          */}
-      <AnimatePresence>
-        {scenePhase === 'dormant' && (
-          <motion.div
-            key="dormant-cta"
-            className="oracle-tap-prompt oracle-tap-prompt--glitch"
-            onClick={enterTerminal}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.2 } }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-          >
-            {/* ScrambleFragment typewriter mode — letters crystallise left-to-right
-                in aAnotherTag graffiti font, Cheshire Cat dissolve between phrases.
-                oracle-sf--cta overrides oracle-sf's position:absolute to flow inline. */}
-            <ScrambleFragment
-              mode="typewriter"
-              texts={isXRMode ? XR_CTA_PRIMARY : CTA_PRIMARY}
-              className="oracle-sf--cta"
-              revealMs={70}
-              holdMs={2800}
-              exitMs={35}
-              pauseMs={500}
-              peakOpacity={1.0}
-              initialDelay={300}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Touch-hint retired — the ScrambleFragment typewriter CTA carries the
-           full dormant voice. A second static text line was clashing with it,
-           creating two competing text layers in the same register.
-           The CTA IS the invitation. One voice. No static backup.           */}
+      {/* ScrambleFragment CTA retired — replaced by sticky GhostText CTA that
+           types itself in after 7 ghost phrases and remains as the tap invitation.
+           The full-screen dormant tap zone (above) still accepts taps at any time.  */}
 
       {/* ── Layer 4: Central cabinet + avatar ──────────────────────────── */}
       <div
@@ -1352,10 +1630,10 @@ export function SurrogateOracleImmersion() {
                 renders on top. Kept 8% smaller so it sits inside the cabinet frame. */}
             <img
               ref={oracleFaceRef}
-              src={ORACLE_AVATAR_URL}
+              src={latestPortraitUrl || ORACLE_AVATAR_URL}
               alt="SURROGATE Oracle"
               className="oracle-avatar-img"
-              style={isOracleMode && !isDecartActive ? {
+              style={(isOracleMode || oracleState.isProcessing) && !isDecartActive ? {
                 opacity: 1,
                 transform: 'scale(0.92)',   /* 8% smaller — sits inside cabinet frame */
                 filter: 'brightness(1.1) drop-shadow(0 0 18px rgba(0,255,136,0.45))',
@@ -1382,58 +1660,6 @@ export function SurrogateOracleImmersion() {
               playsInline
               className="oracle-avatar-video"
             />
-
-            {/* ── Boot Sequence HUD — bottom of cabinet, avatar visible above ──
-                NOT a blackout overlay. The avatar pulse/zoom-breathe animation
-                is the hero. This text is a HUD strip at the bottom edge only —
-                gradient-fade so face stays visible, lore-matched chromatic style. */}
-            <AnimatePresence>
-              {isConnecting && (
-                <motion.div
-                  className="oracle-boot-hud"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 4 }}
-                  transition={{ duration: 0.4 }}
-                >
-                  {/* Progress bar — thin line tracking ICE negotiation */}
-                  <div className="oracle-boot-progress-track">
-                    <motion.div
-                      className="oracle-boot-progress-fill"
-                      animate={{ width: `${connectionProgress}%` }}
-                      transition={{ duration: 0.4, ease: 'linear' }}
-                    />
-                  </div>
-
-                  {/* Boot lines — lore-matched chromatic style, last 2 lines only */}
-                  <div className="oracle-boot-lines">
-                    {bootLines.slice(-2).map((line, i) => (
-                      <motion.div
-                        key={bootLines.length - 2 + i}
-                        className="oracle-boot-line"
-                        initial={{ opacity: 0, x: -6 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.25, ease: 'easeOut' }}
-                        data-active={i === Math.min(bootLines.slice(-2).length - 1, 1) ? 'true' : undefined}
-                      >
-                        <span className="oracle-boot-prompt">›</span>{line}
-                      </motion.div>
-                    ))}
-
-                    {extendedWait && (
-                      <motion.div
-                        className="oracle-boot-line oracle-boot-line--warn"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: [0.6, 1, 0.6] }}
-                        transition={{ repeat: Infinity, duration: 1.4 }}
-                      >
-                        <span className="oracle-boot-prompt">›</span>SIGNAL IN TRANSIT — HOLD FREQUENCY
-                      </motion.div>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
 
           {/* Processing dots */}
@@ -1495,30 +1721,44 @@ export function SurrogateOracleImmersion() {
            Tap anywhere to skip lore → immediately surfaces knife selection.
            Knife cannot be skipped — it seeds the procedural portrait pipeline
            and the eventual 1:1 on-chain minted asset.                       */}
+      {/* Lore bridge: renders in terminal (full opacity, clickable) AND in awakened
+           (0.18 opacity, pointer-events:none) until a knife is selected.
+           Bridging the visual gap between lore end and knife cards becoming readable. */}
       <AnimatePresence>
-        {scenePhase === 'terminal' && !loreComplete && (
+        {(scenePhase === 'terminal' ||
+          (scenePhase === 'awakened' && !selectedKnifeQuestion && loreLines.completedLines.length > 0)
+        ) && (
           <motion.div
             key="lore-fullscreen"
             className="oracle-terminal-overlay"
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            animate={{ opacity: scenePhase === 'awakened' ? 0.18 : 1 }}
             exit={{ opacity: 0, transition: { duration: 0.4 } }}
-            onClick={() => setLoreComplete(true)}
-            style={{ cursor: 'pointer' }}
+            onClick={scenePhase === 'terminal' ? () => setLoreComplete(true) : undefined}
+            style={{
+              cursor: scenePhase === 'terminal' ? 'pointer' : 'default',
+              pointerEvents: scenePhase === 'awakened' ? 'none' : 'auto',
+            }}
           >
             <div className="oracle-lore-text">
-              {loreLines.map((line, i) => (
-                <div
-                  key={i}
-                  className="oracle-lore-line"
-                  style={{ animationDelay: `${i * 0.035}s` }}
-                >
+              {/* Completed lines — fully typed, stay visible above current line */}
+              {loreLines.completedLines.map((line, i) => (
+                <div key={i} className="oracle-lore-line" style={{ whiteSpace: 'pre-wrap' }}>
                   <span className="oracle-lore-prompt">›</span>{line}
                 </div>
               ))}
-              <GlitchCursor />
+              {/* Current line — typing in progress, character by character */}
+              {loreLines.currentLine && (
+                <div className="oracle-lore-line oracle-lore-line--typing" style={{ whiteSpace: 'pre-wrap' }}>
+                  <span className="oracle-lore-prompt">›</span>{loreLines.currentLine}<GlitchCursor />
+                </div>
+              )}
+              {/* Cursor idles between lines (beat delay) and before first char */}
+              {!loreLines.currentLine && loreLines.completedLines.length < LORE_SEQUENCE.length && (
+                <GlitchCursor />
+              )}
             </div>
-            {loreLines.length >= 2 && (
+            {loreLines.completedLines.length >= 2 && scenePhase === 'terminal' && (
               <div className="oracle-lore-skip">TAP TO SKIP ARCHIVE FRAGMENT</div>
             )}
           </motion.div>
@@ -1538,7 +1778,7 @@ export function SurrogateOracleImmersion() {
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20, transition: { duration: 0.3 } }}
-            transition={{ duration: 0.7, ease: 'easeOut', delay: 1.6 }}
+            transition={{ duration: 0.7, ease: 'easeOut', delay: 2.2 }}
           >
             <div className="oracle-knife-header">◈ THE ARCHIVE IS OPEN</div>
             <div className="oracle-knife-subheader">CHOOSE THE FREQUENCY THAT IS ALREADY TRUE. THE EXCAVATION BEGINS THERE.</div>
@@ -1549,7 +1789,7 @@ export function SurrogateOracleImmersion() {
                   className={`oracle-knife-card${selectedKnifeIndex === idx ? ' oracle-knife-card--selected' : ''}`}
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 1.6 + 0.10 * idx, duration: 0.38 }}
+                  transition={{ delay: 2.2 + 0.10 * idx, duration: 0.38 }}
                   onClick={() => selectKnifeQuestion(kq.question, idx)}
                 >
                   <span className="oracle-knife-territory">{kq.territory}</span>
@@ -1569,7 +1809,7 @@ export function SurrogateOracleImmersion() {
            Gemini Live WS pre-connection. Becomes visible when oracle mode begins.
            autoStart=false: oracle greeting fires via startSession() in the oracle
            phase useEffect above, not automatically on session.created.            */}
-      {(isOracleMode || scenePhase === 'awakened') && showConversation && (
+      {(isOracleMode || scenePhase === 'awakened' || scenePhase === 'terminal') && showConversation && (
         <OracleConversation
           ref={oracleConversationRef}
           userId={currentUserId || currentSessionId}
@@ -1609,6 +1849,18 @@ export function SurrogateOracleImmersion() {
           />
         )}
       </AnimatePresence>
+
+      {/* ── Layer 7: Exit Button — returns to dormant ────────────────────── */}
+      {isOracleMode && (
+        <button
+          className="oracle-exit-btn"
+          onClick={exitOracleMode}
+          aria-label="Exit the Oracle"
+        >
+          <X size={20} />
+          <span>EXIT</span>
+        </button>
+      )}
 
       {/* Backend panel ───────────────────────────────────────────────── */}
 
@@ -1671,6 +1923,24 @@ export function SurrogateOracleImmersion() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── High-Fidelity Lip Warping Filter ──────────────────────────────── */}
+      <svg style={{ position: 'absolute', width: 0, height: 0 }}>
+        <defs>
+          <filter id="oracle-lip-warp">
+            <feDisplacementMap 
+              in="SourceGraphic" 
+              scale="0" 
+              id="lip-warp-map"
+              xChannelSelector="R" 
+              yChannelSelector="G" 
+            />
+          </filter>
+        </defs>
+      </svg>
+
+      {/* ── Dev step logger (renders only when oracle_step_log=1 in localStorage) */}
+      <OracleStepLogger />
     </div>
   );
 }

@@ -60,11 +60,22 @@ export class VisemeDetector {
   private rafId: number | null = null;
   private smoothed: VisemeState = { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
   private readonly onUpdate: (s: VisemeState) => void;
+  // Adaptive frame rate — monitor rolling δt; drop to 30fps on slow devices
+  private frameTimeBuffer: number[] = [];
+  private lastFrameTime: number = 0;
+  private halfFrameMode: boolean = false;
+  private frameCounter: number = 0;
+  // Detect mobile once at construction — halves FFT bin count for CPU relief
+  private readonly isMobileFft: boolean = (
+    typeof navigator !== 'undefined' &&
+    /Mobi|Android|iPhone/i.test(navigator.userAgent)
+  );
 
   constructor(onUpdate: (s: VisemeState) => void) {
     this.ctx = new AudioContext();
     this.analyser = this.ctx.createAnalyser();
-    this.analyser.fftSize = 1024;
+    // 512 bins on mobile (halves per-frame iteration cost), 1024 on desktop
+    this.analyser.fftSize = this.isMobileFft ? 512 : 1024;
     this.analyser.smoothingTimeConstant = 0.6;
     this.freqBuf = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
     this.timeBuf = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
@@ -83,13 +94,36 @@ export class VisemeDetector {
   }
 
   start() {
-    const tick = () => {
-      this.analyser.getByteFrequencyData(this.freqBuf);
-      this.analyser.getByteTimeDomainData(this.timeBuf);
-      const raw = this._analyze();
-      // Smooth state transitions so the mouth doesn't flicker at 60fps
-      this.smoothed = lerpVisemeState(this.smoothed, raw, 0.35);
-      this.onUpdate(this.smoothed);
+    this.lastFrameTime = performance.now();
+    // RAF passes DOMHighResTimeStamp as first argument — use it directly (no extra call)
+    const tick = (now: number) => {
+      const dt = now - this.lastFrameTime;
+      this.lastFrameTime = now;
+
+      // ── Rolling 8-frame δt window for adaptive mode ──────────────────────
+      this.frameTimeBuffer.push(dt);
+      if (this.frameTimeBuffer.length > 8) this.frameTimeBuffer.shift();
+      if (this.frameTimeBuffer.length === 8) {
+        const sorted = [...this.frameTimeBuffer].sort((a, b) => a - b);
+        const median = sorted[4];
+        // Hysteresis: enter 30fps at >25ms median, exit at <18ms (avoid oscillation)
+        if (!this.halfFrameMode && median > 25) this.halfFrameMode = true;
+        if ( this.halfFrameMode && median < 18) this.halfFrameMode = false;
+      }
+
+      // ── Skip alternate frames in half-frame mode (→ 30fps on slow devices) ─
+      this.frameCounter++;
+      const skip = this.halfFrameMode && (this.frameCounter & 1) === 0;
+
+      if (!skip) {
+        this.analyser.getByteFrequencyData(this.freqBuf);
+        this.analyser.getByteTimeDomainData(this.timeBuf);
+        const raw = this._analyze();
+        // Smooth state transitions so the mouth doesn't flicker
+        this.smoothed = lerpVisemeState(this.smoothed, raw, 0.35);
+        this.onUpdate(this.smoothed);
+      }
+
       this.rafId = requestAnimationFrame(tick);
     };
     this.rafId = requestAnimationFrame(tick);

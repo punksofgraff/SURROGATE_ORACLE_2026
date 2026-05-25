@@ -311,13 +311,13 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── STEP 7: DALL-E 3 — ONLY when explicitly requested ─────────────────────
-  // This is a premium path (~$0.04/image). Only called when dalleExplicit = true.
-  // Do NOT add to the automatic freemium cascade.
+  // ── STEP 7: DALL-E 3 — Last AI Resort ─────────────────────────────────────
+  // This is a premium path (~$0.04/image). 
+  // Called if explicitly requested OR as a final attempt if all free paths failed.
   const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-  if (dalleExplicit && openaiApiKey && !portraitUrl) {
+  if ((dalleExplicit || !portraitUrl) && openaiApiKey && !portraitUrl) {
     try {
-      console.log('🎨 DALL-E 3 explicitly requested — generating…');
+      console.log(dalleExplicit ? '🎨 DALL-E 3 explicitly requested — generating…' : '🎨 All free AI paths failed — trying DALL-E 3 as last resort…');
       const r = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${openaiApiKey}`, 'Content-Type': 'application/json' },
@@ -335,15 +335,15 @@ Deno.serve(async (req: Request) => {
       const url = json.data?.[0]?.url;
       if (!url) throw new Error('No URL in DALL-E response');
       portraitUrl = url;
-      generationMethod = 'dalle-3-explicit';
+      generationMethod = dalleExplicit ? 'dalle-3-explicit' : 'dalle-3-fallback';
       dalleGenerated = true;
-      console.log('✅ DALL-E 3 portrait generated (explicit request)');
+      console.log(`✅ DALL-E 3 portrait generated (${generationMethod})`);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('❌ DALL-E failed:', msg);
       imageErrors.push(`DALL-E: ${msg}`);
     }
-  } else if (dalleExplicit && !openaiApiKey) {
+  } else if (dalleExplicit && !openaiApiKey && !portraitUrl) {
     console.warn('⚠️  dalleExplicit=true but OPENAI_API_KEY not set');
     imageErrors.push('DALL-E: OPENAI_API_KEY not configured');
   }

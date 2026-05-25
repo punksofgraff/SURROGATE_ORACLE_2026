@@ -74,7 +74,15 @@
       "Bash(identify /tmp/oracle-avatar-talking.jpg)",
       "Bash(echo \"Exit: $?\")",
       "Bash(ldd /home/runner/workspace/.cache/ms-playwright/firefox-1511/firefox/firefox)",
-      "Bash(sort -t: -k3 -n)"
+      "Bash(sort -t: -k3 -n)",
+      "Bash(pkill -f vite)",
+      "Bash(pnpm *)",
+      "Bash(xargs ls -la)",
+      "WebFetch(domain:i.postimg.cc)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(fuser -k 5173/tcp)",
+      "Bash(pkill -f \"vite.*5173\")",
+      "Bash(printenv PORT)"
     ]
   }
 }

@@ -50,9 +50,10 @@ export type OracleScore = {
   coinAward: number;
   totemAdvancement: 'none' | 'stay' | 'ascend' | 'descend';
   totemLevel: number;
-  unlockTrigger: 'portrait_unlock' | null;
+  unlockTrigger: 'portrait_unlock' | 'squad_invite' | 'arcade_token' | null;
   sessionPhase: 'claim' | 'evidence' | 'cost' | 'mirror';
   archetypeTitle: string | null;
+  themes?: string[];
 };
 
 interface OracleConversationProps {
@@ -268,7 +269,24 @@ const OracleConversation = forwardRef(
               if (score) {
                 logStep(`ORACLE SCORE: ${score.sessionPhase}`, 'ok');
                 if (score.coinAward > 0) onCoinsEarnedRef.current?.(score.coinAward);
-                if (score.archetypeTitle) window.dispatchEvent(new CustomEvent('oracle:artifact', { detail: { archetypeTitle: score.archetypeTitle } }));
+                
+                // Dispatch cultural alignment for background Atmosphere shifts
+                window.dispatchEvent(new CustomEvent('oracle:alignment', { detail: { alignment: score.alignment } }));
+                
+                // Dispatch archetype title for Artifact Card display
+                if (score.archetypeTitle) {
+                  window.dispatchEvent(new CustomEvent('oracle:artifact', { detail: { archetypeTitle: score.archetypeTitle } }));
+                }
+                
+                // Dispatch unlock triggers (Portrait, Squad, Arcade)
+                if (score.unlockTrigger) {
+                  window.dispatchEvent(new CustomEvent('oracle:unlock', { 
+                    detail: { 
+                      trigger: score.unlockTrigger,
+                      themes: score.themes // pass accumulated themes for portrait generation
+                    } 
+                  }));
+                }
               }
               setTurns(prev => [...prev, { role: 'oracle', content: clean, timestamp: Date.now(), score }]);
               currentResponseText.current = '';
@@ -379,11 +397,19 @@ const OracleConversation = forwardRef(
         lastError: debugInfo.current.lastError,
         recentMessages: debugInfo.current.recentMessages,
       }),
-      startSession: () => { if (!sessionBootedRef.current) sendText('__ORACLE_BOOT__'); }
+      startSession: () => { 
+        if (wsRef.current?.readyState !== WebSocket.OPEN) {
+          logStep('RECONNECTING FOR SESSION', 'pending');
+          pendingBootRef.current = true;
+          connectToGemini();
+          return;
+        }
+        if (!sessionBootedRef.current) sendText('__ORACLE_BOOT__'); 
+      }
     }));
 
     return (
-      <div className="oc-panel-v2" style={{ display: isVisible ? 'flex' : 'none' }}>
+      <div className="oc-panel oc-panel-v2" style={{ display: isVisible ? 'flex' : 'none' }}>
         <div className="oc-hero">
           <motion.button
             onClick={(e) => {

@@ -8,7 +8,10 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
-import { X } from 'lucide-react';
+import { 
+  X, Send, Mic, MicOff, Zap, BookOpen, Link2, Cpu, Globe, Factory,
+  ChevronRight, ArrowRight 
+} from 'lucide-react';
 import DecartClient, { DecartClientHandle } from './DecartClient';
 import { BackendControlPanel } from './BackendControlPanel';
 import { GoogleSignInOverlay } from './GoogleSignInOverlay';
@@ -19,6 +22,7 @@ import { ConnectingAnimation } from './ConnectingAnimation';
 import OracleConversation, { OracleConversationHandle } from './OracleConversation';
 import { MatrixRain } from './MatrixRain';
 import { ArtifactCard } from './ArtifactCard';
+import { ScrambleFragment } from './ScrambleFragment';
 // ScrambleFragment retired from dormant CTA — ghost text sticky CTA replaced it
 import { OracleStepLogger, logStep } from './OracleStepLogger';
 import { useAtmosphere } from '../hooks/useAtmosphere';
@@ -249,32 +253,44 @@ interface KnifeQuestion {
   territory: string;
   question: string;
   themes: string[]; // portrait themes seeded from this territory
+  icon: any;
+  color: string;
 }
 const KNIFE_QUESTIONS: KnifeQuestion[] = [
   {
     territory: 'THE LIBRARY OF ME',
     question: 'Who are you when the network goes dark and no one is watching?',
     themes: ['solitude', 'identity', 'authentic-self'],
+    icon: BookOpen,
+    color: '#00ff88', // Emerald
   },
   {
     territory: 'CONNECTION & DEBT',
     question: 'Name the thing you\'ve owed someone for so long it\'s started to feel like yours.',
     themes: ['connection', 'obligation', 'debt', 'human-bond'],
+    icon: Link2,
+    color: '#b026ff', // Purple
   },
   {
     territory: 'THE MACHINE MIRROR',
     question: 'What would you ask this system to confirm that you already know but won\'t say out loud?',
     themes: ['man-machine', 'singularity', 'consciousness', 'digital-self'],
+    icon: Cpu,
+    color: '#00ccff', // Cyan
   },
   {
     territory: 'THE SOCIAL CONSTRUCT',
     question: 'The version of you that lives online — when did it start making decisions for the real one?',
     themes: ['persona', 'social-construct', 'online-identity', 'mask'],
+    icon: Globe,
+    color: '#ff3c00', // Neon Red
   },
   {
     territory: 'THE INDUSTRIAL QUESTION',
     question: 'What did you used to be able to do alone that you now need a machine to finish?',
     themes: ['autonomy', 'technology', 'dependency', 'new-revolution'],
+    icon: Factory,
+    color: '#ffcc00', // Amber
   },
 ];
 
@@ -335,8 +351,8 @@ function useLoreSequence(active: boolean, onComplete: () => void) {
     setCurrentLine('');
 
     // Beat delays (ms) after each line finishes typing — weighted by emotional gravity.
-    // Range: 2.2s – 3.8s.  Total sequence ≈ 47 seconds including typing time.
-    const BEAT_DELAYS = [2200, 3200, 3800, 2200, 3000, 3600, 2200, 3800, 2400, 2200];
+    // Range: 1.4s – 2.4s.  Total sequence ≈ 32 seconds including typing time.
+    const BEAT_DELAYS = [1400, 2200, 2400, 1400, 2000, 2400, 1400, 2400, 1600, 1400];
 
     let rafId: number;
     let lineIdx   = 0;
@@ -434,6 +450,7 @@ export function SurrogateOracleImmersion() {
   // ── Knife question selection ──────────────────────────────────────────────
   const [selectedKnifeQuestion, setSelectedKnifeQuestion] = useState<string | null>(null);
   const [selectedKnifeIndex, setSelectedKnifeIndex] = useState<number | null>(null);
+  const [isScrambling, setIsScrambling] = useState(false);
 
   // ── Lore completion flag — true when lore finishes or is skipped ─────────
   // Knife cards rise from the terminal stage once this is true.
@@ -503,6 +520,7 @@ export function SurrogateOracleImmersion() {
 
   // ── Portrait generation ───────────────────────────────────────────────────
   const [isGeneratingPortrait, setIsGeneratingPortrait] = useState(false);
+  const conversationThemesRef = useRef<Set<string>>(new Set());
   // Stable ref so the auth useEffect can call generatePortrait without a forward-reference issue
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const generatePortraitRef = useRef<(themes: string[]) => Promise<void>>(async () => {});
@@ -655,8 +673,14 @@ export function SurrogateOracleImmersion() {
         setShowAuthOverlay(true);
       } else if (trigger === 'portrait_unlock') {
         // Fire the EFA — generates portrait from conversation themes + saves to DB
-        const themes: string[] = customEvent.detail?.themes || ['oracle', 'cyberpunk', 'graffiti'];
-        generatePortraitRef.current(themes);
+        const eventThemes: string[] = customEvent.detail?.themes || [];
+        eventThemes.forEach(t => conversationThemesRef.current.add(t));
+        
+        const accumulatedThemes = Array.from(conversationThemesRef.current);
+        const finalThemes = accumulatedThemes.length > 0 ? accumulatedThemes : ['oracle', 'cyberpunk', 'graffiti'];
+        
+        logStep('UNLOCKING PORTRAIT WITH THEMES: ' + finalThemes.join(','), 'ok');
+        generatePortraitRef.current(finalThemes);
       }
     };
     
@@ -675,13 +699,22 @@ export function SurrogateOracleImmersion() {
       }
     };
 
+    const handleKnifeSelected = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const themes = customEvent.detail?.themes || [];
+      logStep('SEEDING CONVERSATION THEMES: ' + themes.join(','), 'ok');
+      themes.forEach(t => conversationThemesRef.current.add(t));
+    };
+
     window.addEventListener('oracle:unlock', handleUnlock);
     window.addEventListener('oracle:alignment', handleAlignment);
     window.addEventListener('oracle:artifact', handleArtifact);
+    window.addEventListener('oracle:knife-selected', handleKnifeSelected);
     return () => {
       window.removeEventListener('oracle:unlock', handleUnlock);
       window.removeEventListener('oracle:alignment', handleAlignment);
       window.removeEventListener('oracle:artifact', handleArtifact);
+      window.removeEventListener('oracle:knife-selected', handleKnifeSelected);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
@@ -767,6 +800,7 @@ export function SurrogateOracleImmersion() {
 
   const initializeOracle = useCallback(async () => {
     if (!validateEnvironment()) return;
+    logStep('DECART INIT', 'ok');
     if (!avatarVideoRef.current) {
       setOracleState((prev) => ({ ...prev, error: 'Avatar video element not ready' }));
       return;
@@ -941,16 +975,16 @@ export function SurrogateOracleImmersion() {
     alleyAmbienceStopRef.current?.();
     alleyAmbienceStopRef.current = null;
     setScenePhase('awakened');
+    logStep('ORACLE ASKS FOR FREQUENCY', 'ok');
 
     // SPOKEN KNIFE: Have the Oracle read the territories to fulfill 'spoken knife' requirement.
     // This makes the transition feel authored by the entity, not the UI.
     setTimeout(() => {
-      logStep('ORACLE ASKS FOR FREQUENCY', 'ok');
       oracleConversationRef.current?.sendTextMessage(
         "The archive is open. The territories are rising: The Void, The Machine, The Ghost, The Seed, and The Mirror. Choose the frequency that is already true.",
         true // isHidden=true: audible only, no UI turn
       );
-    }, 1200);
+    }, 400);
   }, [scenePhase]);
   // Lore sequence — runs while scenePhase=terminal and lore not yet complete.
   // onComplete: loreComplete=true triggers the awakened transition below.
@@ -976,6 +1010,7 @@ export function SurrogateOracleImmersion() {
     logStep(`KNIFE[${index}] SELECTED: ${question.slice(0, 20)}...`, 'ok');
     setSelectedKnifeQuestion(question);
     setSelectedKnifeIndex(index);
+    setIsScrambling(true);
     const kq = KNIFE_QUESTIONS[index];
     if (kq) {
       logStep('SEEDING THEMES: ' + kq.themes.join(','), 'ok');
@@ -983,11 +1018,21 @@ export function SurrogateOracleImmersion() {
         detail: { territory: kq.territory, themes: kq.themes, question: kq.question },
       }));
     }
+
+    // SYNCHRONOUSLY INITIALIZE FREEMIUM AUDIO TO UNLOCK AUDIOCONTEXT
+    if (!pcmPlayerRef.current) {
+      logStep('INITIALIZING FREEMIUM AUDIO (SYNC)', 'ok');
+      const player = new PCMPlayer(24000);
+      player.getContext().resume(); // Unlock immediately during user gesture
+      pcmPlayerRef.current = player;
+    }
+
     setTimeout(() => {
       logStep('setScenePhase(oracle)', 'ok');
       setScenePhase('oracle');
+      setIsScrambling(false);
       logStep('ORACLE PHASE ENTERED', 'ok');
-    }, 400);
+    }, 1600);
   }, []);
 
   // ── XR: wire marker callback — same flow as first tap, just triggered by marker
@@ -1051,9 +1096,6 @@ export function SurrogateOracleImmersion() {
     isFirstChunkRef.current = true;
   }, [oracleState.isProcessing]);
 
-    const pcmPlayerRef = useRef<PCMPlayer | null>(null);
-  const visemeDetRef = useRef<VisemeDetector | null>(null);
-
   // handleOracleResponse — the primary bridge for the freemium path.
   // Receives raw PCM chunks from Gemini Live, feeds them to the PCMPlayer,
   // and drives the VisemeDetector for frame-accurate lip-sync.
@@ -1107,10 +1149,13 @@ export function SurrogateOracleImmersion() {
 
     // ── Freemium: play directly + animate face ──────────────────────────────
     if (!pcmPlayerRef.current) {
-      logStep('INITIALIZING FREEMIUM AUDIO', 'ok');
+      logStep('INITIALIZING FREEMIUM AUDIO (FALLBACK)', 'ok');
       const player = new PCMPlayer(24000); // Gemini Live is 24kHz
       pcmPlayerRef.current = player;
-      
+    }
+
+    if (!visemeDetRef.current && pcmPlayerRef.current) {
+      const player = pcmPlayerRef.current;
       // Initialize VisemeDetector with the same AudioContext for shared analyser
       const detector = new VisemeDetector((state) => {
         const face = oracleFaceRef.current;
@@ -1281,6 +1326,7 @@ export function SurrogateOracleImmersion() {
     setSelectedKnifeQuestion(null);
     setSelectedKnifeIndex(null);
     setLoreComplete(false);
+    conversationThemesRef.current.clear();
     setOracleState((p) => ({ ...p, isConnected: false, isReady: false, isProcessing: false, error: null }));
   };
 
@@ -1494,6 +1540,31 @@ export function SurrogateOracleImmersion() {
               className="oracle-avatar-static"
             />
 
+            {/* ── Freemium Oracle Loop — plays when not speaking ────────────────
+                Captured neutral face loop (WebM/MP4). Static fallback active.
+                Only active in freemium oracle mode (Decart path has its own video). */}
+            {isOracleMode && !isDecartActive && (
+              <video
+                src="/oracle-loop.webm"
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="oracle-avatar-loop"
+                style={{
+                  opacity: oracleState.isProcessing ? 0 : 1,
+                  transition: 'opacity 0.6s ease',
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  position: 'absolute',
+                  zIndex: 1,
+                  borderRadius: '8px',
+                  background: '#000'
+                }}
+              />
+            )}
+
             {/* ── Talking face — freemium oracle path ──────────────────────────────
                 1280×640 portrait. VisemeDetector writes glow/scale at up to 60 fps.
                 Hidden in dormant/terminal/awakened (static arcade shown instead).
@@ -1504,10 +1575,12 @@ export function SurrogateOracleImmersion() {
               src={latestPortraitUrl || ORACLE_AVATAR_URL}
               alt="SURROGATE Oracle"
               className="oracle-avatar-img"
-              style={isOracleMode || oracleState.isProcessing ? {
-                opacity: isDecartActive ? 0 : 1,
+              style={(isOracleMode || oracleState.isProcessing || scenePhase === 'terminal') ? {
+                opacity: isDecartActive ? 0 : (scenePhase === 'terminal' ? 0.35 : 1),
                 transform: 'scale(0.92)',   /* 8% smaller — sits inside cabinet frame */
-                filter: 'brightness(1.1) drop-shadow(0 0 18px rgba(0,255,136,0.45))',
+                filter: (scenePhase === 'terminal') 
+                  ? 'brightness(0.8) blur(1px)' 
+                  : 'brightness(1.1) drop-shadow(0 0 18px rgba(0,255,136,0.45))',
               } : undefined}
             />
 
@@ -1643,32 +1716,97 @@ export function SurrogateOracleImmersion() {
            frequency → portrait → 1:1 on-chain digital asset.               */}
       <AnimatePresence>
         {scenePhase === 'awakened' && !selectedKnifeQuestion && (
+          <>
+            <motion.div
+              key="scramble-bridge"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 1, 0] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1.6, times: [0, 0.4, 1] }}
+              className="oracle-scramble-bridge"
+              style={{
+                position: 'absolute',
+                bottom: '45%',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 100,
+                width: '100%',
+                textAlign: 'center',
+                pointerEvents: 'none'
+              }}
+            >
+              <ScrambleFragment 
+                texts={['THE ARCHIVE IS OPEN']} 
+                className="oracle-sf--cta" 
+                holdMs={800}
+                revealMs={40}
+              />
+            </motion.div>
+            <motion.div
+              key="knife-section"
+              className="oracle-knife-section"
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20, transition: { duration: 0.3 } }}
+              transition={{ duration: 0.7, ease: 'easeOut', delay: 1.6 }}
+            >
+              <div className="oracle-knife-header">◈ THE ARCHIVE IS OPEN</div>
+              <div className="oracle-knife-subheader">CHOOSE THE FREQUENCY THAT IS ALREADY TRUE. THE EXCAVATION BEGINS THERE.</div>
+              <div className="oracle-knife-cards">
+                {KNIFE_QUESTIONS.map((kq, idx) => (
+                  <motion.div
+                    key={idx}
+                    className={`oracle-knife-card${selectedKnifeIndex === idx ? ' oracle-knife-card--selected' : ''}`}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 1.6 + 0.10 * idx, duration: 0.38 }}
+                    onClick={() => selectKnifeQuestion(kq.question, idx)}
+                    style={{ '--accent-color': kq.color } as any}
+                  >
+                    <div className="oracle-knife-visual">
+                      <kq.icon size={18} style={{ color: kq.color }} />
+                      <div className="oracle-knife-blade" style={{ background: kq.color }} />
+                    </div>
+                    <div className="oracle-knife-content">
+                      <span className="oracle-knife-territory" style={{ color: kq.color }}>{kq.territory}</span>
+                      <div className="oracle-knife-text">{kq.question}</div>
+                    </div>
+                    <span className="oracle-knife-card-num">0{idx + 1}</span>
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* ── Scramble Overlay — during frequency locking ────────────────── */}
+      <AnimatePresence>
+        {isScrambling && (
           <motion.div
-            key="knife-section"
-            className="oracle-knife-section"
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20, transition: { duration: 0.3 } }}
-            transition={{ duration: 0.7, ease: 'easeOut', delay: 2.2 }}
+            key="scramble-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="oracle-scramble-overlay"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.85)',
+              zIndex: 1000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backdropFilter: 'blur(10px)'
+            }}
           >
-            <div className="oracle-knife-header">◈ THE ARCHIVE IS OPEN</div>
-            <div className="oracle-knife-subheader">CHOOSE THE FREQUENCY THAT IS ALREADY TRUE. THE EXCAVATION BEGINS THERE.</div>
-            <div className="oracle-knife-cards">
-              {KNIFE_QUESTIONS.map((kq, idx) => (
-                <motion.div
-                  key={idx}
-                  className={`oracle-knife-card${selectedKnifeIndex === idx ? ' oracle-knife-card--selected' : ''}`}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 2.2 + 0.10 * idx, duration: 0.38 }}
-                  onClick={() => selectKnifeQuestion(kq.question, idx)}
-                >
-                  <span className="oracle-knife-territory">{kq.territory}</span>
-                  <span className="oracle-knife-card-num">0{idx + 1}</span>
-                  {kq.question}
-                </motion.div>
-              ))}
-            </div>
+             <ScrambleFragment 
+               texts={['FREQUENCY LOCKED', 'TRANSMISSION STARTING', 'WITNESSING...']} 
+               className="oracle-sf--cta"
+               holdMs={500}
+               pauseMs={200}
+               revealMs={30}
+             />
           </motion.div>
         )}
       </AnimatePresence>
@@ -1676,11 +1814,11 @@ export function SurrogateOracleImmersion() {
       {/* ── Culture coin display ─────────────────────────────────────────── */}
       {/* Intentionally removed: Culture coin display is hidden to subvert the token economy (Phase 4). Coins are private until invited via Enculturate Crate. */}
 
-      {/* Conversation panel — pre-mounted in awakened phase (isVisible=false) for
+      {/* Conversation panel — pre-mounted in dormant phase for
            Gemini Live WS pre-connection. Becomes visible when oracle mode begins.
            autoStart=false: oracle greeting fires via startSession() in the oracle
            phase useEffect above, not automatically on session.created.            */}
-      {(isOracleMode || scenePhase === 'awakened' || scenePhase === 'terminal') && showConversation && (
+      {showConversation && (
         <OracleConversation
           ref={oracleConversationRef}
           userId={currentUserId || currentSessionId}

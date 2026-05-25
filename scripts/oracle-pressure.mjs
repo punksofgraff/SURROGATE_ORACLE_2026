@@ -37,6 +37,16 @@ function waitForPhase(page, phase, timeout) {
 // Injected before page load — collects every oracle:step event into window.__stepLog.
 
 async function injectCollector(page) {
+  page.on('console', msg => {
+    const type = msg.type();
+    const text = msg.text();
+    if (type === 'error') {
+      console.error(`    🔴 BROWSER ERROR: ${text}`);
+    } else if (text.includes('ORACLE:STEP')) {
+      console.log(`    🔵 BROWSER LOG: ${text}`);
+    }
+  });
+
   await page.addInitScript(function() {
     window.__stepLog = [];
     window.__stepStart = null;

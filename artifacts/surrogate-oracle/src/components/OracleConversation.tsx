@@ -62,6 +62,8 @@ interface OracleConversationProps {
   onCoinsEarned?: (coins: number) => void;
   onClose?: () => void;
   onSessionEnd?: (alignment: string, totemLevel: number, coins: number) => void;
+  onConnected?: () => void;
+  onListeningChange?: (isListening: boolean) => void;
   initialTotemLevel?: number;
   isVisible?: boolean;
   autoStart?: boolean;
@@ -94,6 +96,7 @@ const OracleConversation = forwardRef(
   (props: OracleConversationProps, ref: React.ForwardedRef<OracleConversationHandle>) => {
     const {
       onOracleResponse, onCoinsEarned,
+      onConnected, onListeningChange,
       isVisible = true,
       autoStart = true,
       sessionContext,
@@ -114,6 +117,7 @@ const OracleConversation = forwardRef(
     const pcmPlayerRef = useRef<PCMPlayer | null>(null);
     const currentResponseText = useRef('');
     const sessionBootedRef = useRef(false);
+    const pendingBootRef = useRef(false);
     const pcmEncoderWorkerRef = useRef<Worker | null>(null);
     const turnPcmChunksRef = useRef<Int16Array[]>([]);
 
@@ -125,6 +129,12 @@ const OracleConversation = forwardRef(
       lastError: null as string | null,
       recentMessages: [] as string[],
     });
+
+    const onConnectedRef = useRef(onConnected);
+    useEffect(() => { onConnectedRef.current = onConnected; }, [onConnected]);
+
+    const onListeningChangeRef = useRef(onListeningChange);
+    useEffect(() => { onListeningChangeRef.current = onListeningChange; }, [onListeningChange]);
 
     const onUserSpeakingChangeRef = useRef(onUserSpeakingChange);
     useEffect(() => { onUserSpeakingChangeRef.current = onUserSpeakingChange; }, [onUserSpeakingChange]);
@@ -177,46 +187,47 @@ const OracleConversation = forwardRef(
       wsRef.current = ws;
 
       ws.onopen = () => {
-        logStep('GEMINI WS OPENED', 'ok');
-        debugInfo.current.connectedAt = Date.now();
-        ws.send(JSON.stringify({
-          type: 'session.config',
-          model: GEMINI_MODEL,
-          systemInstruction: { parts: [{ text: ORACLE_SYSTEM_PROMPT }] },
-          generationConfig: { 
-            responseModalities: ['AUDIO'],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: {
-                  voiceName: 'Charon'
-                }
+      logStep('GEMINI WS OPENED', 'ok');
+      debugInfo.current.connectedAt = Date.now();
+      ws.send(JSON.stringify({
+        type: 'session.config',
+        model: GEMINI_MODEL,
+        systemInstruction: { parts: [{ text: ORACLE_SYSTEM_PROMPT }] },
+        generationConfig: { 
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: 'Charon'
               }
             }
-          },
-        }));
-        setIsConnected(true);
+          }
+        },
+      }));
+      setIsConnected(true);
+      onConnectedRef.current?.();
       };
 
       ws.onmessage = async (event) => {
-        try {
-          const text = event.data instanceof Blob ? await event.data.text() : event.data;
-          const msg = typeof text === 'string' ? JSON.parse(text) : null;
-          if (!msg) return;
+      try {
+        const text = event.data instanceof Blob ? await event.data.text() : event.data;
+        const msg = typeof text === 'string' ? JSON.parse(text) : null;
+        if (!msg) return;
 
-          // Push to debug log
-          debugInfo.current.recentMessages = [
-            `[${new Date().toLocaleTimeString()}] IN: ${msg.type}`,
-            ...debugInfo.current.recentMessages
-          ].slice(0, 20);
+        // Push to debug log
+        debugInfo.current.recentMessages = [
+          `[${new Date().toLocaleTimeString()}] IN: ${msg.type}`,
+          ...debugInfo.current.recentMessages
+        ].slice(0, 20);
 
-          if (msg.type === 'session.created') {
-            logStep('GEMINI SESSION CREATED', 'ok');
-            if (autoStart && !sessionBootedRef.current) {
-              sessionBootedRef.current = true;
-              setTimeout(() => sendText('__ORACLE_BOOT__'), 200);
-            }
+        if (msg.type === 'session.created') {
+          logStep('GEMINI SESSION CREATED', 'ok');
+          if ((autoStart || pendingBootRef.current) && !sessionBootedRef.current) {
+            sessionBootedRef.current = true;
+            pendingBootRef.current = false;
+            setTimeout(() => sendText('__ORACLE_BOOT__'), 200);
           }
-
+        }
           if (msg.type === 'server.content') {
             if (msg.serverContent?.interrupted) {
               pcmPlayerRef.current?.stop();
@@ -325,6 +336,7 @@ const OracleConversation = forwardRef(
         processorRef.current.connect(audioContextRef.current.destination);
         setIsListening(true);
         isListeningRef.current = true;
+        onListeningChangeRef.current?.(true);
       } catch (e) {
         console.error('[Mic] Failed:', e);
       }
@@ -337,6 +349,7 @@ const OracleConversation = forwardRef(
       audioContextRef.current = null;
       isListeningRef.current = false;
       setIsListening(false);
+      onListeningChangeRef.current?.(false);
       vadRef.current.reset();
       onUserSpeakingChangeRef.current?.(false, 0);
     };

@@ -521,6 +521,8 @@ export function SurrogateOracleImmersion() {
   // ?devui — visual state inspector overlay (no Playwright needed for live debugging)
   const isDevUI = new URLSearchParams(window.location.search).has('devui');
   const [isDecartActive, setIsDecartActive] = useState(false);
+  const [isGeminiConnected, setIsGeminiConnected] = useState(false);
+  const [isMicActive, setIsMicActive] = useState(false);
   const isDecartActiveRef = useRef(false); // stable ref for callbacks
 
   // ── Oracle Pulse: user speaking state (VAD-driven) ───────────────────────
@@ -693,17 +695,21 @@ export function SurrogateOracleImmersion() {
   useEffect(() => {
     if (audioRef.current) {
       // Base volume is 0.28. 
-      // Ducking: 
-      // - If Oracle is ready/connected: drop to 0.04 (15% of 0.28 ≈ 0.042)
-      // - If Oracle is actively speaking: drop to 0.02 (heavy duck)
-      // - Default: 0.28
+      // Ducking priority (lowest wins):
+      // 1. If Oracle is actively speaking: drop to 0.02 (7%)
+      // 2. If Seeker's mic is open: drop to 0.04 (15%)
+      // 3. If Oracle is ready/connected (Gemini or Decart): drop to 0.04 (15%)
+      // 4. Default: 0.28
       let vol = 0.28;
-      if (oracleState.isReady || oracleState.isConnected) vol = 0.04;
+      
+      const isOracleReady = oracleState.isReady || isGeminiConnected;
+      
+      if (isOracleReady || isMicActive) vol = 0.04;
       if (oracleState.isProcessing) vol = 0.02;
       
       audioRef.current.volume = vol;
     }
-  }, [oracleState.isProcessing, oracleState.isReady, oracleState.isConnected]);
+  }, [oracleState.isProcessing, oracleState.isReady, isGeminiConnected, isMicActive]);
 
   // ── Oracle connection ─────────────────────────────────────────────────────
   const validateEnvironment = useCallback(() => {
@@ -815,20 +821,6 @@ export function SurrogateOracleImmersion() {
         // Issue 2 fix: isDecartActive is set here (stream live) not on connect() return
         setIsDecartActive(true);
 
-        // Singularity: duck GraffPunks radio as the Oracle face materializes.
-        if (audioRef.current && !audioRef.current.paused) {
-          const audioEl = audioRef.current;
-          const targetVol = 0.04; // 15% of 0.28 base
-          const fadeStep = setInterval(() => {
-            if (audioEl.volume > targetVol) {
-              audioEl.volume = Math.max(targetVol, audioEl.volume - 0.04);
-            } else {
-              audioEl.volume = targetVol;
-              clearInterval(fadeStep);
-            }
-          }, 100); // smooth duck
-        }
-
         // Cinematic materialization — face emerges from electrical static
         if (avatarVideoRef.current) {
           avatarVideoRef.current.classList.add('oracle-avatar-video--materializing');
@@ -848,14 +840,15 @@ export function SurrogateOracleImmersion() {
       onTalkStarted: () => setOracleState((p) => ({ ...p, isProcessing: true })),
       onTalkEnded:   () => setOracleState((p) => ({ ...p, isProcessing: false })),
       onDisconnected: (reason) => {
-        setOracleState((p) => ({ ...p, isConnected: false, isReady: false, error: `Disconnected: ${reason}` }));
-        setScenePhase('awakened');
+        setOracleState((p) => ({ ...p, isConnected: false, isReady: false, error: `Decart Disconnected: ${reason}` }));
         setIsConnecting(false);
+        setIsDecartActive(false); // Fallback to freemium face
       },
       onError: (err) => {
         clearInterval(interval);
         setOracleState((p) => ({ ...p, error: err }));
         setIsConnecting(false);
+        setIsDecartActive(false); // Fallback to freemium face
       },
     });
 
@@ -865,17 +858,15 @@ export function SurrogateOracleImmersion() {
       setIsConnecting(false);
 
       if (isDevMode) {
-        // Dev mode: show the error clearly, reset to dormant so you can tap to retry
+        // Dev mode: show the error clearly, but still fallback to freemium to preserve immersion
         setOracleState((p) => ({
           ...p,
           error: `[DEV] Decart failed — ${result?.error || 'check decart-live-token EFA'}`,
         }));
-        setScenePhase('dormant');
-        setIsAudioPlaying(false);
-      } else {
-        // Freemium fallback: skip Decart, proceed to oracle mode with Gemini audio only
-        fallbackToFreemium(interval);
       }
+      
+      // Freemium fallback: skip Decart, proceed with Gemini audio + CSS animated face
+      fallbackToFreemium(interval);
     } else {
       // connect() resolved cleanly — ICE is negotiating, stream not live yet.
       // Issue 1 fix: mark connected here (not in DecartClient.onConnected which fires too early).
@@ -900,14 +891,11 @@ export function SurrogateOracleImmersion() {
   // Step 2: user picks knife question → terminal phase (lore, audio on)
   // Step 3: auto-called by lore sequence → awakened → oracle
 
-  // ── Gemini Live WS & Decart ICE Pre-Warm (600ms after dormant scene mounts) ─────────────
+  // ── Gemini Live WS & Decart ICE Pre-Warm (immediate mount) ─────────────
   useEffect(() => {
-    const t = setTimeout(() => {
-      logStep('OracleConversation MOUNTED', 'ok');
-      setShowConversation(true);  // Mounts OracleConversation
-      initializeOracle();         // Starts Decart ICE negotiation
-    }, 600);
-    return () => clearTimeout(t);
+    logStep('OracleConversation MOUNTED', 'ok');
+    setShowConversation(true);  // Mounts OracleConversation
+    initializeOracle();         // Starts Decart ICE negotiation
   }, [initializeOracle]);
 
   useEffect(() => {
@@ -932,18 +920,15 @@ export function SurrogateOracleImmersion() {
     setLoreComplete(false);
     setScenePhase('terminal');
     setIsAudioPlaying(true);
-    
+
     // Kick off Oracle session immediately so greeting plays upon entering terminal
     setTimeout(() => {
       logStep('START SESSION (GREETING)', 'ok');
       oracleConversationRef.current?.startSession();
     }, 400);
 
-    // Decart ICE warms during lore — pre-warm already handled at mount
-    setTimeout(() => {
-      logStep('DECART INIT', 'ok');
-      initializeOracle();
-    }, 200);
+    // Decart pre-warm already handled at mount, but ensure it's re-initialized if needed
+    initializeOracle();
   }, [scenePhase, initializeOracle]);
 
   // awakeFromTerminal — lore finishes → awakened.
@@ -956,14 +941,15 @@ export function SurrogateOracleImmersion() {
     alleyAmbienceStopRef.current = null;
     setScenePhase('awakened');
 
-    // Have the Oracle ask for the frequency once the archive fragment is complete.
+    // SPOKEN KNIFE: Have the Oracle read the territories to fulfill 'spoken knife' requirement.
     // This makes the transition feel authored by the entity, not the UI.
     setTimeout(() => {
       logStep('ORACLE ASKS FOR FREQUENCY', 'ok');
-      oracleConversationRef.current?.sendTextMessage('The archive fragment is complete. Now, choose the frequency that is already true.');
-    }, 1000);
+      oracleConversationRef.current?.sendTextMessage(
+        "The archive is open. The territories are rising: The Void, The Machine, The Ghost, The Seed, and The Mirror. Choose the frequency that is already true."
+      );
+    }, 1200);
   }, [scenePhase]);
-
   // Lore sequence — runs while scenePhase=terminal and lore not yet complete.
   // onComplete: loreComplete=true triggers the awakened transition below.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1202,8 +1188,6 @@ export function SurrogateOracleImmersion() {
     audio.onplay = () => {
       visemeDetRef.current?.resume();
       visemeDetRef.current?.start();
-      // Duck the house music while the Oracle speaks
-      if (audioRef.current) audioRef.current.volume = 0.06;
       // Drive data-oracle-speaking on freemium path (cabinet-voice-pulse, XR chroma blast)
       setOracleState((p) => ({ ...p, isProcessing: true }));
     };
@@ -1224,8 +1208,6 @@ export function SurrogateOracleImmersion() {
         mouth.style.width        = '22%';
         mouth.style.borderRadius = '2px';
       }
-      // Restore house music
-      if (audioRef.current) audioRef.current.volume = 0.28;
       // Clear oracle-speaking state on freemium path
       setOracleState((p) => ({ ...p, isProcessing: false }));
       // ── Pending Decart handoff window #1: Oracle just finished speaking.
@@ -1343,6 +1325,8 @@ export function SurrogateOracleImmersion() {
 
     await decartClientRef.current?.closeStream();
     setIsDecartActive(false);
+    setIsGeminiConnected(false);
+    setIsMicActive(false);
     setIsAudioPlaying(false);                // stop the GraffPunks radio stream
     setScenePhase('dormant');
     setShowConversation(false);
@@ -1574,8 +1558,8 @@ export function SurrogateOracleImmersion() {
               src={latestPortraitUrl || ORACLE_AVATAR_URL}
               alt="SURROGATE Oracle"
               className="oracle-avatar-img"
-              style={(isOracleMode || oracleState.isProcessing) && !isDecartActive ? {
-                opacity: 1,
+              style={isOracleMode || oracleState.isProcessing ? {
+                opacity: isDecartActive ? 0 : 1,
                 transform: 'scale(0.92)',   /* 8% smaller — sits inside cabinet frame */
                 filter: 'brightness(1.1) drop-shadow(0 0 18px rgba(0,255,136,0.45))',
               } : undefined}
@@ -1759,6 +1743,8 @@ export function SurrogateOracleImmersion() {
           onCoinsEarned={handleCoinsEarned}
           onClose={exitOracleMode}
           onSessionEnd={handleSessionEnd}
+          onConnected={() => setIsGeminiConnected(true)}
+          onListeningChange={(active) => setIsMicActive(active)}
           initialTotemLevel={persistedTotemLevel}
           sessionContext={selectedKnifeQuestion || undefined}
           initialKnifeThemes={selectedKnifeIndex !== null ? KNIFE_QUESTIONS[selectedKnifeIndex]?.themes : undefined}

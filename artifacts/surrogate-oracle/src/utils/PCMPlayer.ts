@@ -15,11 +15,21 @@ export class PCMPlayer {
   private isPlaying: boolean = false;
   private sourceNodes: AudioBufferSourceNode[] = [];
 
+  private destination: AudioNode | null = null;
+
   constructor(sampleRate: number = 24000) {
     this.sampleRate = sampleRate;
     this.context = new (window.AudioContext || (window as any).webkitAudioContext)({
       sampleRate: this.sampleRate
     });
+    this.destination = this.context.destination;
+  }
+
+  /**
+   * Connect the player to an external node (e.g. an AnalyserNode for lip-sync).
+   */
+  public connect(node: AudioNode) {
+    this.destination = node;
   }
 
   /**
@@ -42,7 +52,16 @@ export class PCMPlayer {
 
     const source = this.context.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.context.destination);
+    
+    if (this.destination) {
+      source.connect(this.destination);
+      // Also connect to master destination if the external node doesn't
+      if (this.destination !== this.context.destination) {
+        source.connect(this.context.destination);
+      }
+    } else {
+      source.connect(this.context.destination);
+    }
 
     // Schedule playback to ensure no gaps between chunks
     const currentTime = this.context.currentTime;

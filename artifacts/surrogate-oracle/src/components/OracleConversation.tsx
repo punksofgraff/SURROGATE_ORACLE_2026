@@ -74,7 +74,7 @@ interface OracleConversationProps {
 }
 
 export interface OracleConversationHandle {
-  sendTextMessage: (text: string) => void;
+  sendTextMessage: (text: string, isHidden?: boolean) => void;
   disconnect: () => void;
   getWsDebugInfo: () => { 
     wsState: number | undefined;
@@ -164,11 +164,11 @@ const OracleConversation = forwardRef(
 
     const vadRef = useRef(createVADProcessor({ rmsThreshold: 0.008 }));
 
-    const sendText = useCallback((text: string) => {
+    const sendText = useCallback((text: string, isHidden = false) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-      const isBoot = text === '__ORACLE_BOOT__';
+      const isBoot = text === '__ORACLE_BOOT__' || isHidden;
       if (isBoot) logStep('__ORACLE_BOOT__ path triggered', 'ok');
-      const body = isBoot ? 'Greetings... Seeker' : text;
+      const body = isBoot ? (text === '__ORACLE_BOOT__' ? 'Greetings... Seeker' : text) : text;
       wsRef.current.send(JSON.stringify({ type: 'client.realtimeInput', realtimeInput: { text: body } }));
       if (!isBoot) {
         setTurns(prev => [...prev, { role: 'user', content: text, timestamp: Date.now() }]);
@@ -248,7 +248,14 @@ const OracleConversation = forwardRef(
                 for (let i = 0; i < pcmData.length; i++) pcmData[i] = view.getInt16(i * 2, true);
 
                 setIsOracleSpeaking(true);
-                pcmPlayerRef.current?.feed(pcmData);
+                // Call parent handler to drive lip-sync
+                onOracleResponseRef.current?.(pcmData);
+                
+                // Only use internal PCM player if parent didn't handle it
+                if (!onOracleResponseRef.current) {
+                  pcmPlayerRef.current?.feed(pcmData);
+                }
+                
                 turnPcmChunksRef.current.push(pcmData);
               }
             }
@@ -360,7 +367,7 @@ const OracleConversation = forwardRef(
     }, [connectToGemini]);
 
     useImperativeHandle(ref, () => ({
-      sendTextMessage: sendText,
+      sendTextMessage: (text: string, isHidden = false) => sendText(text, isHidden),
       disconnect: () => wsRef.current?.close(),
       getWsDebugInfo: () => ({ 
         wsState: wsRef.current?.readyState,
@@ -406,7 +413,7 @@ const OracleConversation = forwardRef(
           )}
         </div>
 
-        <div className="oc-log">
+        <div className="oc-log" style={{ opacity: showSignalPad ? 1 : 0, pointerEvents: showSignalPad ? 'auto' : 'none' }}>
           <AnimatePresence initial={false}>
             {turns.slice(-2).map((t: any) => (
               <motion.div 

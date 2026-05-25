@@ -71,8 +71,8 @@ export class VisemeDetector {
     /Mobi|Android|iPhone/i.test(navigator.userAgent)
   );
 
-  constructor(onUpdate: (s: VisemeState) => void) {
-    this.ctx = new AudioContext();
+  constructor(onUpdate: (s: VisemeState) => void, existingCtx?: AudioContext) {
+    this.ctx = existingCtx || new AudioContext();
     this.analyser = this.ctx.createAnalyser();
     // 512 bins on mobile (halves per-frame iteration cost), 1024 on desktop
     this.analyser.fftSize = this.isMobileFft ? 512 : 1024;
@@ -83,10 +83,22 @@ export class VisemeDetector {
     this.onUpdate = onUpdate;
   }
 
-  connect(el: HTMLAudioElement) {
+  connect(source: AudioNode | HTMLAudioElement) {
     if (this.source) this.source.disconnect();
-    this.source = this.ctx.createMediaElementSource(el);
-    this.source.connect(this.analyser);
+    if (source instanceof HTMLAudioElement) {
+      this.source = this.ctx.createMediaElementSource(source);
+    } else {
+      this.source = source as any;
+    }
+    this.source!.connect(this.analyser);
+  }
+
+  getAnalyser() {
+    return this.analyser;
+  }
+
+  getContext() {
+    return this.ctx;
   }
 
   resume() {

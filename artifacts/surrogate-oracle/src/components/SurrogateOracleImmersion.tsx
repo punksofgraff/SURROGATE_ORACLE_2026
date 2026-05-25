@@ -25,6 +25,7 @@ import { useAtmosphere } from '../hooks/useAtmosphere';
 import { useParallax } from '../hooks/useParallax';
 import { useXRMode } from '../hooks/useXRMode';
 import { VisemeDetector } from '../lib/visemeDetector';
+import { PCMPlayer } from '../utils/PCMPlayer';
 import {
   playActivationSfx,
   startAlleyAmbience,
@@ -531,9 +532,9 @@ export function SurrogateOracleImmersion() {
   const [userVadScore, setUserVadScore] = useState(0);
 
   // ── Freemium Oracle speech + VisemeDetector ───────────────────────────────
-  // When Decart is not active, Oracle audio plays through freemiumAudioRef and
+  // When Decart is not active, Oracle audio plays through pcmPlayerRef and
   // VisemeDetector drives real-time glow/pulse animation on the static oracle face.
-  const freemiumAudioRef = useRef<HTMLAudioElement | null>(null);
+  const pcmPlayerRef = useRef<PCMPlayer | null>(null);
   const visemeDetRef    = useRef<VisemeDetector | null>(null);
   const oracleFaceRef      = useRef<HTMLImageElement>(null);
   const mouthOverlayRef    = useRef<HTMLDivElement>(null);
@@ -588,8 +589,8 @@ export function SurrogateOracleImmersion() {
   useEffect(() => () => {
     visemeDetRef.current?.destroy();
     visemeDetRef.current = null;
-    freemiumAudioRef.current?.pause();
-    freemiumAudioRef.current = null;
+    pcmPlayerRef.current?.stop();
+    pcmPlayerRef.current = null;
     alleyAmbienceStopRef.current?.();
     alleyAmbienceStopRef.current = null;
   }, []);
@@ -946,7 +947,8 @@ export function SurrogateOracleImmersion() {
     setTimeout(() => {
       logStep('ORACLE ASKS FOR FREQUENCY', 'ok');
       oracleConversationRef.current?.sendTextMessage(
-        "The archive is open. The territories are rising: The Void, The Machine, The Ghost, The Seed, and The Mirror. Choose the frequency that is already true."
+        "The archive is open. The territories are rising: The Void, The Machine, The Ghost, The Seed, and The Mirror. Choose the frequency that is already true.",
+        true // isHidden=true: audible only, no UI turn
       );
     }, 1200);
   }, [scenePhase]);
@@ -1049,84 +1051,81 @@ export function SurrogateOracleImmersion() {
     isFirstChunkRef.current = true;
   }, [oracleState.isProcessing]);
 
+    const pcmPlayerRef = useRef<PCMPlayer | null>(null);
+  const visemeDetRef = useRef<VisemeDetector | null>(null);
+
+  // handleOracleResponse — the primary bridge for the freemium path.
+  // Receives raw PCM chunks from Gemini Live, feeds them to the PCMPlayer,
+  // and drives the VisemeDetector for frame-accurate lip-sync.
   const handleOracleResponse = useCallback(async (data: Int16Array | string) => {
     // 1. Oracle presence shimmer — only fire on the FIRST chunk of a transmission 
-    // to avoid noise during low-latency chunked streaming.
     if (isFirstChunkRef.current) {
       playOraclePresence();
       isFirstChunkRef.current = false;
     }
 
     // 2. Prepare audio for delivery
-    let audioBlob: Blob | null = null;
+    let pcmData: Int16Array | null = null;
     let audioUrl: string | null = null;
 
     if (data instanceof Int16Array) {
-      // ── LOW LATENCY RAW PCM PATH ──────────────────────────────────────────
-      // Create minimal 44-byte WAV header for the PCM chunk in-place (< 1ms)
-      const buffer = new ArrayBuffer(44 + data.length * 2);
-      const view = new DataView(buffer);
-      const writeString = (offset: number, s: string) => {
-        for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
-      };
-      writeString(0, 'RIFF');
-      view.setUint32(4, 36 + data.length * 2, true);
-      writeString(8, 'WAVE');
-      writeString(12, 'fmt ');
-      view.setUint32(16, 16, true);
-      view.setUint16(20, 1, true); // PCM
-      view.setUint16(22, 1, true); // Mono
-      view.setUint32(24, 24000, true); // Sample rate
-      view.setUint32(28, 24000 * 2, true); // Byte rate
-      view.setUint16(32, 2, true); // Block align
-      view.setUint16(34, 16, true); // Bits per sample
-      writeString(36, 'data');
-      view.setUint32(40, data.length * 2, true);
-      const samples = new Int16Array(buffer, 44);
-      samples.set(data);
-      audioBlob = new Blob([buffer], { type: 'audio/wav' });
+      pcmData = data;
     } else {
       audioUrl = data;
     }
 
     // ── Paid: hand off to Decart ────────────────────────────────────────────
     if (isDecartActiveRef.current && decartClientRef.current?.isStreamActive()) {
-      await decartClientRef.current.sendAudio(audioBlob || audioUrl!);
+      // For Decart, we still need a blob if it's raw PCM
+      let payload: Blob | string = audioUrl!;
+      if (pcmData) {
+        const buffer = new ArrayBuffer(44 + pcmData.length * 2);
+        const view = new DataView(buffer);
+        const writeString = (offset: number, s: string) => {
+          for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i));
+        };
+        writeString(0, 'RIFF');
+        view.setUint32(4, 36 + pcmData.length * 2, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, 24000, true);
+        view.setUint32(28, 24000 * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeString(36, 'data');
+        view.setUint32(40, pcmData.length * 2, true);
+        const samples = new Int16Array(buffer, 44);
+        samples.set(pcmData);
+        payload = new Blob([buffer], { type: 'audio/wav' });
+      }
+      await decartClientRef.current.sendAudio(payload);
       return;
     }
 
     // ── Freemium: play directly + animate face ──────────────────────────────
-    // Lazily create the audio element once
-    if (!freemiumAudioRef.current) {
-      freemiumAudioRef.current = new Audio();
-      freemiumAudioRef.current.crossOrigin = 'anonymous';
-    }
-    const audio = freemiumAudioRef.current;
-
-    // Lazily create VisemeDetector and wire it to the audio element once.
-    if (!visemeDetRef.current) {
-      visemeDetRef.current = new VisemeDetector((state) => {
-        // ── HOT PATH — direct DOM writes at up to 60fps. No React state. ─────
-        const face  = oracleFaceRef.current;
+    if (!pcmPlayerRef.current) {
+      logStep('INITIALIZING FREEMIUM AUDIO', 'ok');
+      const player = new PCMPlayer(24000); // Gemini Live is 24kHz
+      pcmPlayerRef.current = player;
+      
+      // Initialize VisemeDetector with the same AudioContext for shared analyser
+      const detector = new VisemeDetector((state) => {
+        const face = oracleFaceRef.current;
         const mouth = mouthOverlayRef.current;
 
         if (face) {
-          const amp = state.amplitude;
-          if (amp < 0.04) {
-            face.style.filter    = '';
+          const { openness, amplitude } = state;
+          if (amplitude < 0.04) {
+            face.style.filter = '';
             face.style.transform = '';
           } else {
-            const glow   = (amp * 32).toFixed(1);
-            const bright = (1 + amp * 0.38).toFixed(3);
-            const scale  = (1 + amp * 0.028).toFixed(4);
-            const alpha  = (0.28 + amp * 0.55).toFixed(3);
-
-            // PIXEL-MAPPED WARPING: Drive the SVG displacement map via viseme openness.
-            const warpMap = document.getElementById('lip-warp-map');
-            if (warpMap) {
-              const warpScale = (state.openness * 12).toFixed(1);
-              warpMap.setAttribute('scale', warpScale);
-            }
+            const scale = (0.92 + openness * 0.04).toFixed(3);
+            const bright = (1.1 + openness * 0.25).toFixed(3);
+            const alpha = (0.45 + openness * 0.35).toFixed(3);
+            const glow = (18 + openness * 14).toFixed(1);
 
             face.style.filter = `url(#oracle-lip-warp) brightness(${bright}) drop-shadow(0 0 ${glow}px rgba(0,255,136,${alpha}))`;
             face.style.transform = `scale(${scale})`;
@@ -1135,98 +1134,45 @@ export function SurrogateOracleImmersion() {
         }
 
         if (mouth) {
-          const { viseme, openness, rounded, spread, amplitude } = state;
-
+          const { amplitude } = state;
           if (amplitude < 0.04) {
-            // Silence: thin closed line
-            mouth.style.opacity      = '0';
-            mouth.style.height       = '1px';
-            mouth.style.width        = '22%';
-            mouth.style.borderRadius = '2px';
+            mouth.style.opacity = '0';
+            mouth.style.height = '1px';
           } else {
             mouth.style.opacity = '1';
-
-            // PIXEL-MAPPED GEOMETRY: Calibrated for Image-1-(11).jpg thin lips
-            type Shape = { w: number; h: number; r: number };
-            const BASE: Record<string, Shape> = {
-              X: { w: 13, h:  1, r:  2 },   // silence — razor thin
-              B: { w: 12, h:  1, r:  2 },   // bilabial — lips pressed
-              C: { w: 14, h:  4, r: 40 },   // neutral — slight gap
-              D: { w: 14, h:  5, r: 30 },   // dental — thin open
-              A: { w: 16, h:  9, r: 40 },   // open vowel AH — widest thin lips
-              E: { w: 18, h:  3, r:  3 },   // "ee" — wide smile, thin
-              F: { w: 10, h:  3, r:  5 },   // fricative — narrow slot
-              G: { w: 12, h:  6, r: 50 },   // "oh" — rounded thin
-              H: { w: 9,  h:  5, r: 50 },   // "oo" — tight pucker
-            };
-
-            const base = BASE[viseme] ?? BASE['C'];
-
-            const w = base.w + spread   * 6;
-            const h = base.h + openness * 4;
-            const r = base.r + rounded  * 20;
-
-            mouth.style.width        = `${w.toFixed(1)}%`;
-            mouth.style.height       = `${h.toFixed(1)}%`;
-            mouth.style.borderRadius = `${r.toFixed(0)}%`;
+            const h = 2 + state.openness * 12;
+            const w = 18 + state.spread * 6;
+            mouth.style.height = `${h.toFixed(1)}px`;
+            mouth.style.width = `${w.toFixed(1)}%`;
+            mouth.style.borderRadius = `${(state.rounded * 50).toFixed(0)}%`;
           }
         }
-      });
-      try {
-        visemeDetRef.current.connect(audio);
-      } catch (e) {
-        console.warn('[Viseme] connect failed:', e);
-      }
+      }, player.getContext());
+
+      player.connect(detector.getAnalyser());
+      detector.start();
+      visemeDetRef.current = detector;
     }
 
-    // Stop any existing RAF loop before starting a new one
-    visemeDetRef.current.stop();
+    if (pcmData) {
+      pcmPlayerRef.current.feed(pcmData);
+    } else if (audioUrl) {
+      // Fallback for string URLs (rare in Live path but kept for compat)
+      const audio = new Audio(audioUrl);
+      audio.crossOrigin = 'anonymous';
+      const source = pcmPlayerRef.current.getContext().createMediaElementSource(audio);
+      source.connect(visemeDetRef.current!.getAnalyser());
+      audio.play();
+    }
 
-    const playUrl = audioBlob ? URL.createObjectURL(audioBlob) : audioUrl!;
-    audio.src = playUrl;
+    setOracleState((p) => ({ ...p, isProcessing: true }));
 
-    audio.onplay = () => {
-      visemeDetRef.current?.resume();
-      visemeDetRef.current?.start();
-      // Drive data-oracle-speaking on freemium path (cabinet-voice-pulse, XR chroma blast)
-      setOracleState((p) => ({ ...p, isProcessing: true }));
-    };
-
-    const resetFace = () => {
-      visemeDetRef.current?.stop();
-      const el = oracleFaceRef.current;
-      if (el) {
-        el.style.transition = 'filter 0.6s ease, transform 0.6s ease';
-        el.style.filter     = '';
-        el.style.transform  = '';
-      }
-      // Reset mouth overlay to silence state
-      const mouth = mouthOverlayRef.current;
-      if (mouth) {
-        mouth.style.opacity      = '0';
-        mouth.style.height       = '1px';
-        mouth.style.width        = '22%';
-        mouth.style.borderRadius = '2px';
-      }
-      // Clear oracle-speaking state on freemium path
+    // Reset processing state after a short silence gap
+    if (globalThis._oracleSilenceTimer) clearTimeout(globalThis._oracleSilenceTimer);
+    globalThis._oracleSilenceTimer = setTimeout(() => {
       setOracleState((p) => ({ ...p, isProcessing: false }));
-      // ── Pending Decart handoff window #1: Oracle just finished speaking.
-      //    Natural silence gap — cleanest possible cut to Decart audio routing.
-      if (decartPendingHandoff.current) {
-        executeDecartHandoff();
-      }
-    };
-
-    audio.onended = resetFace;
-    audio.onerror = resetFace;
-
-    await audio.play().catch((e) => {
-      console.warn('[Freemium audio] play() blocked:', e);
-      resetFace();
-    });
-
-    // Revoke Blob URL after use
-    if (audioBlob) setTimeout(() => URL.revokeObjectURL(playUrl), 10000);
+      if (decartPendingHandoff.current) executeDecartHandoff();
+    }, 400);
   }, [executeDecartHandoff]);
 
   // Coins earned from Sacred exchanges — bubble to window for CultureCoinInlineDisplay
@@ -1319,7 +1265,7 @@ export function SurrogateOracleImmersion() {
     playExitTone();
     // Stop freemium audio + viseme if running
     visemeDetRef.current?.stop();
-    freemiumAudioRef.current?.pause();
+    pcmPlayerRef.current?.stop();
     const el = oracleFaceRef.current;
     if (el) { el.style.filter = ''; el.style.transform = ''; }
 
@@ -1756,7 +1702,7 @@ export function SurrogateOracleImmersion() {
           }}
           onBargeIn={() => {
             // Pause freemium audio immediately when user interrupts Oracle
-            freemiumAudioRef.current?.pause();
+            pcmPlayerRef.current?.stop();
           }}
         />
       )}

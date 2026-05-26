@@ -15,16 +15,23 @@ Canonical mandates for the Surrogate project. Follow strictly.
 ## Core Mandates
 
 ### 1. The Seeker's Journey
-- **Dormant:** High-atmosphere alley. Static bridge avatar visible. Continuous random "Cheshire" phrase phasing.
-- **Terminal:** Immediate **"Greetings... Seeker"** (Charon voice). Parallel lore display.
-- **Awakened:** Lore complete → Oracle asks for frequency → Knife cards appear.
-- **Oracle:** Full conversation mode. Viseme-synced face visible.
+- **Dormant:** High-atmosphere alley. DormantHUD surveillance data in corners. Ghost phrase phasing. Oracle is silent.
+- **Terminal:** Lore sequence plays in silence — Oracle does NOT speak during lore. Seeker reads the archive alone.
+- **Awakened:** Lore complete → Oracle greets ("Greetings... Seeker") → announces territories → Knife cards appear.
+- **Oracle:** Full conversation mode. Pixel-mapped canvas lip-sync on face.
 
 ### 2. Audio & Volume
-- Base music volume: `0.28`.
-- Oracle Ready duck: `0.04` (15%).
-- Oracle Speaking duck: `0.02` (7%).
+- Base music volume: `0.22` (20% below original 0.28).
+- Seeker mic active duck: `0.15` (ambient presence — music stays audible while seeker speaks).
+- Oracle Ready duck: `0.04`.
+- Oracle Speaking duck: `0.02` (7% — near-silent while Oracle voice is foreground).
+- Priority order: default `0.22` → oracle-ready `0.04` → mic-active `0.15` → oracle-speaking `0.02`.
 - All SFX should be cinematic and high-fidelity.
+
+### 5. Brand Kit
+- Palette: **greens, purples, black, white ONLY.** No red, orange, amber, or yellow.
+- Knife card colors: emerald `#00ff88`, violet `#b026ff`, cyan `#00ccff`, neon-purple `#cc00ff`, mint `#00ffcc`.
+- Any use of red/orange/amber is a brand violation — correct immediately.
 
 ### 3. Step Logging (Handshake)
 - Use `logStep(label, status)` for all critical transitions.

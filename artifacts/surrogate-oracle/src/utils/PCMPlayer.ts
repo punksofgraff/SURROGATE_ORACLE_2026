@@ -11,14 +11,22 @@
 export class PCMPlayer {
   private context: AudioContext;
   private sampleRate: number;
+  private playbackRate: number;
   private nextStartTime: number = 0;
   private isPlaying: boolean = false;
   private sourceNodes: AudioBufferSourceNode[] = [];
 
   private destination: AudioNode | null = null;
 
-  constructor(sampleRate: number = 24000) {
+  /**
+   * @param sampleRate  Input PCM sample rate (Gemini Live = 24000 Hz)
+   * @param playbackRate  Playback speed multiplier. 1.0 = normal, 1.3 = 30% faster.
+   *                      Values > 1 also raise pitch proportionally — acceptable for
+   *                      the Charon voice which sits in the deep bass register.
+   */
+  constructor(sampleRate: number = 24000, playbackRate: number = 1.0) {
     this.sampleRate = sampleRate;
+    this.playbackRate = playbackRate;
     this.context = new (window.AudioContext || (window as any).webkitAudioContext)({
       sampleRate: this.sampleRate
     });
@@ -52,7 +60,8 @@ export class PCMPlayer {
 
     const source = this.context.createBufferSource();
     source.buffer = buffer;
-    
+    source.playbackRate.value = this.playbackRate;
+
     if (this.destination) {
       source.connect(this.destination);
       // Also connect to master destination if the external node doesn't
@@ -70,7 +79,10 @@ export class PCMPlayer {
     }
 
     source.start(this.nextStartTime);
-    this.nextStartTime += buffer.duration;
+    // Advance by actual playback duration (buffer.duration / playbackRate) so
+    // back-to-back chunks stay gapless. Using buffer.duration alone would
+    // over-shoot by (rate-1) seconds per chunk, leaving audible stutters.
+    this.nextStartTime += buffer.duration / this.playbackRate;
     
     this.sourceNodes.push(source);
     

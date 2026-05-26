@@ -82,7 +82,8 @@
       "Bash(echo \"PID: $!\")",
       "Bash(fuser -k 5173/tcp)",
       "Bash(pkill -f \"vite.*5173\")",
-      "Bash(printenv PORT)"
+      "Bash(printenv PORT)",
+      "Bash(node_modules/.bin/tsc -p tsconfig.json --noEmit)"
     ]
   }
 }

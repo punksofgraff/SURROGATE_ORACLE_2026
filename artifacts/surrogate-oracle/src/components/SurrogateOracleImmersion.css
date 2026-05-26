@@ -714,29 +714,125 @@
   transform: scale(1.08);
 }
 
-/* ── Freemium mouth overlay — VisemeDetector drives w/h/border-radius at 60fps ─
-   Positioned at the oracle face's mouth (~60% from top of the wrapper).
-   The face image is a cyberpunk alien portrait — tune top% if the face changes.
-   Geometry (width, height, border-radius) is set via JS inline style — CSS here
-   defines appearance only (colour, shadow, transition-none for 60fps DOM writes).
-   Inner fill: dark/black with subtle green edge glow matching oracle palette.   */
-.oracle-mouth-overlay {
+/* ── Pixel-mapped mouth canvas — drawMouthOnCanvas() renders bezier lips at 60fps ─
+   Positioned at the oracle face's mouth (top≈57%, face spatial map Y=61%).
+   The canvas is transparent — the face image shows through; only the lip curves
+   are drawn on top. drawMouthOnCanvas() sizes/resets the canvas each frame.
+   Width / height drive the canvas pixel budget; actual mouth size is computed
+   inside drawMouthOnCanvas() from the VisemeState parameters.
+   CSS: no transition, no background — canvas is paint-only.                    */
+.oracle-mouth-canvas {
   position: absolute;
   left: 50%;
-  top: 60%;                    /* tune this % to align with the face's mouth */
+  top: 55%;                    /* start of lips — slightly above face map Y=61% center */
   transform: translateX(-50%);
-  width: 22%;                  /* baseline — overwritten by VisemeDetector     */
-  height: 2%;                  /* baseline — overwritten by VisemeDetector     */
-  border-radius: 2px;          /* baseline — overwritten by VisemeDetector     */
-  background: rgba(0, 0, 0, 0.82);
-  border: 1px solid rgba(0, 255, 136, 0.28);
-  box-shadow:
-    0 0  6px rgba(0, 255, 136, 0.20) inset,
-    0 0  3px rgba(0, 255, 136, 0.14);
-  /* NO CSS transition — VisemeDetector lerps at 60fps, CSS transition would double-smooth */
+  width: 28%;                  /* canvas pixel budget: 28% of wrapper = ~7% of screen   */
+  height: 12%;                 /* covers upper lip crown to lower lip chin               */
+  background: transparent;
   z-index: 4;
   pointer-events: none;
-  will-change: width, height, border-radius, opacity;
+  will-change: contents;
+  /* No border, no shadow — all visual weight comes from the canvas drawing */
+}
+
+/* ── Dormant HUD — ambient surveillance data overlay ───────────────────────
+   Four corner panels with flickering signal data. Zero interactivity.
+   Very low opacity — atmosphere only, not information.
+   Shows only in dormant state; fades out when terminal starts.               */
+.oracle-dormant-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  font-family: 'Courier New', monospace;
+  font-size: clamp(7px, 1.1vw, 10px);
+  color: rgba(0, 255, 136, 0.22);
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+}
+
+.oracle-dormant-hud--glitch {
+  filter: hue-rotate(30deg) brightness(1.6);
+  opacity: 0.5;
+}
+
+.oracle-dormant-hud__corner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+}
+
+.oracle-dormant-hud__corner--tl {
+  top: 8px;
+  left: 8px;
+  align-items: flex-start;
+}
+
+.oracle-dormant-hud__corner--tr {
+  top: 8px;
+  right: 8px;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.oracle-dormant-hud__corner--bl {
+  bottom: 80px; /* above the boombox/crate row */
+  left: 8px;
+  align-items: flex-start;
+}
+
+.oracle-dormant-hud__corner--br {
+  bottom: 80px;
+  right: 8px;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.oracle-dormant-hud__bracket {
+  color: rgba(0, 255, 136, 0.35);
+  font-size: 1.3em;
+  line-height: 1;
+}
+
+.oracle-dormant-hud__line {
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+/* Blinking status line */
+.oracle-dormant-hud__line--blink {
+  animation: hud-blink 2.1s ease-in-out infinite;
+}
+
+@keyframes hud-blink {
+  0%, 100% { opacity: 0.85; }
+  45%       { opacity: 0.15; }
+  55%       { opacity: 0.15; }
+}
+
+/* Horizontal scan sweep — ghost surveillance feel */
+.oracle-dormant-hud__scanline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(0, 255, 136, 0.08) 20%,
+    rgba(0, 255, 136, 0.14) 50%,
+    rgba(0, 255, 136, 0.08) 80%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+/* Fade-out when leaving dormant */
+.oracle-stage:not([data-oracle-state="dormant"]) .oracle-dormant-hud {
+  opacity: 0;
+  transition: opacity 0.8s ease-out;
 }
 
 /* ── Boot HUD — Decart connecting state overlay ─────────────────────────────

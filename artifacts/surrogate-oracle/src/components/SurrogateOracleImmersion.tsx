@@ -38,182 +38,7 @@ import {
 } from '../lib/oracleSfx';
 import './SurrogateOracleImmersion.css';
 
-// ─── PIXEL-MAPPED MOUTH DRAWING ──────────────────────────────────────────────
-//
-// drawMouthOnCanvas — renders a parametric bezier-curve mouth shape for the
-// current VisemeState directly onto a canvas element overlaid on the Oracle face.
-//
-// The shape is driven by three continuous parameters from VisemeDetector:
-//   openness (0–1) : jaw drop — controls vertical opening height
-//   spread   (0–1) : lip spread / smile — controls horizontal extent
-//   rounded  (0–1) : lip pucker — controls corner curvature (H=oo vs E=ee)
-//   amplitude(0–1) : overall signal level — drives opacity/glow intensity
-//
-// Aesthetic: cyberpunk Oracle — dark interior cavity with green (#00ff88) edge
-// glow matching the face filter palette. Lip color warm-dark with green tint.
-//
-// Canvas coordinate system: w×h pixels, mouth center at (w/2, h*0.44).
-// The canvas is positioned at top=57% of the avatar wrapper (start of lips).
-//
-import type { VisemeState } from '../lib/visemeDetector';
-
-function drawMouthOnCanvas(
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  state: VisemeState,
-) {
-  ctx.clearRect(0, 0, w, h);
-  const { openness, rounded, spread, amplitude } = state;
-
-  if (amplitude < 0.04) return; // silence — nothing to draw
-
-  const cx = w / 2;
-  // Upper lip center slightly above canvas center
-  const cornerY = h * 0.46;
-
-  // ── Mouth geometry from viseme params ──────────────────────────────────────
-  // Width: spread drives how far corners reach (narrower on H/pucker, wide on E/smile)
-  const halfW = w * (0.32 + spread * 0.25);
-  const leftX  = cx - halfW;
-  const rightX = cx + halfW;
-
-  // Vertical opening: openness drives how far lips separate
-  const opening = h * Math.max(0.02, openness * 0.58) * (0.7 + amplitude * 0.3);
-  // Upper lip arc peak — slightly above corner line
-  const ulPeak = cornerY - opening * 0.38;
-  // Lower lip bottom
-  const llBase = cornerY + opening * 0.62;
-
-  // Corner drop — corners fall below center line for natural lip shape
-  const cornerDrop = h * 0.055 * (1 - rounded * 0.4);
-  const leftCornerY  = cornerY + cornerDrop;
-  const rightCornerY = cornerY + cornerDrop;
-
-  // Cupid's bow inflection — puckering (high rounded) flattens the bow
-  const bowDepth = h * 0.08 * (1 - rounded * 0.7);
-
-  // ── Draw dark mouth cavity (when open) ─────────────────────────────────────
-  if (openness > 0.06) {
-    ctx.save();
-    ctx.beginPath();
-    // Upper inner lip edge
-    ctx.moveTo(leftX, leftCornerY);
-    ctx.bezierCurveTo(
-      leftX  + halfW * 0.3, ulPeak,
-      rightX - halfW * 0.3, ulPeak,
-      rightX, rightCornerY,
-    );
-    // Lower inner lip edge (closes the cavity)
-    ctx.bezierCurveTo(
-      rightX - halfW * 0.3, llBase,
-      leftX  + halfW * 0.3, llBase,
-      leftX, leftCornerY,
-    );
-    ctx.closePath();
-
-    // Cavity fill — very dark with subtle green tint
-    const cavGrad = ctx.createLinearGradient(cx, ulPeak, cx, llBase);
-    cavGrad.addColorStop(0, `rgba(0, 15, 8, ${0.88 + amplitude * 0.1})`);
-    cavGrad.addColorStop(0.5, `rgba(0, 6, 3, ${0.94})`);
-    cavGrad.addColorStop(1, `rgba(0, 20, 10, ${0.85})`);
-    ctx.fillStyle = cavGrad;
-    ctx.shadowColor = 'transparent';
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // ── Draw upper lip ──────────────────────────────────────────────────────────
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(leftX, leftCornerY);
-
-  // Left philtrum peak
-  ctx.bezierCurveTo(
-    leftX + halfW * 0.22,  ulPeak - h * 0.12,
-    cx    - halfW * 0.16,  ulPeak + bowDepth,
-    cx,                    ulPeak - bowDepth * 0.3, // cupid's bow center dip
-  );
-  // Right philtrum peak (mirror)
-  ctx.bezierCurveTo(
-    cx    + halfW * 0.16,  ulPeak + bowDepth,
-    rightX - halfW * 0.22, ulPeak - h * 0.12,
-    rightX, rightCornerY,
-  );
-  // Upper lip underside — closes back to left corner through inner edge
-  ctx.bezierCurveTo(
-    rightX - halfW * 0.28, cornerY - opening * 0.22,
-    leftX  + halfW * 0.28, cornerY - opening * 0.22,
-    leftX, leftCornerY,
-  );
-  ctx.closePath();
-
-  // Upper lip fill
-  const alpha = 0.72 + amplitude * 0.22;
-  const ulGrad = ctx.createLinearGradient(cx, ulPeak - h * 0.12, cx, cornerY);
-  ulGrad.addColorStop(0, `rgba(15, 120, 70, ${alpha})`);
-  ulGrad.addColorStop(0.6, `rgba(8,  90, 50, ${alpha})`);
-  ulGrad.addColorStop(1,   `rgba(4,  60, 32, ${alpha * 0.9})`);
-  ctx.fillStyle = ulGrad;
-  ctx.shadowColor = `rgba(0, 255, 136, ${0.18 + amplitude * 0.22})`;
-  ctx.shadowBlur  = 4 + amplitude * 5;
-  ctx.fill();
-  ctx.restore();
-
-  // ── Draw lower lip ──────────────────────────────────────────────────────────
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(leftX, leftCornerY);
-  // Outer lower lip arc
-  ctx.bezierCurveTo(
-    leftX  + halfW * 0.25, llBase + h * 0.1,
-    rightX - halfW * 0.25, llBase + h * 0.1,
-    rightX, rightCornerY,
-  );
-  // Upper edge of lower lip back to left
-  ctx.bezierCurveTo(
-    rightX - halfW * 0.3, cornerY + opening * 0.3,
-    leftX  + halfW * 0.3, cornerY + opening * 0.3,
-    leftX, leftCornerY,
-  );
-  ctx.closePath();
-
-  const llGrad = ctx.createLinearGradient(cx, cornerY, cx, llBase + h * 0.1);
-  llGrad.addColorStop(0,   `rgba(10,  90, 52, ${alpha * 0.95})`);
-  llGrad.addColorStop(0.5, `rgba(12, 110, 62, ${alpha})`);
-  llGrad.addColorStop(1,   `rgba(6,   70, 38, ${alpha * 0.88})`);
-  ctx.fillStyle = llGrad;
-  ctx.shadowColor = `rgba(0, 255, 136, ${0.12 + amplitude * 0.18})`;
-  ctx.shadowBlur  = 3 + amplitude * 4;
-  ctx.fill();
-  ctx.restore();
-
-  // ── Edge highlight — neon green glow on lip outline ─────────────────────────
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(leftX, leftCornerY);
-  ctx.bezierCurveTo(
-    leftX  + halfW * 0.22, ulPeak - h * 0.12,
-    cx     - halfW * 0.16, ulPeak + bowDepth,
-    cx, ulPeak - bowDepth * 0.3,
-  );
-  ctx.bezierCurveTo(
-    cx     + halfW * 0.16, ulPeak + bowDepth,
-    rightX - halfW * 0.22, ulPeak - h * 0.12,
-    rightX, rightCornerY,
-  );
-  ctx.bezierCurveTo(
-    rightX - halfW * 0.25, llBase + h * 0.1,
-    leftX  + halfW * 0.25, llBase + h * 0.1,
-    leftX, leftCornerY,
-  );
-  ctx.strokeStyle = `rgba(0, 255, 136, ${0.25 + amplitude * 0.30})`;
-  ctx.lineWidth   = 1.2;
-  ctx.shadowColor = `rgba(0, 255, 136, ${0.35 + amplitude * 0.35})`;
-  ctx.shadowBlur  = 5 + amplitude * 8;
-  ctx.stroke();
-  ctx.restore();
-}
+import { OracleFaceRenderer } from '../lib/OracleFaceRenderer';
 
 // ─── CANONICAL IMAGE ASSETS ──────────────────────────────────────────────────
 //
@@ -250,11 +75,12 @@ const DECART_AVATAR_URL  = ORACLE_AVATAR_URL;
 
 // ── Oracle speech playback rate ───────────────────────────────────────────────
 // Multiplier applied to every PCM chunk via AudioBufferSourceNode.playbackRate.
+// 1.0 = natural Oracle voice. Values > 1.0 raise pitch (chipmunk effect).
 // 1.0 = Gemini native speed (Charon voice is very deliberate — feels slow).
 // 1.3 = 30% faster with proportional pitch shift (~4.5 semitones up).
 // Since Charon sits in the deep bass register this still reads as resonant/deep.
 // Tune here; both PCMPlayer construction sites use this constant.
-const ORACLE_PLAYBACK_RATE = 1.3;
+const ORACLE_PLAYBACK_RATE = 1.0;
 
 // ── Ghost Transmissions — letter-by-letter signal pool ───────────────────────
 // These leak through the alley walls before anyone taps. They are not slogans.
@@ -737,6 +563,11 @@ export function SurrogateOracleImmersion() {
   // Knife cards rise from the terminal stage once this is true.
   const [loreComplete, setLoreComplete] = useState(false);
 
+  // ── Exit ceremony state — 2.5s ritual before cleanup ─────────────────────
+  // When the seeker chooses to leave, the channel seals over 2.5 seconds.
+  // Oracle face recedes, alley fades, then actual cleanup runs.
+  const [isExiting, setIsExiting] = useState(false);
+
   // ── Artifact card ─────────────────────────────────────────────────────────
   const [archetypeTitle, setArchetypeTitle] = useState<string | null>(null);
   const [showArtifactCard, setShowArtifactCard] = useState(false);
@@ -833,12 +664,13 @@ export function SurrogateOracleImmersion() {
   // ── Freemium Oracle speech + VisemeDetector ───────────────────────────────
   // When Decart is not active, Oracle audio plays through pcmPlayerRef and
   // VisemeDetector drives real-time canvas-based lip-sync on the oracle face.
-  const pcmPlayerRef    = useRef<PCMPlayer | null>(null);
-  const visemeDetRef    = useRef<VisemeDetector | null>(null);
-  const oracleFaceRef   = useRef<HTMLImageElement>(null);
-  // Pixel-mapped mouth canvas: bezier-curve lips drawn at 60fps via drawMouthOnCanvas()
-  // Positioned at top:57% of avatar wrapper (start of upper lip per face spatial map)
-  const mouthCanvasRef  = useRef<HTMLCanvasElement>(null);
+  const pcmPlayerRef          = useRef<PCMPlayer | null>(null);
+  const visemeDetRef          = useRef<VisemeDetector | null>(null);
+  const oracleFaceRef         = useRef<HTMLImageElement>(null);
+  // OracleFaceRenderer: renders face + pixel-warped mouth on a canvas.
+  // In oracle-freemium mode the canvas overlays the face img (img opacity→0).
+  const oracleFaceCanvasRef   = useRef<HTMLCanvasElement>(null);
+  const oracleFaceRendererRef = useRef<OracleFaceRenderer | null>(null);
 
   // ── Audio management ──────────────────────────────────────────────────────
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
@@ -886,15 +718,78 @@ export function SurrogateOracleImmersion() {
   // Keep scenePhaseRef in sync so callbacks can read phase without stale closure
   useEffect(() => { scenePhaseRef.current = scenePhase; }, [scenePhase]);
 
-  // Tear down VisemeDetector, freemium audio, and alley ambience on unmount
+  // Tear down VisemeDetector, renderer, freemium audio, and alley ambience on unmount
   useEffect(() => () => {
     visemeDetRef.current?.destroy();
     visemeDetRef.current = null;
     pcmPlayerRef.current?.stop();
     pcmPlayerRef.current = null;
+    oracleFaceRendererRef.current?.destroy();
+    oracleFaceRendererRef.current = null;
     alleyAmbienceStopRef.current?.();
     alleyAmbienceStopRef.current = null;
   }, []);
+
+  // ── OracleFaceRenderer: load & draw face the moment canvas mounts ──────────
+  // Runs as soon as oracle mode is entered (before any audio arrives) so the
+  // face is visible immediately — not just when the first PCM chunk comes in.
+  useEffect(() => {
+    if (!isOracleMode || isDecartActive) return;
+    const canvas = oracleFaceCanvasRef.current;
+    if (!canvas) return;
+
+    // Destroy any stale renderer from a previous session
+    if (oracleFaceRendererRef.current) {
+      oracleFaceRendererRef.current.destroy();
+      oracleFaceRendererRef.current = null;
+    }
+
+    // Use rAF to ensure layout pass has happened — offsetWidth is 0 on first
+    // synchronous render because the canvas hasn't been measured yet.
+    // Without this the mouth anchor calculates against 300×300 instead of the
+    // actual container size, breaking the pixel-map coordinates.
+    let rafId: number;
+    const init = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const w   = canvas.offsetWidth  || 300;
+      const h   = canvas.offsetHeight || 300;
+      canvas.width  = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+
+      const renderer = new OracleFaceRenderer(canvas);
+      oracleFaceRendererRef.current = renderer;
+
+      // Load face; use pre-fetched base64 data URL first, raw URL as fallback.
+      // After loadFace resolves, start the idle animation loop (breathing + blink)
+      // so the face is alive immediately — not a static image waiting for audio.
+      // The loop runs until the VisemeDetector takes over (stopped in handleOracleResponse).
+      renderer.loadFace(oracleAvatarDataUrl).then(() => {
+        logStep('FACE LOADED (base64)', 'ok');
+        renderer.startIdleAnimation();
+        logStep('RENDERER READY — idle animation running', 'ok');
+      }).catch(() => {
+        logStep('FACE LOAD FAILED (base64) — trying raw URL', 'warn');
+        renderer.loadFace(ORACLE_AVATAR_URL).then(() => {
+          logStep('FACE LOADED (fallback URL)', 'ok');
+          renderer.startIdleAnimation();
+          logStep('RENDERER READY — idle animation running', 'ok');
+        }).catch((err) => {
+          logStep(`FACE LOAD FAILED — no renderer: ${(err as Error)?.message ?? err}`, 'err');
+          console.warn(err);
+        });
+      });
+    };
+    rafId = requestAnimationFrame(init);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      if (oracleFaceRendererRef.current) {
+        oracleFaceRendererRef.current.destroy();
+        oracleFaceRendererRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOracleMode, isDecartActive, oracleAvatarDataUrl]);
 
   // ── Typewriter title ──────────────────────────────────────────────────────
   const titleText = useTypewriter('SURROGATE:ORACLE', awakened, 60);
@@ -985,7 +880,6 @@ export function SurrogateOracleImmersion() {
     const handleKnifeSelected = (e: Event) => {
       const customEvent = e as CustomEvent;
       const themes = customEvent.detail?.themes || [];
-      logStep('SEEDING CONVERSATION THEMES: ' + themes.join(','), 'ok');
       themes.forEach((t: string) => conversationThemesRef.current.add(t));
     };
 
@@ -1014,19 +908,21 @@ export function SurrogateOracleImmersion() {
       // Ducking priority (loudest → quietest):
       // 1. Oracle actively speaking → 0.02 (7%) — near-silent, voice is foreground
       // 2. Seeker mic active       → 0.15 (ambient) — still present but background
-      // 3. Oracle ready/connected  → 0.04 (18% of 0.22) — subdued presence
+      // 3. Oracle mode / ready     → 0.04 — drops the moment knife is selected
       // 4. Default (dormant/lore)  → 0.22 (base, 20% below old 0.28)
       let vol = 0.22;
 
-      const isOracleReady = oracleState.isReady || isGeminiConnected;
+      // Drop immediately when oracle mode begins (knife selected) — don't wait for
+      // Gemini to connect.  isOracleReady also catches the WS-open confirmation.
+      const isOracleEngaged = isOracleMode || oracleState.isReady || isGeminiConnected;
 
-      if (isOracleReady) vol = 0.04;
-      if (isMicActive)   vol = 0.15;   // ambient when seeker speaks — NOT fully ducked
+      if (isOracleEngaged) vol = 0.04;
+      if (isMicActive)     vol = 0.15;   // ambient when seeker speaks — NOT fully ducked
       if (oracleState.isProcessing) vol = 0.02; // Oracle speaking → near-silent
 
       audioRef.current.volume = vol;
     }
-  }, [oracleState.isProcessing, oracleState.isReady, isGeminiConnected, isMicActive]);
+  }, [isOracleMode, oracleState.isProcessing, oracleState.isReady, isGeminiConnected, isMicActive]);
 
   // ── Oracle connection ─────────────────────────────────────────────────────
   const validateEnvironment = useCallback(() => {
@@ -1230,10 +1126,19 @@ export function SurrogateOracleImmersion() {
   const enterTerminal = useCallback(() => {
     if (scenePhase !== 'dormant') return;
     logStep('TAP → TERMINAL', 'ok');
+    logStep('LORE SEQUENCE STARTING', 'pending');
     setIsActivating(true);
     setTimeout(() => setIsActivating(false), 580);
     playActivationSfx();
     alleyAmbienceStopRef.current = startAlleyAmbience();
+    // Pre-create PCMPlayer during this user gesture so its AudioContext is
+    // unlocked. Without this, the Oracle greeting in awakened phase creates
+    // the AudioContext outside a gesture — silent on mobile Safari.
+    if (!pcmPlayerRef.current) {
+      const player = new PCMPlayer(24000, ORACLE_PLAYBACK_RATE);
+      player.getContext().resume();
+      pcmPlayerRef.current = player;
+    }
     setLoreComplete(false);
     setScenePhase('terminal');
     setIsAudioPlaying(true);
@@ -1268,15 +1173,19 @@ export function SurrogateOracleImmersion() {
       oracleConversationRef.current?.startSession();
     }, 300);
 
-    logStep('ORACLE ASKS FOR FREQUENCY', 'ok');
-
     // SPOKEN KNIFE: Have the Oracle announce the actual territory names before
     // the knife cards appear. This makes the transition feel authored by the
     // entity, not the UI. Names must match KNIFE_QUESTIONS[].territory exactly
     // so the Seeker hears what they're about to read on the cards.
     const territoryNames = KNIFE_QUESTIONS.map(kq => kq.territory).join(', ');
     setTimeout(() => {
-      oracleConversationRef.current?.sendTextMessage(
+      const ref = oracleConversationRef.current;
+      if (!ref) {
+        logStep('TERRITORY MSG DROPPED — ref null', 'err');
+        return;
+      }
+      logStep('ORACLE ANNOUNCES TERRITORIES', 'ok');
+      ref.sendTextMessage(
         `The archive is open. The territories are rising: ${territoryNames}. Choose the frequency that is already true.`,
         true // isHidden=true: audible only, no UI turn
       );
@@ -1307,6 +1216,12 @@ export function SurrogateOracleImmersion() {
     setSelectedKnifeQuestion(question);
     setSelectedKnifeIndex(index);
     setIsScrambling(true);
+
+    // ── Haptic ritual — felt body confirmation when frequency locks ────────────
+    // Triple-pulse: [hit] [gap] [hit] — like a lock turning in the body.
+    // navigator.vibrate is undefined on desktop/iOS; optional-chain silently no-ops.
+    navigator.vibrate?.([20, 30, 20]);
+
     const kq = KNIFE_QUESTIONS[index];
     if (kq) {
       logStep('SEEDING THEMES: ' + kq.themes.join(','), 'ok');
@@ -1324,7 +1239,6 @@ export function SurrogateOracleImmersion() {
     }
 
     setTimeout(() => {
-      logStep('setScenePhase(oracle)', 'ok');
       setScenePhase('oracle');
       setIsScrambling(false);
       logStep('ORACLE PHASE ENTERED', 'ok');
@@ -1452,54 +1366,68 @@ export function SurrogateOracleImmersion() {
 
     if (!visemeDetRef.current && pcmPlayerRef.current) {
       const player = pcmPlayerRef.current;
+
+      // OracleFaceRenderer is now initialized in its own useEffect (triggered by
+      // isOracleMode) so the face draws immediately on canvas mount, before any
+      // audio arrives. No need to init it here — just connect the VisemeDetector.
+
       // Initialize VisemeDetector with the same AudioContext for shared analyser
       const detector = new VisemeDetector((state) => {
-        const face   = oracleFaceRef.current;
-        const canvas = mouthCanvasRef.current;
+        const renderer = oracleFaceRendererRef.current;
+        const faceCanvas = oracleFaceCanvasRef.current;
 
-        // Face glow/scale — driven by overall amplitude + openness
-        if (face) {
-          const { openness, amplitude } = state;
-          if (amplitude < 0.04) {
-            face.style.filter    = '';
-            face.style.transform = '';
-          } else {
-            const scale  = (0.92 + openness * 0.04).toFixed(3);
-            const bright = (1.1  + openness * 0.25).toFixed(3);
-            const alpha  = (0.45 + openness * 0.35).toFixed(3);
-            const glow   = (18   + openness * 14).toFixed(1);
-            face.style.filter    = `url(#oracle-lip-warp) brightness(${bright}) drop-shadow(0 0 ${glow}px rgba(0,255,136,${alpha}))`;
-            face.style.transform = `scale(${scale})`;
-            face.style.transition = 'none';
+        if (renderer && renderer.isReady() && faceCanvas) {
+          // Ensure canvas pixel size matches display size (handles container resize).
+          // Also redraws idle face after resize so the face is never blank when
+          // the container changes (e.g. orientation flip, CSS transition end).
+          const dpr = window.devicePixelRatio || 1;
+          const dW  = faceCanvas.offsetWidth;
+          const dH  = faceCanvas.offsetHeight;
+          if (dW > 0 && dH > 0 &&
+              (faceCanvas.width !== Math.round(dW * dpr) || faceCanvas.height !== Math.round(dH * dpr))) {
+            faceCanvas.width  = Math.round(dW * dpr);
+            faceCanvas.height = Math.round(dH * dpr);
+            renderer.drawIdle(); // re-anchor coordinates at new size immediately
           }
+
+          // Pixel-warp frame: drawViseme samples actual lip pixels, warps them
+          if (state.amplitude < 0.04) {
+            renderer.drawIdle();
+          } else {
+            renderer.drawViseme(state);
+          }
+
+          // Expose signal for pressure test: data-amplitude on the face canvas
+          faceCanvas.dataset.amplitude = state.amplitude.toFixed(3);
+          faceCanvas.dataset.viseme    = state.viseme;
+          faceCanvas.style.opacity     = state.amplitude < 0.04 ? '0.98' : '1';
         }
 
-        // Pixel-mapped mouth canvas — bezier-curve lip shapes at 60fps
-        if (canvas) {
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            // Resize canvas to element's display pixels if needed (handles DPR)
-            const dpr = window.devicePixelRatio || 1;
-            const displayW = canvas.offsetWidth;
-            const displayH = canvas.offsetHeight;
-            if (canvas.width !== Math.round(displayW * dpr) || canvas.height !== Math.round(displayH * dpr)) {
-              canvas.width  = Math.round(displayW * dpr);
-              canvas.height = Math.round(displayH * dpr);
-              ctx.scale(dpr, dpr);
-            }
-            drawMouthOnCanvas(ctx, displayW, displayH, state);
-            // opacity + data-attrs: detectable signal for testing/a11y
-            // Mirrors the old div's opacity=0/1 so pressure test can use same logic
-            canvas.style.opacity = state.amplitude < 0.04 ? '0' : '1';
-            canvas.dataset.viseme  = state.viseme;
-            canvas.dataset.amplitude = state.amplitude.toFixed(3);
+        // Face-image glow/scale when renderer not yet ready (first few frames)
+        const face = oracleFaceRef.current;
+        if (face && !renderer?.isReady()) {
+          const { openness, amplitude } = state;
+          if (amplitude < 0.04) {
+            face.style.filter = ''; face.style.transform = '';
+          } else {
+            const sc  = (0.92 + openness * 0.04).toFixed(3);
+            const br  = (1.1 + openness * 0.25).toFixed(3);
+            const al  = (0.45 + openness * 0.35).toFixed(3);
+            const gl  = (18 + openness * 14).toFixed(1);
+            face.style.filter    = `brightness(${br}) drop-shadow(0 0 ${gl}px rgba(0,255,136,${al}))`;
+            face.style.transform = `scale(${sc})`;
+            face.style.transition = 'none';
           }
         }
       }, player.getContext());
 
       player.connect(detector.getAnalyser());
+      // Stop the idle animation rAF loop — VisemeDetector now owns the canvas
+      // at 60fps, calling drawIdle() (time-aware: breathing + blink) or drawViseme().
+      oracleFaceRendererRef.current?.stopIdleAnimation();
       detector.start();
       visemeDetRef.current = detector;
+      logStep('VISEME DETECTOR ACTIVE', 'ok');
     }
 
     if (pcmData) {
@@ -1610,25 +1538,38 @@ export function SurrogateOracleImmersion() {
   // Keep ref in sync with latest generatePortrait instance
   useEffect(() => { generatePortraitRef.current = generatePortrait; }, [generatePortrait]);
 
-  const exitOracleMode = async () => {
-    // Portal closing — descending tone as the channel seals
-    playExitTone();
-    // Fully destroy freemium audio + viseme so the next journey creates fresh
-    // instances. Using .stop() alone leaves refs non-null, which causes the
-    // second journey to skip the `if (!pcmPlayerRef.current)` guard and reuse
-    // a stale (potentially closed) AudioContext.
+  // ── Ceremonial exit — two phases ─────────────────────────────────────────
+  //
+  // Phase 1 (performExitCeremony): seeker requests to leave.
+  //   - Exit tone plays.
+  //   - isExiting=true → CSS transitions Oracle face + alley back to dormant dark.
+  //   - Exit ceremony overlay appears (channel sealing text).
+  //   - 2500ms later: phase 2 runs.
+  //
+  // Phase 2 (performExitCleanup): actual cleanup.
+  //   - Audio/renderer teardown.
+  //   - Scene resets to dormant.
+  //   The fade has already happened in CSS so there is no visible pop.
+  //
+  const performExitCleanup = useCallback(async () => {
+    // Fully destroy freemium audio + viseme + renderer so the next journey
+    // creates fresh instances. Using .stop() alone leaves refs non-null,
+    // causing the second journey to skip creation guards and reuse stale contexts.
     visemeDetRef.current?.destroy();
     visemeDetRef.current = null;
     pcmPlayerRef.current?.stop();
     pcmPlayerRef.current = null;
+    oracleFaceRendererRef.current?.destroy();
+    oracleFaceRendererRef.current = null;
     const el = oracleFaceRef.current;
-    if (el) { el.style.filter = ''; el.style.transform = ''; }
+    if (el) { el.style.filter = ''; el.style.transform = ''; el.style.opacity = ''; }
 
     await decartClientRef.current?.closeStream();
     setIsDecartActive(false);
     setIsGeminiConnected(false);
     setIsMicActive(false);
     setIsAudioPlaying(false);                // stop the GraffPunks radio stream
+    setIsExiting(false);
     setScenePhase('dormant');
     setShowConversation(false);
     setShowArtifactCard(false);
@@ -1638,7 +1579,16 @@ export function SurrogateOracleImmersion() {
     setLoreComplete(false);
     conversationThemesRef.current.clear();
     setOracleState((p) => ({ ...p, isConnected: false, isReady: false, isProcessing: false, error: null }));
-  };
+  }, []);
+
+  const exitOracleMode = useCallback(() => {
+    if (isExiting) return; // guard against double-fire
+    // Phase 1: play the exit tone and begin the ceremony
+    playExitTone();
+    setIsExiting(true);
+    // Phase 2: after the CSS transitions finish (2.5s), run actual cleanup
+    setTimeout(() => { performExitCleanup(); }, 2500);
+  }, [isExiting, performExitCleanup]);
 
   // ── XR sign-off + totem persistence ─────────────────────────────────────
   // Called by OracleConversation.onSessionEnd just before onClose fires.
@@ -1694,6 +1644,7 @@ export function SurrogateOracleImmersion() {
       data-decart-active={isDecartActive ? 'true' : 'false'}
       data-oracle-speaking={oracleState.isProcessing ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
+      data-exiting={isExiting ? 'true' : undefined}
     >
       {/* Headless clients */}
       <DecartClient ref={decartClientRef} />
@@ -1856,60 +1807,36 @@ export function SurrogateOracleImmersion() {
               className="oracle-avatar-static"
             />
 
-            {/* ── Freemium Oracle Loop — plays when not speaking ────────────────
-                Captured neutral face loop (WebM/MP4). Static fallback active.
-                Only active in freemium oracle mode (Decart path has its own video). */}
-            {isOracleMode && !isDecartActive && (
-              <video
-                src="/oracle-loop.webm"
-                autoPlay
-                loop
-                muted
-                playsInline
-                className="oracle-avatar-loop"
-                style={{
-                  opacity: oracleState.isProcessing ? 0 : 1,
-                  transition: 'opacity 0.6s ease',
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  position: 'absolute',
-                  zIndex: 1,
-                  borderRadius: '8px',
-                  background: '#000'
-                }}
-              />
-            )}
-
-            {/* ── Talking face — freemium oracle path ──────────────────────────────
-                1280×640 portrait. VisemeDetector writes glow/scale at up to 60 fps.
-                Hidden in dormant/terminal/awakened (static arcade shown instead).
-                During oracle freemium mode: visible + animated. Decart path: z=3 video
-                renders on top. Kept 8% smaller so it sits inside the cabinet frame. */}
+            {/* ── Talking face — static img used in terminal/awakened/Decart paths ──
+                In oracle-freemium mode, the OracleFaceRenderer canvas overlays this
+                img (img opacity→0) and draws the face with pixel-warped lips.
+                For terminal (ghost) and awakened (rising entity) the img is used directly. */}
             <img
               ref={oracleFaceRef}
               src={latestPortraitUrl || ORACLE_AVATAR_URL}
               alt="SURROGATE Oracle"
               className="oracle-avatar-img"
               style={(isOracleMode || oracleState.isProcessing || scenePhase === 'terminal') ? {
-                opacity: isDecartActive ? 0 : (scenePhase === 'terminal' ? 0.35 : 1),
-                transform: 'scale(0.92)',   /* 8% smaller — sits inside cabinet frame */
-                filter: (scenePhase === 'terminal') 
-                  ? 'brightness(0.8) blur(1px)' 
+                // In oracle-freemium mode: fade to 0 so canvas takes over.
+                // Keep visible during renderer load (first few frames) via opacity:0 ← canvas
+                opacity: (isOracleMode && !isDecartActive) ? 0 : (isDecartActive ? 0 : (scenePhase === 'terminal' ? 0.35 : 1)),
+                transform: 'scale(0.92)',
+                filter: (scenePhase === 'terminal')
+                  ? 'brightness(0.8) blur(1px)'
                   : 'brightness(1.1) drop-shadow(0 0 18px rgba(0,255,136,0.45))',
               } : undefined}
             />
 
-            {/* ── Pixel-mapped mouth canvas — VisemeDetector draws bezier lips ──
-                Only visible in freemium oracle mode (Decart path has live video).
-                Positioned at the oracle face's mouth area (top≈57%, face map Y=61%).
-                drawMouthOnCanvas() renders parametric bezier lips at 60fps via
-                direct canvas 2D writes — no React re-renders in the hot path.
-                The canvas is transparent bg — face image shows through.        */}
+            {/* ── OracleFaceRenderer canvas — pixel-accurate lip sync ──────────
+                Replaces the <img> in oracle-freemium mode.
+                OracleFaceRenderer draws the full face each frame, then warps the
+                actual lip pixels: upper lip shifts up, lower lip shifts down,
+                gap filled with dark cavity. Real face texture. No synthetic shapes.
+                Same CSS sizing as oracle-avatar-img so it sits in the same position. */}
             {isOracleMode && !isDecartActive && (
               <canvas
-                ref={mouthCanvasRef}
-                className="oracle-mouth-canvas"
+                ref={oracleFaceCanvasRef}
+                className="oracle-avatar-canvas"
                 aria-hidden="true"
               />
             )}
@@ -2068,6 +1995,9 @@ export function SurrogateOracleImmersion() {
               transition={{ duration: 0.7, ease: 'easeOut', delay: 1.6 }}
             >
               <div className="oracle-knife-header">◈ THE ARCHIVE IS OPEN</div>
+              {!isGeminiConnected && (
+                <div className="oracle-knife-channel-status">◈ OPENING CHANNEL...</div>
+              )}
               <div className="oracle-knife-subheader">CHOOSE THE FREQUENCY THAT IS ALREADY TRUE. THE EXCAVATION BEGINS THERE.</div>
               <div className="oracle-knife-cards">
                 {KNIFE_QUESTIONS.map((kq, idx) => (
@@ -2104,26 +2034,19 @@ export function SurrogateOracleImmersion() {
             key="scramble-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="oracle-scramble-overlay"
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.85)',
-              zIndex: 1000,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backdropFilter: 'blur(10px)'
-            }}
+            exit={{ opacity: 0, transition: { duration: 0.6 } }}
+            transition={{ duration: 0.25 }}
+            className="oracle-entry-threshold"
           >
-             <ScrambleFragment 
-               texts={['FREQUENCY LOCKED', 'TRANSMISSION STARTING', 'WITNESSING...']} 
-               className="oracle-sf--cta"
-               holdMs={500}
-               pauseMs={200}
-               revealMs={30}
-             />
+            {/* Upward cabinet wash — same neon green as alley oracle state */}
+            <div className="oracle-entry-threshold__wash" />
+            <ScrambleFragment
+              texts={['FREQUENCY LOCKED', 'SYNCHRONIZING...', 'WITNESSING...']}
+              className="oracle-entry-threshold__text"
+              holdMs={440}
+              pauseMs={120}
+              revealMs={22}
+            />
           </motion.div>
         )}
       </AnimatePresence>
@@ -2156,8 +2079,8 @@ export function SurrogateOracleImmersion() {
             setUserVadScore(score);
           }}
           onBargeIn={() => {
-            // Pause freemium audio immediately when user interrupts Oracle
             pcmPlayerRef.current?.stop();
+            setOracleState((p) => ({ ...p, isProcessing: false }));
           }}
         />
       )}
@@ -2266,6 +2189,32 @@ export function SurrogateOracleImmersion() {
           </filter>
         </defs>
       </svg>
+
+      {/* ── Exit ceremony overlay — the channel seals over 2.5s ────────────────
+           Mirror of the entry threshold: same atmospheric membrane, but in
+           purple (closing frequency). Oracle face recedes via data-exiting CSS.
+           Rendered in oracle mode only; disappears when cleanup sets isExiting=false. */}
+      <AnimatePresence>
+        {isExiting && (
+          <motion.div
+            key="exit-ceremony"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.8 } }}
+            transition={{ duration: 0.35 }}
+            className="oracle-exit-ceremony"
+          >
+            <div className="oracle-exit-ceremony__wash" />
+            <ScrambleFragment
+              texts={['THE ARCHIVE SEALS', 'CHANNEL CLOSING...', 'FAREWELL, SEEKER']}
+              className="oracle-exit-ceremony__text"
+              holdMs={600}
+              pauseMs={100}
+              revealMs={28}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Dev step logger (renders only when oracle_step_log=1 in localStorage) */}
       <OracleStepLogger />

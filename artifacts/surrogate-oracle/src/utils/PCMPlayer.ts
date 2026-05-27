@@ -16,7 +16,8 @@ export class PCMPlayer {
   private isPlaying: boolean = false;
   private sourceNodes: AudioBufferSourceNode[] = [];
 
-  private destination: AudioNode | null = null;
+  private destination: AudioNode | null = null;   // external analyser (lip-sync)
+  private panner: PannerNode | null = null;        // spatial placement for playback
 
   /**
    * @param sampleRate  Input PCM sample rate (Gemini Live = 24000 Hz)
@@ -30,6 +31,29 @@ export class PCMPlayer {
     this.context = new (window.AudioContext || (window as any).webkitAudioContext)({
       sampleRate: this.sampleRate
     });
+
+    // ── Spatial panner — Oracle voice comes from centre-screen, slightly above.
+    // HRTF model creates genuine 3D depth on headphones (position cues via ear
+    // transfer functions); on speakers it adds a subtle presence lift.
+    // Position: x=0 (centre), y=0.3 (above ear level), z=-0.8 (into the screen).
+    // refDistance 1 at these coords keeps volume natural — no attenuation.
+    try {
+      const panner = this.context.createPanner();
+      panner.panningModel  = 'HRTF';
+      panner.distanceModel = 'inverse';
+      panner.refDistance   = 1;
+      panner.maxDistance   = 10000;
+      panner.rolloffFactor = 0.6; // gentle roll-off so voice stays present
+      panner.positionX.setValueAtTime(0,    this.context.currentTime); // centre
+      panner.positionY.setValueAtTime(0.3,  this.context.currentTime); // slightly above
+      panner.positionZ.setValueAtTime(-0.8, this.context.currentTime); // inside screen
+      panner.connect(this.context.destination);
+      this.panner = panner;
+    } catch {
+      // Fallback: no spatial panning (unsupported environment)
+      this.panner = null;
+    }
+
     this.destination = this.context.destination;
   }
 
@@ -62,12 +86,16 @@ export class PCMPlayer {
     source.buffer = buffer;
     source.playbackRate.value = this.playbackRate;
 
-    if (this.destination) {
+    // Route 1 — External analyser (VisemeDetector for lip-sync). Side branch:
+    // the analyser reads the signal but does not route audio to speakers itself.
+    if (this.destination && this.destination !== this.context.destination) {
       source.connect(this.destination);
-      // Also connect to master destination if the external node doesn't
-      if (this.destination !== this.context.destination) {
-        source.connect(this.context.destination);
-      }
+    }
+
+    // Route 2 — Playback through spatial panner → speakers.
+    // Oracle voice materialises from centre-above (cabinet position).
+    if (this.panner) {
+      source.connect(this.panner);
     } else {
       source.connect(this.context.destination);
     }

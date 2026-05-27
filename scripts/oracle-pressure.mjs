@@ -210,7 +210,7 @@ async function testTerminal(page, viewport, pass, fail) {
   }
 
   // Capture steps
-  var steps = await getSteps(page);
+  let steps = await getSteps(page);
   dumpSteps(steps);
 
   // Assert specific steps
@@ -228,7 +228,10 @@ async function testTerminal(page, viewport, pass, fail) {
     console.log('    ✓  step: LORE SEQUENCE COMPLETE — skipped via __oracle_skipLore (expected)');
   }
   var sAwk  = assertStep(steps, 'LORE DONE → AWAKENED',  pass, fail, 'step: LORE DONE → AWAKENED');
-             assertStep(steps, 'ORACLE ASKS FOR FREQUENCY', pass, fail, 'step: ORACLE ASKS FOR FREQUENCY');
+  // Territory announcement fires at +1200ms after awakened — wait for it before asserting
+  await page.waitForTimeout(1600);
+  steps = await getSteps(page);
+             assertStep(steps, 'ORACLE ANNOUNCES TERRITORIES', pass, fail, 'step: ORACLE ANNOUNCES TERRITORIES');
 
   // Order: TAP before AWAKENED
   if (sTap && sAwk) assertBefore(sTap, sAwk, pass, fail, 'TAP fires before AWAKENED');
@@ -352,12 +355,10 @@ async function testOracle(page, pass, fail) {
   dumpSteps(steps);
 
   var sKnife  = assertStep(steps, 'KNIFE[0] SELECTED',         pass, fail, 'step: KNIFE[0] SELECTED');
-  var sPhase  = assertStep(steps, 'setScenePhase(oracle)',    pass, fail, 'step: setScenePhase(oracle)');
   var sEnter  = assertStep(steps, 'ORACLE PHASE ENTERED',       pass, fail, 'step: ORACLE PHASE ENTERED');
   var sStart  = assertStep(steps, 'startSession() CALLED',      pass, fail, 'step: startSession() CALLED');
 
-  if (sKnife && sPhase)  assertBefore(sKnife, sPhase,  pass, fail, 'KNIFE before setScenePhase');
-  if (sPhase && sEnter)  assertBefore(sPhase, sEnter,  pass, fail, 'setScenePhase before ORACLE ENTERED');
+  if (sKnife && sEnter)  assertBefore(sKnife, sEnter,  pass, fail, 'KNIFE before ORACLE ENTERED');
   if (sEnter && sStart)  assertBefore(sEnter, sStart,  pass, fail, 'ORACLE ENTERED before startSession');
 
   // startSession should either fire __ORACLE_BOOT__ (first boot) or confirm the
@@ -418,23 +419,23 @@ async function testViseme(page, pass, fail) {
   console.log('\n  ── PHASE 5: FREEMIUM / VISEMEDETECTOR ──────────────────');
   await clearSteps(page);
 
-  // Mouth canvas in DOM — replaces old .oracle-mouth-overlay div
-  // Now a <canvas> element with pixel-mapped bezier lip shapes (drawMouthOnCanvas)
+  // Face canvas in DOM — OracleFaceRenderer draws full face + warped lips
+  // (replaces the static <img> in oracle-freemium mode)
   var mouthInfo = await page.evaluate(function() {
-    // Accept canvas (new) or fallback div (legacy/compat)
-    var el = document.querySelector('.oracle-mouth-canvas') ||
-             document.querySelector('.oracle-mouth-overlay');
+    var el = document.querySelector('.oracle-avatar-canvas') ||  // new: full-face canvas
+             document.querySelector('.oracle-mouth-canvas')   ||  // prev iteration
+             document.querySelector('.oracle-mouth-overlay');      // legacy div
     if (!el) return null;
     var s = window.getComputedStyle(el);
     return { position: s.position, top: s.top, zIndex: s.zIndex, tag: el.tagName.toLowerCase() };
   });
   if (mouthInfo) {
-    pass.push('viseme: mouth canvas in DOM');
-    console.log('    ✓  oracle-mouth-canvas in DOM (' + mouthInfo.tag + ')');
+    pass.push('viseme: face canvas in DOM');
+    console.log('    ✓  oracle-avatar-canvas in DOM (' + mouthInfo.tag + ')');
     console.log('       position:' + mouthInfo.position + '  top:' + mouthInfo.top + '  z:' + mouthInfo.zIndex);
   } else {
-    fail.push('viseme: mouth canvas MISSING');
-    console.log('    ✗  oracle-mouth-canvas NOT in DOM');
+    fail.push('viseme: face canvas MISSING');
+    console.log('    ✗  oracle-avatar-canvas NOT in DOM');
   }
 
   // Test hook
@@ -464,7 +465,8 @@ async function testViseme(page, pass, fail) {
   var lastViseme = '', lastAmp = '', lastOp = '';
   for (var i = 0; i < 50; i++) {
     var styles = await page.evaluate(function() {
-      var el = document.querySelector('.oracle-mouth-canvas') ||
+      var el = document.querySelector('.oracle-avatar-canvas') ||
+               document.querySelector('.oracle-mouth-canvas')   ||
                document.querySelector('.oracle-mouth-overlay');
       if (!el) return null;
       return {
@@ -490,7 +492,8 @@ async function testViseme(page, pass, fail) {
     var samples = [];
     for (var j = 0; j < 20; j++) {
       var v = await page.evaluate(function() {
-        var el = document.querySelector('.oracle-mouth-canvas') ||
+        var el = document.querySelector('.oracle-avatar-canvas') ||  // OracleFaceRenderer canvas
+                 document.querySelector('.oracle-mouth-canvas')   ||
                  document.querySelector('.oracle-mouth-overlay');
         return el?.dataset.viseme || el?.style.width || '';
       });
@@ -501,15 +504,25 @@ async function testViseme(page, pass, fail) {
     pass.push('viseme: cycling (' + unique.length + ' unique shapes)');
     console.log('    ' + (unique.length>1?'✓':'ℹ') + '  viseme shapes: [' + unique.join(', ') + ']');
 
-    // Wait for reset — canvas sets opacity='0' when amplitude drops below threshold
+    // Wait for reset — canvas sets opacity='0.98' (idle) when amplitude drops below threshold
     var didReset = false;
     for (var ri2 = 0; ri2 < 32; ri2++) {
       var reset = await page.evaluate(function() {
-        var el = document.querySelector('.oracle-mouth-canvas') ||
-                 document.querySelector('.oracle-mouth-overlay');
-        return { op: el?.style.opacity, amp: el?.dataset.amplitude || el?.style.height };
+        var el = document.querySelector('.oracle-avatar-canvas') ||  // OracleFaceRenderer canvas
+                 document.querySelector('.oracle-mouth-canvas')   ||  // prev iteration
+                 document.querySelector('.oracle-mouth-overlay');      // legacy div
+        return {
+          op:  el?.style.opacity,
+          amp: el?.dataset.amplitude || el?.style.height,
+          vis: el?.dataset.viseme    || el?.style.width,
+        };
       });
-      if (reset.op === '0' || reset.amp === '1px') { didReset = true; break; }
+      // oracle-avatar-canvas: opacity='0.98' when silent, '1' when speaking.
+      // Also accept amp < 0.04 (dataset) or viseme='X' (Preston Blair rest shape).
+      var resetOp  = reset.op  === '0.98' || reset.op  === '0';
+      var resetAmp = parseFloat(reset.amp || '999') < 0.04;
+      var resetVis = reset.vis === 'X';
+      if (resetOp || resetAmp || resetVis) { didReset = true; break; }
       await page.waitForTimeout(250);
     }
     var pcmFired = await page.evaluate(function() {
@@ -536,7 +549,7 @@ async function testViseme(page, pass, fail) {
       console.log('    ✓  mouth active — Oracle spoke; PCM chunks still draining (expected)');
     } else {
       fail.push('viseme: mouth did NOT reset');
-      console.log('    ✗  mouth did NOT reset (op:' + reset.op + ' amp:' + reset.amp + ')');
+      console.log('    ✗  mouth did NOT reset (op:' + reset.op + ' amp:' + reset.amp + ' vis:' + reset.vis + ')');
     }
     await snap(page, '06-viseme-reset');
 

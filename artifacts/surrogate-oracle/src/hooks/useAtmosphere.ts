@@ -11,7 +11,7 @@
  */
 import { useEffect, useRef } from 'react';
 
-type Phase = 'dormant' | 'consent' | 'knife' | 'terminal' | 'awakened' | 'oracle';
+type Phase = 'dormant' | 'terminal' | 'awakened' | 'oracle';
 type Alignment = 'sacred' | 'profane' | 'neutral' | null;
 type ParticleKind = 'dust' | 'steam' | 'spark';
 
@@ -38,17 +38,16 @@ interface PhaseConfig {
 
 const PHASE_CONFIGS: Record<Phase, PhaseConfig> = {
   dormant:  { dustCount: 18, steamCount:  8, sparkCount:  0, speedMult: 0.45, masterOpacity: 0.55 },
-  consent:  { dustCount: 22, steamCount: 10, sparkCount:  3, speedMult: 0.55, masterOpacity: 0.65 },
-  knife:    { dustCount: 28, steamCount: 11, sparkCount:  4, speedMult: 0.65, masterOpacity: 0.70 },
   terminal: { dustCount: 35, steamCount: 14, sparkCount:  6, speedMult: 0.75, masterOpacity: 0.80 },
   awakened: { dustCount: 55, steamCount: 20, sparkCount: 22, speedMult: 1.20, masterOpacity: 1.00 },
-  oracle:   { dustCount: 42, steamCount: 16, sparkCount:  8, speedMult: 0.90, masterOpacity: 0.90 },
+  // ORACLE inherits AWAKENED particle counts, same 1.2× speed — entity is fully present
+  oracle:   { dustCount: 55, steamCount: 20, sparkCount: 22, speedMult: 1.20, masterOpacity: 1.00 },
 };
 
 function alignmentColor(alignment: Alignment): [number, number, number] {
-  if (alignment === 'sacred')  return [234, 179,   8];  // gold
-  if (alignment === 'profane') return [176,  38, 255];  // purple
-  return [0, 255, 136];                                  // neon green
+  if (alignment === 'sacred')  return [0, 255, 204];   // mint — brand kit: #00ffcc
+  if (alignment === 'profane') return [176,  38, 255]; // violet — brand kit: #b026ff
+  return [0, 255, 136];                                // emerald — brand kit: #00ff88
 }
 
 function createParticle(
@@ -144,7 +143,18 @@ export function useAtmosphere(
     const h = () => canvas.height;
 
     const [r, g, b] = alignmentColor(alignment);
-    const config = PHASE_CONFIGS[phase] ?? PHASE_CONFIGS.dormant;
+    const rawConfig = PHASE_CONFIGS[phase] ?? PHASE_CONFIGS.dormant;
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const config: PhaseConfig = prefersReducedMotion
+      ? {
+          ...rawConfig,
+          sparkCount:    0,
+          dustCount:     Math.round(rawConfig.dustCount  * 0.4),
+          steamCount:    Math.round(rawConfig.steamCount * 0.4),
+          speedMult:     rawConfig.speedMult * 0.5,
+          masterOpacity: rawConfig.masterOpacity * 0.6,
+        }
+      : rawConfig;
     configRef.current = config;
 
     // Rebuild particle pool on phase change — splice to desired counts
@@ -209,8 +219,8 @@ export function useAtmosphere(
         }
       });
 
-      // Occasional scanline glitch in awakened/oracle
-      if ((phase === 'awakened' || phase === 'oracle') && Math.random() > 0.97) {
+      // Occasional scanline glitch in awakened/oracle (skipped when reduced motion preferred)
+      if (!prefersReducedMotion && (phase === 'awakened' || phase === 'oracle') && Math.random() > 0.97) {
         ctx.fillStyle = `rgba(${r},${g},${b},${(Math.random() * 0.04).toFixed(3)})`;
         ctx.fillRect(0, Math.random() * h(), w(), Math.random() * 3 + 1);
       }

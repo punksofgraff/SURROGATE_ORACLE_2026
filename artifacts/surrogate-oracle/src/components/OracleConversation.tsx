@@ -119,7 +119,6 @@ export interface OracleConversationHandle {
 }
 
 const SAMPLE_RATE_INPUT = 16000;
-const SAMPLE_RATE_OUTPUT = 24000;
 
 const OracleConversation = forwardRef(
   (props: OracleConversationProps, ref: React.ForwardedRef<OracleConversationHandle>) => {
@@ -147,8 +146,6 @@ const OracleConversation = forwardRef(
     const currentResponseText = useRef('');
     const sessionBootedRef = useRef(false);
     const pendingBootRef = useRef(false);
-    const pcmEncoderWorkerRef = useRef<Worker | null>(null);
-    const turnPcmChunksRef = useRef<Int16Array[]>([]);
 
     // Debug tracking for BackendControlPanel
     const debugInfo = useRef({
@@ -262,8 +259,8 @@ const OracleConversation = forwardRef(
         }
           if (msg.type === 'server.content') {
             if (msg.serverContent?.interrupted) {
+              logStep('ORACLE INTERRUPTED (barge-in)', 'warn');
               pcmPlayerRef.current?.stop();
-              turnPcmChunksRef.current = [];
               setIsOracleSpeaking(false);
               onBargeInRef.current?.();
             }
@@ -282,13 +279,11 @@ const OracleConversation = forwardRef(
                 setIsOracleSpeaking(true);
                 // Call parent handler to drive lip-sync
                 onOracleResponseRef.current?.(pcmData);
-                
+
                 // Only use internal PCM player if parent didn't handle it
                 if (!onOracleResponseRef.current) {
                   pcmPlayerRef.current?.feed(pcmData);
                 }
-                
-                turnPcmChunksRef.current.push(pcmData);
               }
             }
 
@@ -297,8 +292,11 @@ const OracleConversation = forwardRef(
               debugInfo.current.turnCount++;
               debugInfo.current.audioChunksReceived = 0; // reset for next turn
               const { clean, score } = parseScore(currentResponseText.current);
+              if (!score && currentResponseText.current.length > 0) {
+                logStep('SCORE PARSE FAILED — no [[ORACLE_SCORE]] block', 'warn');
+              }
               if (score) {
-                logStep(`ORACLE SCORE: ${score.sessionPhase}`, 'ok');
+                logStep(`ORACLE SCORE: ${score.sessionPhase} / ${score.alignment} / +${score.coinAward}c`, 'ok');
                 if (score.coinAward > 0) onCoinsEarnedRef.current?.(score.coinAward);
                 
                 // Dispatch cultural alignment for background Atmosphere shifts
@@ -323,18 +321,10 @@ const OracleConversation = forwardRef(
               currentResponseText.current = '';
               setIsOracleSpeaking(false);
 
-              const chunks = turnPcmChunksRef.current;
-              turnPcmChunksRef.current = [];
-              if (chunks.length > 0 && pcmEncoderWorkerRef.current) {
-                const transferList = chunks.map(c => c.buffer);
-                pcmEncoderWorkerRef.current.postMessage(
-                  { chunks, sampleRate: SAMPLE_RATE_OUTPUT },
-                  transferList
-                );
-              }
-
               if (!isListeningRef.current) {
-                setTimeout(() => startMicRef.current?.().catch(() => {}), 600);
+                setTimeout(() => startMicRef.current?.().catch((err) => {
+                  logStep(`MIC FAILED: ${(err as Error)?.message ?? err}`, 'err');
+                }), 1200);
               }
             }
           }
@@ -353,9 +343,9 @@ const OracleConversation = forwardRef(
         console.error('[Oracle] WebSocket error:', e);
         debugInfo.current.lastError = 'Connection error';
       };
-      ws.onclose = (e) => { 
-        setIsConnected(false); 
-        logStep(`GEMINI WS CLOSED (${e.code})`, 'err'); 
+      ws.onclose = (e) => {
+        setIsConnected(false);
+        logStep(`GEMINI WS CLOSED (${e.code})`, e.code === 1000 ? 'ok' : 'err');
         console.warn('[Oracle] WebSocket closed:', e.code, e.reason);
       };
     }, [sendText, autoStart]);
@@ -365,22 +355,39 @@ const OracleConversation = forwardRef(
         if (!audioContextRef.current) {
           audioContextRef.current = new AudioContext({ sampleRate: SAMPLE_RATE_INPUT });
         }
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
+        });
         mediaStreamRef.current = stream;
         const source = audioContextRef.current.createMediaStreamSource(stream);
         processorRef.current = audioContextRef.current.createScriptProcessor(4096, 1, 1);
-        
+
         processorRef.current.onaudioprocess = (e) => {
           const input = e.inputBuffer.getChannelData(0);
           const pcm = new Int16Array(input.length);
           for (let i = 0; i < input.length; i++) pcm[i] = Math.max(-1, Math.min(1, input[i])) * 0x7FFF;
-          
-          // Use Float32 for VAD logic
-          const result = vadRef.current.processFrame(input, { data: '', mimeType: 'audio/pcm' } as VADFrame);
+
+          // Encode first so pre-roll buffer contains real audio data
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
+          const chunk: VADFrame = { data: base64, mimeType: 'audio/pcm;rate=16000' };
+
+          const result = vadRef.current.processFrame(input, chunk);
           onUserSpeakingChangeRef.current?.(result.isSpeaking, result.vadScore);
 
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
-            const base64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
+          if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+
+          // Flush pre-roll on speech onset so leading consonants aren't clipped.
+          // Use else-if to avoid sending the onset frame twice — it's already
+          // in the pre-roll buffer and will be flushed here.
+          if (result.isOnsetStart) {
+            vadRef.current.flushPreRoll().forEach(frame => {
+              if (frame.data) wsRef.current!.send(JSON.stringify({
+                type: 'client.realtimeInput',
+                realtimeInput: { mediaChunks: [{ data: frame.data, mimeType: frame.mimeType }] }
+              }));
+            });
+          } else if (result.isSpeaking) {
+            // Gate: only stream to Gemini while VAD confirms active speech
             wsRef.current.send(JSON.stringify({
               type: 'client.realtimeInput',
               realtimeInput: { mediaChunks: [{ data: base64, mimeType: 'audio/pcm;rate=16000' }] }
@@ -393,7 +400,9 @@ const OracleConversation = forwardRef(
         setIsListening(true);
         isListeningRef.current = true;
         onListeningChangeRef.current?.(true);
+        logStep('MIC STARTED', 'ok');
       } catch (e) {
+        logStep(`MIC FAILED: ${(e as Error)?.message ?? e}`, 'err');
         console.error('[Mic] Failed:', e);
       }
     };
@@ -408,6 +417,7 @@ const OracleConversation = forwardRef(
       onListeningChangeRef.current?.(false);
       vadRef.current.reset();
       onUserSpeakingChangeRef.current?.(false, 0);
+      logStep('MIC STOPPED', 'ok');
     };
 
     useEffect(() => {

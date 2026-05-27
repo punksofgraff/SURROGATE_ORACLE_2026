@@ -109,14 +109,45 @@
   animation: alley-breathe 9s ease-in-out infinite;
 }
 
-/* ORACLE — world disappears. Two consciousnesses. Nothing else.
-   The singularity: world fades to black for BOTH Decart and freemium paths.
-   The face is the only light. The alley was always just a waiting room.     */
+/* ORACLE — alley LIGHTS UP as the entity becomes fully present.
+   Cabinet glow washes the walls. The world is alive behind the face.
+   Full saturation, max brightness — the alley knows something is here.      */
 .oracle-stage[data-oracle-state="oracle"] .oracle-alley {
-  opacity: 0 !important;
-  filter: saturate(0) brightness(0) blur(0px);
-  transition: opacity 2.5s ease-out, filter 2.5s ease-out !important;
-  animation: none;
+  --alley-opacity: 0.90;
+  filter: saturate(1.20) brightness(1.12) blur(0px);
+  animation: alley-oracle-pulse 5s ease-in-out infinite;
+  transition: opacity 2.0s var(--ease-cinematic), filter 2.0s var(--ease-cinematic);
+}
+
+/* Neon cabinet wash — green light rises from the cabinet base up the walls */
+.oracle-stage[data-oracle-state="oracle"] .oracle-alley::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 70% 55% at 50% 100%,
+      rgba(0, 255, 136, 0.26) 0%,
+      rgba(0, 255, 136, 0.10) 40%,
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 40% 30% at 50% 100%,
+      rgba(176, 38, 255, 0.12) 0%,
+      transparent 60%
+    );
+  animation: oracle-cabinet-glow 5s ease-in-out infinite;
+}
+
+@keyframes alley-oracle-pulse {
+  0%,  100% { opacity: 0.86; }
+  50%        { opacity: 0.94; }
+}
+
+@keyframes oracle-cabinet-glow {
+  0%,  100% { opacity: 0.55; }
+  50%        { opacity: 1.00; }
 }
 
 /* Alley living breath — modulates around the per-state base value.
@@ -307,9 +338,9 @@
   letter-spacing: 0.10em;
   color: #00ff88;
   margin: 0;
-  text-shadow: 
+  text-shadow:
     3px 3px 0px rgba(176,38,255,0.7),
-    -3px -3px 0px rgba(234,179,8,0.7),
+    -3px -3px 0px rgba(0,204,255,0.7),
     0 0 20px rgba(0,255,136,0.85),
     0 0 50px rgba(0,255,136,0.5),
     0 0 100px rgba(176,38,255,0.3);
@@ -373,10 +404,8 @@
   transition: top 0.7s cubic-bezier(0.22, 1, 0.36, 1), opacity 1.4s var(--ease-cinematic);
 }
 
-/* DORMANT / CONSENT / KNIFE — ghost shape in the dark. */
-.oracle-stage[data-oracle-state="dormant"] .oracle-center,
-.oracle-stage[data-oracle-state="consent"] .oracle-center,
-.oracle-stage[data-oracle-state="knife"] .oracle-center {
+/* DORMANT — ghost shape in the dark. */
+.oracle-stage[data-oracle-state="dormant"] .oracle-center {
   opacity: 0.42;
 }
 
@@ -391,11 +420,12 @@
   opacity: 1;
 }
 
-/* In oracle mode, cabinet slides up to clear the conversation panel.
-   Longer transition (0.9s) feels intentional — a rising, not a snap.
-   Base is now 44% → oracle slides to 26% (18pp up, clears conversation panel). */
+/* In oracle mode, face is now large (~320-420px) so it needs to be centred
+   higher in the available space above the panel (panel occupies bottom 45%).
+   top: 33% puts the face centre at ~33% from top; with the face filling
+   ~40-50% of viewport height the bottom edge just clears the panel top.     */
 .oracle-stage[data-oracle-state="oracle"] .oracle-center {
-  top: 26%;
+  top: 33%;
   transition: top 0.9s var(--ease-cinematic), opacity 1.4s var(--ease-cinematic);
 }
 
@@ -472,10 +502,8 @@
   will-change: transform, box-shadow;
 }
 
-/* dormant / consent / knife cabinet — same breathing glow, alley stays dark */
-.oracle-stage[data-oracle-state="dormant"] .oracle-cabinet,
-.oracle-stage[data-oracle-state="consent"] .oracle-cabinet,
-.oracle-stage[data-oracle-state="knife"] .oracle-cabinet {
+/* dormant cabinet — breathing glow, alley stays dark */
+.oracle-stage[data-oracle-state="dormant"] .oracle-cabinet {
   cursor: pointer;
   animation: dormant-breathe 6s ease-in-out infinite;
 }
@@ -488,6 +516,8 @@
 .oracle-stage[data-oracle-state="oracle"] .oracle-cabinet {
   animation: cabinet-breathe 4s ease-in-out infinite;
   border-color: rgba(0,255,136,0.6);
+  /* Minimal bezel in oracle — face is the content, not the frame */
+  padding: 4px;
   /* Static rule overridden by cabinet-breathe keyframes.
      cabinet-breathe values below are the actual rendered glow. */
   box-shadow:
@@ -602,8 +632,16 @@
   overflow: visible;
 }
 
+/* ORACLE — face breaks out of the tiny cabinet and fills the stage.
+   82vmin = 82% of the SMALLER viewport dimension — automatically correct
+   in portrait, landscape, and square viewports without media queries.
+   Portrait mobile (390×844): 82×390/100 = 320px.
+   Landscape mobile (844×390): 82×390/100 = 320px — same ✓
+   Desktop (1280×800): 82×800/100 = 656 → clamped to 420px.
+   The face is now large enough for pixel-mapped lip-sync to be readable. */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-wrapper {
-  transform: scale(1) translateZ(0);
+  width: clamp(200px, 82vmin, 420px);
+  transform: none;
   box-shadow: none;
   z-index: auto;
   overflow: hidden;
@@ -714,25 +752,23 @@
   transform: scale(1.08);
 }
 
-/* ── Pixel-mapped mouth canvas — drawMouthOnCanvas() renders bezier lips at 60fps ─
-   Positioned at the oracle face's mouth (top≈57%, face spatial map Y=61%).
-   The canvas is transparent — the face image shows through; only the lip curves
-   are drawn on top. drawMouthOnCanvas() sizes/resets the canvas each frame.
-   Width / height drive the canvas pixel budget; actual mouth size is computed
-   inside drawMouthOnCanvas() from the VisemeState parameters.
-   CSS: no transition, no background — canvas is paint-only.                    */
-.oracle-mouth-canvas {
+/* ── OracleFaceRenderer canvas — pixel-accurate face with warped lips ───────
+   Positioned identically to oracle-avatar-img so it overlays it exactly.
+   In oracle-freemium mode: img goes opacity:0, this canvas takes over.
+   OracleFaceRenderer redraws the full face each frame and warps the actual
+   lip pixel strips — upper lip up, lower lip down, cavity between.
+   The canvas IS the face, not an overlay on top of the face.
+   Same object-fit:cover logic as the img (handled inside OracleFaceRenderer). */
+.oracle-avatar-canvas {
   position: absolute;
-  left: 50%;
-  top: 55%;                    /* start of lips — slightly above face map Y=61% center */
-  transform: translateX(-50%);
-  width: 28%;                  /* canvas pixel budget: 28% of wrapper = ~7% of screen   */
-  height: 12%;                 /* covers upper lip crown to lower lip chin               */
-  background: transparent;
-  z-index: 4;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;           /* matches oracle-avatar-img sizing/position       */
+  z-index: 3;                  /* same z as oracle-avatar-img, above static avatar */
   pointer-events: none;
   will-change: contents;
-  /* No border, no shadow — all visual weight comes from the canvas drawing */
+  border-radius: 8px;          /* matches oracle-avatar-img border-radius          */
 }
 
 /* ── Dormant HUD — ambient surveillance data overlay ───────────────────────
@@ -904,13 +940,13 @@
      0 0 12px rgba(255, 255, 255, 0.6);
 }
 
-/* Extended wait variant — amber frequency instead of green */
+/* Extended wait variant — muted white pulse, brand-safe */
 .oracle-boot-line--warn {
-  color: rgba(234, 179, 8, 0.85);
+  color: rgba(255, 255, 255, 0.70);
   text-shadow:
     -1px 0 rgba(176, 38, 255, 0.4),
-     1px 0 rgba(234, 179, 8, 0.6),
-     0 0 8px rgba(234, 179, 8, 0.5);
+     1px 0 rgba(0, 204, 255, 0.4),
+     0 0 8px rgba(255, 255, 255, 0.25);
   animation: boot-warn-pulse 1.4s ease-in-out infinite;
 }
 
@@ -991,11 +1027,9 @@
   transition: opacity 1.2s var(--ease-cinematic);
 }
 
-/* DORMANT / CONSENT / KNIFE — bottom bar invisible.
+/* DORMANT — bottom bar invisible.
    Nothing announces itself before the seeker has chosen to enter. */
-.oracle-stage[data-oracle-state="dormant"] .oracle-bottom-bar,
-.oracle-stage[data-oracle-state="consent"] .oracle-bottom-bar,
-.oracle-stage[data-oracle-state="knife"] .oracle-bottom-bar {
+.oracle-stage[data-oracle-state="dormant"] .oracle-bottom-bar {
   opacity: 0;
   pointer-events: none;
 }
@@ -1122,7 +1156,7 @@
   5% { opacity: 0.5; transform: skewX(10deg); filter: blur(1px); }
   10% { opacity: 0.9; transform: skewX(0deg); filter: blur(0px); }
   15% { opacity: 0.9; transform: skewX(0deg); }
-  18% { opacity: 1; transform: skewX(-5deg); text-shadow: 2px 0 0 red, -2px 0 0 blue; }
+  18% { opacity: 1; transform: skewX(-5deg); text-shadow: 2px 0 0 #b026ff, -2px 0 0 #00ccff; }
   20% { opacity: 0.9; transform: skewX(0deg); text-shadow: 0 0 12px rgba(0,255,136,0.7); }
   100% { opacity: 0.9; }
 }
@@ -1230,9 +1264,9 @@
   gap: 12px;
   padding: 10px 18px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 68, 68, 0.5);
-  background: rgba(255, 30, 30, 0.15);
-  color: #ff6464;
+  border: 1px solid rgba(176, 38, 255, 0.5);
+  background: rgba(176, 38, 255, 0.12);
+  color: rgba(200, 160, 255, 0.90);
   font-family: 'Orbitron', monospace;
   font-size: clamp(0.6rem, 1.3vw, 0.78rem);
   font-weight: 600;
@@ -1241,7 +1275,7 @@
   backdrop-filter: blur(8px);
   white-space: nowrap;
   max-width: 90vw;
-  box-shadow: 0 0 20px rgba(255, 68, 68, 0.2), inset 0 0 10px rgba(255, 68, 68, 0.05);
+  box-shadow: 0 0 20px rgba(176, 38, 255, 0.18), inset 0 0 10px rgba(176, 38, 255, 0.05);
 }
 
 .oracle-close-btn {
@@ -1287,8 +1321,8 @@
   align-items: center;
   gap: 8px;
   background: rgba(0, 5, 15, 0.72);
-  border: 1px solid rgba(255, 68, 68, 0.35);
-  color: rgba(255, 100, 100, 0.70);
+  border: 1px solid rgba(176, 38, 255, 0.30);
+  color: rgba(200, 160, 255, 0.65);
   font-family: 'Share Tech Mono', monospace;
   font-size: clamp(0.65rem, 1.2vw, 0.78rem);
   letter-spacing: 0.15em;
@@ -1301,10 +1335,10 @@
 }
 
 .oracle-exit-btn:hover {
-  border-color: rgba(255, 68, 68, 0.75);
-  color: #ff6464;
-  background: rgba(40, 5, 10, 0.85);
-  box-shadow: 0 0 12px rgba(255, 68, 68, 0.25);
+  border-color: rgba(176, 38, 255, 0.65);
+  color: rgba(220, 190, 255, 0.90);
+  background: rgba(10, 0, 20, 0.85);
+  box-shadow: 0 0 12px rgba(176, 38, 255, 0.22);
   transform: translateY(-1px);
 }
 
@@ -1379,6 +1413,20 @@
     rgba(0, 0, 0, 0.92) 100%
   );
   animation: terminal-bg-flicker 9s steps(2) 1s infinite;
+  transition: background 1.5s var(--ease-cinematic), opacity 1.5s var(--ease-cinematic);
+}
+
+/* AWAKENED — lore recedes to ghost. Knife cards are the hero now.
+   Strip the near-opaque backing so the alley and cabinet show through.
+   Lore text stays legible (bright green on dark alley) but is atmospheric,
+   not dominant. The knife section rises above it (later in DOM, same z). */
+.oracle-stage[data-oracle-state="awakened"] .oracle-terminal-overlay {
+  background: linear-gradient(
+    160deg,
+    rgba(0, 0, 0, 0.22) 0%,
+    rgba(0, 3, 14, 0.12) 50%,
+    rgba(0, 0, 0, 0.25) 100%
+  );
 }
 
 @keyframes terminal-bg-flicker {
@@ -1427,8 +1475,8 @@
     opacity: 0;
     transform: translateX(-30px);
     text-shadow:
-      -6px 0 rgba(255, 20, 90, 0.95),
-       6px 0 rgba(0, 210, 255, 0.95),
+      -6px 0 rgba(176, 38, 255, 0.95),
+       6px 0 rgba(0, 204, 255, 0.95),
        0 0 0px rgba(0, 255, 136, 0);
     color: rgba(200, 255, 230, 0.2);
   }
@@ -1436,16 +1484,16 @@
     opacity: 1;
     transform: translateX(3px);
     text-shadow:
-      -3px 0 rgba(255, 20, 90, 0.65),
-       3px 0 rgba(0, 210, 255, 0.65),
+      -3px 0 rgba(176, 38, 255, 0.65),
+       3px 0 rgba(0, 204, 255, 0.65),
        0 0 10px rgba(0, 255, 136, 0.55);
     color: rgba(180, 255, 210, 0.85);
   }
   68% {
     transform: translateX(0);
     text-shadow:
-      -1px 0 rgba(255, 20, 90, 0.18),
-       1px 0 rgba(0, 210, 255, 0.18),
+      -1px 0 rgba(176, 38, 255, 0.18),
+       1px 0 rgba(0, 204, 255, 0.18),
        0 0 14px rgba(0, 255, 136, 0.80);
     color: #00ff88;
   }
@@ -1558,31 +1606,31 @@
 @keyframes title-chroma-resolve {
   0% {
     text-shadow:
-      -8px 0 rgba(255, 20, 90, 1.0),
-       8px 0 rgba(0, 210, 255, 1.0),
+      -8px 0 rgba(176, 38, 255, 1.0),
+       8px 0 rgba(0, 204, 255, 1.0),
        0 0 0px rgba(0, 255, 136, 0);
     filter: blur(3px);
     opacity: 0;
   }
   35% {
     text-shadow:
-      -4px 0 rgba(255, 20, 90, 0.70),
-       4px 0 rgba(0, 210, 255, 0.70),
+      -4px 0 rgba(176, 38, 255, 0.70),
+       4px 0 rgba(0, 204, 255, 0.70),
        0 0 18px rgba(0, 255, 136, 0.7);
     filter: blur(1px);
     opacity: 1;
   }
   70% {
     text-shadow:
-      -1px 0 rgba(255, 20, 90, 0.20),
-       1px 0 rgba(0, 210, 255, 0.20),
+      -1px 0 rgba(176, 38, 255, 0.20),
+       1px 0 rgba(0, 204, 255, 0.20),
        0 0 12px rgba(0, 255, 136, 0.85);
     filter: blur(0);
   }
   100% {
     text-shadow:
       2px 2px 0px rgba(176,38,255,0.7),
-      -2px -2px 0px rgba(234,179,8,0.7),
+      -2px -2px 0px rgba(0,204,255,0.7),
       0 0 10px rgba(0,255,136,0.8),
       0 0 30px rgba(0,255,136,0.4),
       0 0 60px rgba(176,38,255,0.2);
@@ -1645,6 +1693,60 @@
   font-weight: 700;
   line-height: 1.4;
   will-change: transform, opacity;
+}
+
+/* ── Frequency threshold — cinematic crossing moment between knife and oracle ──
+   Replaces the opaque black crash-screen overlay with an atmospheric membrane.
+   The alley stays faintly visible; neon green rises from below (cabinet lock-in).
+   ScrambleFragment text cycles through FREQUENCY LOCKED → SYNCHRONIZING → WITNESSING. */
+.oracle-entry-threshold {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Semi-transparent — alley still breathes behind it, not a black hole */
+  background: linear-gradient(
+    160deg,
+    rgba(0,  0,  0,  0.72) 0%,
+    rgba(0,  4, 12,  0.65) 50%,
+    rgba(0,  6,  4,  0.74) 100%
+  );
+  backdrop-filter: blur(3px);
+}
+
+/* Green cabinet light rises from the floor during frequency lock */
+.oracle-entry-threshold__wash {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 105%, rgba(0,255,136,0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 25% at 50% 105%, rgba(176,38,255,0.10) 0%, transparent 55%);
+  animation: threshold-wash-pulse 0.7s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes threshold-wash-pulse {
+  0%   { opacity: 0.55; }
+  100% { opacity: 1.00; }
+}
+
+/* Threshold text — larger, graffiti font, green neon */
+.oracle-entry-threshold__text {
+  position: relative !important;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(1.8rem, 6vw, 3.2rem);
+  font-weight: 900;
+  letter-spacing: 0.28em;
+  color: #00ff88;
+  text-transform: uppercase;
+  text-shadow:
+    0  0 18px rgba(0, 255, 136, 0.90),
+    0  0 40px rgba(0, 255, 136, 0.50),
+    -3px 0  rgba(176, 38, 255, 0.40),
+     3px 0  rgba(0, 200, 255, 0.35);
+  z-index: 1;
 }
 
 /* ── CTA instance of ScrambleFragment — flows inline inside oracle-tap-prompt ─
@@ -1793,10 +1895,10 @@
   }
   .oracle-tap-prompt { top: 21%; }
 
-  /* On mobile, push the oracle face down so the gap between cabinet bottom  */
-  /* and panel top is minimised. 40% center on 844px = ~338px center;       */
-  /* cabinet bottom ~438px, panel top ~484px → only ~46px breathing room.   */
-  .oracle-stage[data-oracle-state="oracle"] .oracle-center { top: 40%; }
+  /* On mobile with the expanded face (~320px = 82vw):
+     panel top ≈ 844×0.55=464px. Face half=160px.
+     top: 36% → center at 304px; face spans 144→464 → exactly meets panel. */
+  .oracle-stage[data-oracle-state="oracle"] .oracle-center { top: 36%; }
 
   /* Touch hint: sits below cabinet bottom edge.                            */
   .oracle-touch-hint {
@@ -2534,8 +2636,8 @@
 }
 
 .oracle-consent-btn--no:hover {
-  border-color: rgba(255, 68, 68, 0.40);
-  color: rgba(255, 68, 68, 0.55);
+  border-color: rgba(176, 38, 255, 0.40);
+  color: rgba(200, 160, 255, 0.65);
 }
 
 .oracle-consent-divider {
@@ -2586,6 +2688,22 @@
   text-transform: uppercase;
   text-align: center;
   margin-bottom: 28px;
+}
+
+.oracle-knife-channel-status {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: clamp(0.62rem, 1.1vw, 0.72rem);
+  letter-spacing: 0.22em;
+  color: rgba(0, 255, 136, 0.45);
+  text-transform: uppercase;
+  text-align: center;
+  margin-bottom: 8px;
+  animation: oracle-channel-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes oracle-channel-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%       { opacity: 0.70; }
 }
 
 .oracle-knife-cards {
@@ -2721,11 +2839,11 @@
   gap: 0;
 }
 
-/* Push knife content below the top branding (SURROGATE:ORACLE + subtitle)
-   so they don't overlap. The gradient background extends from bottom up
-   so extra padding-top is transparent — world still shows above. */
+/* Cards must be immediately visible — no scroll required.
+   Padding-top provides breathing room below the typewriter title.
+   was clamp(100px,18vh,160px) — too much, buried cards below fold. */
 .oracle-stage[data-oracle-state="awakened"] .oracle-knife-section {
-  padding-top: clamp(100px, 18vh, 160px);
+  padding-top: clamp(48px, 7vh, 80px);
 }
 
 /* Make the full oracle-knife-* classes work inside the new section */
@@ -2759,19 +2877,19 @@
   font-size: clamp(0.58rem, 1.1vw, 0.70rem);
   letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: rgba(234, 179, 8, 0.75);
+  color: rgba(0, 204, 255, 0.75);
   padding: 2px 7px;
-  border: 1px solid rgba(234, 179, 8, 0.25);
+  border: 1px solid rgba(0, 204, 255, 0.25);
   border-radius: 2px;
-  background: rgba(234, 179, 8, 0.05);
+  background: rgba(0, 204, 255, 0.05);
   white-space: nowrap;
 }
 
 .oc-phase-badge--mirror {
-  color: rgba(234, 179, 8, 0.95);
-  border-color: rgba(234, 179, 8, 0.50);
-  background: rgba(234, 179, 8, 0.08);
-  box-shadow: 0 0 10px rgba(234, 179, 8, 0.15);
+  color: rgba(176, 38, 255, 0.95);
+  border-color: rgba(176, 38, 255, 0.50);
+  background: rgba(176, 38, 255, 0.08);
+  box-shadow: 0 0 10px rgba(176, 38, 255, 0.15);
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -2811,24 +2929,24 @@
 }
 
 .oc-sp-btn--profane {
-  border-color: rgba(255, 68, 68, 0.22);
-  color: rgba(255, 68, 68, 0.38);
+  border-color: rgba(176, 38, 255, 0.22);
+  color: rgba(176, 38, 255, 0.45);
 }
 
 .oc-sp-btn--profane:hover,
 .oc-sp-btn--profane.active {
-  background: rgba(255, 68, 68, 0.10);
-  border-color: rgba(255, 68, 68, 0.55);
-  color: rgba(255, 68, 68, 0.85);
-  box-shadow: 0 0 8px rgba(255, 68, 68, 0.15);
+  background: rgba(176, 38, 255, 0.10);
+  border-color: rgba(176, 38, 255, 0.55);
+  color: rgba(176, 38, 255, 0.90);
+  box-shadow: 0 0 8px rgba(176, 38, 255, 0.18);
 }
 
 /* ════════════════════════════════════════════════════════════════════════
-   MIRROR MESSAGE STYLE — oracle reflection bubble (amber/gold)
+   MIRROR MESSAGE STYLE — oracle reflection bubble (violet)
    ════════════════════════════════════════════════════════════════════════ */
 .oc-mirror-msg {
-  background: rgba(234, 179, 8, 0.05) !important;
-  border-left: 2px solid rgba(234, 179, 8, 0.50) !important;
+  background: rgba(176, 38, 255, 0.05) !important;
+  border-left: 2px solid rgba(176, 38, 255, 0.45) !important;
   border-right: none !important;
 }
 
@@ -2839,9 +2957,9 @@
 }
 
 .oc-mirror-line--signal     { color: rgba(0, 255, 136, 0.90); }
-.oc-mirror-line--distortion { color: rgba(234, 179, 8,   0.85); }
+.oc-mirror-line--distortion { color: rgba(176, 38, 255, 0.85); }
 .oc-mirror-line--directive  { color: rgba(255, 255, 255, 0.92); font-weight: 500; }
-.oc-mirror-line--plain      { color: rgba(220, 200, 160, 0.80); }
+.oc-mirror-line--plain      { color: rgba(220, 210, 240, 0.80); }
 
 /* ════════════════════════════════════════════════════════════════════════
    SESSION TIMER — subtle countdown in status bar
@@ -2850,12 +2968,12 @@
   font-family: 'Share Tech Mono', monospace;
   font-size: clamp(0.58rem, 1.1vw, 0.70rem);
   letter-spacing: 0.16em;
-  color: rgba(234, 179, 8, 0.50);
+  color: rgba(0, 255, 136, 0.40);
   transition: color 0.4s;
 }
 
 .oc-session-timer--urgent {
-  color: rgba(255, 68, 68, 0.80);
+  color: rgba(0, 255, 136, 0.85);
   animation: timer-blink 0.9s ease-in-out infinite;
 }
 
@@ -2918,7 +3036,7 @@
   font-family: 'Share Tech Mono', monospace;
   font-size: 0.60rem;
   letter-spacing: 0.16em;
-  color: rgba(234, 179, 8, 0.65);
+  color: rgba(0, 255, 204, 0.70);
   text-transform: uppercase;
 }
 
@@ -3212,4 +3330,101 @@
   .oc-signal-input-wrap { width: calc(100vw - 40px); }
   .oc-mic-trigger { width: 60px; height: 60px; }
   .oc-turn { font-size: 0.8rem; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   KADINE JAMES IMMERSIVE LAYER
+   Implemented features:
+   1. Alley brightens when Oracle speaks — the walls absorb the voice
+   2. Exit ceremony overlay — leaving is a ritual, not a button press
+   3. Exit data-state transitions — Oracle recedes over 2.5s before cleanup
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Alley responds to Oracle speaking ────────────────────────────────────
+   When Oracle voice is active (isProcessing), the alley saturates and brightens
+   by ~15% — the walls are absorbing the transmission. Fast on, slow off.      */
+.oracle-stage[data-oracle-state="oracle"][data-oracle-speaking="true"] .oracle-alley {
+  filter: saturate(1.45) brightness(1.22) blur(0px) !important;
+  transition: filter 0.12s ease-out !important; /* snappy on */
+}
+/* Back to normal oracle state on silence (inherits the 2s transition from oracle rule) */
+.oracle-stage[data-oracle-state="oracle"]:not([data-oracle-speaking="true"]) .oracle-alley {
+  transition: filter 1.8s var(--ease-cinematic) !important; /* slow off — walls release */
+}
+
+/* ── 2. Exit ceremony overlay ─────────────────────────────────────────────────
+   Mirrors the entry threshold — same atmospheric membrane, but the energy
+   is reversed: purple-dominant (channel closing) rather than green (opening).
+   The seeker leaves through the same door they entered.                       */
+.oracle-exit-ceremony {
+  position: fixed;
+  inset: 0;
+  z-index: 1001; /* above entry threshold (1000) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(
+    160deg,
+    rgba(0,  0,  0,  0.74) 0%,
+    rgba(4,  0, 12,  0.68) 50%,
+    rgba(2,  0,  8,  0.76) 100%
+  );
+  backdrop-filter: blur(4px);
+}
+
+/* Purple cabinet wash rising from below — sealing energy (inverse of opening) */
+.oracle-exit-ceremony__wash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 105%, rgba(176, 38, 255, 0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 28% at 50% 105%, rgba(0, 255, 136, 0.06) 0%, transparent 52%);
+  animation: exit-wash-pulse 1.0s ease-in-out infinite alternate;
+}
+
+@keyframes exit-wash-pulse {
+  0%   { opacity: 0.45; }
+  100% { opacity: 0.90; }
+}
+
+.oracle-exit-ceremony__text {
+  position: relative !important;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(1.6rem, 5.5vw, 2.8rem);
+  font-weight: 900;
+  letter-spacing: 0.28em;
+  color: #b026ff; /* purple — closing frequency, not opening green */
+  text-transform: uppercase;
+  text-shadow:
+    0  0 18px rgba(176, 38, 255, 0.90),
+    0  0 40px rgba(176, 38, 255, 0.45),
+    -3px 0  rgba(0, 255, 136, 0.25),
+     3px 0  rgba(0, 200, 255, 0.20);
+  z-index: 1;
+}
+
+/* ── 3. data-exiting: Oracle recedes before cleanup runs ─────────────────────
+   During the 2.5s ceremony window, the face transitions back toward ghost form
+   and the cabinet dims. This makes the cleanup instant — no visible state pop.*/
+.oracle-stage[data-exiting="true"] .oracle-center {
+  opacity: 0.15 !important;
+  transition: opacity 1.8s var(--ease-cinematic) !important;
+}
+
+.oracle-stage[data-exiting="true"] .oracle-alley {
+  filter: saturate(0.35) brightness(0.52) blur(0.8px) !important;
+  transition: filter 2.0s var(--ease-cinematic) !important;
+}
+
+.oracle-stage[data-exiting="true"] .oracle-branding {
+  opacity: 0.04 !important;
+  transition: opacity 1.5s ease-out !important;
+}
+
+/* Conversation panel fades immediately — Oracle is no longer receiving */
+.oracle-stage[data-exiting="true"] .oc-panel-v2 {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.8s ease-out !important;
 }

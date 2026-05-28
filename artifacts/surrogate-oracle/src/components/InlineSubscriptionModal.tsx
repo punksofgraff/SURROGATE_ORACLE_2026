@@ -110,16 +110,16 @@ export function InlineSubscriptionModal({
             ) : (
               <>
                 <div style={{ textAlign: 'center', marginBottom: 24 }}>
-                  <Crown size={32} style={{ color: '#eab308', marginBottom: 12 }} />
+                  <Crown size={32} style={{ color: '#00ccff', marginBottom: 12 }} />
                   <h2 style={{ fontSize: '1.1rem', color: '#ffffff', letterSpacing: '0.1em', marginBottom: 6 }}>{ctx?.title}</h2>
                   <p style={{ fontSize: '0.75rem', color: '#ffffff', opacity: 0.8, marginBottom: 8 }}>{ctx?.subtitle}</p>
-                  <div style={{ fontSize: '0.7rem', color: '#eab308', background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.3)', borderRadius: 20, padding: '4px 12px', display: 'inline-block' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#00ccff', background: 'rgba(0,204,255,0.1)', border: '1px solid rgba(0,204,255,0.3)', borderRadius: 20, padding: '4px 12px', display: 'inline-block' }}>
                     {ctx?.urgency}
                   </div>
                 </div>
 
                 {error && (
-                  <div style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid #eab308', borderRadius: 8, padding: '8px 12px', marginBottom: 16, fontSize: '0.75rem', color: '#eab308' }}>
+                  <div style={{ background: 'rgba(176,38,255,0.1)', border: '1px solid rgba(176,38,255,0.4)', borderRadius: 8, padding: '8px 12px', marginBottom: 16, fontSize: '0.75rem', color: '#cc88ff' }}>
                     {error}
                   </div>
                 )}
@@ -147,14 +147,14 @@ export function InlineSubscriptionModal({
                           <div style={{ fontSize: '0.7rem', color: '#ffffff', opacity: 0.8, marginTop: 2 }}>{product.description}</div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#eab308' }}>${product.price}</div>
+                          <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#00ffcc' }}>${product.price}</div>
                           <div style={{ fontSize: '0.6rem', color: '#ffffff', opacity: 0.6 }}>/mo</div>
                         </div>
                       </div>
                       <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {product.features.map((f) => (
                           <li key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.72rem', color: '#ffffff' }}>
-                            <Zap size={10} style={{ color: '#eab308', flexShrink: 0 }} />
+                            <Zap size={10} style={{ color: '#00ff88', flexShrink: 0 }} />
                             {f}
                           </li>
                         ))}

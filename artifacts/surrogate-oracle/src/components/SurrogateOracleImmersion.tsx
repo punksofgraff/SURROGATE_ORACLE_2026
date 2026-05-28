@@ -682,6 +682,9 @@ export function SurrogateOracleImmersion() {
   const atmosphereCanvasRef = useRef<HTMLCanvasElement>(null);
   // Tracks whether onStreamReady has fired; lets the fallback timeout know when to give up
   const decartStreamReadyRef = useRef(false);
+  // Guard against re-entrant initializeOracle calls (mount effect fires once, but
+  // enterTerminal also calls it — without this guard both fire DECART INIT).
+  const isInitializingOracleRef = useRef(false);
   const decartFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Decart late-arrival handoff state — set true when Decart stream becomes ready
   // mid-conversation; cleared by executeDecartHandoff() at the next silence gap.
@@ -905,24 +908,18 @@ export function SurrogateOracleImmersion() {
 
   useEffect(() => {
     if (audioRef.current) {
-      // Ducking priority (loudest → quietest):
-      // 1. Oracle actively speaking → 0.02 (7%) — near-silent, voice is foreground
-      // 2. Seeker mic active       → 0.15 (ambient) — still present but background
-      // 3. Oracle mode / ready     → 0.04 — drops the moment knife is selected
-      // 4. Default (dormant/lore)  → 0.22 (base, 20% below old 0.28)
-      let vol = 0.22;
-
-      // Drop immediately when oracle mode begins (knife selected) — don't wait for
-      // Gemini to connect.  isOracleReady also catches the WS-open confirmation.
-      const isOracleEngaged = isOracleMode || oracleState.isReady || isGeminiConnected;
-
-      if (isOracleEngaged) vol = 0.04;
-      if (isMicActive)     vol = 0.15;   // ambient when seeker speaks — NOT fully ducked
-      if (oracleState.isProcessing) vol = 0.02; // Oracle speaking → near-silent
-
+      // Simple three-state ducking:
+      //   Default (dormant / lore)  → 0.22 — full background presence
+      //   Oracle mode active        → 0.06 — drops to background the moment knife is selected
+      //   Oracle actively speaking  → 0.02 — near-silent so the voice is foreground
+      // On exit, isOracleMode becomes false and music returns to 0.22 naturally.
+      let vol = 0.06;                          // dormant ambient — present but not loud
+      if (scenePhase !== 'dormant') vol = 0.03; // any interaction → drops immediately
+      if (isOracleMode)             vol = 0.02; // oracle active → background only
+      if (oracleState.isProcessing) vol = 0.008;// oracle speaking → near-silent
       audioRef.current.volume = vol;
     }
-  }, [isOracleMode, oracleState.isProcessing, oracleState.isReady, isGeminiConnected, isMicActive]);
+  }, [scenePhase, isOracleMode, oracleState.isProcessing]);
 
   // ── Oracle connection ─────────────────────────────────────────────────────
   const validateEnvironment = useCallback(() => {
@@ -978,7 +975,9 @@ export function SurrogateOracleImmersion() {
   }, []);
 
   const initializeOracle = useCallback(async () => {
-    if (!validateEnvironment()) return;
+    if (isInitializingOracleRef.current) return;
+    isInitializingOracleRef.current = true;
+    if (!validateEnvironment()) { isInitializingOracleRef.current = false; return; }
     logStep('DECART INIT', 'ok');
     if (!avatarVideoRef.current) {
       setOracleState((prev) => ({ ...prev, error: 'Avatar video element not ready' }));
@@ -1097,6 +1096,7 @@ export function SurrogateOracleImmersion() {
         }
       }, 22000);
     }
+    isInitializingOracleRef.current = false;
   }, [validateEnvironment, isDevMode, fallbackToFreemium]);
 
   // ── Scene awakening — four-step, user-gated ──────────────────────────────
@@ -1579,14 +1579,25 @@ export function SurrogateOracleImmersion() {
     setLoreComplete(false);
     conversationThemesRef.current.clear();
     setOracleState((p) => ({ ...p, isConnected: false, isReady: false, isProcessing: false, error: null }));
+    isInitializingOracleRef.current = false;  // allow re-init on second journey
   }, []);
 
   const exitOracleMode = useCallback(() => {
-    if (isExiting) return; // guard against double-fire
-    // Phase 1: play the exit tone and begin the ceremony
+    if (isExiting) return;
+
+    // Inject a closing hidden message so Oracle reveals session coins in its last breath.
+    // Fire-and-forget — if Gemini responds within the 2.5s ceremony window, the user
+    // hears the closing line before the world fades. If not, exit proceeds normally.
+    const coins = oracleConversationRef.current?.getSessionCoins?.() ?? 0;
+    if (coins > 0) {
+      oracleConversationRef.current?.sendTextMessage(
+        `[DEPARTURE: The Seeker is leaving now. In one final sentence in your own voice, acknowledge what passed between you — and that they carried ${coins} units of signal out of this exchange. Make it feel like a gift, not a receipt.]`,
+        true
+      );
+    }
+
     playExitTone();
     setIsExiting(true);
-    // Phase 2: after the CSS transitions finish (2.5s), run actual cleanup
     setTimeout(() => { performExitCleanup(); }, 2500);
   }, [isExiting, performExitCleanup]);
 

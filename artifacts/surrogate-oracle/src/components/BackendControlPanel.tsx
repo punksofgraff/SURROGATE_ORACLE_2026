@@ -79,7 +79,7 @@ function HoloCard({
 function TerminalLog({ lines, label }: { lines: string[]; label: string }) {
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{ fontSize: '0.58rem', color: '#eab308', letterSpacing: '0.15em', marginBottom: 5 }}>
+      <div style={{ fontSize: '0.58rem', color: '#00ccff', letterSpacing: '0.15em', marginBottom: 5 }}>
         {label}
       </div>
       <div style={{
@@ -100,7 +100,7 @@ function TerminalLog({ lines, label }: { lines: string[]; label: string }) {
 
 // ── StatusBadge ───────────────────────────────────────────────────────────────
 function StatusBadge({ label, ok, warn }: { label: string; ok: boolean; warn?: boolean }) {
-  const color = warn ? '#eab308' : ok ? '#00ff88' : '#ef4444';
+  const color = warn ? '#b026ff' : ok ? '#00ff88' : '#cc00ff';
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -249,7 +249,7 @@ export const BackendControlPanel = ({
             <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#00ff88', letterSpacing: '0.14em' }}>
               ENCULTURATE CRATE
             </div>
-            <div style={{ fontSize: '0.55rem', color: '#eab308', marginTop: 2, letterSpacing: '0.1em' }}>
+            <div style={{ fontSize: '0.55rem', color: '#00ccff', marginTop: 2, letterSpacing: '0.1em' }}>
               LEARN2EARN BACKEND
             </div>
           </div>
@@ -366,7 +366,7 @@ export const BackendControlPanel = ({
 
                       {chainFuelz.isInitialized ? (
                         <>
-                          <div style={{ fontSize: '0.58rem', color: '#eab308', marginBottom: 4, letterSpacing: '0.1em' }}>VAULT ID</div>
+                          <div style={{ fontSize: '0.58rem', color: '#00ccff', marginBottom: 4, letterSpacing: '0.1em' }}>VAULT ID</div>
                           <div style={{
                             fontSize: '0.78rem', color: '#fff', fontFamily: 'monospace',
                             background: 'rgba(0,255,136,0.06)', padding: '6px 10px', borderRadius: 6,
@@ -375,7 +375,7 @@ export const BackendControlPanel = ({
                             {chainFuelz.vaultHandle}
                           </div>
                           {showRawAddress && (
-                            <div style={{ fontSize: '0.52rem', color: '#eab308', marginTop: 4, wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                            <div style={{ fontSize: '0.52rem', color: '#00ccff', marginTop: 4, wordBreak: 'break-all', fontFamily: 'monospace' }}>
                               RAW: {chainFuelz.walletAddress}
                             </div>
                           )}
@@ -400,8 +400,8 @@ export const BackendControlPanel = ({
                           </motion.div>
                         </>
                       ) : (
-                        <div style={{ fontSize: '0.65rem', color: '#eab308', display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <Zap size={12} color="#eab308" />
+                        <div style={{ fontSize: '0.65rem', color: '#00ccff', display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Zap size={12} color="#00ccff" />
                           Initializing Neural Vault...
                         </div>
                       )}
@@ -479,15 +479,15 @@ export const BackendControlPanel = ({
                             background: 'rgba(0,0,0,0.4)', borderRadius: 6, padding: '7px 10px',
                             border: '1px solid rgba(176,38,255,0.12)',
                           }}>
-                            <div style={{ color: '#eab308', fontSize: '0.52rem', letterSpacing: '0.12em', marginBottom: 3 }}>{k}</div>
+                            <div style={{ color: '#00ccff', fontSize: '0.52rem', letterSpacing: '0.12em', marginBottom: 3 }}>{k}</div>
                             <div style={{ color: '#fff', fontFamily: 'monospace' }}>{v}</div>
                           </div>
                         ))}
                       </div>
 
                       {decartInfo.lastError && (
-                        <div style={{ marginTop: 10, padding: '7px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 6 }}>
-                          <div style={{ fontSize: '0.55rem', color: '#ef9999', fontFamily: 'monospace' }}>{decartInfo.lastError}</div>
+                        <div style={{ marginTop: 10, padding: '7px 10px', background: 'rgba(176,38,255,0.1)', border: '1px solid rgba(176,38,255,0.25)', borderRadius: 6 }}>
+                          <div style={{ fontSize: '0.55rem', color: '#cc88ff', fontFamily: 'monospace' }}>{decartInfo.lastError}</div>
                         </div>
                       )}
 
@@ -503,10 +503,10 @@ export const BackendControlPanel = ({
 
               {/* ── GEMINI LIVE tab ───────────────────────────────────── */}
               {activeTab === 'gemini' && (
-                <HoloCard glowColor="#00bfff">
+                <HoloCard glowColor="#00ccff">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                    <Cpu size={14} color="#00bfff" />
-                    <span style={{ fontSize: '0.7rem', color: '#00bfff', fontWeight: 700, letterSpacing: '0.12em' }}>
+                    <Cpu size={14} color="#00ccff" />
+                    <span style={{ fontSize: '0.7rem', color: '#00ccff', fontWeight: 700, letterSpacing: '0.12em' }}>
                       GEMINI LIVE
                     </span>
                   </div>
@@ -546,21 +546,21 @@ export const BackendControlPanel = ({
                             background: 'rgba(0,0,0,0.4)', borderRadius: 6, padding: '7px 10px',
                             border: '1px solid rgba(0,191,255,0.12)',
                           }}>
-                            <div style={{ color: '#eab308', fontSize: '0.52rem', letterSpacing: '0.12em', marginBottom: 3 }}>{k}</div>
+                            <div style={{ color: '#00ccff', fontSize: '0.52rem', letterSpacing: '0.12em', marginBottom: 3 }}>{k}</div>
                             <div style={{ color: '#fff', fontFamily: 'monospace' }}>{v}</div>
                           </div>
                         ))}
                       </div>
 
                       {geminiInfo.lastError && (
-                        <div style={{ marginTop: 10, padding: '7px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 6 }}>
-                          <div style={{ fontSize: '0.55rem', color: '#ef9999', fontFamily: 'monospace' }}>{geminiInfo.lastError}</div>
+                        <div style={{ marginTop: 10, padding: '7px 10px', background: 'rgba(176,38,255,0.1)', border: '1px solid rgba(176,38,255,0.25)', borderRadius: 6 }}>
+                          <div style={{ fontSize: '0.55rem', color: '#cc88ff', fontFamily: 'monospace' }}>{geminiInfo.lastError}</div>
                         </div>
                       )}
 
                       {/* Vertex AI roadmap notice */}
-                      <div style={{ marginTop: 12, padding: '8px 10px', background: 'rgba(234,179,8,0.06)', border: '1px solid rgba(234,179,8,0.18)', borderRadius: 6 }}>
-                        <div style={{ fontSize: '0.55rem', color: '#eab308', letterSpacing: '0.1em', marginBottom: 3 }}>
+                      <div style={{ marginTop: 12, padding: '8px 10px', background: 'rgba(176,38,255,0.06)', border: '1px solid rgba(176,38,255,0.18)', borderRadius: 6 }}>
+                        <div style={{ fontSize: '0.55rem', color: '#00ccff', letterSpacing: '0.1em', marginBottom: 3 }}>
                           VERTEX AI — PENDING
                         </div>
                         <div style={{ fontSize: '0.52rem', color: '#ffffff55', lineHeight: 1.5 }}>
@@ -582,9 +582,9 @@ export const BackendControlPanel = ({
               {/* ── DEV tab ───────────────────────────────────────────── */}
               {activeTab === 'dev' && (
                 !debugPasswordEntered ? (
-                  <HoloCard glowColor="#eab308">
+                  <HoloCard glowColor="#b026ff">
                     <div style={{ textAlign: 'center', padding: '10px 0' }}>
-                      <div style={{ fontSize: '0.7rem', color: '#eab308', marginBottom: 16, letterSpacing: '0.1em' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#00ccff', marginBottom: 16, letterSpacing: '0.1em' }}>
                         🔒 DEVELOPER ACCESS REQUIRED
                       </div>
                       <input
@@ -650,7 +650,7 @@ export const BackendControlPanel = ({
                         {!!testResults[name] && (
                           <pre style={{
                             margin: 0, fontSize: '0.58rem',
-                            color: (testResults[name] as { success?: boolean }).success ? '#00ff88' : '#eab308',
+                            color: (testResults[name] as { success?: boolean }).success ? '#00ff88' : '#00ccff',
                             whiteSpace: 'pre-wrap', wordBreak: 'break-all',
                           }}>
                             {JSON.stringify(testResults[name], null, 2)}
@@ -666,7 +666,7 @@ export const BackendControlPanel = ({
                     {[
                       { name: 'mint-culture-coins', label: 'Mint Culture Coins', payload: { userId: userId || 'test', amount: 1, reason: 'debug_test' } },
                     ].map(({ name, label, payload }) => (
-                      <HoloCard key={name} glowColor="#eab308" style={{ padding: '10px 12px' }}>
+                      <HoloCard key={name} glowColor="#b026ff" style={{ padding: '10px 12px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                           <span style={{ fontSize: '0.65rem', color: '#fff' }}>{label}</span>
                           <StatusBadge label="MOCK" ok={false} warn />
@@ -675,9 +675,9 @@ export const BackendControlPanel = ({
                             disabled={isLoading}
                             whileHover={{ scale: 1.05 }}
                             style={{
-                              padding: '3px 10px', background: 'rgba(234,179,8,0.1)',
-                              border: '1px solid rgba(234,179,8,0.35)', borderRadius: 4,
-                              color: '#eab308', cursor: 'pointer', fontSize: '0.6rem',
+                              padding: '3px 10px', background: 'rgba(176,38,255,0.1)',
+                              border: '1px solid rgba(176,38,255,0.35)', borderRadius: 4,
+                              color: '#00ccff', cursor: 'pointer', fontSize: '0.6rem',
                               fontFamily: "'PhillySans', 'Orbitron', monospace",
                             }}
                           >
@@ -685,7 +685,7 @@ export const BackendControlPanel = ({
                           </motion.button>
                         </div>
                         {!!testResults[name] && (
-                          <pre style={{ margin: 0, fontSize: '0.58rem', color: '#eab308', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                          <pre style={{ margin: 0, fontSize: '0.58rem', color: '#00ccff', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
                             {JSON.stringify(testResults[name], null, 2)}
                           </pre>
                         )}
@@ -696,7 +696,7 @@ export const BackendControlPanel = ({
                     <div style={{ fontSize: '0.58rem', color: '#ffffff44', letterSpacing: '0.15em', marginBottom: -4 }}>
                       VERTEX AI (ROADMAP)
                     </div>
-                    <HoloCard glowColor="#eab308" style={{ padding: '10px 12px' }}>
+                    <HoloCard glowColor="#b026ff" style={{ padding: '10px 12px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.65rem', color: '#fff' }}>Vertex AI Open Model Playground</span>
                         <StatusBadge label="PENDING" ok={false} warn />
@@ -709,7 +709,7 @@ export const BackendControlPanel = ({
 
                     {/* ── SESSION INFO ─────────────────────────────── */}
                     <HoloCard style={{ padding: '10px 12px' }}>
-                      <div style={{ fontSize: '0.58rem', color: '#eab308', marginBottom: 8, letterSpacing: '0.12em' }}>SESSION INFO</div>
+                      <div style={{ fontSize: '0.58rem', color: '#00ccff', marginBottom: 8, letterSpacing: '0.12em' }}>SESSION INFO</div>
                       <div style={{ fontSize: '0.6rem', color: '#fff', fontFamily: 'monospace', lineHeight: 2 }}>
                         <div>Session: {sessionId?.slice(0, 16)}...</div>
                         <div>User: {userId || 'anonymous'}</div>

@@ -66,14 +66,14 @@ export const Learn2EarnInterface = ({ userId, navigateToDebug }: Learn2EarnInter
       case 'coins':
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: 10, padding: '14px 18px' }}>
+            <div style={{ background: 'rgba(0,255,204,0.06)', border: '1px solid rgba(0,255,204,0.2)', borderRadius: 10, padding: '14px 18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <Zap size={16} style={{ color: '#eab308' }} />
-                <span style={{ color: '#eab308', fontSize: '0.8rem', fontWeight: 700 }}>HOW TO EARN CULTURE COINS</span>
+                <Zap size={16} style={{ color: '#00ffcc' }} />
+                <span style={{ color: '#00ffcc', fontSize: '0.8rem', fontWeight: 700 }}>HOW TO EARN CULTURE COINS</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {[
-                  { label: 'Sacred Interactions', coins: '+15-25', color: '#eab308', desc: 'Deep philosophical or cultural exchanges' },
+                  { label: 'Sacred Interactions', coins: '+15-25', color: '#00ffcc', desc: 'Deep philosophical or cultural exchanges' },
                   { label: 'Profane Interactions', coins: '+5-10', color: '#b026ff', desc: 'Casual or surface-level engagement' },
                   { label: 'Daily Streak Bonus', coins: '+50', color: '#00ff88', desc: 'Consecutive daily interactions' },
                 ].map(({ label, coins, color, desc }) => (
@@ -116,7 +116,7 @@ export const Learn2EarnInterface = ({ userId, navigateToDebug }: Learn2EarnInter
             <h3 style={{ color: '#ffffff', fontSize: '0.85rem', letterSpacing: '0.1em', marginBottom: 4 }}>CONSCIOUSNESS TIERS</h3>
             <TierCard title="SEEKER" level="1-3" description="Begin your digital consciousness journey." color="#00ff88" icon={<Star size={18} />} benefits={['2x Coin Multiplier', 'Essential Oracle Wisdom', 'Basic Consciousness Tracking']} />
             <TierCard title="TRANS-HUMANIST" level="4-7" description="Evolve beyond biological limitations." color="#b026ff" icon={<Sparkles size={18} />} benefits={['3x Coin Multiplier', 'Advanced Oracle Insights', 'Enhanced Consciousness Metrics']} popular />
-            <TierCard title="CULTURAL ARCHITECT" level="8-10" description="Shape the fabric of digital culture itself." color="#eab308" icon={<Crown size={18} />} benefits={['5x Coin Multiplier', 'Source-Level Wisdom', 'Full Consciousness Evolution']} />
+            <TierCard title="CULTURAL ARCHITECT" level="8-10" description="Shape the fabric of digital culture itself." color="#00ccff" icon={<Crown size={18} />} benefits={['5x Coin Multiplier', 'Source-Level Wisdom', 'Full Consciousness Evolution']} />
           </div>
         );
 
@@ -133,7 +133,7 @@ export const Learn2EarnInterface = ({ userId, navigateToDebug }: Learn2EarnInter
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {['Sacred vs Profane consciousness validation', 'Theory of Mind integration for authentic engagement', 'Community-driven consciousness evolution'].map((item) => (
                   <li key={item} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.7rem', color: '#ffffff' }}>
-                    <Zap size={10} style={{ color: '#eab308', marginTop: 3, flexShrink: 0 }} />{item}
+                    <Zap size={10} style={{ color: '#00ff88', marginTop: 3, flexShrink: 0 }} />{item}
                   </li>
                 ))}
               </ul>
@@ -142,7 +142,7 @@ export const Learn2EarnInterface = ({ userId, navigateToDebug }: Learn2EarnInter
             <div style={{ background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.15)', borderRadius: 10, padding: '16px 20px' }}>
               <h4 style={{ color: '#00ff88', fontSize: '0.75rem', marginBottom: 10 }}>LEARN2EARN MECHANICS</h4>
               <div style={{ display: 'flex', gap: 12 }}>
-                {[{ label: 'Sacred Interactions', coins: '+15-25 Culture Coins', color: '#eab308' }, { label: 'Profane Interactions', coins: '+5-10 Culture Coins', color: '#b026ff' }].map(({ label, coins, color }) => (
+                {[{ label: 'Sacred Interactions', coins: '+15-25 Culture Coins', color: '#00ffcc' }, { label: 'Profane Interactions', coins: '+5-10 Culture Coins', color: '#b026ff' }].map(({ label, coins, color }) => (
                   <div key={label} style={{ flex: 1, background: `${color}11`, border: `1px solid ${color}33`, borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
                     <div style={{ fontSize: '0.65rem', color: '#ffffff', opacity: 0.8, marginBottom: 4 }}>{label}</div>
                     <div style={{ fontSize: '0.75rem', color, fontWeight: 700 }}>{coins}</div>

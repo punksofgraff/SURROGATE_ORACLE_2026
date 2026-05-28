@@ -1,7 +1,7 @@
 # SURROGATE:ORACLE — Gemini Integration Reference
 
 Canonical knowledge base for the Gemini integration. Update when anything structural changes.
-Last updated: 2026-05-27. Pressure test: 86/86 passing.
+Last updated: 2026-05-28. Pressure test: 86/86 passing.
 
 ---
 
@@ -14,7 +14,7 @@ Last updated: 2026-05-27. Pressure test: 86/86 passing.
 | **Portrait prompt enhance** (`gemini-portrait-generator`) | ✅ Live | `gemini-2.5-flash` enriches theme → DALL-E/Replicate prompt |
 | **DALL-E 3 portraits** | ⚠️ Needs key | `OPENAI_API_KEY` not in Replit secrets — falls back to Replicate/Unsplash |
 | **Decart WebRTC avatar** | ✅ Live | `DECART_API_KEY` in Replit + Supabase. ICE warms during lore (~18s). |
-| **Freemium viseme lip-sync** | ✅ Live | `OracleFaceRenderer` pixel-warp canvas + `VisemeDetector` on shared AudioContext |
+| **Freemium viseme lip-sync** | ✅ Live | `OracleFaceRenderer` pixel-warp canvas + `VisemeDetector` on shared AudioContext. MOUTH coords recalibrated 2026-05-28. |
 
 ---
 
@@ -200,3 +200,12 @@ EFAs that must be deployed `--no-verify-jwt`:
 ```bash
 npx supabase functions deploy gemini-live-proxy --no-verify-jwt
 ```
+
+---
+
+## Phase 4 Token Economy (implemented 2026-05-28)
+
+- **Score block** stripped from UI — no raw JSON shown to Seeker.
+- **Totem ascend world event:** when `score.totemAdvancement === 'ascend'`, `oracle:totem:ascend` event fires + Oracle speaks one line acknowledging the shift (+400ms delay, hidden turn).
+- **Session-end coin reveal:** on exit, if `sessionCoinsRef.current > 0`, Oracle delivers one closing line that names the coin count as "signal carried out."
+- `getSessionCoins()` on `OracleConversationHandle` exposes accumulated session coins to parent.

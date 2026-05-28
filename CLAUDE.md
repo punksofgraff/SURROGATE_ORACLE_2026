@@ -1,7 +1,7 @@
 # SURROGATE — Development Guide
 
 Canonical mandates for the Surrogate project. Follow strictly.
-Last audited: 2026-05-27. Pressure test: 86/86 passing.
+Last audited: 2026-05-28. Pressure test: 86/86 passing.
 
 ---
 
@@ -32,14 +32,16 @@ Last audited: 2026-05-27. Pressure test: 86/86 passing.
 
 ### 2. Audio & Volume
 
-| State | Volume | Constant |
-|-------|--------|----------|
-| Default (dormant/lore) | `0.22` | base |
-| Oracle mode / WS connected | `0.04` | oracle-ready |
-| Seeker mic active | `0.15` | mic-active (ambient, NOT fully ducked) |
-| Oracle speaking | `0.02` | oracle-speaking (~7%, near-silent) |
+| State | Volume | Notes |
+|-------|--------|-------|
+| Dormant ambient | `0.06` | Present but not loud |
+| Any interaction (terminal/awakened) | `0.03` | Drops the moment user taps |
+| Oracle mode active | `0.02` | Background only |
+| Oracle actively speaking | `0.008` | Near-silent; voice is foreground |
 
-Priority order (highest wins): `oracle-speaking 0.02` → `oracle-ready 0.04` → `mic-active 0.15` → `default 0.22`.
+Priority order (highest wins): `oracle-speaking 0.008` → `oracle-active 0.02` → `interaction 0.03` → `dormant 0.06`.
+
+Controlled by a single `useEffect` on `[scenePhase, isOracleMode, oracleState.isProcessing]` in `SurrogateOracleImmersion.tsx`.
 
 On barge-in (`serverContent.interrupted`): immediately set `isProcessing: false` — do NOT wait for the silence timer. Music must un-duck the moment Oracle stops.
 
@@ -126,7 +128,11 @@ if (result.isOnsetStart) {
 - Palette: **greens, purples, black, white ONLY.** No red, orange, amber, or yellow.
 - Knife card colors: emerald `#00ff88`, violet `#b026ff`, cyan `#00ccff`, neon-purple `#cc00ff`, mint `#00ffcc`.
 - Particle alignment colors: sacred=`#00ffcc`, profane=`#b026ff`, neutral=`#00ff88`.
-- Any use of red/orange/amber is a brand violation — correct immediately.
+- Info/secondary labels: `#00ccff` (cyan). Warning/pending glows: `#b026ff`. Errors: `#cc00ff`.
+- `CULTURAL ARCHITECT` tier: `#00ccff`. Sacred Interactions: `#00ffcc`.
+- Any use of red/orange/amber/yellow (`#eab308`, `#ef4444`, `#c2410c`, `#f59e0b`) is a brand violation.
+- **Enforcement sweep (2026-05-28):** all 8 backend panel components cleaned — `BackendControlPanel`, `CultureCoinDisplay`, `CultureCoinInlineDisplay`, `Learn2EarnInterface`, `InlineSubscriptionModal`, `ConnectingAnimation`, `PortraitGalleryDashboard`, `GoogleSignInOverlay`.
+- Gradient text (`.oracle-marquee`, `.ghost-tx`): use `background-clip: text` + `filter: drop-shadow()`. Never `text-shadow` with chromatic aberration layers — they double/blur.
 
 ### 6. PCMPlayer — Audio Routing
 
@@ -141,7 +147,37 @@ Gemini Live PCM chunks (Int16Array, 24kHz)
 - `playbackRate = ORACLE_PLAYBACK_RATE` (currently `1.0` — Charon voice is deep, pitch shift noticeable).
 - Scheduled via `nextStartTime += buffer.duration / playbackRate` — guarantees gapless chunks.
 
-### 7. Component Standards
+### 7. OracleFaceRenderer — Pixel-Map Lip Sync
+
+Canvas 2D pixel-warp technique: each frame, draw the full face, erase the original mouth with philtrum skin, then redraw upper/lower lip strips shifted apart; fill gap with dark cavity ellipse.
+
+**MOUTH constants (calibrated 2026-05-28 by pixel scan on the actual portrait):**
+
+```typescript
+// i.postimg.cc/jSGnyZXh/Image-1-(11).jpg — 1280×640 CGI android face
+const MOUTH = {
+  cx: 640,    // face is PERFECTLY centred in source image
+  midY: 305,  // lip midline — verified by scan lines
+  halfW: 52,
+  ulTop: 289, ulBot: 302,   // upper lip strip
+  llTop: 303, llBot: 320,   // lower lip strip
+  skinTop: 265, skinBot: 287, // philtrum (erase source)
+  eraseHalfW: 62,
+};
+```
+
+**Critical lessons:**
+- Previous `midY:390` and `midY:344` BOTH landed on the chin — 35–85px below actual lips.
+- `cx` was incorrectly changed to 580; face IS centered at 640.
+- Separation multiplier boosted to 1.2× for CGI face (subtle natural mouth gap).
+- Blink band corrected to Y=32–48% of canvas (eyes at Y=220-255 in source).
+
+**VisemeDetector audio routing (never break this):**
+- Analyser is NOT connected to `ctx.destination` — read-only side-tap only.
+- `lerpVisemeState` always uses `b.viseme` (not conditional on amplitude direction).
+- `PCMPlayer.connect(analyser)` replaces `this.destination`; `feed()` routes each source to BOTH analyser AND panner.
+
+### 8. Component Standards
 - Use surgical `Edit` tool updates — never rewrite a file for a 5-line fix.
 - Maintain strict TypeScript. Avoid `any` where possible.
 - Adhere to the CSS variable system in `SurrogateOracleImmersion.css`.
@@ -153,6 +189,9 @@ Gemini Live PCM chunks (Int16Array, 24kHz)
 
 | Bug | Severity | File | Notes |
 |-----|----------|------|-------|
+| Oracle breaks after ~10 turns | High | `OracleConversation.tsx` | Likely WS timeout or context limit; silent fail. Not yet investigated. |
+| Oracle crashes when asked to use web tools | High | `OracleConversation.tsx` | Silent fail when Oracle tries tool-use. Likely Gemini tool config or system prompt issue. |
+| Contemplative filler phrases | Medium | `OracleConversation.tsx` | No pre-rendered "thinking" audio while Oracle processes. Seeker sees silence. |
 | Territory announcement race on WS reconnect | Medium | `awakeFromTerminal()` | `sendTextMessage` at +1200ms silently drops if WS reconnecting. Rare in practice (lore is 32s, WS reconnects in ~500ms). |
 | `isGeminiConnected` stays true on WS drop | Medium | `SurrogateOracleImmersion.tsx` | `ws.onclose` in OracleConversation has no parent callback. `◈ OPENING CHANNEL...` hides incorrectly. |
 | XR marker path missing PCMPlayer pre-creation | Medium | `onXRMarkerRef` callback | Marker detection is not a user gesture — AudioContext suspended on mobile Safari in XR path. |

@@ -96,7 +96,7 @@ export function ConnectingAnimation({
           />
         </div>
 
-        <p style={{ color: '#eab308', fontSize: '0.8rem', letterSpacing: '0.1em' }}>{step}</p>
+        <p style={{ color: '#00ccff', fontSize: '0.8rem', letterSpacing: '0.1em' }}>{step}</p>
 
         {onCancel && (
           <button

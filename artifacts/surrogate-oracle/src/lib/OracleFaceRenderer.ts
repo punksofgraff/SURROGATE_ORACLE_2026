@@ -21,20 +21,20 @@
  *     – Visible source x range: [320, 960]  (centre 640px of 1280)
  *
  *   Known anchor points (% of container, from face analysis):
- *     Crown  : X=50%  Y= 8%
- *     Eyes   : X=50%  Y=33%
- *     Nose   : X=50%  Y=52%
- *     MOUTH  : X=50%  Y=61%   ← lip midline
- *     Chin   : X=50%  Y=72%
- *     Mouth natural width in container ≈ 15%
+ *     Crown  : X=50%  Y=12%
+ *     Eyes   : X=50%  Y=34-40%
+ *     Nose   : X=50%  Y=41%
+ *     MOUTH  : X=50%  Y=48%   ← lip midline (Y=305 / 640)
+ *     Chin   : X=50%  Y=52%
+ *     Mouth natural width in container ≈ 16%
  *
  *   Mouth region in SOURCE IMAGE pixels (1280×640):
- *     Centre  : (640, 390)
- *     Width   : ~100 px  → left=590, right=690
- *     Height  : ~44  px  → top=368, bottom=412
- *     Upper lip strip: y [368, 389]  (21 px)
- *     Lower lip strip: y [391, 412]  (21 px)
- *     Lip midline:     y  390
+ *     Centre  : (640, 305)
+ *     Width   : ~104 px  → left=588, right=692
+ *     Height  : ~31  px  → top=289, bottom=320
+ *     Upper lip strip: y [289, 302]  (13 px)
+ *     Lower lip strip: y [303, 320]  (17 px)
+ *     Lip midline:     y  305
  */
 
 import type { VisemeState } from './visemeDetector';
@@ -43,19 +43,42 @@ import type { VisemeState } from './visemeDetector';
 const IMG_W = 1280;
 const IMG_H = 640;
 
-// Mouth region in source-image pixel space.
-// Tune these if the face image changes (measure in an image editor).
+// Mouth region in source-image pixel space — calibrated to the Oracle portrait
+// (i.postimg.cc/jSGnyZXh/Image-1-(11).jpg, 1280×640).
+//
+// Verified by drawing horizontal scan lines + overlaying a red rectangle on the
+// downloaded portrait and inspecting which Y values intersect the actual lips:
+//   Crown  : Y≈ 80   Eyes  : Y≈220-255   Nose bottom : Y≈265
+//   Mouth  : Y≈288-320   Chin : Y≈335   Face centre X ≈ 640
+//
+// Previous values (midY:344 and midY:390) both landed on the chin region.
+// These corrected values land precisely on the lips.
 const MOUTH = {
-  cx: 640,   // horizontal centre of lips in source image
-  midY: 390, // vertical lip midline (closed-mouth seam)
-  halfW: 50, // half-width of mouth region (total mouth = 100px in source)
-  ulTop: 368, ulBot: 389,  // upper lip strip y-range in source
-  llTop: 391, llBot: 412,  // lower lip strip y-range in source
-  // Skin-fill strip: pixels just ABOVE upper lip (philtrum area).
-  // This covers the original mouth position before we redraw the warped lips.
-  skinTop: 345, skinBot: 368,
-  // Width of the erase patch — slightly wider than lips to catch corners
-  eraseHalfW: 58,
+  cx: 640,    // horizontal centre of lips — face is perfectly centred in source image
+  midY: 305,  // vertical lip midline (closed-mouth seam, Y≈305 verified by scan)
+  halfW: 52,  // half-width of mouth region (~104px total)
+  ulTop: 289, ulBot: 302,  // upper lip strip y-range in source
+  llTop: 303, llBot: 320,  // lower lip strip y-range in source
+  // Philtrum skin — just above the upper lip, used to erase the original mouth
+  skinTop: 265, skinBot: 287,
+  // Erase patch is wider than lips to cleanly catch the lip corners
+  eraseHalfW: 62,
+};
+
+// ── Preston Blair viseme → canonical mouth shape ──────────────────────────────
+// Each phoneme has a characteristic jaw-drop (openness) and lip-spread.
+// drawViseme() lerps toward these targets so phoneme transitions are smooth,
+// not the jerky amplitude-only warp the original pixel-shift produced.
+const VISEME_SHAPES: Record<string, { openness: number; spread: number }> = {
+  X: { openness: 0.00, spread: 0.15 }, // silence — rest position
+  B: { openness: 0.00, spread: 0.10 }, // b / m / p — lips sealed
+  C: { openness: 0.10, spread: 0.45 }, // d / k / n / s / th — slight slit
+  D: { openness: 0.22, spread: 0.35 }, // th open — a touch wider
+  E: { openness: 0.15, spread: 0.92 }, // ee / i — wide-flat smile, minimal drop
+  F: { openness: 0.28, spread: 0.18 }, // f / v — lower lip tucked
+  G: { openness: 0.55, spread: 0.30 }, // oh / u — rounded mid-open
+  H: { openness: 0.78, spread: 0.45 }, // aw / open vowels — wide jaw
+  A: { openness: 0.92, spread: 0.55 }, // ah — maximum jaw drop
 };
 
 // ── OracleFaceRenderer ────────────────────────────────────────────────────────
@@ -66,12 +89,15 @@ export class OracleFaceRenderer {
   private img: HTMLImageElement | null = null;
 
   // ── Idle animation state ─────────────────────────────────────────────────────
-  // Drives a continuous breathing + blink cycle that plays between Oracle turns.
-  // Gives the face "presence" even when silent — it is alive, not a static image.
-  private idleRafId  = 0;
+  private idleRafId      = 0;
   private blinkNextAt    = 0;
   private blinkStartedAt = -1;
   private readonly BLINK_MS = 180;
+
+  // ── Viseme lerp state — smooth phoneme-to-phoneme transitions ─────────────
+  // Without this, mouth snaps between shapes every FFT frame (≈60fps stutter).
+  private _lerpOpen   = 0;
+  private _lerpSpread = 0.15;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -175,25 +201,42 @@ export class OracleFaceRenderer {
    * Uses face coordinates: eyes at ~25–42% canvas height, full width.
    */
   private _drawBlink(progress: number) {
-    const { ctx, canvas } = this;
+    const { ctx, canvas, img } = this;
+    if (!img) return;
     const cw = canvas.width;
     const ch = canvas.height;
 
     const closeFraction = Math.sin(progress * Math.PI); // 0→1→0 bell
     if (closeFraction < 0.02) return;
 
-    // Eye band: Y = 23–43% of canvas height (covers both eyes + brow)
-    const bandTop = 0.23 * ch;
-    const bandH   = 0.20 * ch;
-    const lidH    = bandH * closeFraction * 0.90;
-    const alpha   = closeFraction * 0.80;
+    // Eye band: Y = 32–48% canvas height (eyes at Y≈220-310 / 640 = 34-48%)
+    const bandTop = 0.32 * ch;
+    const bandH   = 0.16 * ch;
+    const lidH    = bandH * closeFraction * 0.95;
+    if (lidH < 1) return;
 
+    // Portrait geometry — matches _drawBase() object-fit:cover calculation
+    const scale = ch / IMG_H;
+    const srcX  = (IMG_W * scale - cw) / 2 / scale;
+    const srcW  = cw / scale;
+
+    // Paint FACE SKIN pixels over the eye region — blink looks anatomically real
+    // because the eyelid IS the face's own skin tone closing over the eye.
+    //   Top lid : sample forehead strip (y 5–18% source) → descends from brow
+    //   Bottom lid: sample upper-cheek strip (y 57–67% source) → rises from below
     ctx.save();
-    ctx.fillStyle = `rgba(8, 4, 12, ${alpha.toFixed(3)})`;
-    // Top eyelid: descends from brow
-    ctx.fillRect(0, bandTop, cw, lidH);
-    // Bottom eyelid: rises from cheekbone
-    ctx.fillRect(0, bandTop + bandH - lidH, cw, lidH);
+    ctx.globalAlpha = Math.min(0.95, closeFraction * 1.08);
+
+    ctx.drawImage(img,
+      srcX, 0.10 * IMG_H, srcW, 0.10 * IMG_H,  // source: forehead/brow skin
+      0, bandTop,          cw, lidH              // dest: top eyelid descending
+    );
+    ctx.drawImage(img,
+      srcX, 0.52 * IMG_H, srcW, 0.08 * IMG_H,  // source: cheek skin (below mouth)
+      0, bandTop + bandH - lidH, cw, lidH        // dest: bottom eyelid rising
+    );
+
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 
@@ -213,12 +256,29 @@ export class OracleFaceRenderer {
   drawViseme(state: VisemeState) {
     if (!this.img) return;
 
-    const { amplitude, openness, spread } = state;
+    const { amplitude, viseme } = state;
 
     if (amplitude < 0.04) {
+      // Lerp back toward rest so mouth closes smoothly rather than snapping shut
+      const LERP_CLOSE = 0.40;
+      this._lerpOpen   += (0 - this._lerpOpen)   * LERP_CLOSE;
+      this._lerpSpread += (0.15 - this._lerpSpread) * LERP_CLOSE;
       this._drawBase();
       return;
     }
+
+    // Look up the canonical shape for this phoneme, then lerp for smoothness.
+    // Amplitude scales jaw drop — louder → fuller open within the viseme's range.
+    const target = VISEME_SHAPES[viseme] ?? VISEME_SHAPES.A;
+    const targetOpen   = target.openness * (0.45 + amplitude * 0.80);
+    const targetSpread = target.spread;
+    // VisemeDetector already smooths the raw FFT values at 35% per frame.
+    // Renderer lerps at 55% — fast enough to track phonemes without double-lag.
+    const LERP = 0.55;
+    this._lerpOpen   += (targetOpen   - this._lerpOpen)   * LERP;
+    this._lerpSpread += (targetSpread - this._lerpSpread)  * LERP;
+    const openness = Math.max(0, Math.min(1, this._lerpOpen));
+    const spread   = Math.max(0, Math.min(1, this._lerpSpread));
 
     const { ctx, canvas, img } = this;
     const cw = canvas.width;
@@ -251,8 +311,9 @@ export class OracleFaceRenderer {
     const halfW        = naturalHalfW * (0.90 + spread * 0.30);
 
     // Separation: how far lips move from midline.
-    // Scales with openness; clamped so corners stay anatomically plausible.
-    const separation   = Math.max(0, openness) * naturalHalfW * 0.75;
+    // Boosted multiplier (1.2) for this CGI face — the natural mouth gap is very
+    // subtle, so we need stronger separation to make open-jaw readable.
+    const separation   = Math.max(0, openness) * naturalHalfW * 1.2;
 
     // ── 1. Draw full face ─────────────────────────────────────────────────────
     this._drawBase();

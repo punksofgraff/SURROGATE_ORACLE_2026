@@ -53,7 +53,7 @@ export function CultureCoinInlineDisplay({ userId, onUpgradeClick, showUpgradePr
 
   const tierColor =
     metrics?.subscriptionTier === 'cultural_architect'
-      ? 'linear-gradient(135deg, #eab308, #b026ff)'
+      ? 'linear-gradient(135deg, #00ccff, #b026ff)'
       : metrics?.subscriptionTier === 'trans_humanist'
         ? 'linear-gradient(135deg, #170529, #b026ff)'
         : metrics?.subscriptionTier === 'seeker'
@@ -77,8 +77,8 @@ export function CultureCoinInlineDisplay({ userId, onUpgradeClick, showUpgradePr
       onClick={showUpgradePrompt ? onUpgradeClick : undefined}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <Zap size={14} style={{ color: '#eab308' }} />
-        <span style={{ color: '#eab308', fontSize: '0.8rem', fontWeight: 700 }}>
+        <Zap size={14} style={{ color: '#00ffcc' }} />
+        <span style={{ color: '#00ffcc', fontSize: '0.8rem', fontWeight: 700 }}>
           {metrics ? metrics.availableCoins.toLocaleString() : '—'}
         </span>
       </div>

@@ -38,7 +38,7 @@ export function CultureCoinDisplay({ userId, onLevelUp, onMetricsFetched }: Cult
       case 'free': return 'linear-gradient(135deg, #111, #333)';
       case 'seeker': return 'linear-gradient(135deg, #134e4a, #0369a1)';
       case 'trans_humanist': return 'linear-gradient(135deg, #4f46e5, #7c3aed)';
-      case 'cultural_architect': return 'linear-gradient(135deg, #c2410c, #f59e0b)';
+      case 'cultural_architect': return 'linear-gradient(135deg, #b026ff, #00ccff)';
       default: return 'linear-gradient(135deg, #111, #333)';
     }
   };

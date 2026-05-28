@@ -177,7 +177,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
 
         <div style={{ position: 'relative', zIndex: 2 }}>
             {error && (
-            <div style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid #eab308', padding: '8px 12px', marginBottom: 16, fontSize: '0.75rem', color: '#eab308', letterSpacing: '0.05em' }}>
+            <div style={{ background: 'rgba(176,38,255,0.1)', border: '1px solid rgba(176,38,255,0.45)', padding: '8px 12px', marginBottom: 16, fontSize: '0.75rem', color: '#cc88ff', letterSpacing: '0.05em' }}>
                 FREQUENCY REJECTED — {error.toUpperCase()}
             </div>
             )}

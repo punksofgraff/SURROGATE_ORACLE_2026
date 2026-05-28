@@ -79,7 +79,9 @@ export class VisemeDetector {
     this.analyser.smoothingTimeConstant = 0.6;
     this.freqBuf = new Uint8Array(this.analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
     this.timeBuf = new Uint8Array(this.analyser.fftSize) as Uint8Array<ArrayBuffer>;
-    this.analyser.connect(this.ctx.destination);
+    // NOTE: do NOT connect analyser → destination here.
+    // PCMPlayer routes audio through its HRTF panner → destination.
+    // The analyser is a read-only side-tap; connecting it would play audio twice.
     this.onUpdate = onUpdate;
   }
 
@@ -377,7 +379,7 @@ function lerpVisemeState(a: VisemeState, b: VisemeState, t: number): VisemeState
   const lerp = (x: number, y: number) => x + (y - x) * t;
   // Hard-switch viseme category but smooth the continuous params
   return {
-    viseme:   b.amplitude > a.amplitude ? b.viseme : a.viseme,
+    viseme:   b.viseme,
     openness: lerp(a.openness,  b.openness),
     rounded:  lerp(a.rounded,   b.rounded),
     spread:   lerp(a.spread,    b.spread),

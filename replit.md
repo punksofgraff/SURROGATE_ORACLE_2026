@@ -1,6 +1,6 @@
 # SURROGATE — Replit Integration
 
-Last updated: 2026-05-27. Pressure test: 86/86 passing.
+Last updated: 2026-05-28. Pressure test: 86/86 passing.
 
 ---
 
@@ -153,6 +153,9 @@ State machine is strictly one-directional. Exit always resets to dormant.
 
 | Issue | Impact | Workaround |
 |-------|--------|------------|
+| Oracle breaks after ~10 turns | High — silent WS drop or context limit | Reconnect / restart session |
+| Oracle crashes on web tool requests | High — silent fail when tool-use triggered | Avoid web-tool prompts until Gemini tool config investigated |
+| No contemplative filler phrases | Medium — silence while Oracle processes | Not yet implemented |
 | Territory announcement silently drops if WS reconnecting | Medium — Oracle doesn't announce knives aloud | Rare in practice; lore is 32s, WS reconnects in ~500ms |
 | `isGeminiConnected` stays `true` on WS mid-session drop | Medium — `◈ OPENING CHANNEL...` hides incorrectly | Check step logger for `GEMINI WS CLOSED` |
 | XR marker path missing PCMPlayer pre-creation | Medium — Oracle greeting silent on mobile Safari in AR mode | Use tap path instead of AR marker for now |

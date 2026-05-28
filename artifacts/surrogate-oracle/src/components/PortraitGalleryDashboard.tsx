@@ -234,7 +234,7 @@ export function PortraitGalleryDashboard({
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); deletePortrait(p); }}
-                    style={{ background: 'rgba(234,179,8,0.2)', border: '1px solid rgba(234,179,8,0.5)', borderRadius: 6, padding: 6, color: '#eab308', cursor: 'pointer' }}
+                    style={{ background: 'rgba(176,38,255,0.2)', border: '1px solid rgba(176,38,255,0.5)', borderRadius: 6, padding: 6, color: '#cc00ff', cursor: 'pointer' }}
                     title="Delete"
                   >
                     <Trash2 size={14} />

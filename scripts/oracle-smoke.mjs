@@ -89,9 +89,9 @@ async function runJourney(browser, viewport) {
   const oracleVol = await page.locator('.oracle-stage').getAttribute('data-audio-target-vol');
   console.log('  ℹ  oracle audio volume: ' + oracleVol);
 
-  const avatarVisible = await page.locator('.oracle-avatar-canvas').isVisible();
-  avatarVisible ? pass.push('avatar-canvas visible') : fail.push('avatar-canvas NOT visible');
-  console.log('  ' + (avatarVisible?'✓':'✗') + '  oracle-avatar-canvas visible');
+  const avatarVisible = await page.locator('.oracle-mouth-canvas').isVisible().catch(function(){return false;});
+  avatarVisible ? pass.push('mouth-canvas visible') : fail.push('mouth-canvas NOT visible');
+  console.log('  ' + (avatarVisible?'✓':'✗') + '  oracle-mouth-canvas visible');
 
   const panelVisible = await page.locator('.oc-panel').isVisible().catch(function(){return false;});
   panelVisible ? pass.push('conversation panel') : fail.push('conversation panel MISSING');
@@ -105,18 +105,18 @@ async function runJourney(browser, viewport) {
 
   // 6. FACE RENDERER static check
   const faceInfo = await page.evaluate(function() {
-    var el = document.querySelector('.oracle-avatar-canvas');
+    var el = document.querySelector('.oracle-avatar-img');
     if (!el) return null;
     var s = window.getComputedStyle(el);
     return { position: s.position, zIndex: s.zIndex };
   });
-  faceInfo ? pass.push('face canvas in DOM') : fail.push('face canvas MISSING');
-  console.log('  ' + (faceInfo?'✓':'✗') + '  oracle-avatar-canvas in DOM');
+  faceInfo ? pass.push('face image in DOM') : fail.push('face image MISSING');
+  console.log('  ' + (faceInfo?'✓':'✗') + '  oracle-avatar-img in DOM');
 
   // Mobile: panel/face overlap
   if (viewport.name === 'mobile') {
     var pb = await page.locator('.oc-panel').boundingBox().catch(function(){return null;});
-    var fb = await page.locator('.oracle-avatar-canvas').boundingBox().catch(function(){return null;});
+    var fb = await page.locator('.oracle-avatar-img').boundingBox().catch(function(){return null;});
     if (pb && fb) {
       var overlaps = fb.y + fb.height > pb.y;
       overlaps ? fail.push('mobile face/panel OVERLAP') : pass.push('mobile face/panel clear');
@@ -153,7 +153,7 @@ async function runJourney(browser, viewport) {
     var lastViseme = '', lastAmp = '';
     for (var i = 0; i < 50; i++) {
       var state = await page.evaluate(function() {
-        var el = document.querySelector('.oracle-avatar-canvas');
+        var el = document.querySelector('.oracle-avatar-img');
         if (!el) return null;
         return { active: el.dataset.visemeActive, vis: el.dataset.viseme, amp: el.dataset.amplitude };
       });
@@ -175,7 +175,7 @@ async function runJourney(browser, viewport) {
       var samples = [];
       for (var j = 0; j < 20; j++) {
         var v = await page.evaluate(function() {
-          return document.querySelector('.oracle-avatar-canvas')?.dataset.viseme || '';
+          return document.querySelector('.oracle-avatar-img')?.dataset.viseme || '';
         });
         if (v) samples.push(v);
         await page.waitForTimeout(80);
@@ -187,7 +187,7 @@ async function runJourney(browser, viewport) {
       // Wait for audio end → mouth should reset
       await page.waitForTimeout(5000); // Increased from 3500 to allow decay
       var resetState = await page.evaluate(function() {
-        var el = document.querySelector('.oracle-avatar-canvas');
+        var el = document.querySelector('.oracle-avatar-img');
         return { active: el?.dataset.visemeActive, amp: el?.dataset.amplitude };
       });
       var didReset = resetState.active === 'false' || parseFloat(resetState.amp || '0') < 0.01;

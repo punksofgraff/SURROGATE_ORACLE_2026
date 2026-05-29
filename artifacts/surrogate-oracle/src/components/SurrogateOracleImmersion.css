@@ -827,11 +827,14 @@
   pointer-events: none;
 }
 
-/* Oracle state: JS inline style reveals to 1 in freemium; hidden when Decart is live */
+/* Oracle state: revealed via JS inline style (opacity 1) when freemium active */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-img {
-  opacity: 0;
   pointer-events: none;
-  transform: scale(1.08);
+}
+
+.oracle-mouth-canvas {
+  pointer-events: none;
+  z-index: 4;
 }
 
 /* ── OracleFaceRenderer canvas — pixel-accurate face with warped lips ───────

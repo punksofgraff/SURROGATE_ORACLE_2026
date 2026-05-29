@@ -30,10 +30,10 @@ const GYRO_MAX_GAMMA = 25;
 const GYRO_MAX_BETA  = 20;
 
 const PHASE_INTENSITY: Record<Phase, number> = {
-  dormant:  0.45, // Increased from 0.35
-  terminal: 0.65, // Increased from 0.55
+  dormant:  0.48, // Increased from 0.45
+  terminal: 0.70, // Increased from 0.65
   awakened: 1.00,
-  oracle:   1.00,
+  oracle:   1.20, // Increased from 1.00 for maximum oracle-phase engagement
 };
 
 export function useParallax(phase: Phase, onUpdate?: (x: number, y: number) => void) {
@@ -80,33 +80,33 @@ export function useParallax(phase: Phase, onUpdate?: (x: number, y: number) => v
       // ── Far background (alley) ────────────────────────────────────────────
       const alley = el('.oracle-alley');
       if (alley) {
-        // scale(1.08) ensures edges stay hidden as the image shifts
+        // scale(1.1) ensures edges stay hidden as the image shifts
         alley.style.transform =
-          `translate(${ix * vw * 0.032}px, ${iy * vh * 0.018}px) scale(1.08)`;
+          `translate(${ix * vw * 0.038}px, ${iy * vh * 0.022}px) scale(1.1)`;
       }
 
       // ── Floor reflection (grounded — least vertical parallax) ─────────────
       const floor = el('.oracle-floor-reflection');
       if (floor) {
         floor.style.transform =
-          `translate(${ix * vw * 0.016}px, ${iy * vh * 0.008}px)`;
+          `translate(${ix * vw * 0.020}px, ${iy * vh * 0.010}px)`;
       }
 
       // ── Mid-ground haze ───────────────────────────────────────────────────
       const haze = el('.oracle-mid-haze');
       if (haze) {
         haze.style.transform =
-          `translate(${ix * vw * 0.025}px, ${iy * vh * 0.014}px)`;
+          `translate(${ix * vw * 0.030}px, ${iy * vh * 0.018}px)`;
       }
 
       // ── Cabinet / Oracle center — 3D tilt (the hero effect) ───────────────
       // rotateY tracks left-right (gamma), rotateX tracks forward-back (beta).
       const cabinet = el('.oracle-center');
       if (cabinet) {
-        const dx = ix * vw * 0.012;
-        const dy = iy * vh * 0.008;
-        const rotX = -iy * 9 * intensity; // Increased rotation for more "fidelity" depth
-        const rotY =  ix * 11 * intensity;
+        const dx = ix * vw * 0.015;
+        const dy = iy * vh * 0.010;
+        const rotX = -iy * 14 * intensity; // Significantly increased rotation for "winning" depth
+        const rotY =  ix * 16 * intensity;
         cabinet.style.transform =
           `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) rotateX(${rotX}deg) rotateY(${rotY}deg)`;
       }
@@ -115,28 +115,28 @@ export function useParallax(phase: Phase, onUpdate?: (x: number, y: number) => v
       const branding = el('.oracle-branding');
       if (branding) {
         branding.style.transform =
-          `translate(calc(-50% + ${ix * vw * 0.022}px), ${iy * vh * 0.011}px)`;
+          `translate(calc(-50% + ${ix * vw * 0.028}px), ${iy * vh * 0.014}px)`;
       }
 
       // ── Side bleeds (closer than branding) ───────────────────────────────
       const bleeds = el('.oracle-side-bleeds');
       if (bleeds) {
         bleeds.style.transform =
-          `translate(${ix * vw * 0.045}px, ${iy * vh * 0.025}px)`;
+          `translate(${ix * vw * 0.052}px, ${iy * vh * 0.032}px)`;
       }
 
       // ── Depth frame (foreground CRT border — moves most = feels nearest) ──
       const frame = el('.oracle-depth-frame');
       if (frame) {
         frame.style.transform =
-          `translate(${ix * vw * 0.065}px, ${iy * vh * 0.038}px)`;
+          `translate(${ix * vw * 0.075}px, ${iy * vh * 0.045}px)`;
       }
 
       // ── Light rays (mid, follows cabinet loosely) ─────────────────────────
       const rays = el('.oracle-light-rays');
       if (rays) {
         rays.style.transform =
-          `translate(${ix * vw * 0.015}px, ${iy * vh * 0.009}px)`;
+          `translate(${ix * vw * 0.020}px, ${iy * vh * 0.012}px)`;
       }
 
       rafId = requestAnimationFrame(tick);

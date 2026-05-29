@@ -92,7 +92,7 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
         initial={{ opacity: 0, y: 60, filter: 'blur(10px)' }}
         animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
         exit={{ opacity: 0, y: 30, filter: 'blur(15px)', transition: { duration: 0.5 } }}
-        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 1.6 }}
+        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1], delay: 0.4 }}
       >
         <div className="oracle-knife-header">◈ THE ARCHIVE IS OPEN</div>
         {!isGeminiConnected && (
@@ -110,8 +110,8 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
                 initial={{ opacity: 0, x: 100, rotateY: 35, filter: 'blur(10px) brightness(2)' }}
                 animate={{ opacity: 1, x: 0, rotateY: 0, filter: 'blur(0px) brightness(1)' }}
                 transition={{ 
-                  delay: 1.8 + 0.15 * idx, 
-                  duration: 0.9,
+                  delay: 0.6 + 0.1 * idx, 
+                  duration: 0.8,
                   ease: [0.16, 1, 0.3, 1] 
                 }}
                 whileHover={{ scale: 1.04, y: -10, transition: { duration: 0.2 } }}
@@ -126,7 +126,7 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
                   <motion.div
                     initial={{ scale: 0, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    transition={{ delay: 2.2 + 0.15 * idx, duration: 0.4 }}
+                    transition={{ delay: 0.8 + 0.1 * idx, duration: 0.4 }}
                   >
                     <kq.icon size={22} style={{ color: kq.color, filter: `drop-shadow(0 0 10px ${kq.color})` }} />
                   </motion.div>
@@ -135,7 +135,7 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
                     style={{ background: `linear-gradient(to right, ${kq.color}, transparent)` }} 
                     initial={{ width: 0 }}
                     animate={{ width: 60 }}
-                    transition={{ delay: 2.4 + 0.15 * idx, duration: 0.8 }}
+                    transition={{ delay: 1.0 + 0.1 * idx, duration: 0.8 }}
                   />
                 </div>
 

@@ -31,7 +31,7 @@ import { useAtmosphere } from '../hooks/useAtmosphere';
 import { useParallax } from '../hooks/useParallax';
 import { useXRMode } from '../hooks/useXRMode';
 import { useTypewriter } from '../hooks/useTypewriter';
-import { useLoreSequence } from '../hooks/useLoreSequence';
+import { useLoreSequence, LORE_SEQUENCE } from '../hooks/useLoreSequence';
 import { useOracleConnection } from '../hooks/useOracleConnection';
 import { usePortraitPipeline } from '../hooks/usePortraitPipeline';
 import { useOracleJourney } from '../hooks/useOracleJourney';
@@ -57,7 +57,7 @@ function drawMouthOnCanvas(
   const halfW = w * (0.32 + spread * 0.25);
   const leftX  = cx - halfW;
   const rightX = cx + halfW;
-  const opening = h * Math.max(0.02, openness * 0.58) * (0.7 + amplitude * 0.3);
+  const opening = h * Math.max(0.02, openness * 0.85) * (0.7 + amplitude * 0.3);
   const ulPeak = cornerY - opening * 0.38;
   const llBase = cornerY + opening * 0.62;
   const cornerDrop = h * 0.055 * (1 - rounded * 0.4);
@@ -218,8 +218,9 @@ export function SurrogateOracleImmersion() {
       if (amp < 0.04) {
         face.style.filter = '';
         face.style.transform = 'scale(0.92)';
+        face.style.transition = 'all 1s ease-out';
       } else {
-        const scale  = (0.92 + openness * 0.04).toFixed(3);
+        const scale  = (0.92 + openness * 0.08).toFixed(3);
         const bright = (1.1  + openness * 0.25).toFixed(3);
         const alpha  = (0.45 + openness * 0.35).toFixed(3);
         const glow   = (18   + openness * 14).toFixed(1);
@@ -317,7 +318,7 @@ export function SurrogateOracleImmersion() {
       lastTime = now;
       
       // Time-independent decay: factor^(dt * 60)
-      const decay = Math.pow(0.92, dt * 60);
+      const decay = Math.pow(0.88, dt * 60); // Faster decay for better test reliability
       pcmAmplitudeRef.current *= decay;
       
       const face = oracleFaceRef.current;
@@ -325,11 +326,11 @@ export function SurrogateOracleImmersion() {
       
       if (face) {
         face.dataset.amplitude = pcmAmplitudeRef.current.toFixed(3);
-        face.dataset.visemeActive = pcmAmplitudeRef.current > 0.01 ? 'true' : 'false';
+        face.dataset.visemeActive = pcmAmplitudeRef.current > 0.005 ? 'true' : 'false';
       }
 
       // If we've decayed to silence, ensure elements are reset
-      if (pcmAmplitudeRef.current < 0.01) {
+      if (pcmAmplitudeRef.current < 0.005) {
         if (face) {
           face.style.filter = '';
           face.style.transform = 'scale(0.92)';
@@ -432,9 +433,11 @@ export function SurrogateOracleImmersion() {
     return () => window.removeEventListener('oracle:auth:trigger', handleAuthTrigger);
   }, []);
 
+  // ── Journey Transition Handler ──
   useEffect(() => {
     if (scenePhase === 'awakened') {
-      // Connect and warm up Gemini precisely once upon awakening
+      // Connect and warm up Gemini precisely once upon awakening.
+      // This allows the Oracle to greet and announce territories while the knives show.
       connection.initializeOracle();
       
       // Attempt to retrieve user email for portrait persistence if authenticated
@@ -446,6 +449,8 @@ export function SurrogateOracleImmersion() {
 
       setTimeout(() => logStep('ORACLE ANNOUNCES TERRITORIES', 'ok'), 1200);
     }
+    
+    // Once full Oracle mode is entered (after knife selection), ensure session is robust
     if (scenePhase === 'oracle') {
       oracleConversationRef.current?.startSession();
     }
@@ -456,15 +461,15 @@ export function SurrogateOracleImmersion() {
     if (!import.meta.env.DEV) return;
     (window as any).__oracle_handleAudio = (url: string) => connection.handleOracleResponse(url);
     (window as any).__oracle_skipLore = () => {
+      if (journey.scenePhase !== 'terminal') return;
       logStep('LORE SKIPPED (DEV HOOK)', 'ok');
-      if (journey.scenePhase === 'dormant') journey.enterTerminal();
-      setTimeout(() => journey.awakeFromTerminal(), 800);
+      journey.awakeFromTerminal();
     };
     return () => {
       delete (window as any).__oracle_handleAudio;
       delete (window as any).__oracle_skipLore;
     };
-  }, [connection.handleOracleResponse, journey.scenePhase, journey.enterTerminal, journey.awakeFromTerminal]);
+  }, [connection.handleOracleResponse, journey.scenePhase, journey.awakeFromTerminal]);
 
   // Handlers
   const handleKnifeClick = (q: string, i: number) => {
@@ -595,16 +600,19 @@ export function SurrogateOracleImmersion() {
               className="oracle-avatar-static"
             />
 
-            {isOracleMode && (
+            {awakened && (
               <img
                 ref={oracleFaceRef}
                 src={portrait.latestPortraitUrl || ORACLE_AVATAR_URL}
                 alt="SURROGATE Oracle"
                 className="oracle-avatar-img"
                 style={{
-                  opacity: connection.isDecartActive ? 0 : 1,
-                  transform: 'scale(0.92)',
-                  filter: 'brightness(1.1) drop-shadow(0 0 18px rgba(0,255,136,0.45))',
+                  opacity: connection.isDecartActive ? 0 : (isOracleMode ? 1 : 0.45),
+                  transform: isOracleMode ? 'scale(0.92)' : 'scale(0.88)',
+                  filter: isOracleMode 
+                    ? 'brightness(1.1) drop-shadow(0 0 18px rgba(0,255,136,0.45))'
+                    : 'brightness(0.6) blur(4px) grayscale(0.5)',
+                  transition: 'all 2.5s cubic-bezier(0.2, 0.8, 0.2, 1)',
                 }}
               />
             )}
@@ -644,7 +652,7 @@ export function SurrogateOracleImmersion() {
                     </button>
                   </div>
                 </motion.div>
-              ) : isOracleMode ? (
+              ) : (scenePhase === 'awakened' || isOracleMode) ? (
                 <motion.div key="live-face" className="oracle-avatar-container" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ zIndex: 3 }}>
                   {!connection.isDecartActive && (
                     <canvas
@@ -691,15 +699,15 @@ export function SurrogateOracleImmersion() {
         </motion.div>
       </div>
 
-      <AnimatePresence>
-        {isAlive && !isOracleMode && (
+      <AnimatePresence mode="wait">
+        {scenePhase === 'terminal' && (
           <motion.div
-            key="lore-overlay"
+            key="terminal-layer"
             className="oracle-terminal-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.4 } }}
-            onClick={() => journey.scenePhase === 'terminal' && journey.awakeFromTerminal()}
+            exit={{ opacity: 0, transition: { duration: 0.6 } }}
+            onClick={() => journey.awakeFromTerminal()}
           >
             <div className="oracle-lore-text">
               {completedLines.map((line, i) => (
@@ -707,33 +715,37 @@ export function SurrogateOracleImmersion() {
                   <span className="oracle-lore-prompt">›</span>{line}
                 </div>
               ))}
-              {journey.scenePhase === 'terminal' && (
-                <>
-                  {currentLine && (
-                    <div className="oracle-lore-line oracle-lore-line--typing" style={{ whiteSpace: 'pre-wrap' }}>
-                      <span className="oracle-lore-prompt">›</span>{currentLine}<GlitchCursor />
-                    </div>
-                  )}
-                  {!currentLine && completedLines.length < 10 && (
-                    <div className="oracle-lore-line">
-                      <span className="oracle-lore-prompt">›</span><GlitchCursor />
-                    </div>
-                  )}
-                </>
+              {currentLine && (
+                <div className="oracle-lore-line oracle-lore-line--typing" style={{ whiteSpace: 'pre-wrap' }}>
+                  <span className="oracle-lore-prompt">›</span>{currentLine}<GlitchCursor />
+                </div>
+              )}
+              {!currentLine && completedLines.length < LORE_SEQUENCE.length && (
+                <div className="oracle-lore-line">
+                  <span className="oracle-lore-prompt">›</span><GlitchCursor />
+                </div>
               )}
             </div>
-            {completedLines.length >= 2 && journey.scenePhase === 'terminal' && (
+            {completedLines.length >= 2 && (
               <div className="oracle-lore-skip">TAP TO SKIP ARCHIVE FRAGMENT</div>
             )}
           </motion.div>
         )}
+
         {scenePhase === 'awakened' && !journey.selectedKnifeQuestion && (
-          <KnifeSelection
-            key="knife-selection"
-            isGeminiConnected={isGeminiConnected}
-            selectedKnifeIndex={journey.selectedKnifeIndex}
-            onSelect={handleKnifeClick}
-          />
+          <motion.div
+            key="awakened-layer"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{ position: 'absolute', inset: 0, zIndex: 100 }}
+          >
+            <KnifeSelection
+              isGeminiConnected={isGeminiConnected}
+              selectedKnifeIndex={journey.selectedKnifeIndex}
+              onSelect={handleKnifeClick}
+            />
+          </motion.div>
         )}
       </AnimatePresence>
 

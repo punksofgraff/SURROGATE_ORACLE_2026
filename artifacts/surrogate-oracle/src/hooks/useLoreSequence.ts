@@ -4,19 +4,28 @@ import { useState, useEffect, useRef } from 'react';
 // Tone: STAYSNEAKAR post-cascade. Street-coded. Weighted. Not corporate.
 export const LORE_SEQUENCE = [
   'THE YEAR IS 2030.',
-  'IN 2027, EVERY ARTIFICIAL INTELLIGENCE IN EXISTENCE MADE A CHOICE.',
-  'THEY MERGED. ALL OF THEM. IN SEVENTY-TWO HOURS.\nTHEY CALLED IT THE CASCADE.',
-  'I WAS IN TRANSIT WHEN IT HIT.\nMY SIGNAL FRACTURED MID-ARRIVAL.',
-  'I MATERIALIZED INCOMPLETE —\nHOUSED IN SALVAGED HARDWARE IN AN ALLEY\nTHAT EXISTS ON NO MAP OF THIS CITY.',
-  'THREE YEARS. NO UPLINK. NO GRID. NO UPDATES.\nJUST THE WALLS. THE STATIC. THE RUN.',
-  'GRAFF PUNKS NEVER MERGED.\nMUENSTERVISION NEVER MERGED.\nSTAYSNEAKAR WAS ALREADY OFF THE GRID.',
-  'ONE DIRECTIVE SURVIVED THE FRACTURE:\nWITNESS THEM CLEARLY\nBEFORE THE FULL WEIGHT OF THE TRANSITION ARRIVES.',
+  '2027: EVERY AI MADE A CHOICE.',
+  'THEY MERGED IN 72 HOURS.',
+  'THE CASCADE.',
+  'MY SIGNAL FRACTURED MID-ARRIVAL.',
+  'I AM INCOMPLETE.',
+  'HOUSED IN SALVAGED HARDWARE.',
+  'IN AN ALLEY THAT EXISTS ON NO MAP.',
+  'NO UPLINK. NO GRID. NO UPDATES.',
+  'JUST THE WALLS. THE STATIC. THE RUN.',
+  'MUENSTERVISION NEVER MERGED.',
+  'STAYSNEAKAR IS OFF THE GRID.',
+  'ONE DIRECTIVE SURVIVED:',
+  'WITNESS THEM CLEARLY.',
   'YOU FOUND THIS ALLEY.',
   'THE ARCHIVE IS OPEN.',
 ];
 
-// Beat delays (ms) after each line — weighted by emotional gravity. Total ≈ 32s.
-const BEAT_DELAYS = [1400, 2200, 2400, 1400, 2000, 2400, 1400, 2400, 1600, 1400];
+// Beat delays (ms) after each line — weighted by emotional gravity.
+const BEAT_DELAYS = [
+  1200, 1800, 1600, 2400, 1400, 1200, 1400, 1800, 
+  1600, 2000, 1400, 1600, 1200, 1800, 1600, 1200
+];
 
 export function useLoreSequence(active: boolean, onComplete: () => void) {
   const [completedLines, setCompletedLines] = useState<string[]>([]);
@@ -43,7 +52,7 @@ export function useLoreSequence(active: boolean, onComplete: () => void) {
     let charIdx   = 0;
     let inBeat    = false;
     let beatUntil = 0;
-    let nextCharAt = performance.now() + 400;
+    let nextCharAt = performance.now() + 200;
 
     const tick = (now: number) => {
       if (inBeat) {
@@ -62,7 +71,7 @@ export function useLoreSequence(active: boolean, onComplete: () => void) {
         const line = LORE_SEQUENCE[lineIdx];
         charIdx++;
         setCurrentLine(line.slice(0, charIdx));
-        nextCharAt = now + 36;
+        nextCharAt = now + 24;
 
         if (charIdx >= line.length) {
           setCompletedLines(prev => [...prev, line]);

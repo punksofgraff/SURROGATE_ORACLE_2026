@@ -45,11 +45,19 @@ const ROWS = 32; // Higher resolution for enterprise
 const COLS = 32;
 const VERTS = (ROWS + 1) * (COLS + 1);
 
-// MediaPipe Landmark Groups
+// MediaPipe Landmark Groups — Mouth & Jaw
 const L_UPPER_LIP = [0, 11, 12, 13, 37, 38, 39, 40, 80, 81, 82, 185, 191, 267, 268, 269, 270, 310, 311, 312, 415];
 const L_LOWER_LIP = [14, 15, 16, 17, 18, 84, 87, 88, 91, 95, 146, 178, 181, 314, 317, 318, 321, 324, 402, 405, 409];
 const L_CORNERS   = [61, 291, 78, 308];
 const L_JAW       = [152, 148, 149, 150, 176, 377, 378, 379, 399, 400];
+
+// MediaPipe Landmark Groups — Eyes & Brows
+const L_LEFT_UPPER_LID  = [159, 160, 161, 246, 163, 144, 145, 153, 158, 157];
+const L_LEFT_LOWER_LID  = [145, 153, 154, 155, 133, 173];
+const L_RIGHT_UPPER_LID = [386, 385, 384, 398, 390, 373, 374, 380, 381, 387];
+const L_RIGHT_LOWER_LID = [374, 380, 381, 382, 362, 249];
+const L_LEFT_BROW       = [46, 53, 52, 65, 55, 70, 63, 105, 66, 107];
+const L_RIGHT_BROW      = [276, 283, 282, 295, 285, 300, 293, 334, 296, 336];
 
 export class OracleFaceRenderer {
   private canvas: HTMLCanvasElement;
@@ -79,6 +87,11 @@ export class OracleFaceRenderer {
   private _lerpOpen    = 0;
   private _lerpSpread  = 0.15;
   private _lerpRounded = 0;
+
+  // Eye blendshape lerp targets
+  private _lerpBrowRaise = 0;
+  private _lerpEyeSquint = 0;
+  private _lerpEyeAlert  = 0;
 
   private _tiltX = 0;
   private _tiltY = 0;
@@ -153,14 +166,27 @@ export class OracleFaceRenderer {
 
   drawViseme(state: VisemeState) {
     if (!this.img) return;
-    const { amplitude, viseme } = state;
+    const { amplitude, viseme, openness, rounded } = state;
     const target = SHAPES[viseme] ?? SHAPES.A;
     const scale  = 0.40 + amplitude * 0.85;
 
-    const LERP = 0.50;
-    this._lerpOpen    += (target.open    * scale - this._lerpOpen)    * LERP;
-    this._lerpSpread  += (target.spread         - this._lerpSpread)   * LERP;
-    this._lerpRounded += (target.rounded        - this._lerpRounded)  * LERP;
+    const LERP_MOUTH = 0.50;
+    this._lerpOpen    += (target.open    * scale - this._lerpOpen)    * LERP_MOUTH;
+    this._lerpSpread  += (target.spread         - this._lerpSpread)   * LERP_MOUTH;
+    this._lerpRounded += (target.rounded        - this._lerpRounded)  * LERP_MOUTH;
+
+    // Eye blendshapes — derived from speech features
+    // Brows raise with open vowels and high amplitude; slow to move (expressive, not twitchy)
+    const targetBrowRaise = openness * 0.40 + (amplitude > 0.65 ? 0.14 : 0);
+    // Squint slightly on rounded/puckered sounds (H=oo, G=oh)
+    const targetEyeSquint = rounded * 0.30;
+    // Micro alert-widening at peak amplitude
+    const targetEyeAlert  = amplitude > 0.75 ? (amplitude - 0.75) * 0.40 : 0;
+
+    const LERP_EYE = 0.18; // slower than mouth for naturalism
+    this._lerpBrowRaise += (targetBrowRaise - this._lerpBrowRaise) * LERP_EYE;
+    this._lerpEyeSquint += (targetEyeSquint - this._lerpEyeSquint) * LERP_EYE;
+    this._lerpEyeAlert  += (targetEyeAlert  - this._lerpEyeAlert)  * LERP_EYE;
 
     this._drawFrame(performance.now());
   }
@@ -171,26 +197,51 @@ export class OracleFaceRenderer {
     const rounded = this._lerpRounded;
     const breath  = Math.sin(now * 0.00157) * 0.003;
 
+    // Blink curve: sin arch over BLINK_MS so lids close then reopen smoothly
+    const blinkT = this.blinkStartedAt >= 0
+      ? Math.min(1, (now - this.blinkStartedAt) / this.BLINK_MS)
+      : 0;
+    const blinkCurve = Math.sin(blinkT * Math.PI); // 0 → 1 → 0
+
     // 1. Compute landmark displacements
     const deltas = new Float32Array(468 * 2);
     if (this.faceMap) {
       const lms = this.faceMap.landmarks;
       for (let j = 0; j < 468; j++) {
         let dx = 0, dy = 0;
-        
+
+        // ── Mouth & jaw ──
         if (L_UPPER_LIP.includes(j)) {
-          dy -= open * 0.015; // Upper lip up slightly
+          dy -= open * 0.015;
         } else if (L_LOWER_LIP.includes(j)) {
-          dy += open * 0.06;  // Lower lip down
+          dy += open * 0.06;
         } else if (L_JAW.includes(j)) {
-          dy += open * 0.08;  // Jaw down more
+          dy += open * 0.08;
         } else if (L_CORNERS.includes(j)) {
           const sx = lms[j].x > this.faceMap.mouthCenter.x ? 1 : -1;
           dx += (spread - 0.15) * 0.02 * sx;
-          dy += open * 0.025; // corners follow jaw a bit
+          dy += open * 0.025;
         }
-        
-        // Pucker influence
+
+        // ── Eye: brows raise on open vowels ──
+        else if (L_LEFT_BROW.includes(j) || L_RIGHT_BROW.includes(j)) {
+          dy -= this._lerpBrowRaise * 0.030;
+        }
+
+        // ── Eye: upper lids — squint + blink close ──
+        else if (L_LEFT_UPPER_LID.includes(j) || L_RIGHT_UPPER_LID.includes(j)) {
+          dy += this._lerpEyeSquint * 0.012;       // squint: lid drops slightly
+          dy -= this._lerpEyeAlert  * 0.010;       // alert: lid lifts slightly
+          dy += blinkCurve          * 0.035;        // blink: upper lid sweeps down
+        }
+
+        // ── Eye: lower lids — squint lifts them ──
+        else if (L_LEFT_LOWER_LID.includes(j) || L_RIGHT_LOWER_LID.includes(j)) {
+          dy -= this._lerpEyeSquint * 0.008;
+          dy -= blinkCurve          * 0.010;        // lower lid rises slightly during blink
+        }
+
+        // ── Pucker influence (all landmarks near mouth) ──
         const du = lms[j].x - this.faceMap.mouthCenter.x;
         const dv = lms[j].y - this.faceMap.mouthCenter.y;
         const dist = Math.sqrt(du * du + dv * dv);

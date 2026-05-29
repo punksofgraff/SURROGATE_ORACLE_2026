@@ -80,6 +80,7 @@ export function SurrogateOracleImmersion() {
   const avatarVideoRef = useRef<HTMLVideoElement | null>(null);
   const oracleFaceCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const oracleFaceRendererRef = useRef<OracleFaceRenderer | null>(null);
+  const oracleFaceMapRef = useRef<import('../lib/OracleVisionCalibrator').OracleFaceMap | null>(null);
   const oracleConversationRef = useRef<OracleConversationHandle | null>(null);
   const pcmAmplitudeRef = useRef(0);
   const atmosphereCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -216,7 +217,12 @@ export function SurrogateOracleImmersion() {
     };
   }, [connection.handleOracleResponse, journey.scenePhase, journey.enterTerminal, journey.awakeFromTerminal]);
 
-  // ── Renderer Lifecycle ──
+  // Keep ref in sync so renderer-create effect can read it without stale closure.
+  useEffect(() => {
+    oracleFaceMapRef.current = connection.oracleFaceMap;
+  }, [connection.oracleFaceMap]);
+
+  // ── Renderer Lifecycle — create once on oracle mode entry ──
   useEffect(() => {
     if (!isOracleMode || connection.isDecartActive) return;
     const canvas = oracleFaceCanvasRef.current;
@@ -225,12 +231,24 @@ export function SurrogateOracleImmersion() {
     const renderer = new OracleFaceRenderer(canvas);
     oracleFaceRendererRef.current = renderer;
     renderer.loadFace(ORACLE_AVATAR_URL).then(() => {
-      if (connection.oracleFaceMap) renderer.calibrate(connection.oracleFaceMap);
+      // Apply calibration if already available; if not, the effect below will handle it.
+      if (oracleFaceMapRef.current) renderer.calibrate(oracleFaceMapRef.current);
       renderer.startIdleAnimation();
     });
 
-    return () => renderer.destroy();
-  }, [isOracleMode, connection.isDecartActive, connection.oracleFaceMap]);
+    return () => {
+      renderer.destroy();
+      oracleFaceRendererRef.current = null;
+    };
+  }, [isOracleMode, connection.isDecartActive]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Renderer Calibration — apply faceMap whenever it arrives ──
+  useEffect(() => {
+    const renderer = oracleFaceRendererRef.current;
+    if (renderer && connection.oracleFaceMap) {
+      renderer.calibrate(connection.oracleFaceMap);
+    }
+  }, [connection.oracleFaceMap]);
 
   // Handlers
   const handleKnifeClick = (q: string, i: number) => {

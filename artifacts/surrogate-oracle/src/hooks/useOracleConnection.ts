@@ -11,6 +11,7 @@ import { calibrateOracle, disposeVisionModel } from '../lib/OracleVisionCalibrat
 import type { DecartClientHandle } from '../components/DecartClient';
 import type { VisemeState } from '../lib/visemeDetector';
 import type { OracleFaceMap } from '../lib/OracleVisionCalibrator';
+export type { OracleFaceMap };
 import { playOraclePresence } from '../lib/oracleSfx';
 
 interface UseOracleConnectionProps {
@@ -38,6 +39,7 @@ export function useOracleConnection({
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionProgress, setConnectionProgress] = useState(0);
   const [isDecartActive, setIsDecartActive] = useState(false);
+  const [oracleFaceMap, setOracleFaceMap] = useState<OracleFaceMap | null>(null);
 
   const pcmPlayerRef = useRef<PCMPlayer | null>(null);
   const oracleFaceMapRef = useRef<OracleFaceMap | null>(null);
@@ -87,6 +89,7 @@ export function useOracleConnection({
       const faceMap = await calibrateOracle(img);
       if (faceMap) {
         oracleFaceMapRef.current = faceMap;
+        setOracleFaceMap(faceMap);
         logStep('VISION CALIBRATION OK', 'ok');
       } else {
         logStep('VISION CALIBRATION FAILED (FALLBACK)', 'warn');
@@ -229,15 +232,16 @@ export function useOracleConnection({
     isConnecting,
     isDecartActive,
     pcmPlayer: pcmPlayerRef.current,
-    oracleFaceMap: oracleFaceMapRef.current,
+    oracleFaceMap,
     initializeOracle,
     handleOracleResponse,
     resetFirstChunk,
     cleanup,
     setError,
   }), [
-    isConnected, isReady, error, isConnecting, 
-    isDecartActive, initializeOracle, handleOracleResponse, resetFirstChunk, cleanup
+    isConnected, isReady, error, isConnecting,
+    isDecartActive, oracleFaceMap,
+    initializeOracle, handleOracleResponse, resetFirstChunk, cleanup
   ]);
 
   return { ...value, connectionProgress };

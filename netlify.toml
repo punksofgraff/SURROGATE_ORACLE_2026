@@ -1,0 +1,7 @@
+[build]
+  base    = "artifacts/surrogate-oracle"
+  command = "npm run build"
+  publish = "dist/public"
+
+[build.environment]
+  NODE_VERSION = "20"

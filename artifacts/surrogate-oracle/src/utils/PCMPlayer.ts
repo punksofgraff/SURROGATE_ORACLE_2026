@@ -15,22 +15,50 @@ export class PCMPlayer {
   private nextStartTime: number = 0;
   private isPlaying: boolean = false;
   private sourceNodes: AudioBufferSourceNode[] = [];
+  private workletNode: AudioWorkletNode | null = null;
+  private workletReady: Promise<void>;
+  private onViseme: ((state: any) => void) | null = null;
 
-  private destination: AudioNode | null = null;   // external analyser (lip-sync)
+  private destination: AudioNode | null = null;   // external analyser (legacy)
   private panner: PannerNode | null = null;        // spatial placement for playback
   private masterGain: GainNode | null = null;      // volume control for ducking/fades
+  private analyser: AnalyserNode;
 
-  /**
-   * @param sampleRate  Input PCM sample rate (Gemini Live = 24000 Hz)
-   * @param playbackRate  Playback speed multiplier. 1.0 = normal, 1.3 = 30% faster.
-   *                      Values > 1 also raise pitch proportionally — acceptable for
-   *                      the Charon voice which sits in the deep bass register.
-   */
   constructor(sampleRate: number = 24000, playbackRate: number = 1.0) {
     this.sampleRate = sampleRate;
     this.playbackRate = playbackRate;
     this.context = new (window.AudioContext || (window as any).webkitAudioContext)({
       sampleRate: this.sampleRate
+    });
+
+    this.analyser = this.context.createAnalyser();
+    this.analyser.fftSize = 1024;
+
+    // ── Load AudioWorklet ──────────────────────────────────────────────────
+    // Load the enterprise-grade audio thread processor. 
+    this.workletReady = this.context.audioWorklet.addModule(
+      new URL('../workers/oracle-audio.worklet.ts', import.meta.url).href
+    ).then(() => {
+      this.workletNode = new AudioWorkletNode(this.context, 'oracle-audio-processor');
+      this.workletNode.port.onmessage = (e) => {
+        if (e.data.type === 'viseme' && this.onViseme) {
+          this.onViseme(e.data.state);
+        }
+      };
+      
+      // Connect worklet to the analyser side-tap
+      this.workletNode.connect(this.analyser);
+
+      // Connect the analyser to the rest of the chain
+      if (this.panner) {
+        this.analyser.connect(this.panner);
+      } else if (this.masterGain) {
+        this.analyser.connect(this.masterGain);
+      } else {
+        this.analyser.connect(this.context.destination);
+      }
+    }).catch(err => {
+      console.error('❌ Failed to load OracleAudioWorklet:', err);
     });
 
     // ── Master Gain — used for "ducking up" (fading in) and "ducking down"
@@ -44,20 +72,16 @@ export class PCMPlayer {
     }
 
     // ── Spatial panner — Oracle voice comes from centre-screen, slightly above.
-    // HRTF model creates genuine 3D depth on headphones (position cues via ear
-    // transfer functions); on speakers it adds a subtle presence lift.
-    // Position: x=0 (centre), y=0.3 (above ear level), z=-0.8 (into the screen).
-    // refDistance 1 at these coords keeps volume natural — no attenuation.
     try {
       const panner = this.context.createPanner();
       panner.panningModel  = 'HRTF';
       panner.distanceModel = 'inverse';
       panner.refDistance   = 1;
       panner.maxDistance   = 10000;
-      panner.rolloffFactor = 0.6; // gentle roll-off so voice stays present
-      panner.positionX.setValueAtTime(0,    this.context.currentTime); // centre
-      panner.positionY.setValueAtTime(0.3,  this.context.currentTime); // slightly above
-      panner.positionZ.setValueAtTime(-0.8, this.context.currentTime); // inside screen
+      panner.rolloffFactor = 0.6; 
+      panner.positionX.setValueAtTime(0,    this.context.currentTime); 
+      panner.positionY.setValueAtTime(0.3,  this.context.currentTime); 
+      panner.positionZ.setValueAtTime(-0.8, this.context.currentTime); 
       
       if (this.masterGain) {
         panner.connect(this.masterGain);
@@ -66,7 +90,6 @@ export class PCMPlayer {
       }
       this.panner = panner;
     } catch {
-      // Fallback: no spatial panning (unsupported environment)
       this.panner = null;
     }
 
@@ -74,14 +97,18 @@ export class PCMPlayer {
   }
 
   /**
+   * Set a callback for viseme updates from the audio thread.
+   */
+  public setVisemeCallback(callback: (state: any) => void) {
+    this.onViseme = callback;
+  }
+
+  /**
    * Set the master volume with an exponential ramp.
-   * Used for "ducking up" (fade in) and "ducking down" (fade out).
-   * Exponential ramps feel more natural/accurate to human ears.
    */
   public setVolume(target: number, rampMs: number = 200) {
     if (!this.masterGain) return;
     const now = this.context.currentTime;
-    // exponentialRampToValueAtTime requires a positive value
     const safeTarget = Math.max(0.0001, target);
     this.masterGain.gain.cancelScheduledValues(now);
     this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
@@ -89,22 +116,44 @@ export class PCMPlayer {
   }
 
   /**
-   * Connect the player to an external node (e.g. an AnalyserNode for lip-sync).
+   * Connect the player to an external node (legacy support).
    */
   public connect(node: AudioNode) {
     this.destination = node;
+    if (this.workletNode) {
+      this.workletNode.connect(node);
+    }
+  }
+
+  /**
+   * Get the internal AnalyserNode for legacy viseme detection or side-taps.
+   */
+  public getAnalyser(): AnalyserNode {
+    return this.analyser;
   }
 
   /**
    * Feed a chunk of raw PCM data to the player.
    * @param data Int16Array of PCM samples.
    */
-  public feed(data: Int16Array) {
+  public async feed(data: Int16Array) {
     if (this.context.state === 'suspended') {
-      this.context.resume();
+      await this.context.resume();
     }
 
-    // Convert Int16 to Float32 [-1.0, 1.0]
+    // Wait for worklet to be ready if it's still loading
+    await this.workletReady;
+
+    if (this.workletNode) {
+      // Enterprise path: send to AudioWorklet for gapless playback + detection
+      this.workletNode.port.postMessage({ type: 'feed', pcm: data });
+    } else {
+      // Fallback path: use the old AudioBufferSourceNode logic
+      this._feedLegacy(data);
+    }
+  }
+
+  private _feedLegacy(data: Int16Array) {
     const float32 = new Float32Array(data.length);
     for (let i = 0; i < data.length; i++) {
       float32[i] = data[i] / 32768.0;
@@ -117,14 +166,13 @@ export class PCMPlayer {
     source.buffer = buffer;
     source.playbackRate.value = this.playbackRate;
 
-    // Route 1 — External analyser (VisemeDetector for lip-sync). Side branch:
-    // the analyser reads the signal but does not route audio to speakers itself.
     if (this.destination && this.destination !== this.context.destination) {
       source.connect(this.destination);
     }
+    
+    // Also connect to side-tap analyser for legacy support
+    source.connect(this.analyser);
 
-    // Route 2 — Playback through spatial panner → speakers.
-    // Oracle voice materialises from centre-above (cabinet position).
     if (this.panner) {
       source.connect(this.panner);
     } else if (this.masterGain) {
@@ -133,26 +181,18 @@ export class PCMPlayer {
       source.connect(this.context.destination);
     }
 
-    // Schedule playback to ensure no gaps between chunks
     const currentTime = this.context.currentTime;
     if (this.nextStartTime < currentTime) {
-      this.nextStartTime = currentTime + 0.05; // small buffer to avoid clicks
+      this.nextStartTime = currentTime + 0.05;
     }
 
     source.start(this.nextStartTime);
-    // Advance by actual playback duration (buffer.duration / playbackRate) so
-    // back-to-back chunks stay gapless. Using buffer.duration alone would
-    // over-shoot by (rate-1) seconds per chunk, leaving audible stutters.
     this.nextStartTime += buffer.duration / this.playbackRate;
-    
     this.sourceNodes.push(source);
-    
-    // Clean up finished nodes
     source.onended = () => {
       const idx = this.sourceNodes.indexOf(source);
       if (idx > -1) this.sourceNodes.splice(idx, 1);
     };
-
     this.isPlaying = true;
   }
 
@@ -160,8 +200,11 @@ export class PCMPlayer {
    * Stop all current and scheduled playback and clear the queue.
    */
   public stop() {
+    if (this.workletNode) {
+      this.workletNode.port.postMessage({ type: 'stop' });
+    }
     this.sourceNodes.forEach(node => {
-      try { node.stop(); } catch (e) { /* ignore already stopped */ }
+      try { node.stop(); } catch (e) { }
     });
     this.sourceNodes = [];
     this.nextStartTime = 0;

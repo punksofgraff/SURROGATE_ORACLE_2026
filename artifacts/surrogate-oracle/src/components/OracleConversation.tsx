@@ -515,22 +515,18 @@ const OracleConversation = forwardRef(
         recentMessages: debugInfo.current.recentMessages,
       }),
       startSession: () => {
+        logStep('startSession() CALLED', 'ok');
         if (wsRef.current?.readyState !== WebSocket.OPEN) {
           logStep('RECONNECTING FOR SESSION', 'pending');
           pendingBootRef.current = true;
           connectToGemini();
           return;
         }
-        // Guard: mark booted before sending so a second call (e.g. from the
-        // oracle-phase useEffect) is a no-op. Without this flag both the
-        // terminal-phase enterTerminal() call AND the oracle-phase useEffect call
-        // would both send __ORACLE_BOOT__, causing a double greeting.
         if (!sessionBootedRef.current) {
           sessionBootedRef.current = true;
+          logStep('__ORACLE_BOOT__ path triggered', 'ok');
           sendText('__ORACLE_BOOT__');
         } else {
-          // Session was already booted (e.g. in terminal phase) — confirm this
-          // via the step log so the pressure test can detect the correct flow.
           logStep('SESSION ALREADY ACTIVE — terminal boot confirmed', 'ok');
         }
       }

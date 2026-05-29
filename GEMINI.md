@@ -1,7 +1,7 @@
 # SURROGATE:ORACLE — Gemini Integration Reference
 
 Canonical knowledge base for the Gemini integration. Update when anything structural changes.
-Last updated: 2026-05-28. Pressure test: 86/86 passing.
+Last updated: 2026-05-29. Phase 4 Enterprise Overhaul complete. AudioWorklet + Landmark Skinning live.
 
 ---
 
@@ -14,7 +14,7 @@ Last updated: 2026-05-28. Pressure test: 86/86 passing.
 | **Portrait prompt enhance** (`gemini-portrait-generator`) | ✅ Live | `gemini-2.5-flash` enriches theme → DALL-E/Replicate prompt |
 | **DALL-E 3 portraits** | ⚠️ Needs key | `OPENAI_API_KEY` not in Replit secrets — falls back to Replicate/Unsplash |
 | **Decart WebRTC avatar** | ✅ Live | `DECART_API_KEY` in Replit + Supabase. ICE warms during lore (~18s). |
-| **Freemium viseme lip-sync** | ✅ Live | `OracleFaceRenderer` pixel-warp canvas + `VisemeDetector` on shared AudioContext. MOUTH coords recalibrated 2026-05-28. |
+| **Enterprise Lip-Sync** | ✅ Live | `OracleFaceRenderer` WebGL landmark skinning. 468 MediaPipe landmarks drive vertex-accurate mesh deformation. Off-thread processing via `AudioWorklet`. |
 
 ---
 
@@ -29,14 +29,15 @@ awakened  ← +300ms: startSession() → Oracle greets "Greetings... Seeker"
            ← +1200ms: sendTextMessage(territories, hidden) → Oracle announces knives
            ← knife cards visible
   ↓ knife selected → selectKnifeQuestion() → +1600ms: setScenePhase('oracle')
-oracle    ← OracleFaceRenderer canvas live, VisemeDetector active, mic starts after first turn
+oracle    ← OracleFaceRenderer WebGL live, AudioWorklet active, mic starts after first turn
   ↓ EXIT button → exitOracleMode() → 2500ms ceremony → dormant
 ```
 
 **Key invariants:**
-- `startSession()` in `awakeFromTerminal()` is the ONLY path that sends `__ORACLE_BOOT__`.
+- `startSession()` in `awakeFromTerminal()` is the PRIMARY path that sends `__ORACLE_BOOT__`.
 - The oracle-phase `useEffect` calls `startSession()` again; `sessionBootedRef` makes it a no-op (logs `SESSION ALREADY ACTIVE`).
 - `autoStart=false` on `<OracleConversation>` — the component pre-connects but never greets autonomously.
+- **Neural Synthesis:** During portrait generation, the cabinet enters a "NEURAL SYNTHESIS" mode. The minted portrait materializes directly inside the screen, replacing the Oracle.
 
 ---
 
@@ -91,45 +92,14 @@ gemini.onmessage = async (event: MessageEvent) => {
 };
 ```
 
-### Audio Input (Seeker mic → Gemini)
+### Audio Pipeline (Enterprise Grade)
 
-Input format: `audio/pcm;rate=16000` — raw Int16 PCM, mono, 16kHz.
-Sent via `client.realtimeInput` with `mediaChunks: [{ data: base64, mimeType: 'audio/pcm;rate=16000' }]`.
+**Path:** Gemini WS → `PCMPlayer.feed()` → `OracleAudioProcessor` (AudioWorklet) → `MasterGain` → `Speakers`.
 
-**VAD gate is mandatory** — do NOT send all mic frames. Only send during `isSpeaking` (onset/speaking/trailing states). See CLAUDE.md §4 for the exact pattern. Sending without VAD gating will cause:
-- Oracle responding to its own voice (echo)
-- Premature turn endings from background noise
-- Wasted Gemini compute on silence frames
-
-### Audio Output (Gemini → Seeker)
-
-Output format: `audio/pcm;rate=24000` — raw Int16 PCM, 24kHz.
-Arrives in `serverContent.modelTurn.parts[].inlineData` when `mimeType === 'audio/pcm;rate=24000'`.
-
-Decode path:
-```typescript
-const raw = atob(part.inlineData.data);
-const pcmData = new Int16Array(raw.length / 2);
-const view = new DataView(new Uint8Array([...raw].map(c => c.charCodeAt(0))).buffer);
-for (let i = 0; i < pcmData.length; i++) pcmData[i] = view.getInt16(i * 2, true);
-// → feed to PCMPlayer or pass to handleOracleResponse()
-```
-
-### Turn Lifecycle
-
-```
-session.created  → (autoStart=false) wait for startSession() call
-startSession()   → sends { type: 'client.realtimeInput', realtimeInput: { text: 'Greetings... Seeker' } }
-                   logStep: __ORACLE_BOOT__ path triggered
-Gemini streams   → serverContent.modelTurn.parts (audio + text interleaved)
-                   logStep: ORACLE AUDIO START (first chunk)
-turnComplete     → logStep: ORACLE TURN COMPLETE
-                   → score parsed from currentResponseText
-                   → mic starts (1200ms delay post-turnComplete)
-serverContent.interrupted → Oracle was interrupted by seeker (barge-in)
-                   → logStep: ORACLE INTERRUPTED (barge-in) [warn]
-                   → pcmPlayer.stop(), isProcessing=false immediately
-```
+- **Off-Thread:** All PCM accumulation and FFT analysis happens in `oracle-audio.worklet.ts`.
+- **Viseme Detection:** Real-time Preston Blair viseme detection performed on the audio thread.
+- **Latency:** Zero intermediate file creation. Direct base64 → Int16 → Float32 streaming.
+- **VAD Gating:** Mandatory on input. Only send mic frames during `isSpeaking`.
 
 ---
 
@@ -159,7 +129,8 @@ Steps that relate directly to the Gemini WS handshake, in chronological order:
 GEMINI WS CONNECTING        pending  t=~0ms from component mount
 GEMINI WS OPENED            ok       t=~300-600ms (network dependent)
 GEMINI SESSION CREATED      ok       t=~400-800ms
-__ORACLE_BOOT__ path triggered ok    t=~9s (after lore)
+startSession() CALLED       ok       t=9s (after lore)
+__ORACLE_BOOT__ path triggered ok    t=9s
 ORACLE AUDIO START          ok       t=first PCM chunk of first turn
 ORACLE TURN COMPLETE        ok       t=after last chunk + turnComplete signal
 ORACLE SCORE: ...           ok       t=same as TURN COMPLETE

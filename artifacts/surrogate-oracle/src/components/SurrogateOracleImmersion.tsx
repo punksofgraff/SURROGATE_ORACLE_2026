@@ -175,7 +175,14 @@ export function SurrogateOracleImmersion() {
 
   // ── Atmosphere & Motion ──
   useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment);
-  useParallax(scenePhase);
+  
+  const handleParallaxUpdate = useCallback((x: number, y: number) => {
+    if (oracleFaceRendererRef.current) {
+      oracleFaceRendererRef.current.setTilt(x, y);
+    }
+  }, []);
+  
+  useParallax(scenePhase, handleParallaxUpdate);
   const { completedLines, currentLine } = useLoreSequence(scenePhase === 'terminal', () => journey.awakeFromTerminal());
 
   // ── Typewriter title ──

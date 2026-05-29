@@ -36,7 +36,7 @@ const PHASE_INTENSITY: Record<Phase, number> = {
   oracle:   1.00,
 };
 
-export function useParallax(phase: Phase) {
+export function useParallax(phase: Phase, onUpdate?: (x: number, y: number) => void) {
   useEffect(() => {
     const intensity = PHASE_INTENSITY[phase] ?? 1.0;
 
@@ -71,6 +71,9 @@ export function useParallax(phase: Phase) {
 
       const ix = currentX * intensity;
       const iy = currentY * intensity;
+      
+      if (onUpdate) onUpdate(ix, iy);
+
       const vw = window.innerWidth;
       const vh = window.innerHeight;
 

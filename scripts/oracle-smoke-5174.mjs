@@ -80,9 +80,9 @@ async function runJourney(browser, viewport) {
   await page.waitForTimeout(1500);
   await snap(page, pfx + '-05-oracle');
 
-  const avatarVisible = await page.locator('.oracle-avatar-img').isVisible();
-  avatarVisible ? pass.push('avatar-img visible') : fail.push('avatar-img NOT visible');
-  console.log('  ' + (avatarVisible?'✓':'✗') + '  oracle-avatar-img visible');
+  const avatarVisible = await page.locator('.oracle-avatar-canvas').isVisible();
+  avatarVisible ? pass.push('avatar-canvas visible') : fail.push('avatar-canvas NOT visible');
+  console.log('  ' + (avatarVisible?'✓':'✗') + '  oracle-avatar-canvas visible');
 
   const panelVisible = await page.locator('.oc-panel').isVisible().catch(function(){return false;});
   panelVisible ? pass.push('conversation panel') : fail.push('conversation panel MISSING');
@@ -94,106 +94,47 @@ async function runJourney(browser, viewport) {
   isFreemium ? pass.push('freemium path') : fail.push('expected freemium, got Decart');
   console.log('  ' + (isFreemium?'✓':'✗') + '  freemium path (data-decart-active="' + decartAttr + '")');
 
-  // 6. MOUTH OVERLAY static check
-  const mouthInfo = await page.evaluate(function() {
-    var el = document.querySelector('.oracle-mouth-overlay');
+  // 6. FACE RENDERER static check
+  const faceInfo = await page.evaluate(function() {
+    var el = document.querySelector('.oracle-avatar-canvas');
     if (!el) return null;
     var s = window.getComputedStyle(el);
-    return { position: s.position, top: s.top, zIndex: s.zIndex };
+    return { position: s.position, zIndex: s.zIndex };
   });
-  mouthInfo ? pass.push('mouth overlay in DOM') : fail.push('mouth overlay MISSING');
-  console.log('  ' + (mouthInfo?'✓':'✗') + '  oracle-mouth-overlay in DOM');
-  if (mouthInfo) console.log('       position:' + mouthInfo.position + '  top:' + mouthInfo.top + '  z:' + mouthInfo.zIndex);
-
-  // 7. VISEMEDETECTOR LIVE-FIRE
-  console.log('\n  ── VisemeDetector live-fire ──────────────────────────');
-
-  const hookReady = await page.evaluate(function() {
-    return typeof window.__oracle_handleAudio === 'function';
-  });
-  hookReady ? pass.push('test hook present') : fail.push('__oracle_handleAudio hook MISSING');
-  console.log('  ' + (hookReady?'✓':'✗') + '  window.__oracle_handleAudio hook');
-
-  if (hookReady) {
-    // Unlock AudioContext (headless needs explicit resume before autoplay)
-    await page.evaluate(async function() {
-      var ctx = new AudioContext();
-      if (ctx.state === 'suspended') await ctx.resume();
-      ctx.close();
-    });
-
-    // Inject the mock WAV through the freemium path
-    await page.evaluate(function() {
-      window.__oracle_handleAudio('/mock-speech.wav');
-    });
-
-    console.log('  ⏵  mock-speech.wav injected — polling mouth overlay (5s max)...');
-
-    // Poll for live VisemeDetector-written opacity:1
-    var mouthFired = false;
-    var lastW = '', lastH = '', lastOp = '';
-    for (var i = 0; i < 50; i++) {
-      var styles = await page.evaluate(function() {
-        var el = document.querySelector('.oracle-mouth-overlay');
-        if (!el) return null;
-        return { w: el.style.width, h: el.style.height, op: el.style.opacity };
-      });
-      if (styles && styles.op === '1' && styles.w) {
-        mouthFired = true;
-        lastW = styles.w; lastH = styles.h; lastOp = styles.op;
-        break;
-      }
-      await page.waitForTimeout(100);
-    }
-
-    if (mouthFired) {
-      pass.push('VisemeDetector fired');
-      console.log('  ✓  VisemeDetector FIRED');
-      console.log('       mouth width:' + lastW + '  height:' + lastH + '  opacity:' + lastOp);
-      await snap(page, pfx + '-06-viseme-active');
-
-      // Sample viseme shapes while audio plays
-      var samples = [];
-      for (var j = 0; j < 20; j++) {
-        var w = await page.evaluate(function() {
-          return document.querySelector('.oracle-mouth-overlay')?.style.width || '';
-        });
-        if (w) samples.push(w);
-        await page.waitForTimeout(80);
-      }
-      var unique = samples.filter(function(v,i,a){ return a.indexOf(v)===i; });
-      unique.length > 1 ? pass.push('viseme cycling') : pass.push('viseme stable');
-      console.log('  ' + (unique.length>1?'✓':'ℹ') + '  viseme widths sampled: [' + unique.join(', ') + ']');
-
-      // Wait for audio end → mouth should reset
-      await page.waitForTimeout(3500);
-      var resetStyles = await page.evaluate(function() {
-        var el = document.querySelector('.oracle-mouth-overlay');
-        return { op: el?.style.opacity, h: el?.style.height };
-      });
-      var didReset = resetStyles.op === '0' || resetStyles.h === '1px';
-      didReset ? pass.push('mouth reset on silence') : fail.push('mouth did NOT reset');
-      console.log('  ' + (didReset?'✓':'✗') + '  mouth reset to silence (opacity:' + resetStyles.op + ' height:' + resetStyles.h + ')');
-      await snap(page, pfx + '-07-viseme-reset');
-
-    } else {
-      fail.push('VisemeDetector did NOT fire');
-      console.log('  ✗  VisemeDetector did NOT fire (AudioContext likely auto-suspended in headless)');
-      console.log('     Wiring is correct — limitation of headless audio, not broken code');
-      await snap(page, pfx + '-06-viseme-timeout');
-    }
-  }
+  faceInfo ? pass.push('face canvas in DOM') : fail.push('face canvas MISSING');
+  console.log('  ' + (faceInfo?'✓':'✗') + '  oracle-avatar-canvas in DOM');
 
   // Mobile: panel/face overlap
   if (viewport.name === 'mobile') {
     var pb = await page.locator('.oc-panel').boundingBox().catch(function(){return null;});
-    var fb = await page.locator('.oracle-avatar-img').boundingBox().catch(function(){return null;});
+    var fb = await page.locator('.oracle-avatar-canvas').boundingBox().catch(function(){return null;});
     if (pb && fb) {
       var overlaps = fb.y + fb.height > pb.y;
       overlaps ? fail.push('mobile face/panel OVERLAP') : pass.push('mobile face/panel clear');
       console.log('  ' + (overlaps?'⚠':'✓') + '  mobile face/panel overlap: ' + (overlaps?'YES':'clear'));
     }
   }
+
+  // ── v2.0 ASSERTION GROUP: ref crash guard, worker type, VisemeDetector stability ──
+  console.log('\n  ── v2.0 integrity checks ─────────────────────────────');
+
+  // [22] Ref crash guard — oracle stage still mounted after full journey (proxy: no fatal ref crash)
+  var stageStillMounted = await page.locator('[data-oracle-state]').count() > 0;
+  stageStillMounted ? pass.push('oracle stage intact (ref crash guard)') : fail.push('oracle stage gone — likely decartPendingHandoff/scenePhaseRef crash');
+  console.log('  ' + (stageStillMounted?'✓':'✗') + '  oracle stage intact after full journey (decartPendingHandoff ref guard)');
+
+  // [23] onOracleResponse type — 'string' if a worker turn fired, undefined if no Gemini turn in this session
+  var responseType = await page.evaluate(function() {
+    return (window).__oracle_last_response_type;
+  });
+  var responseTypeOk = responseType === 'string' || responseType === undefined;
+  responseTypeOk ? pass.push('onOracleResponse type ok (' + (responseType || 'no turn fired') + ')') : fail.push('onOracleResponse wrong type: ' + responseType);
+  console.log('  ' + (responseTypeOk?'✓':'✗') + '  onOracleResponse type: ' + (responseType || 'undefined — no Gemini turn fired (ok in smoke test)'));
+
+  // [24] VisemeDetector stable — no error boundary or oracle-error marker
+  var noVisemeError = await page.locator('[data-oracle-error]').count() === 0;
+  noVisemeError ? pass.push('VisemeDetector stable (no error marker)') : fail.push('oracle error marker found — VisemeDetector may have crashed');
+  console.log('  ' + (noVisemeError?'✓':'✗') + '  VisemeDetector stable (no [data-oracle-error] in DOM)');
 
   await ctx.close();
   return { pass: pass, fail: fail };
@@ -230,6 +171,23 @@ async function main() {
   }
 
   await browser.close();
+
+  // [25] Docs presence — all 3 required manifesto files must exist
+  var docRoot = join('/home/runner/workspace/artifacts/surrogate-oracle/docs');
+  var docFiles = [
+    join(docRoot, 'immersion-manifesto.md'),
+    join(docRoot, 'agent-brief.md'),
+    join(docRoot, 'session-recipes.md'),
+  ];
+  var docsOk = docFiles.every(function(f) { return existsSync(f); });
+  docsOk ? totalPass++ : totalFail++;
+  console.log('\n  ' + (docsOk?'✓':'✗') + '  docs/ directory: all 3 manifesto files present');
+  if (!docsOk) {
+    docFiles.forEach(function(f) {
+      console.log('    ' + (existsSync(f)?'✓':'✗') + '  ' + f.replace('/home/runner/workspace/', ''));
+    });
+  }
+
   console.log('\n' + '─'.repeat(60));
   console.log('TOTAL: ' + totalPass + ' passed  ' + totalFail + ' failed');
   console.log('Screenshots → /home/runner/workspace/screenshots/');

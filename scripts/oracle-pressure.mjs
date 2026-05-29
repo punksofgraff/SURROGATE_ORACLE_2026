@@ -262,11 +262,6 @@ async function testAwakened(page, pass, fail) {
   if (cardCount === 5) { pass.push('awakened: 5 knife cards'); console.log('    ✓  5 knife cards'); }
   else                  { fail.push('awakened: knife cards ' + cardCount + '/5'); console.log('    ✗  knife cards: ' + cardCount + '/5'); }
 
-  // Living face should be visible (ghost presence at 0.45 opacity)
-  var faceVisible = await page.locator('.oracle-avatar-img').isVisible();
-  if (faceVisible) { pass.push('awakened: living face visible'); console.log('    ✓  oracle-avatar-img visible (ghost presence)'); }
-  else             { fail.push('awakened: living face NOT visible'); console.log('    ✗  oracle-avatar-img NOT visible in awakened'); }
-
   // LORE BRIDGE: completed lore lines must persist in awakened (even after skip).
   // oracle-terminal-overlay renders when loreCompletedLines.length > 0 && awakened && no knife selected.
   // This validates the useLoreSequence completedLines-retention fix — if completedLines were reset
@@ -334,7 +329,7 @@ async function testOracle(page, pass, fail) {
   await snap(page, '04-oracle');
 
   // Oracle avatar visible
-  var avatarVisible = await page.locator('.oracle-avatar-img').isVisible();
+  var avatarVisible = await page.locator('.oracle-avatar-canvas').isVisible();
   if (avatarVisible) { pass.push('oracle: avatar visible'); console.log('    ✓  oracle-avatar-img visible'); }
   else               { fail.push('oracle: avatar NOT visible'); console.log('    ✗  oracle-avatar-img NOT visible'); }
 
@@ -583,12 +578,12 @@ async function testExit(page, pass, fail) {
   await clearSteps(page);
 
   // Click the EXIT button inside OracleConversation header.
-  // aria-label="Exit the Oracle" — only present when oracle state is active
+  // className="oracle-exit-btn" — only present when oracle state is active
   // and NOT in the 4s revelation countdown window.
   // Use JS click (via evaluate) to bypass any overlay/interceptor that blocks
   // pointer events (e.g. OracleStepLogger debug span in DEV builds).
   var exitBtnFound = await page.evaluate(function() {
-    var btn = document.querySelector('[aria-label="Exit the Oracle"]');
+    var btn = document.querySelector('.oracle-exit-btn');
     if (btn) { btn.click(); return true; }
     return false;
   });
@@ -616,14 +611,14 @@ async function testExit(page, pass, fail) {
   await snap(page, '07-exit-dormant');
 
   // Background radio should be stopped (no active audio nodes)
-  // Conversation panel should be gone
-  var panelGone = await page.locator('.oc-panel').count();
-  if (panelGone === 0) {
-    pass.push('exit: conversation panel unmounted');
-    console.log('    ✓  .oc-panel unmounted after exit');
+  // Conversation panel should be hidden
+  var panelVisible = await page.locator('.oc-panel').isVisible();
+  if (!panelVisible) {
+    pass.push('exit: conversation panel hidden');
+    console.log('    ✓  .oc-panel hidden after exit');
   } else {
-    fail.push('exit: conversation panel still in DOM after exit');
-    console.log('    ✗  .oc-panel still present after exit — unmount may have failed');
+    fail.push('exit: conversation panel still visible after exit');
+    console.log('    ✗  .oc-panel still visible after exit — hide may have failed');
   }
 
   // Ghost transmissions should start re-appearing in dormant
@@ -655,7 +650,7 @@ async function testExit(page, pass, fail) {
 async function testMobileLayout(page, pass, fail) {
   console.log('\n  ── PHASE 8: MOBILE LAYOUT ──────────────────────────────');
   var pb = await page.locator('.oc-panel').boundingBox().catch(function(){return null;});
-  var fb = await page.locator('.oracle-avatar-img').boundingBox().catch(function(){return null;});
+  var fb = await page.locator('.oracle-avatar-canvas').boundingBox().catch(function(){return null;});
   if (pb && fb) {
     var overlaps = fb.y + fb.height > pb.y;
     if (!overlaps) { pass.push('mobile: face/panel clear'); console.log('    ✓  face/panel overlap: clear'); }

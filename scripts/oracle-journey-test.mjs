@@ -96,7 +96,7 @@ async function runJourney(browser, viewport) {
   // ── 7. MOBILE: check panel doesn't occlude the oracle face ────────────────
   if (viewport.name === 'mobile') {
     const panelBox  = await page.locator('.oc-panel').boundingBox();
-    const faceBox   = await page.locator('.oracle-avatar-img').boundingBox();
+    const faceBox   = await page.locator('.oracle-avatar-canvas').boundingBox();
     if (panelBox && faceBox) {
       const overlap = faceBox.y + faceBox.height > panelBox.y;
       console.log(`  📱  face/panel overlap: ${overlap ? '⚠ YES — needs fix' : '✓ clear'}`);

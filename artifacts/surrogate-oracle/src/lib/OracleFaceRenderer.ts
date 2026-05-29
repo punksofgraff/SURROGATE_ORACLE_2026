@@ -167,6 +167,12 @@ export class OracleFaceRenderer {
   drawViseme(state: VisemeState) {
     if (!this.img) return;
     const { amplitude, viseme, openness, rounded } = state;
+    
+    // Update data attributes for smoke tests / debug visibility
+    this.canvas.dataset.viseme = viseme;
+    this.canvas.dataset.amplitude = amplitude.toFixed(3);
+    this.canvas.dataset.visemeActive = amplitude > 0.01 ? 'true' : 'false';
+
     const target = SHAPES[viseme] ?? SHAPES.A;
     const scale  = 0.40 + amplitude * 0.85;
 

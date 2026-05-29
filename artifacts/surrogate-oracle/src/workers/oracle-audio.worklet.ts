@@ -6,6 +6,14 @@
  * on the audio thread, isolated from main-thread GC and UI stutters.
  */
 
+// ── Global Declarations ──────────────────────────────────────────────────────
+declare class AudioWorkletProcessor {
+  readonly port: MessagePort;
+  process(inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>): boolean;
+}
+declare function registerProcessor(name: string, processorCtor: any): void;
+declare const currentTime: number;
+
 type Viseme = 'X' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
 
 interface VisemeState {
@@ -33,7 +41,7 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.buffer = new Float32Array(this.bufferCapacity);
-    this.port.onmessage = (e) => {
+    this.port.onmessage = (e: MessageEvent) => {
       if (e.data.type === 'feed') {
         this.enqueue(e.data.pcm);
       } else if (e.data.type === 'stop') {

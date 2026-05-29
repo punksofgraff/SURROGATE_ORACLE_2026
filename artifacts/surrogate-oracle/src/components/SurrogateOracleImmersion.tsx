@@ -83,6 +83,38 @@ export function SurrogateOracleImmersion() {
   const oracleConversationRef = useRef<OracleConversationHandle | null>(null);
   const pcmAmplitudeRef = useRef(0);
   const atmosphereCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const staticAvatarRef = useRef<HTMLImageElement | null>(null);
+
+  // ── Journey Hook ──
+  const handleStartSession = useCallback(() => {
+    oracleConversationRef.current?.startSession();
+  }, []);
+
+  const handleCleanup = useCallback(() => {
+    connectionRef.current.cleanup();
+  }, []);
+
+  const journey = useOracleJourney({
+    onStartSession: handleStartSession,
+    onCleanup: handleCleanup,
+  });
+
+  const { scenePhase, enterTerminal, exitOracleMode, selectKnifeQuestion } = journey;
+
+  // ── VRF materialize timing ──
+  useEffect(() => {
+    if (scenePhase !== 'terminal' || !staticAvatarRef.current) return;
+    const delay    = (0.15 + Math.random() * 0.55).toFixed(2) + 's';
+    const duration = (2.6  + Math.random() * 2.0).toFixed(2)  + 's';
+    staticAvatarRef.current.style.animationDelay    = delay;
+    staticAvatarRef.current.style.animationDuration = duration;
+    return () => {
+      if (staticAvatarRef.current) {
+        staticAvatarRef.current.style.animationDelay    = '';
+        staticAvatarRef.current.style.animationDuration = '';
+      }
+    };
+  }, [scenePhase]);
 
   // ── Connection Hook ──
   const handleViseme = useCallback((state: any) => {
@@ -122,24 +154,8 @@ export function SurrogateOracleImmersion() {
   const connectionRef = useRef(connection);
   useEffect(() => { connectionRef.current = connection; }, [connection]);
 
-  // ── Journey Hook ──
-  const handleStartSession = useCallback(() => {
-    oracleConversationRef.current?.startSession();
-  }, []);
-
-  const handleCleanup = useCallback(() => {
-    connectionRef.current.cleanup();
-  }, []);
-
-  const journey = useOracleJourney({
-    onStartSession: handleStartSession,
-    onCleanup: handleCleanup,
-  });
-
-  const { scenePhase, enterTerminal, exitOracleMode, selectKnifeQuestion } = journey;
-
   // ── XR Mode ──
-  const { isXRMode, cameraActive, deactivateCamera, cameraVideoRef } = useXRMode(() => enterTerminal());
+  const { isXRMode, cameraActive, activateCamera, deactivateCamera, cameraVideoRef } = useXRMode(() => enterTerminal());
 
   // ── Portrait Hook ──
   const handlePortraitGenerated = useCallback((url: string) => {
@@ -243,16 +259,16 @@ export function SurrogateOracleImmersion() {
         style={{ '--bg-url': `url('${ALLEY_BG_URL}')` } as React.CSSProperties}
       />
 
-      {/* ── Depth layer: mid-ground haze — separates cabinet from alley walls ── */}
+      {/* ── Depth layer: mid-ground haze ── */}
       <div className="oracle-mid-haze" />
 
-      {/* ── Depth layer: side neon bleeds — off-screen neon leaking from walls ── */}
+      {/* ── Depth layer: side neon bleeds ── */}
       <div className="oracle-side-bleeds" />
 
-      {/* ── Depth layer: light rays from oracle face — volumetric god rays ── */}
+      {/* ── Depth layer: light rays ── */}
       <div className="oracle-light-rays" />
 
-      {/* ── Foreground debris — signal fragments approaching the viewer ── */}
+      {/* ── Foreground debris ── */}
       <div className="oracle-debris-layer" aria-hidden="true">
         {DEBRIS.map(([glyph, color, left, top, delay, dur], i) => (
           <span
@@ -271,7 +287,7 @@ export function SurrogateOracleImmersion() {
       {/* ── Layer 2a: Matrix Rain ── */}
       <MatrixRain />
 
-      {/* ── Layer 2b: Ground Fog — rising from alley floor ── */}
+      {/* ── Layer 2b: Ground Fog ── */}
       <div className="oracle-ground-fog" />
 
       {/* ── Depth layer: floor reflection ── */}
@@ -280,7 +296,7 @@ export function SurrogateOracleImmersion() {
       <GlitchCursor />
       
       {/* ── Layer 1: Dormant HUD ── */}
-      <DormantHUD active={scenePhase === 'dormant'} onEnter={enterTerminal} isXR={isXRMode} />
+      <DormantHUD active={scenePhase === 'dormant'} />
       <DormantTransmissions active={scenePhase === 'dormant'} onCtaClick={enterTerminal} />
 
       {/* ── Layer 3: Top branding ── */}
@@ -305,7 +321,7 @@ export function SurrogateOracleImmersion() {
         style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}
       >
         <motion.div className="oracle-cabinet">
-          <div className="oracle-cabinet__screen">
+          <div className="oracle-avatar-wrapper">
             {/* ── Monitor cast ── */}
             {isOracleMode && <div className="oracle-monitor-cast" />}
 
@@ -320,17 +336,28 @@ export function SurrogateOracleImmersion() {
               </>
             )}
 
+            {/* ── Static arcade cabinet display ── */}
             <img
-              key="static-face" src={ORACLE_STATIC_URL} className="oracle-avatar-img"
-              alt="Oracle Static"
-              style={{ 
-                opacity: isOracleMode ? 0.8 : 1, 
-                transition: 'opacity 0.2s ease-out',
-                pointerEvents: 'none',
-                zIndex: 2,
-                filter: isOracleMode ? 'brightness(0.5) blur(4px)' : 'none'
-              }}
+              ref={staticAvatarRef}
+              src={ORACLE_STATIC_URL}
+              alt=""
+              aria-hidden="true"
+              className="oracle-avatar-static"
             />
+
+            {isOracleMode && (
+              <img
+                key="static-face" src={ORACLE_AVATAR_URL} className="oracle-avatar-img"
+                alt="Oracle Construct"
+                style={{ 
+                  opacity: 0.8, 
+                  transition: 'opacity 0.2s ease-out',
+                  pointerEvents: 'none',
+                  zIndex: 2,
+                  filter: 'brightness(0.5) blur(4px)'
+                }}
+              />
+            )}
             
             <AnimatePresence mode="wait">
               {portrait.isGenerating ? (
@@ -390,7 +417,7 @@ export function SurrogateOracleImmersion() {
           }}
           transition={{ duration: 1.1, delay: isAlive ? 0.7 : 0 }}
         >
-          <GraffPunksRadio active={isAlive} isOracleProcessing={connection.isReady && isOracleMode} />
+          <GraffPunksRadio isPlaying={isAlive} onToggle={() => {}} />
         </motion.div>
 
         <motion.div
@@ -403,7 +430,7 @@ export function SurrogateOracleImmersion() {
           }}
           transition={{ duration: 1.1, delay: isAlive ? 1.0 : 0 }}
         >
-          <EnculturateCrate onClick={() => setDebugMode(true)} active={isAlive} />
+          <EnculturateCrate onClick={() => setDebugMode(true)} isActive={isAlive} />
         </motion.div>
       </div>
 
@@ -444,14 +471,19 @@ export function SurrogateOracleImmersion() {
           </motion.div>
         )}
         {scenePhase === 'awakened' && !journey.selectedKnifeQuestion && (
-          <KnifeSelection key="knife-selection" onSelect={handleKnifeClick} />
+          <KnifeSelection
+            key="knife-selection"
+            isGeminiConnected={isGeminiConnected}
+            selectedKnifeIndex={journey.selectedKnifeIndex}
+            onSelect={handleKnifeClick}
+          />
         )}
       </AnimatePresence>
 
       {showConversation && (
         <OracleConversation
           ref={oracleConversationRef}
-          userId={currentUserId || currentSessionId}
+          userId={currentUserId || undefined}
           sessionId={currentSessionId}
           onOracleResponse={connection.handleOracleResponse}
           onCoinsEarned={(amt) => setSessionCoins(s => s + amt)}
@@ -463,7 +495,7 @@ export function SurrogateOracleImmersion() {
           autoStart={false}
           onUserSpeakingChange={setIsUserSpeaking}
           onBargeIn={() => connection.pcmPlayer?.stop()}
-          onPortraitRequest={(themes) => portrait.generatePortrait(themes)}
+          onPortraitRequest={() => portrait.generatePortrait(portrait.getThemes())}
         />
       )}
 
@@ -491,7 +523,7 @@ export function SurrogateOracleImmersion() {
           >
             <div style={{ pointerEvents: 'auto', position: 'absolute', right: 0, top: 0, bottom: 0 }}>
               <BackendControlPanel
-                userId={currentUserId || undefined} sessionId={currentSessionId} isVisible initialTab="coins"
+                userId={currentUserId || undefined} sessionId={currentSessionId} isVisible initialTab="vault"
                 onClose={() => setDebugMode(false)} isAuthenticated={false} pendingCoins={sessionCoins}
                 decartClientRef={decartClientRef} oracleConversationRef={oracleConversationRef}
               />
@@ -501,7 +533,13 @@ export function SurrogateOracleImmersion() {
       </AnimatePresence>
 
       {showArtifactCard && (
-        <ArtifactCard archetypeTitle="ARCHETYPE" portraitUrl={portrait.latestPortraitUrl} totalCoins={sessionCoins} onClose={() => setShowArtifactCard(false)} />
+        <ArtifactCard
+          archetypeTitle="ARCHETYPE"
+          portraitUrl={portrait.latestPortraitUrl}
+          totalCoins={sessionCoins}
+          onRunAgain={enterTerminal}
+          onClose={() => setShowArtifactCard(false)}
+        />
       )}
 
       <DecartClient ref={decartClientRef} />

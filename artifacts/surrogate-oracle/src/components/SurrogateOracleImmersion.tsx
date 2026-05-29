@@ -46,6 +46,21 @@ const ORACLE_AVATAR_URL  = 'https://i.postimg.cc/jSGnyZXh/Image-1-(11).jpg';
 const ALLEY_BG_URL       = 'https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png';
 const ORACLE_PLAYBACK_RATE = 1.0;
 
+const DEBRIS = [
+  ['◈','#00ff88','12%','22%','0s','6.1s'],
+  ['▸','#b026ff','78%','18%','1.3s','5.4s'],
+  ['⬡','#00ccff','33%','55%','2.7s','7.2s'],
+  ['FF','#00ff88','61%','38%','0.8s','4.9s'],
+  ['◈','#00ffcc','88%','62%','3.5s','6.8s'],
+  ['|','#b026ff','22%','75%','1.9s','5.1s'],
+  ['3A','#00ccff','50%','14%','4.2s','7.6s'],
+  ['⬡','#00ff88','7%','48%','0.4s','6.3s'],
+  ['▸','#00ffcc','70%','80%','2.1s','5.7s'],
+  ['◈','#b026ff','42%','90%','3.8s','4.8s'],
+  ['0x','#00ff88','15%','33%','1.1s','6.9s'],
+  ['⬡','#00ccff','92%','28%','2.4s','5.5s'],
+] as const;
+
 export function SurrogateOracleImmersion() {
   const [oracleAvatarDataUrl] = useState<string>(ORACLE_AVATAR_URL);
   const [currentUserId] = useState<string | null>(null);
@@ -124,7 +139,7 @@ export function SurrogateOracleImmersion() {
   const { scenePhase, enterTerminal, exitOracleMode, selectKnifeQuestion } = journey;
 
   // ── XR Mode ──
-  const { isXRMode, cameraActive, activateCamera, deactivateCamera, cameraVideoRef } = useXRMode(() => enterTerminal());
+  const { isXRMode, cameraActive, deactivateCamera, cameraVideoRef } = useXRMode(() => enterTerminal());
 
   // ── Portrait Hook ──
   const handlePortraitGenerated = useCallback((url: string) => {
@@ -144,7 +159,7 @@ export function SurrogateOracleImmersion() {
   // ── Atmosphere & Motion ──
   useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment);
   useParallax(scenePhase);
-  const { completedLines } = useLoreSequence(scenePhase === 'terminal', () => journey.awakeFromTerminal());
+  const { completedLines, currentLine } = useLoreSequence(scenePhase === 'terminal', () => journey.awakeFromTerminal());
 
   // ── Typewriter title ──
   const titleText = useTypewriter('SURROGATE:ORACLE', awakened, 60);
@@ -237,14 +252,30 @@ export function SurrogateOracleImmersion() {
       {/* ── Depth layer: light rays from oracle face — volumetric god rays ── */}
       <div className="oracle-light-rays" />
 
+      {/* ── Foreground debris — signal fragments approaching the viewer ── */}
+      <div className="oracle-debris-layer" aria-hidden="true">
+        {DEBRIS.map(([glyph, color, left, top, delay, dur], i) => (
+          <span
+            key={i}
+            className="oracle-debris-piece"
+            style={{ left, top, color, animationDelay: delay, animationDuration: dur } as any}
+          >
+            {glyph}
+          </span>
+        ))}
+      </div>
+
       {/* ── Layer 2: Atmosphere Canvas ── */}
       <canvas ref={atmosphereCanvasRef} className="atmosphere-layer" />
 
       {/* ── Layer 2a: Matrix Rain ── */}
-      <MatrixRain active={scenePhase === 'terminal'} />
+      <MatrixRain />
 
       {/* ── Layer 2b: Ground Fog — rising from alley floor ── */}
       <div className="oracle-ground-fog" />
+
+      {/* ── Depth layer: floor reflection ── */}
+      <div className="oracle-floor-reflection" />
 
       <GlitchCursor />
       
@@ -378,8 +409,38 @@ export function SurrogateOracleImmersion() {
 
       <AnimatePresence>
         {isAlive && !isOracleMode && (
-          <motion.div key="lore-overlay" className="oracle-terminal-overlay">
-            {completedLines.map((line, i) => <div key={`lore-${i}`}>{line}</div>)}
+          <motion.div
+            key="lore-overlay"
+            className="oracle-terminal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.4 } }}
+            onClick={() => journey.scenePhase === 'terminal' && journey.awakeFromTerminal()}
+          >
+            <div className="oracle-lore-text">
+              {completedLines.map((line, i) => (
+                <div key={`lore-${i}`} className="oracle-lore-line" style={{ whiteSpace: 'pre-wrap' }}>
+                  <span className="oracle-lore-prompt">›</span>{line}
+                </div>
+              ))}
+              {journey.scenePhase === 'terminal' && (
+                <>
+                  {currentLine && (
+                    <div className="oracle-lore-line oracle-lore-line--typing" style={{ whiteSpace: 'pre-wrap' }}>
+                      <span className="oracle-lore-prompt">›</span>{currentLine}<GlitchCursor />
+                    </div>
+                  )}
+                  {!currentLine && completedLines.length < 10 && (
+                    <div className="oracle-lore-line">
+                      <span className="oracle-lore-prompt">›</span><GlitchCursor />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            {completedLines.length >= 2 && journey.scenePhase === 'terminal' && (
+              <div className="oracle-lore-skip">TAP TO SKIP ARCHIVE FRAGMENT</div>
+            )}
           </motion.div>
         )}
         {scenePhase === 'awakened' && !journey.selectedKnifeQuestion && (

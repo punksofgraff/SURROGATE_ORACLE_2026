@@ -829,12 +829,20 @@
 
 /* Oracle state: revealed via JS inline style (opacity 1) when freemium active */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-img {
+  opacity: 0;
   pointer-events: none;
 }
 
-.oracle-mouth-canvas {
+.oracle-avatar-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;           /* matches oracle-avatar-img sizing/position       */
+  z-index: 3;                  /* same z as oracle-avatar-img, above static avatar */
   pointer-events: none;
-  z-index: 4;
+  border-radius: 8px;          /* matches oracle-avatar-img border-radius          */
+  transition: opacity 1.5s ease, filter 1.5s ease;
 }
 
 /* ── OracleFaceRenderer canvas — pixel-accurate face with warped lips ───────
@@ -956,7 +964,30 @@
   transition: opacity 0.8s ease-out;
 }
 
-/* ── Boot HUD — Decart connecting state overlay ─────────────────────────────
+.oracle-mouth-overlay {
+  position: absolute;
+  left: 50%;
+  top: 61.5%;                  /* tuned for orackle-only-static face */
+  transform: translateX(-50%);
+  width: 22%;                  /* baseline — overwritten by VisemeDetector */
+  height: 2%;                  /* baseline — overwritten by VisemeDetector */
+  border-radius: 2px;          /* baseline — overwritten by VisemeDetector */
+  background: rgba(0, 0, 0, 0.92);
+  border: 1px solid rgba(0, 255, 136, 0.35);
+  box-shadow:
+    0 0 10px rgba(0, 255, 136, 0.25) inset,
+    0 0 5px rgba(0, 255, 136, 0.20);
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  will-change: width, height, border-radius, opacity;
+}
+
+.oracle-stage[data-oracle-state="oracle"] .oracle-mouth-overlay {
+  /* opacity managed via direct DOM write */
+}
+
+/* ── Boot HUD — Decart connecting state overlay ───────────────────────────── */
    NOT a blackout. The avatar (oracle-avatar-static) is the hero — it pulses
    and zoom-breathes in the awakened state. This HUD anchors to the bottom of
    the cabinet frame: gradient fade up from the bottom edge, lore-matched

@@ -38,96 +38,8 @@ import { useOracleJourney } from '../hooks/useOracleJourney';
 
 // Libs/Utils
 import { getAudioContext } from '../lib/oracleSfx';
+import { OracleFaceRenderer } from '../lib/OracleFaceRenderer';
 import './SurrogateOracleImmersion.css';
-
-// ─── PIXEL-MAPPED MOUTH DRAWING ──────────────────────────────────────────────
-function drawMouthOnCanvas(
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  state: any,
-) {
-  ctx.clearRect(0, 0, w, h);
-  const { openness, rounded, spread, amplitude } = state;
-
-  if (amplitude < 0.04) return; // silence — nothing to draw
-
-  const cx = w / 2;
-  const cornerY = h * 0.46;
-  const halfW = w * (0.32 + spread * 0.25);
-  const leftX  = cx - halfW;
-  const rightX = cx + halfW;
-  const opening = h * Math.max(0.02, openness * 0.85) * (0.7 + amplitude * 0.3);
-  const ulPeak = cornerY - opening * 0.38;
-  const llBase = cornerY + opening * 0.62;
-  const cornerDrop = h * 0.055 * (1 - rounded * 0.4);
-  const leftCornerY  = cornerY + cornerDrop;
-  const rightCornerY = cornerY + cornerDrop;
-  const bowDepth = h * 0.08 * (1 - rounded * 0.7);
-
-  if (openness > 0.06) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(leftX, leftCornerY);
-    ctx.bezierCurveTo(leftX  + halfW * 0.3, ulPeak, rightX - halfW * 0.3, ulPeak, rightX, rightCornerY);
-    ctx.bezierCurveTo(rightX - halfW * 0.3, llBase, leftX  + halfW * 0.3, llBase, leftX, leftCornerY);
-    ctx.closePath();
-    const cavGrad = ctx.createLinearGradient(cx, ulPeak, cx, llBase);
-    cavGrad.addColorStop(0, `rgba(0, 15, 8, ${0.88 + amplitude * 0.1})`);
-    cavGrad.addColorStop(0.5, `rgba(0, 6, 3, ${0.94})`);
-    cavGrad.addColorStop(1, `rgba(0, 20, 10, ${0.85})`);
-    ctx.fillStyle = cavGrad;
-    ctx.fill();
-    ctx.restore();
-  }
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(leftX, leftCornerY);
-  ctx.bezierCurveTo(leftX + halfW * 0.22, ulPeak - h * 0.12, cx - halfW * 0.16, ulPeak + bowDepth, cx, ulPeak - bowDepth * 0.3);
-  ctx.bezierCurveTo(cx + halfW * 0.16, ulPeak + bowDepth, rightX - halfW * 0.22, ulPeak - h * 0.12, rightX, rightCornerY);
-  ctx.bezierCurveTo(rightX - halfW * 0.28, cornerY - opening * 0.22, leftX + halfW * 0.28, cornerY - opening * 0.22, leftX, leftCornerY);
-  ctx.closePath();
-  const alpha = 0.72 + amplitude * 0.22;
-  const ulGrad = ctx.createLinearGradient(cx, ulPeak - h * 0.12, cx, cornerY);
-  ulGrad.addColorStop(0, `rgba(15, 120, 70, ${alpha})`);
-  ulGrad.addColorStop(0.6, `rgba(8,  90, 50, ${alpha})`);
-  ulGrad.addColorStop(1,   `rgba(4,  60, 32, ${alpha * 0.9})`);
-  ctx.fillStyle = ulGrad;
-  ctx.shadowColor = `rgba(0, 255, 136, ${0.18 + amplitude * 0.22})`;
-  ctx.shadowBlur  = 4 + amplitude * 5;
-  ctx.fill();
-  ctx.restore();
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(leftX, leftCornerY);
-  ctx.bezierCurveTo(leftX + halfW * 0.25, llBase + h * 0.1, rightX - halfW * 0.25, llBase + h * 0.1, rightX, rightCornerY);
-  ctx.bezierCurveTo(rightX - halfW * 0.3, cornerY + opening * 0.3, leftX + halfW * 0.3, cornerY + opening * 0.3, leftX, leftCornerY);
-  ctx.closePath();
-  const llGrad = ctx.createLinearGradient(cx, cornerY, cx, llBase + h * 0.1);
-  llGrad.addColorStop(0,   `rgba(10,  90, 52, ${alpha * 0.95})`);
-  llGrad.addColorStop(0.5, `rgba(12, 110, 62, ${alpha})`);
-  llGrad.addColorStop(1,   `rgba(6,   70, 38, ${alpha * 0.88})`);
-  ctx.fillStyle = llGrad;
-  ctx.shadowColor = `rgba(0, 255, 136, ${0.12 + amplitude * 0.18})`;
-  ctx.shadowBlur  = 3 + amplitude * 4;
-  ctx.fill();
-  ctx.restore();
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(leftX, leftCornerY);
-  ctx.bezierCurveTo(leftX + halfW * 0.22, ulPeak - h * 0.12, cx - halfW * 0.16, ulPeak + bowDepth, cx, ulPeak - bowDepth * 0.3);
-  ctx.bezierCurveTo(cx + halfW * 0.16, ulPeak + bowDepth, rightX - halfW * 0.22, ulPeak - h * 0.12, rightX, rightCornerY);
-  ctx.bezierCurveTo(rightX - halfW * 0.25, llBase + h * 0.1, leftX + halfW * 0.25, llBase + h * 0.1, leftX, leftCornerY);
-  ctx.strokeStyle = `rgba(0, 255, 136, ${0.25 + amplitude * 0.30})`;
-  ctx.lineWidth   = 1.2;
-  ctx.shadowColor = `rgba(0, 255, 136, ${0.35 + amplitude * 0.35})`;
-  ctx.shadowBlur  = 5 + amplitude * 8;
-  ctx.stroke();
-  ctx.restore();
-}
 
 // Constants
 const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
@@ -172,8 +84,8 @@ export function SurrogateOracleImmersion() {
   // Refs
   const decartClientRef = useRef<DecartClientHandle | null>(null);
   const avatarVideoRef = useRef<HTMLVideoElement | null>(null);
-  const oracleFaceRef = useRef<HTMLImageElement | null>(null);
-  const mouthCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const oracleFaceCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const oracleFaceRendererRef = useRef<OracleFaceRenderer | null>(null);
   const oracleFaceMapRef = useRef<import('../lib/OracleVisionCalibrator').OracleFaceMap | null>(null);
   const oracleConversationRef = useRef<OracleConversationHandle | null>(null);
   const pcmAmplitudeRef = useRef(0);
@@ -206,44 +118,16 @@ export function SurrogateOracleImmersion() {
 
   // ── Connection Hook ──
   const handleViseme = useCallback((state: any) => {
-    const face = oracleFaceRef.current;
-    const canvas = mouthCanvasRef.current;
-
-    // Ignore background noise from the worklet
-    const amp = state.amplitude > 0.02 ? state.amplitude : 0;
-    if (amp > pcmAmplitudeRef.current) pcmAmplitudeRef.current = amp;
-
-    if (face) {
-      const { openness } = state;
-      if (amp < 0.04) {
-        face.style.filter = '';
-        face.style.transform = 'scale(0.92)';
-        face.style.transition = 'all 1s ease-out';
+    const renderer = oracleFaceRendererRef.current;
+    if (renderer && renderer.isReady()) {
+      // Direct drive from worklet state
+      const amp = state.amplitude;
+      pcmAmplitudeRef.current = amp;
+      
+      if (amp < 0.05) {
+        renderer.drawIdle();
       } else {
-        const scale  = (0.92 + openness * 0.08).toFixed(3);
-        const bright = (1.1  + openness * 0.25).toFixed(3);
-        const alpha  = (0.45 + openness * 0.35).toFixed(3);
-        const glow   = (18   + openness * 14).toFixed(1);
-
-        face.style.filter = `url(#oracle-lip-warp) brightness(${bright}) drop-shadow(0 0 ${glow}px rgba(0,255,136,${alpha}))`;
-        face.style.transform = `scale(${scale})`;
-        face.style.transition = 'none';
-      }
-    }
-
-    if (canvas) {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        const dpr = window.devicePixelRatio || 1;
-        const displayW = canvas.offsetWidth;
-        const displayH = canvas.offsetHeight;
-        if (canvas.width !== Math.round(displayW * dpr) || canvas.height !== Math.round(displayH * dpr)) {
-          canvas.width  = Math.round(displayW * dpr);
-          canvas.height = Math.round(displayH * dpr);
-          ctx.scale(dpr, dpr);
-        }
-        drawMouthOnCanvas(ctx, displayW, displayH, state);
-        canvas.style.opacity = amp < 0.04 ? '0' : '1';
+        renderer.drawViseme(state);
       }
     }
   }, []);
@@ -318,28 +202,20 @@ export function SurrogateOracleImmersion() {
       lastTime = now;
       
       // Time-independent decay: factor^(dt * 60)
-      const decay = Math.pow(0.88, dt * 60); // Faster decay for better test reliability
+      const decay = Math.pow(0.80, dt * 60); // Faster decay (0.80 instead of 0.88)
       pcmAmplitudeRef.current *= decay;
       
-      const face = oracleFaceRef.current;
-      const canvas = mouthCanvasRef.current;
+      const renderer = oracleFaceRendererRef.current;
+      const faceCanvas = oracleFaceCanvasRef.current;
       
-      if (face) {
-        face.dataset.amplitude = pcmAmplitudeRef.current.toFixed(3);
-        face.dataset.visemeActive = pcmAmplitudeRef.current > 0.005 ? 'true' : 'false';
+      if (faceCanvas) {
+        faceCanvas.dataset.amplitude = pcmAmplitudeRef.current.toFixed(3);
+        faceCanvas.dataset.visemeActive = pcmAmplitudeRef.current > 0.05 ? 'true' : 'false';
       }
 
       // If we've decayed to silence, ensure elements are reset
-      if (pcmAmplitudeRef.current < 0.005) {
-        if (face) {
-          face.style.filter = '';
-          face.style.transform = 'scale(0.92)';
-        }
-        if (canvas) {
-          const ctx = canvas.getContext('2d');
-          if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-          canvas.style.opacity = '0';
-        }
+      if (pcmAmplitudeRef.current < 0.05 && renderer && renderer.isReady()) {
+        renderer.drawIdle();
       }
       
       rafId = requestAnimationFrame(tick);
@@ -409,6 +285,9 @@ export function SurrogateOracleImmersion() {
   useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment);
   
   const handleParallaxUpdate = useCallback((x: number, y: number) => {
+    if (oracleFaceRendererRef.current) {
+      oracleFaceRendererRef.current.setTilt(x, y);
+    }
     // Restore HRTF Head Tracking — Oracle voice follows movement
     if (connectionRef.current.pcmPlayer) {
       connectionRef.current.pcmPlayer.updateHeadOrientation(x, y);
@@ -416,6 +295,26 @@ export function SurrogateOracleImmersion() {
   }, []);
   
   useParallax(scenePhase, handleParallaxUpdate);
+
+  // ── Renderer Lifecycle — create once on oracle mode entry ──
+  useEffect(() => {
+    if (!isOracleMode || connection.isDecartActive) return;
+    const canvas = oracleFaceCanvasRef.current;
+    if (!canvas) return;
+
+    const renderer = new OracleFaceRenderer(canvas);
+    oracleFaceRendererRef.current = renderer;
+    renderer.loadFace(ORACLE_AVATAR_URL).then(() => {
+      if (connection.oracleFaceMap) renderer.calibrate(connection.oracleFaceMap);
+      renderer.startIdleAnimation();
+    });
+
+    return () => {
+      renderer.destroy();
+      oracleFaceRendererRef.current = null;
+    };
+  }, [isOracleMode, connection.isDecartActive, connection.oracleFaceMap]);
+
   const { completedLines, currentLine } = useLoreSequence(scenePhase === 'terminal', () => journey.awakeFromTerminal());
 
   // ── Typewriter title ──
@@ -600,23 +499,6 @@ export function SurrogateOracleImmersion() {
               className="oracle-avatar-static"
             />
 
-            {awakened && (
-              <img
-                ref={oracleFaceRef}
-                src={portrait.latestPortraitUrl || ORACLE_AVATAR_URL}
-                alt="SURROGATE Oracle"
-                className="oracle-avatar-img"
-                style={{
-                  opacity: connection.isDecartActive ? 0 : (isOracleMode ? 1 : 0.45),
-                  transform: isOracleMode ? 'scale(0.92)' : 'scale(0.88)',
-                  filter: isOracleMode 
-                    ? 'brightness(1.1) drop-shadow(0 0 18px rgba(0,255,136,0.45))'
-                    : 'brightness(0.6) blur(4px) grayscale(0.5)',
-                  transition: 'all 2.5s cubic-bezier(0.2, 0.8, 0.2, 1)',
-                }}
-              />
-            )}
-            
             <AnimatePresence mode="wait">
               {portrait.isGenerating ? (
                 <motion.div 
@@ -652,16 +534,17 @@ export function SurrogateOracleImmersion() {
                     </button>
                   </div>
                 </motion.div>
-              ) : (scenePhase === 'awakened' || isOracleMode) ? (
+              ) : (awakened || isOracleMode) ? (
                 <motion.div key="live-face" className="oracle-avatar-container" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ zIndex: 3 }}>
-                  {!connection.isDecartActive && (
-                    <canvas
-                      ref={mouthCanvasRef}
-                      className="oracle-mouth-canvas"
-                      aria-hidden="true"
-                      style={{ position: 'absolute', top: '57%', left: '50%', transform: 'translateX(-50%)', width: '20%', height: '15%', pointerEvents: 'none', zIndex: 4 }}
-                    />
-                  )}
+                  <canvas 
+                    ref={oracleFaceCanvasRef} 
+                    className="oracle-avatar-canvas"
+                    style={{ 
+                      opacity: connection.isDecartActive ? 0 : (isOracleMode ? 1 : 0.45),
+                      filter: isOracleMode ? 'none' : 'blur(4px) brightness(0.6)',
+                      transition: 'opacity 1s ease, filter 1s ease'
+                    }}
+                  />
                   <video ref={avatarVideoRef} className="oracle-avatar-video" autoPlay playsInline muted />
                 </motion.div>
               ) : null}
@@ -699,7 +582,7 @@ export function SurrogateOracleImmersion() {
         </motion.div>
       </div>
 
-      <AnimatePresence mode="wait">
+      <AnimatePresence>
         {scenePhase === 'terminal' && (
           <motion.div
             key="terminal-layer"

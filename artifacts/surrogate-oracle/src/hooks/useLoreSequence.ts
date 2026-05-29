@@ -52,7 +52,8 @@ export function useLoreSequence(active: boolean, onComplete: () => void) {
           lineIdx++;
           charIdx = 0;
           if (lineIdx >= LORE_SEQUENCE.length) {
-            setTimeout(() => onCompleteRef.current(), 900);
+            // Guard against multiple calls if tick keeps running for a frame
+            if (active) onCompleteRef.current();
             return;
           }
           nextCharAt = now;
@@ -74,7 +75,9 @@ export function useLoreSequence(active: boolean, onComplete: () => void) {
     };
 
     rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
+    return () => {
+      cancelAnimationFrame(rafId);
+    };
   }, [active]);
 
   return { completedLines, currentLine };

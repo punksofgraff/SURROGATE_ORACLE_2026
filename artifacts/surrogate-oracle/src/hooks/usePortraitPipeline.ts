@@ -9,12 +9,14 @@ import { logStep } from '../components/OracleStepLogger';
 
 interface UsePortraitPipelineProps {
   currentUserId?: string | null;
+  userEmail?: string | null;
   currentSessionId?: string | null;
   onPortraitGenerated?: (url: string) => void;
 }
 
 export function usePortraitPipeline({
   currentUserId,
+  userEmail,
   currentSessionId,
   onPortraitGenerated,
 }: UsePortraitPipelineProps) {
@@ -34,25 +36,25 @@ export function usePortraitPipeline({
       const { data, error } = await supabase.functions.invoke('gemini-portrait-generator', {
         body: {
           themes: safeThemes,
-          userId: currentUserId || undefined,
+          email: userEmail || undefined,
           sessionId: currentSessionId || undefined,
           enhancePrompt: true,
         },
       });
 
       if (error) throw error;
-      if (!data?.imageUrl) throw new Error('No imageUrl returned from generator');
+      if (!data?.portraitUrl) throw new Error('No portraitUrl returned from generator');
 
       logStep('NEURAL PORTRAIT SYNTHESIZED ✓', 'ok');
-      setLatestPortraitUrl(data.imageUrl);
-      onPortraitGenerated?.(data.imageUrl);
+      setLatestPortraitUrl(data.portraitUrl);
+      onPortraitGenerated?.(data.portraitUrl);
     } catch (err) {
       console.error('Portrait generation failed:', err);
       logStep('PORTRAIT GENERATION FAILED', 'err');
     } finally {
       setIsGenerating(false);
     }
-  }, [currentUserId, currentSessionId, onPortraitGenerated]);
+  }, [userEmail, currentSessionId, onPortraitGenerated]);
 
   const addThemes = useCallback((themes: string[]) => {
     themes.forEach(t => conversationThemesRef.current.add(t));

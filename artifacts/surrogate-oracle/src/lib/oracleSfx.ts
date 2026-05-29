@@ -13,14 +13,22 @@
 
 let _ctx: AudioContext | null = null;
 
-function ctx(): AudioContext {
+/**
+ * Returns the unified AudioContext for the entire application (the 'Audio Spine').
+ * Must be called inside a user gesture handler to ensure it starts in 'running' state.
+ */
+export function getAudioContext(): AudioContext {
   if (!_ctx || _ctx.state === 'closed') {
-    _ctx = new AudioContext();
+    _ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
   }
   if (_ctx.state === 'suspended') {
     _ctx.resume().catch(() => {});
   }
   return _ctx;
+}
+
+function ctx(): AudioContext {
+  return getAudioContext();
 }
 
 /** Soft distortion waveshaper — adds edge without harshness */

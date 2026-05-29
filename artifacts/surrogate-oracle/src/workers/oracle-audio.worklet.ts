@@ -98,11 +98,11 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
     
     // If analyzed state is silent, force a faster decay or snap to zero
     if (state.amplitude === 0) {
-      this.smoothed.amplitude *= 0.85;
+      this.smoothed.amplitude *= 0.70;
       if (this.smoothed.amplitude < 0.001) this.smoothed.amplitude = 0;
-      this.smoothed.openness *= 0.85;
-      this.smoothed.rounded *= 0.85;
-      this.smoothed.spread *= 0.85;
+      this.smoothed.openness *= 0.70;
+      this.smoothed.rounded *= 0.70;
+      this.smoothed.spread *= 0.70;
     } else {
       // Use faster lerp for decay (when current amplitude is lower than smoothed)
       const lerpFactor = state.amplitude < this.smoothed.amplitude ? 0.15 : 0.45;

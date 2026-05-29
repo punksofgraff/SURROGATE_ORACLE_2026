@@ -12,7 +12,7 @@ import type { DecartClientHandle } from '../components/DecartClient';
 import type { VisemeState } from '../lib/visemeDetector';
 import type { OracleFaceMap } from '../lib/OracleVisionCalibrator';
 export type { OracleFaceMap };
-import { playOraclePresence } from '../lib/oracleSfx';
+import { playOraclePresence, getAudioContext } from '../lib/oracleSfx';
 
 interface UseOracleConnectionProps {
   oracleAvatarDataUrl: string;
@@ -158,10 +158,18 @@ export function useOracleConnection({
   }, [oracleAvatarUrl, oracleAvatarDataUrl, decartClientRef, avatarVideoRef, onProcessingChange, fallbackToFreemium]);
 
   const handleOracleResponse = useCallback(async (data: Int16Array | string) => {
+    // Ensure player exists before we do anything
+    if (!pcmPlayerRef.current) {
+      const player = new PCMPlayer(24000, playbackRate, getAudioContext());
+      player.setVisemeCallback(onViseme);
+      pcmPlayerRef.current = player;
+    }
+
     if (isFirstChunkRef.current) {
       playOraclePresence();
       isFirstChunkRef.current = false;
-      pcmPlayerRef.current?.setVolume(1.0, 240);
+      // Volume up on the existing ref
+      pcmPlayerRef.current.setVolume(1.0, 240);
     }
 
     let pcmData: Int16Array | null = data instanceof Int16Array ? data : null;
@@ -193,12 +201,6 @@ export function useOracleConnection({
       }
       await decartClientRef.current.sendAudio(payload);
       return;
-    }
-
-    if (!pcmPlayerRef.current) {
-      const player = new PCMPlayer(24000, playbackRate);
-      player.setVisemeCallback(onViseme);
-      pcmPlayerRef.current = player;
     }
 
     if (pcmData) {

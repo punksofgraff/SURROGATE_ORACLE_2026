@@ -19,6 +19,7 @@ import { createVADProcessor, type VADFrame } from '../hooks/useVAD';
 import { motion, AnimatePresence } from 'framer-motion';
 import { logStep } from './OracleStepLogger';
 import { Mic, MicOff, Send, X, Zap } from 'lucide-react';
+import { getAudioContext } from '../lib/oracleSfx';
 
 const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
 
@@ -154,7 +155,6 @@ const OracleConversation = forwardRef(
     const [showSignalPad, setShowSignalPad] = useState(false);
 
     const wsRef = useRef<WebSocket | null>(null);
-    const audioContextRef = useRef<AudioContext | null>(null);
     const processorRef = useRef<ScriptProcessorNode | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const currentResponseText = useRef('');
@@ -430,15 +430,13 @@ const OracleConversation = forwardRef(
 
     const startMic = async () => {
       try {
-        if (!audioContextRef.current) {
-          audioContextRef.current = new AudioContext({ sampleRate: SAMPLE_RATE_INPUT });
-        }
+        const ctx = getAudioContext();
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
         });
         mediaStreamRef.current = stream;
-        const source = audioContextRef.current.createMediaStreamSource(stream);
-        processorRef.current = audioContextRef.current.createScriptProcessor(4096, 1, 1);
+        const source = ctx.createMediaStreamSource(stream);
+        processorRef.current = ctx.createScriptProcessor(4096, 1, 1);
 
         processorRef.current.onaudioprocess = (e) => {
           const input = e.inputBuffer.getChannelData(0);
@@ -474,13 +472,21 @@ const OracleConversation = forwardRef(
         };
 
         source.connect(processorRef.current);
-        processorRef.current.connect(audioContextRef.current.destination);
+        
+        // DO NOT connect to ctx.destination — this causes mic feedback/hum.
+        // Instead, connect to a silent gain node to ensure the processor stays active.
+        const silentGain = ctx.createGain();
+        silentGain.gain.value = 0;
+        processorRef.current.connect(silentGain);
+        silentGain.connect(ctx.destination);
+        
         setIsListening(true);
         isListeningRef.current = true;
         onListeningChangeRef.current?.(true);
         logStep('MIC STARTED', 'ok');
       } catch (e) {
-        logStep(`MIC FAILED: ${(e as Error)?.message ?? e}`, 'err');
+        const err = e as Error;
+        logStep(`MIC FAILED: ${err.message ?? err}`, 'err');
         console.error('[Mic] Failed:', e);
       }
     };
@@ -491,8 +497,6 @@ const OracleConversation = forwardRef(
       processorRef.current = null;
       mediaStreamRef.current?.getTracks().forEach(t => t.stop());
       mediaStreamRef.current = null;
-      audioContextRef.current?.close();
-      audioContextRef.current = null;
       isListeningRef.current = false;
       setIsListening(false);
       onListeningChangeRef.current?.(false);

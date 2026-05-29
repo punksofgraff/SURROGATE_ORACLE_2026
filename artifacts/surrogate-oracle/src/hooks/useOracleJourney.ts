@@ -44,6 +44,10 @@ export function useOracleJourney({
     logStep('LORE DONE → AWAKENED', 'ok');
     setScenePhase('awakened');
     
+    // Stop the low-frequency alley hum once lore is finished
+    alleyAmbienceStopRef.current?.();
+    alleyAmbienceStopRef.current = null;
+    
     // Auto-start Gemini session after a brief breath
     logStep('startSession() CALLED', 'ok');
     setTimeout(() => {

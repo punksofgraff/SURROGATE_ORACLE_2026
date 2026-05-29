@@ -24,10 +24,10 @@ export class PCMPlayer {
   private masterGain: GainNode | null = null;      // volume control for ducking/fades
   private analyser: AnalyserNode;
 
-  constructor(sampleRate: number = 24000, playbackRate: number = 1.0) {
+  constructor(sampleRate: number = 24000, playbackRate: number = 1.0, existingContext?: AudioContext) {
     this.sampleRate = sampleRate;
     this.playbackRate = playbackRate;
-    this.context = new (window.AudioContext || (window as any).webkitAudioContext)({
+    this.context = existingContext || new (window.AudioContext || (window as any).webkitAudioContext)({
       sampleRate: this.sampleRate
     });
 
@@ -64,7 +64,7 @@ export class PCMPlayer {
     // ── Master Gain — used for "ducking up" (fading in) and "ducking down"
     try {
       const gain = this.context.createGain();
-      gain.gain.setValueAtTime(0.001, this.context.currentTime); // Start near-silent
+      gain.gain.setValueAtTime(0, this.context.currentTime); // Start silent
       gain.connect(this.context.destination);
       this.masterGain = gain;
     } catch {

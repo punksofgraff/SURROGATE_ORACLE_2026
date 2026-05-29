@@ -38,6 +38,7 @@ import { useOracleJourney } from '../hooks/useOracleJourney';
 
 // Libs/Utils
 import { OracleFaceRenderer } from '../lib/OracleFaceRenderer';
+import { getAudioContext } from '../lib/oracleSfx';
 import './SurrogateOracleImmersion.css';
 
 // Constants
@@ -66,6 +67,7 @@ export function SurrogateOracleImmersion() {
   const [oracleAvatarDataUrl] = useState<string>(ORACLE_AVATAR_URL);
   const [currentUserId] = useState<string | null>(null);
   const [currentSessionId] = useState(() => crypto.randomUUID());
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [sessionCoins, setSessionCoins] = useState(0);
   const [showArtifactCard, setShowArtifactCard] = useState(false);
   const [portraitViewerUrl, setPortraitViewerUrl] = useState<string | null>(null);
@@ -90,39 +92,28 @@ export function SurrogateOracleImmersion() {
   const staticAvatarRef = useRef<HTMLImageElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const radioGainRef = useRef<GainNode | null>(null);
-  const radioCtxRef = useRef<AudioContext | null>(null);
   const targetVolRef = useRef(0.22);
 
-  // ── Journey Hook ──
-  const handleStartSession = useCallback(() => {
-    oracleConversationRef.current?.startSession();
+  // ── Audio Spine setup — must be called inside user gesture ──
+  const setupAudioSpine = useCallback(async () => {
+    if (radioGainRef.current || !audioRef.current) return;
+
+    try {
+      const ctx = getAudioContext();
+      // MediaElementSource can only be created once per element
+      const source = ctx.createMediaElementSource(audioRef.current);
+      const gain   = ctx.createGain();
+      gain.gain.value = targetVolRef.current;
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      radioGainRef.current = gain;
+
+      setIsAudioPlaying(true);
+      logStep('AUDIO SPINE INITIALIZED', 'ok');
+    } catch (e) {
+      console.warn('[Audio] Spine setup failed:', e);
+    }
   }, []);
-
-  const handleCleanup = useCallback(() => {
-    connectionRef.current.cleanup();
-  }, []);
-
-  const journey = useOracleJourney({
-    onStartSession: handleStartSession,
-    onCleanup: handleCleanup,
-  });
-
-  const { scenePhase, enterTerminal, exitOracleMode, selectKnifeQuestion } = journey;
-
-  // ── VRF materialize timing ──
-  useEffect(() => {
-    if (scenePhase !== 'terminal' || !staticAvatarRef.current) return;
-    const delay    = (0.15 + Math.random() * 0.55).toFixed(2) + 's';
-    const duration = (2.6  + Math.random() * 2.0).toFixed(2)  + 's';
-    staticAvatarRef.current.style.animationDelay    = delay;
-    staticAvatarRef.current.style.animationDuration = duration;
-    return () => {
-      if (staticAvatarRef.current) {
-        staticAvatarRef.current.style.animationDelay    = '';
-        staticAvatarRef.current.style.animationDuration = '';
-      }
-    };
-  }, [scenePhase]);
 
   // ── Connection Hook ──
   const handleViseme = useCallback((state: any) => {
@@ -143,6 +134,60 @@ export function SurrogateOracleImmersion() {
     }
   }, []);
 
+  const handleProcessingChange = useCallback((proc: boolean) => {
+    setIsOracleSpeaking(proc);
+  }, []);
+
+  const connection = useOracleConnection({
+    oracleAvatarDataUrl,
+    oracleAvatarUrl: ORACLE_AVATAR_URL,
+    playbackRate: ORACLE_PLAYBACK_RATE,
+    decartClientRef,
+    avatarVideoRef,
+    onViseme: handleViseme,
+    onProcessingChange: handleProcessingChange,
+  });
+
+  const connectionRef = useRef(connection);
+  useEffect(() => { connectionRef.current = connection; }, [connection]);
+
+  // ── Journey Hook ──
+  const handleStartSession = useCallback(() => {
+    oracleConversationRef.current?.startSession();
+  }, []);
+
+  const handleCleanup = useCallback(() => {
+    connection.cleanup();
+  }, [connection.cleanup]);
+
+  const journey = useOracleJourney({
+    onStartSession: handleStartSession,
+    onCleanup: handleCleanup,
+  });
+
+  const { scenePhase, enterTerminal, exitOracleMode, selectKnifeQuestion } = journey;
+
+  const handleFirstTap = useCallback(async () => {
+    if (scenePhase !== 'dormant') return;
+    await setupAudioSpine();
+    enterTerminal();
+  }, [scenePhase, setupAudioSpine, enterTerminal]);
+
+  // ── VRF materialize timing ──
+  useEffect(() => {
+    if (scenePhase !== 'terminal' || !staticAvatarRef.current) return;
+    const delay    = (0.15 + Math.random() * 0.55).toFixed(2) + 's';
+    const duration = (2.6  + Math.random() * 2.0).toFixed(2)  + 's';
+    staticAvatarRef.current.style.animationDelay    = delay;
+    staticAvatarRef.current.style.animationDuration = duration;
+    return () => {
+      if (staticAvatarRef.current) {
+        staticAvatarRef.current.style.animationDelay    = '';
+        staticAvatarRef.current.style.animationDuration = '';
+      }
+    };
+  }, [scenePhase]);
+
   // ── RAF Loop for Amplitude Decay & Renderer Updates ──
   useEffect(() => {
     let rafId: number;
@@ -161,11 +206,11 @@ export function SurrogateOracleImmersion() {
       
       if (faceCanvas) {
         faceCanvas.dataset.amplitude = pcmAmplitudeRef.current.toFixed(3);
-        faceCanvas.dataset.visemeActive = pcmAmplitudeRef.current > 0.05 ? 'true' : 'false';
+        faceCanvas.dataset.visemeActive = pcmAmplitudeRef.current > 0.01 ? 'true' : 'false';
       }
 
       // If we've decayed to silence but the renderer hasn't reset, force it
-      if (pcmAmplitudeRef.current < 0.05 && renderer && renderer.isReady()) {
+      if (pcmAmplitudeRef.current < 0.01 && renderer && renderer.isReady()) {
         renderer.drawIdle();
       }
       
@@ -183,7 +228,7 @@ export function SurrogateOracleImmersion() {
     
     if (radioGainRef.current) {
       const gain = radioGainRef.current;
-      const ctx  = radioCtxRef.current!;
+      const ctx  = getAudioContext();
       const now  = ctx.currentTime;
       const isDucking = target < gain.gain.value;
       gain.gain.cancelScheduledValues(now);
@@ -193,23 +238,6 @@ export function SurrogateOracleImmersion() {
       audioRef.current.volume = target;
     }
   }, []);
-
-  const handleProcessingChange = useCallback((proc: boolean) => {
-    setIsOracleSpeaking(proc);
-  }, []);
-
-  const connection = useOracleConnection({
-    oracleAvatarDataUrl,
-    oracleAvatarUrl: ORACLE_AVATAR_URL,
-    playbackRate: ORACLE_PLAYBACK_RATE,
-    decartClientRef,
-    avatarVideoRef,
-    onViseme: handleViseme,
-    onProcessingChange: handleProcessingChange,
-  });
-
-  const connectionRef = useRef(connection);
-  useEffect(() => { connectionRef.current = connection; }, [connection]);
 
   // ── Music ducking — three clean levels ────────────────────────────────────
   useEffect(() => {
@@ -240,6 +268,7 @@ export function SurrogateOracleImmersion() {
 
   const portrait = usePortraitPipeline({
     currentUserId,
+    userEmail: userEmail,
     currentSessionId,
     onPortraitGenerated: handlePortraitGenerated,
   });
@@ -276,42 +305,23 @@ export function SurrogateOracleImmersion() {
   }, []);
 
   useEffect(() => {
-    // Pre-create radio context on first interaction via initializeOracle side-effect
-    // We wrap initializeOracle to ensure AudioContext unlocks
-    const originalInit = connection.initializeOracle;
-    connection.initializeOracle = async () => {
-      if (!radioGainRef.current && audioRef.current) {
-        try {
-          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-          ctx.resume();
-          const source = ctx.createMediaElementSource(audioRef.current);
-          const gain   = ctx.createGain();
-          gain.gain.value = targetVolRef.current;
-          source.connect(gain);
-          gain.connect(ctx.destination);
-          radioCtxRef.current  = ctx;
-          radioGainRef.current = gain;
-        } catch (e) {
-          console.warn('[Audio] GainNode setup failed:', e);
-        }
-      }
-      setIsAudioPlaying(true);
-      return originalInit();
-    };
-  }, [connection, fadeToVolume]);
-
-  useEffect(() => {
-    connection.initializeOracle();
-  }, [connection.initializeOracle]);
-
-  useEffect(() => {
     if (scenePhase === 'awakened') {
+      // Connect and warm up Gemini precisely once upon awakening
+      connection.initializeOracle();
+      
+      // Attempt to retrieve user email for portrait persistence if authenticated
+      import('../lib/supabase').then(({ supabase }) => {
+        supabase.auth.getUser().then(({ data }) => {
+          if (data?.user?.email) setUserEmail(data.user.email);
+        });
+      });
+
       setTimeout(() => logStep('ORACLE ANNOUNCES TERRITORIES', 'ok'), 1200);
     }
     if (scenePhase === 'oracle') {
       oracleConversationRef.current?.startSession();
     }
-  }, [scenePhase]);
+  }, [scenePhase, connection.initializeOracle]);
 
   // ── DEV hooks ──
   useEffect(() => {
@@ -379,7 +389,19 @@ export function SurrogateOracleImmersion() {
       data-audio-target-vol={targetVolRef.current}
     >
       {/* ── Audio Spine — Radio Stream ── */}
-      <audio ref={audioRef} src={AUDIO_STREAM_URL} loop preload="none" />
+      <audio 
+        ref={audioRef} 
+        src={AUDIO_STREAM_URL} 
+        loop 
+        preload="auto" 
+        crossOrigin="anonymous"
+        onPlay={() => logStep('RADIO PLAYING', 'ok')}
+        onPause={() => logStep('RADIO PAUSED', 'warn')}
+        onError={(e) => {
+          console.error('[Radio] Error:', e);
+          logStep('RADIO STREAM ERROR', 'err');
+        }}
+      />
 
       {/* ── XR Layer 0: Device camera passthrough ── */}
       {isXRMode && cameraActive && (
@@ -450,7 +472,7 @@ export function SurrogateOracleImmersion() {
       {/* ── Layer 4: Central cabinet + avatar ── */}
       <div
         className="oracle-center"
-        onClick={() => scenePhase === 'dormant' && enterTerminal()}
+        onClick={handleFirstTap}
         style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}
       >
         <motion.div className="oracle-cabinet">

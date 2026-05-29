@@ -225,7 +225,10 @@ async function run() {
     !e.includes('supabase') &&
     !e.includes('VITE_SUPABASE') &&
     !e.includes('Decart') &&
-    !e.includes('WebRTC')
+    !e.includes('WebRTC') &&
+    !e.includes('[Mic]') &&                        // no mic hardware in headless CI
+    !e.includes('Requested device not found') &&   // headless: no mic/camera
+    !e.includes('Permission denied')               // headless: no media permissions
   );
   if (relevantErrors.length === 0) {
     PASS('No unexpected JS errors ✓');

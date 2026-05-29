@@ -48,6 +48,17 @@ Thumbs.db
 .cache/
 .local/
 
+# Local tool session data and reports
+.agents/
+.claude/
+.claude-session/
+.should-i-ship/
+screenshots/
+artifacts/**/smoke-*.png
+attached_assets/Pasted-Surrogate-Oracle-Overhaul-Overview-for-Claude-Agent-goa_1779915572701.txt
+scripts/claude-auth-restore.sh
+scripts/persist-claude-auth.sh
+
 # Local env files — never commit these
 .env.local
 .env.*.local

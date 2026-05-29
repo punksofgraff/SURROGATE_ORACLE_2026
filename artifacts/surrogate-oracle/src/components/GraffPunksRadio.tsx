@@ -4,7 +4,6 @@ import { Volume2, VolumeX } from 'lucide-react';
 interface GraffPunksRadioProps {
   isPlaying: boolean;
   onToggle: () => void;
-  volume?: number;
 }
 
 export function GraffPunksRadio({ isPlaying, onToggle }: GraffPunksRadioProps) {

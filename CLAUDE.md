@@ -1,7 +1,7 @@
 # SURROGATE — Development Guide
 
 Canonical mandates for the Surrogate project. Follow strictly.
-Last audited: 2026-05-28. Pressure test: 86/86 passing.
+Last audited: 2026-05-28. Ducking rebuild + dead props fixed 2026-05-28.
 
 ---
 
@@ -36,14 +36,18 @@ Last audited: 2026-05-28. Pressure test: 86/86 passing.
 |-------|--------|-------|
 | Dormant ambient | `0.06` | Present but not loud |
 | Any interaction (terminal/awakened) | `0.03` | Drops the moment user taps |
-| Oracle mode active | `0.02` | Background only |
-| Oracle actively speaking | `0.008` | Near-silent; voice is foreground |
+| Oracle mode (any sub-state) | `0.001` | Near-silent for the entire conversation — no bouncing |
 
-Priority order (highest wins): `oracle-speaking 0.008` → `oracle-active 0.02` → `interaction 0.03` → `dormant 0.06`.
+Three levels only. Once oracle mode is live the music sits at `0.001` and **does not change** regardless of whether Oracle is speaking, the user is speaking, or there is silence between turns.
 
-Controlled by a single `useEffect` on `[scenePhase, isOracleMode, oracleState.isProcessing]` in `SurrogateOracleImmersion.tsx`.
+**Implementation: Web Audio GainNode (not HTMLAudioElement.volume).**
+On iOS, the OS resets `HTMLAudioElement.volume` to `1.0` when the audio session switches from `playback` → `playAndRecord` on mic grant. `GainNode.gain` lives inside the browser's audio graph and is immune to this. The radio stream is connected via `createMediaElementSource` inside `enterTerminal()` (the user gesture) and routed through a `GainNode` in `radioCtxRef` / `radioGainRef`. All subsequent volume changes use `GainNode.gain.linearRampToValueAtTime()` — duck in 60ms, unduck in 400ms. Never touch `HTMLAudioElement.volume` for ducking after this point.
 
-On barge-in (`serverContent.interrupted`): immediately set `isProcessing: false` — do NOT wait for the silence timer. Music must un-duck the moment Oracle stops.
+`isMicActive` is **not** a dep of the ducking effect — GainNode is immune to iOS session changes, so re-running on mic grant is unnecessary.
+
+Controlled by `useEffect` on `[scenePhase, isOracleMode, fadeToVolume]`.
+
+On barge-in (`serverContent.interrupted`): stops PCMPlayer and clears speaking indicator. No effect on music volume (it stays at 0.001).
 
 ### 3. Step Logging — Canonical Step Names
 
@@ -172,10 +176,18 @@ const MOUTH = {
 - Separation multiplier boosted to 1.2× for CGI face (subtle natural mouth gap).
 - Blink band corrected to Y=32–48% of canvas (eyes at Y=220-255 in source).
 
-**VisemeDetector audio routing (never break this):**
+**PCM-direct amplitude (primary path — added 2026-05-28):**
+- `pcmAmplitudeRef` in `SurrogateOracleImmersion.tsx` holds RMS amplitude computed directly from each Int16 chunk.
+- Per chunk: `rms * 6` (typical Gemini TTS RMS ≈ 0.08–0.15 → amplitude 0.5–0.9). Stored via peak-hold: `if (pcmAmp > ref.current) ref.current = pcmAmp`.
+- Decay: `ref.current *= 0.91` per RAF frame inside the VisemeDetector callback (~200ms half-life at 60fps). Mouth closes naturally between turns.
+- `effectiveAmp = Math.max(state.amplitude, pcmAmplitudeRef.current)` — PCM wins when analyser is silent.
+- When analyser gives no signal (`state.amplitude < 0.04`) but PCM says speech, a synthetic `VisemeState` is created: `G` (mid-open) or `A` (loud) depending on amplitude.
+
+**VisemeDetector audio routing (secondary path — still active):**
 - Analyser is NOT connected to `ctx.destination` — read-only side-tap only.
 - `lerpVisemeState` always uses `b.viseme` (not conditional on amplitude direction).
 - `PCMPlayer.connect(analyser)` replaces `this.destination`; `feed()` routes each source to BOTH analyser AND panner.
+- When the AnalyserNode IS receiving signal, `state.amplitude > 0.04` and the FFT-derived viseme classification takes priority (better phoneme accuracy than the amplitude-only synthesis).
 
 ### 8. Component Standards
 - Use surgical `Edit` tool updates — never rewrite a file for a 5-line fix.
@@ -193,8 +205,6 @@ const MOUTH = {
 | Oracle crashes when asked to use web tools | High | `OracleConversation.tsx` | Silent fail when Oracle tries tool-use. Likely Gemini tool config or system prompt issue. |
 | Contemplative filler phrases | Medium | `OracleConversation.tsx` | No pre-rendered "thinking" audio while Oracle processes. Seeker sees silence. |
 | Territory announcement race on WS reconnect | Medium | `awakeFromTerminal()` | `sendTextMessage` at +1200ms silently drops if WS reconnecting. Rare in practice (lore is 32s, WS reconnects in ~500ms). |
-| `isGeminiConnected` stays true on WS drop | Medium | `SurrogateOracleImmersion.tsx` | `ws.onclose` in OracleConversation has no parent callback. `◈ OPENING CHANNEL...` hides incorrectly. |
-| XR marker path missing PCMPlayer pre-creation | Medium | `onXRMarkerRef` callback | Marker detection is not a user gesture — AudioContext suspended on mobile Safari in XR path. |
 | `createScriptProcessor` deprecated | Low | `OracleConversation.tsx` | Works in all browsers. Migrate to AudioWorklet when feasible. |
 
 ---

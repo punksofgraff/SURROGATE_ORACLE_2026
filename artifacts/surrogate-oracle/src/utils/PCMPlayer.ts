@@ -18,6 +18,7 @@ export class PCMPlayer {
 
   private destination: AudioNode | null = null;   // external analyser (lip-sync)
   private panner: PannerNode | null = null;        // spatial placement for playback
+  private masterGain: GainNode | null = null;      // volume control for ducking/fades
 
   /**
    * @param sampleRate  Input PCM sample rate (Gemini Live = 24000 Hz)
@@ -31,6 +32,16 @@ export class PCMPlayer {
     this.context = new (window.AudioContext || (window as any).webkitAudioContext)({
       sampleRate: this.sampleRate
     });
+
+    // ── Master Gain — used for "ducking up" (fading in) and "ducking down"
+    try {
+      const gain = this.context.createGain();
+      gain.gain.setValueAtTime(0.001, this.context.currentTime); // Start near-silent
+      gain.connect(this.context.destination);
+      this.masterGain = gain;
+    } catch {
+      this.masterGain = null;
+    }
 
     // ── Spatial panner — Oracle voice comes from centre-screen, slightly above.
     // HRTF model creates genuine 3D depth on headphones (position cues via ear
@@ -47,7 +58,12 @@ export class PCMPlayer {
       panner.positionX.setValueAtTime(0,    this.context.currentTime); // centre
       panner.positionY.setValueAtTime(0.3,  this.context.currentTime); // slightly above
       panner.positionZ.setValueAtTime(-0.8, this.context.currentTime); // inside screen
-      panner.connect(this.context.destination);
+      
+      if (this.masterGain) {
+        panner.connect(this.masterGain);
+      } else {
+        panner.connect(this.context.destination);
+      }
       this.panner = panner;
     } catch {
       // Fallback: no spatial panning (unsupported environment)
@@ -55,6 +71,21 @@ export class PCMPlayer {
     }
 
     this.destination = this.context.destination;
+  }
+
+  /**
+   * Set the master volume with an exponential ramp.
+   * Used for "ducking up" (fade in) and "ducking down" (fade out).
+   * Exponential ramps feel more natural/accurate to human ears.
+   */
+  public setVolume(target: number, rampMs: number = 200) {
+    if (!this.masterGain) return;
+    const now = this.context.currentTime;
+    // exponentialRampToValueAtTime requires a positive value
+    const safeTarget = Math.max(0.0001, target);
+    this.masterGain.gain.cancelScheduledValues(now);
+    this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+    this.masterGain.gain.exponentialRampToValueAtTime(safeTarget, now + rampMs / 1000);
   }
 
   /**
@@ -96,6 +127,8 @@ export class PCMPlayer {
     // Oracle voice materialises from centre-above (cabinet position).
     if (this.panner) {
       source.connect(this.panner);
+    } else if (this.masterGain) {
+      source.connect(this.masterGain);
     } else {
       source.connect(this.context.destination);
     }
@@ -142,5 +175,18 @@ export class PCMPlayer {
 
   public getContext() {
     return this.context;
+  }
+
+  /**
+   * Update Oracle spatial position from device head orientation.
+   * normX [-1,1]: left/right tilt  → panner X axis
+   * normZ [-1,1]: forward/back tilt → panner Z axis (negative = into screen)
+   * Ramps over 80ms to avoid AudioParam clicks.
+   */
+  public updateHeadOrientation(normX: number, normZ: number) {
+    if (!this.panner) return;
+    const t = this.context.currentTime + 0.08;
+    this.panner.positionX.linearRampToValueAtTime(normX * 0.55, t);
+    this.panner.positionZ.linearRampToValueAtTime(-0.8 + normZ * 0.35, t);
   }
 }

@@ -1,122 +1,128 @@
 /**
  * OracleFaceRenderer.ts
  *
- * Pixel-accurate talking-head lip sync for a static face image.
- * Inspired by the technique used in Wav2Lip / SadTalker / D-ID:
- *   1. Identify the exact mouth region in the source image.
- *   2. Each frame: redraw the full face, then warp the actual lip
- *      pixels — upper strip shifts up, lower strip shifts down,
- *      gap filled with dark cavity, edges feathered to surrounding skin.
- *   3. No synthetic overlays. The animated mouth IS the face pixels.
+ * WebGL mesh-warp lip sync for the Oracle portrait.
  *
- * Works entirely in the browser via Canvas 2D API.
- * No server calls. No WebAssembly. No model weights.
- * CORS-safe: only uses drawImage(), never getImageData().
+ * Image: i.postimg.cc/jSGnyZXh/Image-1-(11).jpg — 1280×640 landscape JPEG.
+ * Container: square CSS box → object-fit:cover crops to centre 640×640.
+ * UV crop: u ∈ [0.25, 0.75] (centre 640px of 1280), v ∈ [0, 1] (full height).
  *
- * ── Face Spatial Map (ORACLE_AVATAR_URL = 1280×640 JPEG) ─────────────────
+ * Mesh: 24×24 grid. Each vertex stores:
+ *   - baseX/baseY  (-1..1 clip space, independent of UV crop)
+ *   - u/v          (cropped texture coords, fixed)
+ * Each frame deformMesh() displaces baseX/baseY by mouth/jaw/breath offsets.
  *
- *   Object-fit:cover in a SQUARE container:
- *     – Height fills exactly → scale = containerSize / 640
- *     – Displayed width = 1280 * scale = 2 * containerSize → crop each side by containerSize/2
- *     – Visible source x range: [320, 960]  (centre 640px of 1280)
- *
- *   Known anchor points (% of container, from face analysis):
- *     Crown  : X=50%  Y=12%
- *     Eyes   : X=50%  Y=34-40%
- *     Nose   : X=50%  Y=41%
- *     MOUTH  : X=50%  Y=48%   ← lip midline (Y=305 / 640)
- *     Chin   : X=50%  Y=52%
- *     Mouth natural width in container ≈ 16%
- *
- *   Mouth region in SOURCE IMAGE pixels (1280×640):
- *     Centre  : (640, 305)
- *     Width   : ~104 px  → left=588, right=692
- *     Height  : ~31  px  → top=289, bottom=320
- *     Upper lip strip: y [289, 302]  (13 px)
- *     Lower lip strip: y [303, 320]  (17 px)
- *     Lip midline:     y  305
+ * Face anchor defaults (fraction of FULL source image, so x=0.5 = pixel 640):
+ *   mouthCenter  { x:0.500, y:0.475 }   — lip midline
+ *   jawBottom    0.540                   — jaw centre of mass
+ * These match the portrait used in production and are verified by visual scan.
  */
 
 import type { VisemeState } from './visemeDetector';
+import type { OracleFaceMap } from './OracleVisionCalibrator';
 
-// ── Source image constants ────────────────────────────────────────────────────
-const IMG_W = 1280;
-const IMG_H = 640;
+// ── WebGL shaders ────────────────────────────────────────────────────────────
 
-// Mouth region in source-image pixel space — calibrated to the Oracle portrait
-// (i.postimg.cc/jSGnyZXh/Image-1-(11).jpg, 1280×640).
-//
-// Verified by drawing horizontal scan lines + overlaying a red rectangle on the
-// downloaded portrait and inspecting which Y values intersect the actual lips:
-//   Crown  : Y≈ 80   Eyes  : Y≈220-255   Nose bottom : Y≈265
-//   Mouth  : Y≈288-320   Chin : Y≈335   Face centre X ≈ 640
-//
-// Previous values (midY:344 and midY:390) both landed on the chin region.
-// These corrected values land precisely on the lips.
-const MOUTH = {
-  cx: 640,    // horizontal centre of lips — face is perfectly centred in source image
-  midY: 305,  // vertical lip midline (closed-mouth seam, Y≈305 verified by scan)
-  halfW: 52,  // half-width of mouth region (~104px total)
-  ulTop: 289, ulBot: 302,  // upper lip strip y-range in source
-  llTop: 303, llBot: 320,  // lower lip strip y-range in source
-  // Philtrum skin — just above the upper lip, used to erase the original mouth
-  skinTop: 265, skinBot: 287,
-  // Erase patch is wider than lips to cleanly catch the lip corners
-  eraseHalfW: 62,
+const VS = `
+  attribute vec2 a_pos;
+  attribute vec2 a_uv;
+  varying   vec2 v_uv;
+  void main() {
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+    v_uv = a_uv;
+  }
+`;
+
+const FS = `
+  precision mediump float;
+  uniform sampler2D u_tex;
+  varying vec2 v_uv;
+  void main() {
+    gl_FragColor = texture2D(u_tex, v_uv);
+  }
+`;
+
+// ── Viseme blendshape targets ────────────────────────────────────────────────
+const SHAPES: Record<string, { open: number; spread: number; rounded: number }> = {
+  X: { open: 0.00, spread: 0.15, rounded: 0.00 },
+  B: { open: 0.00, spread: 0.10, rounded: 0.00 },
+  C: { open: 0.12, spread: 0.45, rounded: 0.10 },
+  D: { open: 0.24, spread: 0.35, rounded: 0.15 },
+  E: { open: 0.18, spread: 0.92, rounded: 0.05 },
+  F: { open: 0.30, spread: 0.18, rounded: 0.20 },
+  G: { open: 0.58, spread: 0.30, rounded: 0.65 },
+  H: { open: 0.80, spread: 0.45, rounded: 0.88 },
+  A: { open: 0.95, spread: 0.55, rounded: 0.20 },
 };
 
-// ── Preston Blair viseme → canonical mouth shape ──────────────────────────────
-// Each phoneme has a characteristic jaw-drop (openness) and lip-spread.
-// drawViseme() lerps toward these targets so phoneme transitions are smooth,
-// not the jerky amplitude-only warp the original pixel-shift produced.
-const VISEME_SHAPES: Record<string, { openness: number; spread: number }> = {
-  X: { openness: 0.00, spread: 0.15 }, // silence — rest position
-  B: { openness: 0.00, spread: 0.10 }, // b / m / p — lips sealed
-  C: { openness: 0.10, spread: 0.45 }, // d / k / n / s / th — slight slit
-  D: { openness: 0.22, spread: 0.35 }, // th open — a touch wider
-  E: { openness: 0.15, spread: 0.92 }, // ee / i — wide-flat smile, minimal drop
-  F: { openness: 0.28, spread: 0.18 }, // f / v — lower lip tucked
-  G: { openness: 0.55, spread: 0.30 }, // oh / u — rounded mid-open
-  H: { openness: 0.78, spread: 0.45 }, // aw / open vowels — wide jaw
-  A: { openness: 0.92, spread: 0.55 }, // ah — maximum jaw drop
-};
+// Object-fit:cover crop: image is 1280×640 in a square container.
+// Scale = containerSize / 640 → rendered width = 1280 * scale = 2*containerSize.
+// Crop = (2*containerSize - containerSize) / 2 / scale = 320px each side.
+// UV: u_start = 320/1280 = 0.25, u_end = 960/1280 = 0.75.
+const U_START = 0.25;
+const U_END   = 0.75;
 
-// ── OracleFaceRenderer ────────────────────────────────────────────────────────
+// Grid resolution — higher = smoother warp, more GPU work
+const ROWS = 24;
+const COLS = 24;
+const VERTS = (ROWS + 1) * (COLS + 1);
 
 export class OracleFaceRenderer {
   private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
+  private gl: WebGLRenderingContext;
+  private program: WebGLProgram | null = null;
+  private texture: WebGLTexture | null = null;
   private img: HTMLImageElement | null = null;
 
-  // ── Idle animation state ─────────────────────────────────────────────────────
+  // Mesh arrays — basePos is fixed reference, pos is deformed each frame
+  private basePos  = new Float32Array(VERTS * 2); // clip space -1..1
+  private pos      = new Float32Array(VERTS * 2); // deformed, uploaded each frame
+  private uvs      = new Float32Array(VERTS * 2); // fixed crop UVs
+  private indices  = new Uint16Array(ROWS * COLS * 6);
+
+  private posBuffer: WebGLBuffer | null = null;
+  private uvBuffer:  WebGLBuffer | null = null;
+  private idxBuffer: WebGLBuffer | null = null;
+
+  // Idle animation
   private idleRafId      = 0;
   private blinkNextAt    = 0;
   private blinkStartedAt = -1;
   private readonly BLINK_MS = 180;
 
-  // ── Viseme lerp state — smooth phoneme-to-phoneme transitions ─────────────
-  // Without this, mouth snaps between shapes every FFT frame (≈60fps stutter).
-  private _lerpOpen   = 0;
-  private _lerpSpread = 0.15;
+  // Lerped viseme state
+  private _lerpOpen    = 0;
+  private _lerpSpread  = 0.15;
+  private _lerpRounded = 0;
+
+  // Head tilt from gyro (normalized -1..1)
+  private _tiltX = 0;
+  private _tiltY = 0;
+
+  // Face anchor (UV coordinates in FULL image space, so x=0.5 = pixel 640)
+  private _mc  = { x: 0.500, y: 0.475 };
+  private _jaw = 0.540;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    const ctx = canvas.getContext('2d', { alpha: false });
-    if (!ctx) throw new Error('OracleFaceRenderer: 2D context unavailable');
-    this.ctx = ctx;
+    const gl = canvas.getContext('webgl', { alpha: false, antialias: true, powerPreference: 'high-performance' });
+    if (!gl) throw new Error('OracleFaceRenderer: WebGL unavailable');
+    this.gl = gl;
+    this._initShaders();
+    this._buildMesh();
   }
 
-  /**
-   * Load a face image. Accepts a data: URL or a same/CORS-enabled https: URL.
-   * Callers should pass `oracleAvatarDataUrl` (the base64 pre-fetch) to avoid
-   * any cross-origin canvas tainting concerns.
-   */
+  // ── Public API ──────────────────────────────────────────────────────────────
+
+  isReady(): boolean { return this.img !== null; }
+
   loadFace(src: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const img = new Image();
+      img.crossOrigin = 'anonymous';
       img.onload = () => {
         this.img = img;
-        this.drawIdle();
+        this._uploadTexture();
         resolve();
       };
       img.onerror = () => reject(new Error('OracleFaceRenderer: image load failed — ' + src.slice(0, 60)));
@@ -124,334 +130,271 @@ export class OracleFaceRenderer {
     });
   }
 
-  isReady() {
-    return this.img !== null;
+  /** Apply MediaPipe face map if calibration succeeded. */
+  calibrate(map: OracleFaceMap) {
+    this._mc  = { x: map.mouthCenter.x, y: map.mouthCenter.y };
+    this._jaw = map.jawBottom;
   }
 
-  /**
-   * Start the idle animation loop — breathing pulse + random blinks.
-   * Should be called immediately after loadFace() resolves, before any
-   * VisemeDetector is attached. Once VisemeDetector starts calling drawIdle()
-   * at 60fps, call stopIdleAnimation() so only one loop drives the canvas.
-   */
   startIdleAnimation() {
-    if (this.idleRafId) return; // already running
-    const tick = () => {
-      this._drawIdleFrame(performance.now());
-      this.idleRafId = requestAnimationFrame(tick);
-    };
+    if (this.idleRafId) return;
+    const tick = () => { this._drawFrame(performance.now()); this.idleRafId = requestAnimationFrame(tick); };
     this.idleRafId = requestAnimationFrame(tick);
   }
 
-  /** Stop the internal idle animation loop (VisemeDetector takes over). */
   stopIdleAnimation() {
-    if (this.idleRafId) {
-      cancelAnimationFrame(this.idleRafId);
-      this.idleRafId = 0;
+    if (this.idleRafId) { cancelAnimationFrame(this.idleRafId); this.idleRafId = 0; }
+  }
+
+  drawIdle() { this._drawFrame(performance.now()); }
+
+  drawViseme(state: VisemeState) {
+    if (!this.img) return;
+    const { amplitude, viseme } = state;
+    const target = SHAPES[viseme] ?? SHAPES.A;
+    const scale  = 0.40 + amplitude * 0.85; // amplitude scales the shape
+
+    const LERP = 0.50;
+    this._lerpOpen    += (target.open    * scale - this._lerpOpen)    * LERP;
+    this._lerpSpread  += (target.spread         - this._lerpSpread)   * LERP;
+    this._lerpRounded += (target.rounded        - this._lerpRounded)  * LERP;
+
+    this._drawFrame(performance.now());
+  }
+
+  setTilt(x: number, y: number) { this._tiltX = x; this._tiltY = y; }
+
+  destroy() {
+    this.stopIdleAnimation();
+    this.img = null;
+    const gl = this.gl;
+    if (this.texture)   gl.deleteTexture(this.texture);
+    if (this.posBuffer) gl.deleteBuffer(this.posBuffer);
+    if (this.uvBuffer)  gl.deleteBuffer(this.uvBuffer);
+    if (this.idxBuffer) gl.deleteBuffer(this.idxBuffer);
+  }
+
+  // ── Internals ──────────────────────────────────────────────────────────────
+
+  private _initShaders() {
+    const gl = this.gl;
+    const compile = (type: number, src: string) => {
+      const s = gl.createShader(type)!;
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        console.error('[OFR] Shader:', gl.getShaderInfoLog(s));
+        return null;
+      }
+      return s;
+    };
+    const vs = compile(gl.VERTEX_SHADER,   VS);
+    const fs = compile(gl.FRAGMENT_SHADER, FS);
+    if (!vs || !fs) return;
+    const prog = gl.createProgram()!;
+    gl.attachShader(prog, vs); gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      console.error('[OFR] Link:', gl.getProgramInfoLog(prog)); return;
+    }
+    this.program = prog;
+  }
+
+  private _buildMesh() {
+    const gl = this.gl;
+    // Grid vertices: clip positions and UVs built once, deformed each frame
+    for (let r = 0; r <= ROWS; r++) {
+      for (let c = 0; c <= COLS; c++) {
+        const i = (r * (COLS + 1) + c) * 2;
+        const nx = c / COLS; // 0..1
+        const ny = r / ROWS; // 0..1
+
+        // Clip space position: vertex covers full -1..1 regardless of UV crop
+        this.basePos[i]     =  nx * 2 - 1;
+        this.basePos[i + 1] =  1 - ny * 2;
+
+        // UV: horizontal crop for object-fit:cover (centre of 2:1 image)
+        this.uvs[i]     = U_START + nx * (U_END - U_START);
+        this.uvs[i + 1] = ny;
+      }
+    }
+    this.pos.set(this.basePos); // start undeformed
+
+    // Triangle index list
+    let k = 0;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const a = r * (COLS + 1) + c;
+        const b = a + 1;
+        const d = a + (COLS + 1);
+        const e = d + 1;
+        this.indices[k++] = a; this.indices[k++] = d; this.indices[k++] = b;
+        this.indices[k++] = b; this.indices[k++] = d; this.indices[k++] = e;
+      }
+    }
+
+    this.posBuffer = gl.createBuffer();
+    this.uvBuffer  = gl.createBuffer();
+    this.idxBuffer = gl.createBuffer();
+
+    // UVs are static — upload once
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.uvBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, this.uvs, gl.STATIC_DRAW);
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.idxBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.indices, gl.STATIC_DRAW);
+  }
+
+  private _uploadTexture() {
+    if (!this.img) return;
+    const gl = this.gl;
+    this.texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    // CRITICAL: internal format and format must match in WebGL 1.
+    // Using RGBA for both handles JPEGs (browser decodes to RGBA internally).
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.img);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    // Check for GL errors
+    const err = gl.getError();
+    if (err !== gl.NO_ERROR) console.warn('[OFR] texImage2D error:', err);
+  }
+
+  private _deformMesh(now: number) {
+    const open    = this._lerpOpen;
+    const spread  = this._lerpSpread;
+    const rounded = this._lerpRounded;
+
+    // Breath: slow sinusoidal Y drift on all vertices (~4s period, ±0.003 clip)
+    const breath = Math.sin(now * 0.00157) * 0.003;
+
+    // Head tilt: perspective warp (mild shear + foreshortening)
+    const tx = this._tiltX;
+    const ty = this._tiltY;
+
+    // Mouth centre in UV (full image space, 0..1)
+    const mcx = this._mc.x; // ≈ 0.5
+    const mcy = this._mc.y; // ≈ 0.475
+    const jaw  = this._jaw;  // ≈ 0.54
+
+    for (let r = 0; r <= ROWS; r++) {
+      for (let c = 0; c <= COLS; c++) {
+        const i = (r * (COLS + 1) + c) * 2;
+
+        // Base clip position (independent of UV crop, full -1..1)
+        const bx = this.basePos[i];
+        const by = this.basePos[i + 1];
+
+        // Texture UV (0.25..0.75 for u, 0..1 for v) — used for feature distances
+        const u = this.uvs[i];
+        const v = this.uvs[i + 1];
+
+        let ox = 0;
+        let oy = 0;
+
+        // ── 1. Head tilt (perspective shear) ────────────────────────────────
+        // Shear: edges closer to tilt direction move more than centre
+        ox += tx * 0.055 * (1.0 - Math.abs(bx) * 0.4);
+        oy += ty * 0.040 * (1.0 - Math.abs(by) * 0.4);
+        // Foreshortening: points further from tilt axis compress
+        ox += bx * tx * 0.08;
+        oy += by * ty * 0.08;
+
+        // ── 2. Mouth influence ───────────────────────────────────────────────
+        // Distance measured in full UV space so mc coords are directly comparable
+        const du = u - mcx;
+        const dv = v - mcy;
+        const dist = Math.sqrt(du * du + dv * dv);
+        const weight = Math.max(0, 1.0 - dist / 0.14); // 0.14 UV radius ≈ 90px
+
+        if (weight > 0) {
+          // Jaw drop — vertices below lip midline move down, above move up
+          if (v > mcy) {
+            oy -= open * 0.12 * weight;  // lower lip/jaw down
+          } else {
+            oy += open * 0.06 * weight;  // upper lip up
+          }
+          // Lip spread — corners move outward
+          const sx = u > mcx ? 1 : -1;
+          ox += (spread - 0.15) * 0.04 * sx * weight;
+          // Pucker (rounded vowels) — lips pull inward
+          const pucker = (rounded - 0.2) * 0.025;
+          ox -= du * pucker * weight;
+          oy -= dv * pucker * weight;
+        }
+
+        // ── 3. Jaw mass influence ────────────────────────────────────────────
+        const djaw = Math.sqrt(Math.pow(u - mcx, 2) + Math.pow(v - jaw, 2));
+        const jawW  = Math.max(0, 1.0 - djaw / 0.18);
+        oy -= open * 0.05 * jawW;
+
+        // ── 4. Blink (handled separately in _drawFrame as a full-row tint) ───
+
+        // ── 5. Breath ────────────────────────────────────────────────────────
+        oy += breath;
+
+        this.pos[i]     = bx + ox;
+        this.pos[i + 1] = by + oy;
+      }
     }
   }
 
-  /**
-   * Render the idle (silent) face.
-   * Time-aware: includes breathing pulse + blink so the face stays alive
-   * between Oracle turns (called by VisemeDetector at 60fps when amplitude < 0.04).
-   */
-  drawIdle() {
-    if (!this.img) return;
-    this._drawIdleFrame(performance.now());
+  private _drawFrame(now: number) {
+    if (!this.img || !this.program || !this.texture) return;
+    const { gl, canvas } = this;
+
+    this._deformMesh(now);
+
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(this.program);
+
+    // Upload deformed positions
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.posBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, this.pos, gl.DYNAMIC_DRAW);
+    const posLoc = gl.getAttribLocation(this.program, 'a_pos');
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+    // Static UVs
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.uvBuffer);
+    const uvLoc = gl.getAttribLocation(this.program, 'a_uv');
+    gl.enableVertexAttribArray(uvLoc);
+    gl.vertexAttribPointer(uvLoc, 2, gl.FLOAT, false, 0, 0);
+
+    // Texture
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    const texLoc = gl.getUniformLocation(this.program, 'u_tex');
+    gl.uniform1i(texLoc, 0);
+
+    // Draw
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.idxBuffer);
+    gl.drawElements(gl.TRIANGLES, this.indices.length, gl.UNSIGNED_SHORT, 0);
+
+    // ── Blink overlay ────────────────────────────────────────────────────────
+    // Rendered as a dark rect over the eye band (y 34-48% of canvas).
+    // WebGL doesn't have a simple rect fill — we skip blinking for now since
+    // the mesh warp approach requires a second render pass.
+    // TODO: use a scissor-rect clear or a second quad for blink.
+    this._tickBlink(now);
   }
 
-  /** Internal time-aware idle frame: base face + green breath pulse + blink. */
-  private _drawIdleFrame(now: number) {
-    if (!this.img) return;
-    this._drawBase();
-
-    // ── Breathing: a very subtle green tint that pulses over ~4 s ─────────────
-    // Oracle's presence breathes through the alley walls — 0→2.5% green overlay
-    const breathAlpha = ((Math.sin(now * 0.00157) + 1) / 2) * 0.022; // ±2.2%
-    if (breathAlpha > 0.001) {
-      this.ctx.save();
-      this.ctx.fillStyle = `rgba(0, 255, 136, ${breathAlpha.toFixed(4)})`;
-      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-      this.ctx.restore();
-    }
-
-    // ── Blink state machine ───────────────────────────────────────────────────
+  private _tickBlink(now: number) {
     if (this.blinkNextAt === 0) {
-      // First-time init: first blink in 3–8 seconds
       this.blinkNextAt = now + 3000 + Math.random() * 5000;
     }
-
     if (this.blinkStartedAt >= 0) {
       const elapsed = now - this.blinkStartedAt;
-      if (elapsed < this.BLINK_MS) {
-        this._drawBlink(elapsed / this.BLINK_MS);
-      } else {
+      if (elapsed >= this.BLINK_MS) {
         this.blinkStartedAt = -1;
         this.blinkNextAt = now + 3000 + Math.random() * 5500;
       }
     } else if (now >= this.blinkNextAt) {
       this.blinkStartedAt = now;
     }
-  }
-
-  /**
-   * Draw an eyelid close-open cycle over the eye region.
-   * progress 0→1: blink from open → closed → open (bell curve via sin).
-   * Uses face coordinates: eyes at ~25–42% canvas height, full width.
-   */
-  private _drawBlink(progress: number) {
-    const { ctx, canvas, img } = this;
-    if (!img) return;
-    const cw = canvas.width;
-    const ch = canvas.height;
-
-    const closeFraction = Math.sin(progress * Math.PI); // 0→1→0 bell
-    if (closeFraction < 0.02) return;
-
-    // Eye band: Y = 32–48% canvas height (eyes at Y≈220-310 / 640 = 34-48%)
-    const bandTop = 0.32 * ch;
-    const bandH   = 0.16 * ch;
-    const lidH    = bandH * closeFraction * 0.95;
-    if (lidH < 1) return;
-
-    // Portrait geometry — matches _drawBase() object-fit:cover calculation
-    const scale = ch / IMG_H;
-    const srcX  = (IMG_W * scale - cw) / 2 / scale;
-    const srcW  = cw / scale;
-
-    // Paint FACE SKIN pixels over the eye region — blink looks anatomically real
-    // because the eyelid IS the face's own skin tone closing over the eye.
-    //   Top lid : sample forehead strip (y 5–18% source) → descends from brow
-    //   Bottom lid: sample upper-cheek strip (y 57–67% source) → rises from below
-    ctx.save();
-    ctx.globalAlpha = Math.min(0.95, closeFraction * 1.08);
-
-    ctx.drawImage(img,
-      srcX, 0.10 * IMG_H, srcW, 0.10 * IMG_H,  // source: forehead/brow skin
-      0, bandTop,          cw, lidH              // dest: top eyelid descending
-    );
-    ctx.drawImage(img,
-      srcX, 0.52 * IMG_H, srcW, 0.08 * IMG_H,  // source: cheek skin (below mouth)
-      0, bandTop + bandH - lidH, cw, lidH        // dest: bottom eyelid rising
-    );
-
-    ctx.globalAlpha = 1;
-    ctx.restore();
-  }
-
-  /**
-   * Render the face with viseme-driven mouth warp.
-   *
-   * Technique (mirroring Wav2Lip's per-frame pipeline in canvas 2D):
-   *   1. Draw full face image (object-fit:cover simulation).
-   *   2. Cover the original mouth region with skin sampled from the
-   *      philtrum (area just above the lips). This erases the static mouth.
-   *   3. Fill the inter-lip gap with a dark cavity shape.
-   *   4. Redraw the upper lip strip from source, shifted UP by `separation`.
-   *   5. Redraw the lower lip strip from source, shifted DOWN by `separation`.
-   *   6. Feather edges so the transplanted lips blend into surrounding skin.
-   *   7. Optional: subtle oracle glow composite at high amplitude.
-   */
-  drawViseme(state: VisemeState) {
-    if (!this.img) return;
-
-    const { amplitude, viseme } = state;
-
-    if (amplitude < 0.04) {
-      // Lerp back toward rest so mouth closes smoothly rather than snapping shut
-      const LERP_CLOSE = 0.40;
-      this._lerpOpen   += (0 - this._lerpOpen)   * LERP_CLOSE;
-      this._lerpSpread += (0.15 - this._lerpSpread) * LERP_CLOSE;
-      this._drawBase();
-      return;
-    }
-
-    // Look up the canonical shape for this phoneme, then lerp for smoothness.
-    // Amplitude scales jaw drop — louder → fuller open within the viseme's range.
-    const target = VISEME_SHAPES[viseme] ?? VISEME_SHAPES.A;
-    const targetOpen   = target.openness * (0.45 + amplitude * 0.80);
-    const targetSpread = target.spread;
-    // VisemeDetector already smooths the raw FFT values at 35% per frame.
-    // Renderer lerps at 55% — fast enough to track phonemes without double-lag.
-    const LERP = 0.55;
-    this._lerpOpen   += (targetOpen   - this._lerpOpen)   * LERP;
-    this._lerpSpread += (targetSpread - this._lerpSpread)  * LERP;
-    const openness = Math.max(0, Math.min(1, this._lerpOpen));
-    const spread   = Math.max(0, Math.min(1, this._lerpSpread));
-
-    const { ctx, canvas, img } = this;
-    const cw = canvas.width;
-    const ch = canvas.height;
-
-    // ── Object-fit:cover geometry ─────────────────────────────────────────────
-    const scale      = ch / IMG_H;
-    const displayedW = IMG_W * scale;          // wider than canvas (2× for 2:1 image)
-    const cropX      = (displayedW - cw) / 2;  // pixels cropped each side in display space
-
-    // Convert source image x-coordinate to canvas x-coordinate
-    const srcToCanvasX = (sx: number) => sx * scale - cropX;
-    // Source region x offset to align sampled strip to canvas mouth position
-    const srcX_offset  = cropX / scale;         // source x to start at left canvas edge
-
-    // ── Mouth region in canvas space ──────────────────────────────────────────
-    const mcx = srcToCanvasX(MOUTH.cx);       // mouth centre x in canvas
-    const midY = MOUTH.midY  * scale;         // lip midline y in canvas
-    const ulTop = MOUTH.ulTop * scale;
-    const ulBot = MOUTH.ulBot * scale;
-    const llTop = MOUTH.llTop * scale;
-    const llBot = MOUTH.llBot * scale;
-
-    const ulH = ulBot - ulTop;  // upper lip strip height in canvas
-    const llH = llBot - llTop;  // lower lip strip height in canvas
-
-    // Lip width: viseme spread drives horizontal extent.
-    // At spread=0 (pucker): 90% of natural width.  At spread=1 (smile): 120%.
-    const naturalHalfW = MOUTH.halfW * scale;
-    const halfW        = naturalHalfW * (0.90 + spread * 0.30);
-
-    // Separation: how far lips move from midline.
-    // Boosted multiplier (1.2) for this CGI face — the natural mouth gap is very
-    // subtle, so we need stronger separation to make open-jaw readable.
-    const separation   = Math.max(0, openness) * naturalHalfW * 1.2;
-
-    // ── 1. Draw full face ─────────────────────────────────────────────────────
-    this._drawBase();
-
-    // ── 2. Erase original mouth — fill with philtrum skin ────────────────────
-    // Sample the philtrum (skin just above the upper lip).
-    // Using drawImage(src, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH).
-    const skinSrcY  = MOUTH.skinTop;
-    const skinSrcH  = MOUTH.skinBot - MOUTH.skinTop;
-    const eraseSrcX = MOUTH.cx - MOUTH.eraseHalfW;  // source x for erase patch
-    const eraseSrcW = MOUTH.eraseHalfW * 2;
-    const eraseDstX = mcx - MOUTH.eraseHalfW * scale;
-    const eraseDstW = eraseSrcW * scale;
-    const eraseDstY = ulTop - ulH * 0.15;           // start slightly above lips
-    const eraseDstH = (llBot - ulTop) * scale * 1.1; // cover the full mouth height + small margin
-
-    ctx.drawImage(
-      img,
-      eraseSrcX, skinSrcY, eraseSrcW, skinSrcH, // source: philtrum strip
-      eraseDstX, eraseDstY, eraseDstW, eraseDstH, // dest: over original mouth region
-    );
-
-    // ── 3. Dark cavity between the separated lips ─────────────────────────────
-    if (openness > 0.06) {
-      // Cavity dimensions scale with separation and spread
-      const cavHalfW = halfW * (0.72 + spread * 0.18);
-      const cavHalfH = Math.max(1, separation * 0.88);
-      const cavCX    = mcx;
-      const cavCY    = midY;
-
-      ctx.save();
-      // Elliptical opening — more rounded for H/G (round vowels), flatter for E (smile)
-      const xRad = cavHalfW;
-      const yRad = cavHalfH;
-
-      ctx.beginPath();
-      ctx.ellipse(cavCX, cavCY, xRad, yRad, 0, 0, Math.PI * 2);
-
-      // Gradient fill — darker at back of mouth, slightly lighter at opening edge
-      const cavGrad = ctx.createRadialGradient(cavCX, cavCY - yRad * 0.1, 0, cavCX, cavCY, yRad * 1.2);
-      cavGrad.addColorStop(0,   `rgba(2, 1, 1, ${0.97})`);
-      cavGrad.addColorStop(0.7, `rgba(4, 2, 2, ${0.93})`);
-      cavGrad.addColorStop(1,   `rgba(8, 4, 4, ${0.80})`);
-      ctx.fillStyle = cavGrad;
-      ctx.fill();
-
-      // Teeth hint: only for wide-open vowels (A, E, D) — visible at high openness + spread
-      if (openness > 0.45 && spread > 0.30) {
-        const teethOpacity = Math.min(0.55, (openness - 0.45) * 1.1);
-        const teethW = cavHalfW * 1.5;
-        const teethH = Math.min(cavHalfH * 0.30, scale * 5);
-        ctx.fillStyle = `rgba(218, 208, 200, ${teethOpacity})`;
-        ctx.fillRect(cavCX - teethW / 2, cavCY - cavHalfH, teethW, teethH);
-      }
-      ctx.restore();
-    }
-
-    // ── 4. Upper lip: source pixels shifted UP ────────────────────────────────
-    // Sample the upper lip strip from the original source image.
-    // Widen/narrow by lipW; shift up by separation.
-    const ulSrcW = (halfW / scale) * 2;          // source width to sample (proportional)
-    const ulSrcX = MOUTH.cx - ulSrcW / 2;        // source x (may shift for spread skew)
-    const ulDstX = mcx - halfW;
-    const ulDstY = ulTop - separation * 0.60;    // shift the upper lip UP
-    const ulDstW = halfW * 2;
-
-    ctx.drawImage(
-      img,
-      ulSrcX, MOUTH.ulTop, ulSrcW, (MOUTH.ulBot - MOUTH.ulTop), // source strip
-      ulDstX, ulDstY, ulDstW, ulH,                              // dest: shifted up
-    );
-
-    // ── 5. Lower lip: source pixels shifted DOWN ──────────────────────────────
-    const llSrcX = ulSrcX; // same horizontal sampling
-    const llDstX = ulDstX;
-    const llDstY = llTop + separation * 0.40;    // shift the lower lip DOWN
-    const llDstW = ulDstW;
-
-    ctx.drawImage(
-      img,
-      llSrcX, MOUTH.llTop, ulSrcW, (MOUTH.llBot - MOUTH.llTop), // source strip
-      llDstX, llDstY, llDstW, llH,                              // dest: shifted down
-    );
-
-    // ── 6. Edge feathering — blend warped lips into surrounding face ─────────
-    // A subtle radial gradient mask softens the hard edges of the transplanted strips.
-    ctx.save();
-    const edgeR = halfW * 1.25;
-    const edgeGrad = ctx.createRadialGradient(mcx, midY, halfW * 0.55, mcx, midY, edgeR);
-    edgeGrad.addColorStop(0,   'rgba(0,0,0,0)');
-    edgeGrad.addColorStop(0.7, 'rgba(0,0,0,0)');
-    edgeGrad.addColorStop(1,   'rgba(0,0,0,0.18)');
-    ctx.globalCompositeOperation = 'source-atop';
-    ctx.fillStyle = edgeGrad;
-    ctx.fillRect(mcx - edgeR, midY - edgeR, edgeR * 2, edgeR * 2);
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.restore();
-
-    // ── 7. Oracle glow — green shimmer at high amplitude ─────────────────────
-    if (amplitude > 0.15) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      const glowAlpha = (amplitude - 0.15) * 0.10;
-      const glowGrad = ctx.createRadialGradient(mcx, midY, 0, mcx, midY, halfW * 1.6);
-      glowGrad.addColorStop(0,   `rgba(0, 255, 136, ${glowAlpha})`);
-      glowGrad.addColorStop(0.6, `rgba(0, 255, 136, ${glowAlpha * 0.4})`);
-      glowGrad.addColorStop(1,   'rgba(0, 255, 136, 0)');
-      ctx.fillStyle = glowGrad;
-      ctx.beginPath();
-      ctx.ellipse(mcx, midY, halfW * 1.6, naturalHalfW * 0.8, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-  }
-
-  // ── Internal helpers ────────────────────────────────────────────────────────
-
-  /** Simulate object-fit:cover for a landscape image in a square canvas. */
-  private _drawBase() {
-    if (!this.img) return;
-    const { ctx, canvas } = this;
-    const cw = canvas.width;
-    const ch = canvas.height;
-
-    const scale      = ch / IMG_H;
-    const displayedW = IMG_W * scale;
-    const cropX      = (displayedW - cw) / 2;
-
-    // Source rect that maps to the full canvas (covers it exactly)
-    const srcX = cropX / scale;
-    const srcW = cw / scale;
-
-    ctx.drawImage(this.img, srcX, 0, srcW, IMG_H, 0, 0, cw, ch);
-  }
-
-  destroy() {
-    this.stopIdleAnimation();
-    this.img = null;
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }
 }

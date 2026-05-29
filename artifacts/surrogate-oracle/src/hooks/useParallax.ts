@@ -1,95 +1,145 @@
 /**
- * useParallax — depth parallax for XR immersion.
+ * useParallax — gyro/mouse depth parallax with phase-aware intensity.
  *
- * Writes CSS transforms directly to DOM elements via RAF (no re-renders).
- * Input sources (whichever is available, gyro takes precedence on mobile):
- *   - DeviceOrientation API (gamma/beta tilt) — real gyroscope on mobile
- *   - mousemove — desktop fallback
+ * Six depth targets at different multipliers so everything moves at its own
+ * spatial layer. The depth frame (foreground) moves most; the alley (far bg)
+ * moves least. On mobile the cabinet also gets gyro-driven 3D rotateX/Y tilt.
  *
- * Depth model (all elements shift in the same direction as the input,
- * but at different magnitudes — more movement = "closer" to viewer):
+ * Depth order (near → far):
+ *   depth-frame   0.058×  foreground CRT border — feels closest, moves most
+ *   side-bleeds   0.040×  near-mid off-screen neon
+ *   branding      0.018×  near glass — title floats slightly in front
+ *   cabinet       0.010× + rotateX/Y — mid, the stable focal point
+ *   mid-haze      0.022×  mid-ground haze separator
+ *   alley         0.028×  far background — barely moves, depth anchor
+ *   floor-refl    0.014×  floor (less parallax = feels grounded)
  *
- *   oracle-alley    0.028×  far background — barely moves, creates depth anchor
- *   oracle-center   0.010×  mid — the Oracle cabinet is the stable focal point
- *   oracle-branding 0.018×  near glass — letterforms float slightly in front
+ * Phase intensity multiplier:
+ *   dormant  0.35× — subtle, world is nearly still
+ *   terminal 0.55× — lore is the focus, motion stays peripheral
+ *   awakened 1.00× — full spatial presence
+ *   oracle   1.00× — full
  */
 import { useEffect } from 'react';
 
-const LERP = 0.06; // interpolation speed — lower = smoother/lazier
-const GYRO_LERP = 0.04; // gyro is noisier — smoother interpolation
-// Max tilt angle (degrees) mapped to [-1, 1] output
-const GYRO_MAX_GAMMA = 25; // left-right
-const GYRO_MAX_BETA  = 20; // front-back
+type Phase = 'dormant' | 'terminal' | 'awakened' | 'oracle';
 
-export function useParallax(enabled: boolean) {
+const LERP      = 0.06;
+const GYRO_LERP = 0.04;
+const GYRO_MAX_GAMMA = 25;
+const GYRO_MAX_BETA  = 20;
+
+const PHASE_INTENSITY: Record<Phase, number> = {
+  dormant:  0.35,
+  terminal: 0.55,
+  awakened: 1.00,
+  oracle:   1.00,
+};
+
+export function useParallax(phase: Phase) {
   useEffect(() => {
-    if (!enabled) return;
+    const intensity = PHASE_INTENSITY[phase] ?? 1.0;
 
-    let targetX = 0;
-    let targetY = 0;
-    let currentX = 0;
-    let currentY = 0;
+    let targetX = 0, targetY = 0;
+    let currentX = 0, currentY = 0;
     let rafId = 0;
     let usingGyro = false;
 
-    // ── Gyro input (mobile) ──────────────────────────────────────────────────
-    // Guard: DeviceOrientationEvent.alpha being non-null indicates real sensor data.
+    // ── Gyro input ────────────────────────────────────────────────────────────
     const onDeviceOrientation = (e: DeviceOrientationEvent) => {
-      if (e.alpha === null && e.gamma === null) return; // simulated / unsupported
+      if (e.alpha === null && e.gamma === null) return;
       usingGyro = true;
-      // gamma: left-right tilt (-90° to +90°). beta: front-back (-180° to +180°).
-      // Clamp to reasonable tilt range, normalise to [-1, 1].
       const gamma = Math.max(-GYRO_MAX_GAMMA, Math.min(GYRO_MAX_GAMMA, e.gamma ?? 0));
       const beta  = Math.max(-GYRO_MAX_BETA,  Math.min(GYRO_MAX_BETA,  (e.beta ?? 0) - 45));
       targetX =  gamma / GYRO_MAX_GAMMA;
       targetY =  beta  / GYRO_MAX_BETA;
     };
 
-    // ── Mouse input (desktop) ────────────────────────────────────────────────
+    // ── Mouse fallback (desktop) ──────────────────────────────────────────────
     const onMouseMove = (e: MouseEvent) => {
-      if (usingGyro) return; // gyro wins when both are present
+      if (usingGyro) return;
       targetX = (e.clientX - window.innerWidth  / 2) / (window.innerWidth  / 2);
       targetY = (e.clientY - window.innerHeight / 2) / (window.innerHeight / 2);
     };
+
+    const el = (sel: string) => document.querySelector(sel) as HTMLElement | null;
 
     const tick = () => {
       const lerp = usingGyro ? GYRO_LERP : LERP;
       currentX += (targetX - currentX) * lerp;
       currentY += (targetY - currentY) * lerp;
 
+      const ix = currentX * intensity;
+      const iy = currentY * intensity;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
 
-      // ── Alley (far) ── full-viewport element, no centering offset
-      const alley = document.querySelector('.oracle-alley') as HTMLElement | null;
+      // ── Far background (alley) ────────────────────────────────────────────
+      const alley = el('.oracle-alley');
       if (alley) {
-        const dx = (currentX * vw * 0.028).toFixed(2);
-        const dy = (currentY * vh * 0.016).toFixed(2);
-        // scale(1.07) ensures edges stay hidden as the image shifts
-        alley.style.transform = `translate(${dx}px, ${dy}px) scale(1.07)`;
+        alley.style.transform =
+          `translate(${(ix * vw * 0.028).toFixed(2)}px, ${(iy * vh * 0.016).toFixed(2)}px) scale(1.07)`;
       }
 
-      // ── Cabinet (mid) ── positioned with translate(-50%, -50%) in CSS
-      const cabinet = document.querySelector('.oracle-center') as HTMLElement | null;
+      // ── Floor reflection (grounded — least vertical parallax) ─────────────
+      const floor = el('.oracle-floor-reflection');
+      if (floor) {
+        floor.style.transform =
+          `translate(${(ix * vw * 0.014).toFixed(2)}px, ${(iy * vh * 0.006).toFixed(2)}px)`;
+      }
+
+      // ── Mid-ground haze ───────────────────────────────────────────────────
+      const haze = el('.oracle-mid-haze');
+      if (haze) {
+        haze.style.transform =
+          `translate(${(ix * vw * 0.022).toFixed(2)}px, ${(iy * vh * 0.012).toFixed(2)}px)`;
+      }
+
+      // ── Cabinet / Oracle center — 3D tilt (the hero effect) ───────────────
+      // rotateY tracks left-right (gamma), rotateX tracks forward-back (beta).
+      // Rotation is in the stage's perspective(800px) context so it reads as
+      // the cabinet physically tilting in the room toward/away from you.
+      const cabinet = el('.oracle-center');
       if (cabinet) {
-        const dx = (currentX * vw * 0.010).toFixed(2);
-        const dy = (currentY * vh * 0.006).toFixed(2);
-        cabinet.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        const dx = (ix * vw * 0.010).toFixed(2);
+        const dy = (iy * vh * 0.006).toFixed(2);
+        const rotX = (-iy * 7 * intensity).toFixed(2);
+        const rotY = ( ix * 9 * intensity).toFixed(2);
+        cabinet.style.transform =
+          `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) rotateX(${rotX}deg) rotateY(${rotY}deg)`;
       }
 
-      // ── Branding (near glass) ── positioned with translateX(-50%) in CSS
-      const branding = document.querySelector('.oracle-branding') as HTMLElement | null;
+      // ── Branding (near glass) ─────────────────────────────────────────────
+      const branding = el('.oracle-branding');
       if (branding) {
-        const dx = (currentX * vw * 0.018).toFixed(2);
-        const dy = (currentY * vh * 0.008).toFixed(2);
-        branding.style.transform = `translate(calc(-50% + ${dx}px), ${dy}px)`;
+        branding.style.transform =
+          `translate(calc(-50% + ${(ix * vw * 0.018).toFixed(2)}px), ${(iy * vh * 0.009).toFixed(2)}px)`;
+      }
+
+      // ── Side bleeds (closer than branding) ───────────────────────────────
+      const bleeds = el('.oracle-side-bleeds');
+      if (bleeds) {
+        bleeds.style.transform =
+          `translate(${(ix * vw * 0.040).toFixed(2)}px, ${(iy * vh * 0.022).toFixed(2)}px)`;
+      }
+
+      // ── Depth frame (foreground CRT border — moves most = feels nearest) ──
+      const frame = el('.oracle-depth-frame');
+      if (frame) {
+        frame.style.transform =
+          `translate(${(ix * vw * 0.058).toFixed(2)}px, ${(iy * vh * 0.032).toFixed(2)}px)`;
+      }
+
+      // ── Light rays (mid, follows cabinet loosely) ─────────────────────────
+      const rays = el('.oracle-light-rays');
+      if (rays) {
+        rays.style.transform =
+          `translate(${(ix * vw * 0.012).toFixed(2)}px, ${(iy * vh * 0.007).toFixed(2)}px)`;
       }
 
       rafId = requestAnimationFrame(tick);
     };
 
-    // Mouse: only register on non-touch (hover capable) devices, but always
-    // allow gyro so mobile gets motion without hover capability check.
     if (!window.matchMedia('(hover: none)').matches) {
       window.addEventListener('mousemove', onMouseMove, { passive: true });
     }
@@ -100,13 +150,13 @@ export function useParallax(enabled: boolean) {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('deviceorientation', onDeviceOrientation);
       cancelAnimationFrame(rafId);
-      // Reset transforms to CSS defaults
-      const alley = document.querySelector('.oracle-alley') as HTMLElement | null;
-      if (alley) alley.style.transform = '';
-      const cabinet = document.querySelector('.oracle-center') as HTMLElement | null;
-      if (cabinet) cabinet.style.transform = '';
-      const branding = document.querySelector('.oracle-branding') as HTMLElement | null;
-      if (branding) branding.style.transform = '';
+      // Reset all transforms to CSS defaults
+      ['.oracle-alley', '.oracle-floor-reflection', '.oracle-mid-haze',
+       '.oracle-center', '.oracle-branding', '.oracle-side-bleeds',
+       '.oracle-depth-frame', '.oracle-light-rays'].forEach(sel => {
+        const node = el(sel);
+        if (node) node.style.transform = '';
+      });
     };
-  }, [enabled]);
+  }, [phase]); // re-runs when phase changes to update intensity
 }

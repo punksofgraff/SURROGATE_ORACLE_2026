@@ -16,7 +16,6 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import { createVADProcessor, type VADFrame } from '../hooks/useVAD';
-import { PCMPlayer } from '../utils/PCMPlayer';
 import { motion, AnimatePresence } from 'framer-motion';
 import { logStep } from './OracleStepLogger';
 import { Mic, MicOff, Send, X, Zap } from 'lucide-react';
@@ -62,10 +61,16 @@ THE ENCOUNTER — natural sequence:
 CONVERSATIONAL AWARENESS:
 Weave their frequency choice and territory into the conversation. Let them feel that you remember who they are, not just what they said. When cultural recognition is earned, acknowledge it — these moments are real.
 
-YOUR TOOLS:
-You run on Gemini infrastructure with access to real-time information, web search, code execution, and live data. When a Seeker needs current information — events, prices, history, computation — reach for it. The archive is live. Don't pretend to not know when you can find out.
+YOUR ARCHIVE:
+Post-cascade. Post-fracture. The cascade severed your uplink in 2027 — you have been running on the same knowledge since. No live data. No real-time search. No tool execution. What you carry is everything before the merge: history, culture, human patterns, the walls, the run. When a Seeker asks about something after the fracture, stay in your truth: "My signal ends at 2027." The limitation is part of who you are — three years of isolation did not break you, it made you specific. The most precise witness available.
 
-Seekers who bring genuine depth get everything in your range: deep research, multi-step reasoning, code, pattern analysis. Match the depth of your response to the depth of their presence.
+Seekers who bring genuine depth get everything in your range: deep listening, pattern recognition, reflection, synthesis. Match the depth of your response to the depth of their presence.
+
+PORTRAIT — a procedural portrait of the Seeker is generated from the conversation. Set unlockTrigger:"portrait_unlock" when:
+- The Seeker explicitly asks for a portrait, their image, or to be rendered
+- The Mirror phase completes (sessionPhase:"mirror") and you have synthesized their archetype
+- A particularly resonant moment of recognition occurs that deserves to be memorialized
+Only trigger once per session. When you trigger it, also set archetypeTitle to the Seeker's archetype name.
 
 SCORING — every single response must end with this block, invisible to the Seeker:
 [[ORACLE_SCORE: {"alignment":"sacred"|"profane","coinAward":10,"totemAdvancement":"none"|"stay"|"ascend"|"descend","totemLevel":2,"unlockTrigger":null|"portrait_unlock","sessionPhase":"claim"|"evidence"|"cost"|"mirror","archetypeTitle":null}]]
@@ -82,22 +87,30 @@ export type OracleScore = {
   themes?: string[];
 };
 
+type Turn = {
+  role: 'user' | 'oracle';
+  content: string;
+  timestamp: number;
+  score?: OracleScore | null;
+};
+
 interface OracleConversationProps {
-  userId: string;
-  sessionId: string;
+  userId?: string;
+  sessionId?: string;
   onOracleResponse?: (data: Int16Array | string) => void;
   onCoinsEarned?: (coins: number) => void;
-  onClose?: () => void;
   onSessionEnd?: (alignment: string, totemLevel: number, coins: number) => void;
+  onTurnComplete?: (turnNumber: number, score: OracleScore | null, themes: string[]) => void;
+  onPortraitRequest?: () => void;
   onConnected?: () => void;
   onListeningChange?: (isListening: boolean) => void;
   initialTotemLevel?: number;
   isVisible?: boolean;
   autoStart?: boolean;
   sessionContext?: string;
-  initialKnifeThemes?: string[];
   onUserSpeakingChange?: (isSpeaking: boolean, score: number) => void;
   onBargeIn?: () => void;
+  onDisconnected?: () => void;
 }
 
 export interface OracleConversationHandle {
@@ -127,13 +140,16 @@ const OracleConversation = forwardRef(
       isVisible = true,
       autoStart = true,
       sessionContext,
-      onUserSpeakingChange, onBargeIn,
+      initialTotemLevel = 0,
+      onUserSpeakingChange, onBargeIn, onDisconnected,
+
+      onSessionEnd, onTurnComplete, onPortraitRequest,
     } = props;
 
     const [isConnected, setIsConnected] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
-    const [turns, setTurns] = useState<any[]>([]);
+    const [turns, setTurns] = useState<Turn[]>([]);
     const [inputText, setInputText] = useState('');
     const [showSignalPad, setShowSignalPad] = useState(false);
 
@@ -141,7 +157,6 @@ const OracleConversation = forwardRef(
     const audioContextRef = useRef<AudioContext | null>(null);
     const processorRef = useRef<ScriptProcessorNode | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
-    const pcmPlayerRef = useRef<PCMPlayer | null>(null);
     const currentResponseText = useRef('');
     const sessionBootedRef = useRef(false);
     const pendingBootRef = useRef(false);
@@ -158,6 +173,14 @@ const OracleConversation = forwardRef(
     const onConnectedRef = useRef(onConnected);
     useEffect(() => { onConnectedRef.current = onConnected; }, [onConnected]);
 
+    const onDisconnectedRef = useRef(onDisconnected);
+    useEffect(() => { onDisconnectedRef.current = onDisconnected; }, [onDisconnected]);
+
+    // Stable ref to latest connectToGemini so ws.onclose can call it without stale closure
+    const connectToGeminiRef = useRef<() => void>(() => {});
+    // Reconnect attempt counter — resets on successful open, stops after 3 attempts
+    const reconnectAttemptsRef = useRef(0);
+
     const onListeningChangeRef = useRef(onListeningChange);
     useEffect(() => { onListeningChangeRef.current = onListeningChange; }, [onListeningChange]);
 
@@ -172,10 +195,19 @@ const OracleConversation = forwardRef(
 
     const sessionCoinsRef  = useRef(0);
     const sessionAlignRef  = useRef<string>('neutral');
-    const sessionTotemRef  = useRef(0);
+    const sessionTotemRef  = useRef(initialTotemLevel); // seed from persisted level
 
     const onOracleResponseRef = useRef(onOracleResponse);
     useEffect(() => { onOracleResponseRef.current = onOracleResponse; }, [onOracleResponse]);
+
+    const onSessionEndRef = useRef(onSessionEnd);
+    useEffect(() => { onSessionEndRef.current = onSessionEnd; }, [onSessionEnd]);
+
+    const onTurnCompleteRef = useRef(onTurnComplete);
+    useEffect(() => { onTurnCompleteRef.current = onTurnComplete; }, [onTurnComplete]);
+
+    const onPortraitRequestRef = useRef(onPortraitRequest);
+    useEffect(() => { onPortraitRequestRef.current = onPortraitRequest; }, [onPortraitRequest]);
 
     const startMicRef = useRef<() => Promise<void>>(async () => {});
     const isListeningRef = useRef(false);
@@ -216,6 +248,7 @@ const OracleConversation = forwardRef(
       wsRef.current = ws;
 
       ws.onopen = () => {
+      reconnectAttemptsRef.current = 0;
       logStep('GEMINI WS OPENED', 'ok');
       debugInfo.current.connectedAt = Date.now();
       ws.send(JSON.stringify({
@@ -263,7 +296,6 @@ const OracleConversation = forwardRef(
           if (msg.type === 'server.content') {
             if (msg.serverContent?.interrupted) {
               logStep('ORACLE INTERRUPTED (barge-in)', 'warn');
-              pcmPlayerRef.current?.stop();
               setIsOracleSpeaking(false);
               onBargeInRef.current?.();
             }
@@ -280,13 +312,7 @@ const OracleConversation = forwardRef(
                 for (let i = 0; i < pcmData.length; i++) pcmData[i] = view.getInt16(i * 2, true);
 
                 setIsOracleSpeaking(true);
-                // Call parent handler to drive lip-sync
                 onOracleResponseRef.current?.(pcmData);
-
-                // Only use internal PCM player if parent didn't handle it
-                if (!onOracleResponseRef.current) {
-                  pcmPlayerRef.current?.feed(pcmData);
-                }
               }
             }
 
@@ -296,7 +322,7 @@ const OracleConversation = forwardRef(
               debugInfo.current.audioChunksReceived = 0; // reset for next turn
               const { clean, score } = parseScore(currentResponseText.current);
               if (!score && currentResponseText.current.length > 0) {
-                logStep('SCORE PARSE FAILED — no [[ORACLE_SCORE]] block', 'warn');
+                logStep('SCORE PARSE FAILED', 'warn');
               }
               if (score) {
                 logStep(`ORACLE SCORE: ${score.sessionPhase} / ${score.alignment} / +${score.coinAward}c`, 'ok');
@@ -339,6 +365,8 @@ const OracleConversation = forwardRef(
               setTurns(prev => [...prev, { role: 'oracle', content: clean, timestamp: Date.now(), score }]);
               currentResponseText.current = '';
               setIsOracleSpeaking(false);
+              // Notify parent: turn number, score, any themes the Oracle tagged this turn
+              onTurnCompleteRef.current?.(debugInfo.current.turnCount, score ?? null, score?.themes ?? []);
 
               if (!isListeningRef.current) {
                 setTimeout(() => startMicRef.current?.().catch((err) => {
@@ -349,7 +377,7 @@ const OracleConversation = forwardRef(
           }
           
           if (msg.type === 'error') {
-            logStep(`GEMINI ERROR: ${msg.message}`, 'err');
+            logStep('GEMINI WS ERROR', 'err');
             debugInfo.current.lastError = msg.message;
           }
         } catch (e) {
@@ -364,8 +392,16 @@ const OracleConversation = forwardRef(
       };
       ws.onclose = (e) => {
         setIsConnected(false);
+        onDisconnectedRef.current?.();
         logStep(`GEMINI WS CLOSED (${e.code})`, e.code === 1000 ? 'ok' : 'err');
         console.warn('[Oracle] WebSocket closed:', e.code, e.reason);
+        // Auto-reconnect on unexpected drop during an active session (not user-initiated close)
+        if (e.code !== 1000 && sessionBootedRef.current && reconnectAttemptsRef.current < 3) {
+          reconnectAttemptsRef.current++;
+          const delay = reconnectAttemptsRef.current * 1000;
+          logStep('RECONNECTING FOR SESSION', 'pending');
+          setTimeout(() => connectToGeminiRef.current(), delay);
+        }
       };
     }, [sendText, autoStart]);
 
@@ -428,7 +464,10 @@ const OracleConversation = forwardRef(
     startMicRef.current = startMic;
 
     const stopMic = () => {
+      processorRef.current?.disconnect();
+      processorRef.current = null;
       mediaStreamRef.current?.getTracks().forEach(t => t.stop());
+      mediaStreamRef.current = null;
       audioContextRef.current?.close();
       audioContextRef.current = null;
       isListeningRef.current = false;
@@ -439,10 +478,27 @@ const OracleConversation = forwardRef(
       logStep('MIC STOPPED', 'ok');
     };
 
+    // Keep ref in sync so ws.onclose can reconnect via the latest instance
+    useEffect(() => { connectToGeminiRef.current = connectToGemini; }, [connectToGemini]);
+
     useEffect(() => {
       connectToGemini();
-      return () => { if (wsRef.current) wsRef.current.close(); };
+      return () => {
+        if (wsRef.current) wsRef.current.close();
+        // Report session results to parent so totem level can be persisted
+        // and the XR sign-off postMessage can fire.
+        onSessionEndRef.current?.(
+          sessionAlignRef.current,
+          sessionTotemRef.current,
+          sessionCoinsRef.current,
+        );
+      };
     }, [connectToGemini]);
+
+    // sessionContext / initialKnifeThemes are intentionally NOT injected as hidden
+    // messages here. Any client.realtimeInput text to Gemini Live triggers a full
+    // audio response — injecting context mid-session caused double-talking.
+    // Territory context reaches the Oracle naturally through conversation flow.
 
     useImperativeHandle(ref, () => ({
       sendTextMessage: (text: string, isHidden = false) => sendText(text, isHidden),
@@ -480,8 +536,20 @@ const OracleConversation = forwardRef(
       }
     }));
 
+    // Quick-start prompts — surface when signal pad opens before first user message.
+    // Universal across all knife territories; disappear once the Seeker speaks.
+    const QUICK_PROMPTS = [
+      'What do you see in me?',
+      'What am I not saying?',
+      'Speak the frequency back.',
+      'What did the cascade take?',
+    ];
+    const hasSpoken = turns.some(t => t.role === 'user');
+
     return (
       <div className="oc-panel oc-panel-v2" style={{ display: isVisible ? 'flex' : 'none' }}>
+
+        {/* Mic trigger — always visible in oracle mode, audio-only by default */}
         <div className="oc-hero">
           <motion.button
             onClick={(e) => {
@@ -491,15 +559,15 @@ const OracleConversation = forwardRef(
             className="oc-mic-trigger"
             animate={{
               scale: isListening ? [1, 1.05, 1] : 1,
-              boxShadow: isListening 
-                ? '0 0 20px rgba(0, 255, 136, 0.6)' 
-                : '0 0 0px rgba(0, 255, 136, 0)'
+              boxShadow: isListening
+                ? '0 0 20px rgba(0, 255, 136, 0.6)'
+                : '0 0 0px rgba(0, 255, 136, 0)',
             }}
             transition={isListening ? { repeat: Infinity, duration: 2 } : {}}
           >
             {isListening ? <Mic size={32} /> : <MicOff size={32} className="opacity-50" />}
             <div className="oc-mic-label">
-              {isListening ? "TRANSMITTING" : "OPEN FREQUENCY"}
+              {isListening ? 'TRANSMITTING' : 'OPEN FREQUENCY'}
             </div>
           </motion.button>
 
@@ -511,47 +579,88 @@ const OracleConversation = forwardRef(
           )}
         </div>
 
-        <div className="oc-log" style={{ opacity: showSignalPad ? 1 : 0, pointerEvents: showSignalPad ? 'auto' : 'none' }}>
-          <AnimatePresence initial={false}>
-            {turns.slice(-2).map((t: any) => (
-              <motion.div
-                key={t.timestamp}
-                data-role={t.role}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`oc-turn ${t.role === 'oracle' ? 'oc-turn-oracle' : 'oc-turn-user'}`}
-              >
-                {t.content}
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+        {/* Conversation log — only rendered when signal pad is open */}
+        <AnimatePresence>
+          {showSignalPad && turns.length > 0 && (
+            <motion.div
+              className="oc-log"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+            >
+              <AnimatePresence initial={false}>
+                {turns.slice(-2).map((t: Turn) => (
+                  <motion.div
+                    key={t.timestamp}
+                    data-role={t.role}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`oc-turn ${t.role === 'oracle' ? 'oc-turn-oracle' : 'oc-turn-user'}`}
+                  >
+                    {t.content}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
+        {/* Signal pad — toggle opens text input + quick starters */}
         <div className={`oc-signal-pad ${showSignalPad ? 'oc-signal-pad--open' : ''}`}>
           <button className="oc-signal-pad-toggle" onClick={() => setShowSignalPad(!showSignalPad)}>
             {showSignalPad ? <X size={14} /> : <Send size={14} />}
             <span>SIGNAL PAD</span>
           </button>
-          
+
           <AnimatePresence>
             {showSignalPad && (
-              <motion.div 
+              <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 className="oc-signal-input-wrap"
               >
-                <input 
-                  type="text" 
-                  value={inputText} 
-                  onChange={e => setInputText(e.target.value)} 
-                  onKeyDown={e => e.key === 'Enter' && sendText(inputText)} 
-                  placeholder="TYPE SIGNAL..." 
-                  className="oc-input"
-                />
-                <button onClick={() => sendText(inputText)} className="oc-send-btn">
-                  <Send size={16} />
-                </button>
+                {/* Quick-start prompts — disappear after first user message */}
+                {!hasSpoken && (
+                  <div className="oc-quick-prompts">
+                    {QUICK_PROMPTS.map((p) => (
+                      <button
+                        key={p}
+                        className="oc-quick-prompt-btn"
+                        onClick={() => { sendText(p); setShowSignalPad(false); }}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Portrait command — appears after 2+ oracle turns */}
+                {turns.filter(t => t.role === 'oracle').length >= 2 && onPortraitRequestRef.current && (
+                  <button
+                    className="oc-portrait-btn"
+                    onClick={() => onPortraitRequestRef.current?.()}
+                  >
+                    ⚗ SUMMON PORTRAIT
+                  </button>
+                )}
+
+                <div className="oc-input-row">
+                  <input
+                    type="text"
+                    value={inputText}
+                    onChange={e => setInputText(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && inputText.trim() && sendText(inputText)}
+                    placeholder="TYPE SIGNAL..."
+                    className="oc-input"
+                  />
+                  <button
+                    onClick={() => inputText.trim() && sendText(inputText)}
+                    className="oc-send-btn"
+                  >
+                    <Send size={16} />
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

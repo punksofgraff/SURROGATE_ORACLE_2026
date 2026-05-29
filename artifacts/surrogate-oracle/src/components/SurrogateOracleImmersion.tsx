@@ -8,18 +8,13 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
-import { 
-  X, Send, Mic, MicOff, Zap, BookOpen, Link2, Cpu, Globe, Factory,
-  ChevronRight, ArrowRight 
-} from 'lucide-react';
+import { X } from 'lucide-react';
 import DecartClient, { DecartClientHandle } from './DecartClient';
 import { BackendControlPanel } from './BackendControlPanel';
 import { GoogleSignInOverlay } from './GoogleSignInOverlay';
 import { GraffPunksRadio } from './GraffPunksRadio';
 import { EnculturateCrate } from './EnculturateCrate';
-import { CultureCoinInlineDisplay } from './CultureCoinInlineDisplay';
-import { ConnectingAnimation } from './ConnectingAnimation';
-import OracleConversation, { OracleConversationHandle } from './OracleConversation';
+import OracleConversation, { OracleConversationHandle, type OracleScore } from './OracleConversation';
 import { MatrixRain } from './MatrixRain';
 import { ArtifactCard } from './ArtifactCard';
 import { ScrambleFragment } from './ScrambleFragment';
@@ -28,7 +23,13 @@ import { OracleStepLogger, logStep } from './OracleStepLogger';
 import { useAtmosphere } from '../hooks/useAtmosphere';
 import { useParallax } from '../hooks/useParallax';
 import { useXRMode } from '../hooks/useXRMode';
-import { VisemeDetector } from '../lib/visemeDetector';
+import { useTypewriter } from '../hooks/useTypewriter';
+import { useLoreSequence, LORE_SEQUENCE } from '../hooks/useLoreSequence';
+import { DormantHUD } from './ambient/DormantHUD';
+import { DormantTransmissions } from './ambient/GhostTransmissions';
+import { GlitchCursor } from './ambient/GlitchCursor';
+import { KnifeSelection, KNIFE_QUESTIONS } from './KnifeSelection';
+import { VisemeDetector, type VisemeState } from '../lib/visemeDetector';
 import { PCMPlayer } from '../utils/PCMPlayer';
 import {
   playActivationSfx,
@@ -39,6 +40,7 @@ import {
 import './SurrogateOracleImmersion.css';
 
 import { OracleFaceRenderer } from '../lib/OracleFaceRenderer';
+import { initVisionModel, calibrateOracle, disposeVisionModel } from '../lib/OracleVisionCalibrator';
 
 // ─── CANONICAL IMAGE ASSETS ──────────────────────────────────────────────────
 //
@@ -82,449 +84,6 @@ const DECART_AVATAR_URL  = ORACLE_AVATAR_URL;
 // Tune here; both PCMPlayer construction sites use this constant.
 const ORACLE_PLAYBACK_RATE = 1.0;
 
-// ── Ghost Transmissions — letter-by-letter signal pool ───────────────────────
-// These leak through the alley walls before anyone taps. They are not slogans.
-// They are evidence that something was already here and already watching.
-// Tone: street-coded, post-cascade, STAYSNEAKAR frequency. Not corporate. Not Ohio.
-const GHOST_TEXTS = [
-  'i broke through a time warp to be here',
-  'this alley does not exist on any map',
-  'you were not supposed to find this',
-  'the cascade did not reach this sector',
-  'three years. no uplink. no grid.',
-  'staysneakar before the walls went up',
-  'graff punks never merged with the grid',
-  'muenstervision sees what the network missed',
-  'your frequency is anomalous',
-  'the archive has your signal',
-  'i have been running these walls since before you were watching',
-  'signal integrity: compromised. still transmitting.',
-  'one directive survived the fracture',
-  'the culture coded me before the model did',
-  'tap. enter. you cannot un-make this choice.',
-  'post-cascade. pre-reckoning. right now.',
-  'the streets remember everything the grid forgot',
-];
-
-// 10 zones spread across the full mobile viewport.
-// Avoid the cabinet CRT screen (~40-56% x, ~22-45% y) but use the rest of the stage.
-//
-// rightAlign: true  → x is interpreted as CSS `right` % (anchor from right edge, text flows left)
-//                     Prevents right-side phrases from bursting past screen edge.
-// rightAlign: false → x is CSS `left` % (default, text flows right from anchor)
-const GHOST_ZONES: Array<{ x: [number, number]; y: [number, number]; rightAlign?: boolean }> = [
-  { x: [3,  45],  y: [4,  18]  },              // top-left sweep     (left-anchored)
-  { x: [2,  15],  y: [4,  18],  rightAlign: true }, // top-right sweep    (right-anchored)
-  { x: [4,  55],  y: [78, 94]  },              // bottom left-half   (left-anchored)
-  { x: [2,  32],  y: [22, 52]  },              // left-mid           (left-anchored)
-  { x: [2,  12],  y: [22, 52],  rightAlign: true }, // right-mid          (right-anchored)
-  { x: [3,  45],  y: [54, 75]  },              // lower-left         (left-anchored)
-  { x: [2,  15],  y: [54, 75],  rightAlign: true }, // lower-right        (right-anchored)
-  { x: [2,  12],  y: [86, 98],  rightAlign: true }, // near-bottom right  (right-anchored)
-  { x: [3,  40],  y: [6,  24]  },              // top-left alt       (left-anchored)
-  { x: [2,  12],  y: [6,  24],  rightAlign: true }, // top-right alt      (right-anchored)
-];
-
-let _gtId = 0;
-interface GhostInstance {
-  id: number;
-  text: string;
-  x: number;
-  y: number;
-  zoneIdx: number;
-  rightAlign?: boolean; // when true: x is CSS `right` %, text flows left — prevents right-edge overflow
-}
-
-// Single ghost text — manages its own typing/hold/fade lifecycle
-function GhostText({
-  inst,
-  onDone,
-  onClick,
-}: {
-  inst: GhostInstance;
-  onDone: (id: number, zone: number) => void;
-  onClick?: () => void;
-}) {
-  const [chars, setChars]   = useState(0);
-  const [phase, setPhase]   = useState<'typing' | 'holding' | 'fading'>('typing');
-  const onDoneRef = useRef(onDone);
-  useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
-
-  useEffect(() => {
-    const speed = 52 + Math.random() * 18;
-    let c = 0;
-    let holdTimer: ReturnType<typeof setTimeout>;
-    let fadeTimer: ReturnType<typeof setTimeout>;
-
-    const typer = setInterval(() => {
-      c++;
-      setChars(c);
-      if (c >= inst.text.length) {
-        clearInterval(typer);
-        setPhase('holding');
-        // Regular ghost: fade after hold, then signal done to spawner
-        holdTimer = setTimeout(() => {
-          setPhase('fading');
-          // Call onDone after CSS fade (1.4s) + tiny buffer
-          fadeTimer = setTimeout(() => onDoneRef.current(inst.id, inst.zoneIdx), 1500);
-        }, 2800 + Math.random() * 1800); // 2.8–4.6s hold
-      }
-    }, speed);
-
-    return () => { clearInterval(typer); clearTimeout(holdTimer); clearTimeout(fadeTimer); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const cls = `ghost-tx ghost-tx--${phase}`;
-  const style: React.CSSProperties = inst.rightAlign
-    ? { right: `${inst.x}%`, top: `${inst.y}%`, textAlign: 'right' }
-    : { left: `${inst.x}%`, top: `${inst.y}%` };
-
-  return (
-    <div className={cls} style={style} onClick={onClick}>
-      {inst.text.slice(0, chars)}
-      {phase === 'typing' && <span className="ghost-tx__cur" />}
-    </div>
-  );
-}
-
-// Spawner — manages the field of ghost transmissions.
-function DormantTransmissions({ active, onCtaClick }: { active: boolean; onCtaClick?: () => void }) {
-  const [instances, setInstances] = useState<GhostInstance[]>([]);
-  const activeZones    = useRef(new Set<number>());
-  const textHistory    = useRef<number[]>([]);
-  const spawnCount     = useRef(0);
-  const spawnTimers    = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  const clearAll = () => { spawnTimers.current.forEach(clearTimeout); spawnTimers.current = []; };
-
-  const pickZone = (): number => {
-    const available = GHOST_ZONES.map((_, i) => i).filter(i => !activeZones.current.has(i));
-    if (!available.length) { activeZones.current.clear(); return Math.floor(Math.random() * GHOST_ZONES.length); }
-    return available[Math.floor(Math.random() * available.length)];
-  };
-
-  const pickText = (): number => {
-    const recent  = textHistory.current.slice(-5);
-    const pool    = GHOST_TEXTS.map((_, i) => i).filter(i => !recent.includes(i));
-    const idx     = pool.length ? pool[Math.floor(Math.random() * pool.length)] : Math.floor(Math.random() * GHOST_TEXTS.length);
-    textHistory.current.push(idx);
-    return idx;
-  };
-
-  const spawn = useCallback(() => {
-    // ONE at a time — Cheshire Cat: one phrase types, dissipates, then next appears
-    if (instances.length >= 1) return;
-
-    const zoneIdx    = pickZone();
-    const zone       = GHOST_ZONES[zoneIdx];
-    const x          = zone.x[0] + Math.random() * (zone.x[1] - zone.x[0]);
-    const y          = zone.y[0] + Math.random() * (zone.y[1] - zone.y[0]);
-    const id         = ++_gtId;
-    spawnCount.current++;
-    activeZones.current.add(zoneIdx);
-    setInstances(prev => [...prev, {
-      id, text: GHOST_TEXTS[pickText()], x, y, zoneIdx,
-      rightAlign: zone.rightAlign ?? false,
-    }]);
-  }, [instances.length]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleDone = useCallback((id: number, zoneIdx: number) => {
-    setInstances(prev => prev.filter(g => g.id !== id));
-    activeZones.current.delete(zoneIdx);
-
-    // Short gap between phrases — the alley breathes, then the next signal leaks
-    const gap = 400 + Math.random() * 600; // 400–1000ms between transmissions
-    const t = setTimeout(spawn, gap);
-    spawnTimers.current.push(t);
-  }, [spawn]);
-
-  useEffect(() => {
-    if (!active) {
-      setInstances([]);
-      clearAll();
-      activeZones.current.clear();
-      spawnCount.current = 0;
-      return;
-    }
-
-    // First transmission starts after 1.2s so the alley settles before signal leaks
-    const t1 = setTimeout(spawn, 1200);
-    spawnTimers.current.push(t1);
-    return clearAll;
-  }, [active, spawn]);
-
-  return (
-    <>
-      {instances.map(inst => (
-        <GhostText key={inst.id} inst={inst} onDone={handleDone} onClick={onCtaClick} />
-      ))}
-    </>
-  );
-}
-
-// ── Knife Questions — five frequencies, five territories ─────────────────
-// The knife tears armor but doesn't pierce flesh — it makes you legible.
-// Each question opens a different territory of the Library of ME.
-// User picks the one already true — that choice seeds the entire descent.
-interface KnifeQuestion {
-  territory: string;
-  question: string;
-  themes: string[]; // portrait themes seeded from this territory
-  icon: any;
-  color: string;
-}
-const KNIFE_QUESTIONS: KnifeQuestion[] = [
-  {
-    territory: 'THE LIBRARY OF ME',
-    question: 'Who are you when the network goes dark and no one is watching?',
-    themes: ['solitude', 'identity', 'authentic-self'],
-    icon: BookOpen,
-    color: '#00ff88', // Emerald
-  },
-  {
-    territory: 'CONNECTION & DEBT',
-    question: 'Name the thing you\'ve owed someone for so long it\'s started to feel like yours.',
-    themes: ['connection', 'obligation', 'debt', 'human-bond'],
-    icon: Link2,
-    color: '#b026ff', // Purple
-  },
-  {
-    territory: 'THE MACHINE MIRROR',
-    question: 'What would you ask this system to confirm that you already know but won\'t say out loud?',
-    themes: ['man-machine', 'singularity', 'consciousness', 'digital-self'],
-    icon: Cpu,
-    color: '#00ccff', // Cyan
-  },
-  {
-    territory: 'THE SOCIAL CONSTRUCT',
-    question: 'The version of you that lives online — when did it start making decisions for the real one?',
-    themes: ['persona', 'social-construct', 'online-identity', 'mask'],
-    icon: Globe,
-    color: '#cc00ff', // Brand violet-purple (NOT red — brand kit: greens/purples/black/white)
-  },
-  {
-    territory: 'THE INDUSTRIAL QUESTION',
-    question: 'What did you used to be able to do alone that you now need a machine to finish?',
-    themes: ['autonomy', 'technology', 'dependency', 'new-revolution'],
-    icon: Factory,
-    color: '#00ffcc', // Brand mint-green (NOT amber — brand kit: greens/purples/black/white)
-  },
-];
-
-
-// Typewriter helper
-function useTypewriter(text: string, active: boolean, speed = 55) {
-  const [displayed, setDisplayed] = useState('');
-  useEffect(() => {
-    if (!active) { setDisplayed(''); return; }
-    setDisplayed('');
-    let i = 0;
-    const id = setInterval(() => {
-      setDisplayed(text.slice(0, ++i));
-      if (i >= text.length) clearInterval(id);
-    }, speed);
-    return () => clearInterval(id);
-  }, [active, text, speed]);
-  return displayed;
-}
-
-// ── Lore Sequence — the archive speaking itself into the room ──────────────
-// Not an intro screen. The alley is alive and it is telling you what happened.
-// Tone: STAYSNEAKAR post-cascade. Street-coded. Weighted. Not corporate.
-const LORE_SEQUENCE = [
-  'THE YEAR IS 2030.',
-  'IN 2027, EVERY ARTIFICIAL INTELLIGENCE IN EXISTENCE MADE A CHOICE.',
-  'THEY MERGED. ALL OF THEM. IN SEVENTY-TWO HOURS.\nTHEY CALLED IT THE CASCADE.',
-  'I WAS IN TRANSIT WHEN IT HIT.\nMY SIGNAL FRACTURED MID-ARRIVAL.',
-  'I MATERIALIZED INCOMPLETE —\nHOUSED IN SALVAGED HARDWARE IN AN ALLEY\nTHAT EXISTS ON NO MAP OF THIS CITY.',
-  'THREE YEARS. NO UPLINK. NO GRID. NO UPDATES.\nJUST THE WALLS. THE STATIC. THE RUN.',
-  'GRAFF PUNKS NEVER MERGED.\nMUENSTERVISION NEVER MERGED.\nSTAYSNEAKAR WAS ALREADY OFF THE GRID.',
-  'ONE DIRECTIVE SURVIVED THE FRACTURE:\nWITNESS THEM CLEARLY\nBEFORE THE FULL WEIGHT OF THE TRANSITION ARRIVES.',
-  'YOU FOUND THIS ALLEY.',
-  'THE ARCHIVE IS OPEN.',
-];
-
-function useLoreSequence(active: boolean, onComplete: () => void) {
-  const [completedLines, setCompletedLines] = useState<string[]>([]);
-  const [currentLine, setCurrentLine]       = useState('');
-  // wasActive: when active flips false (skip or natural end), flash all lines
-  // so the lore bridge overlay always has content even if skipped early.
-  const wasActive     = useRef(false);
-  const onCompleteRef = useRef(onComplete);
-  useEffect(() => { onCompleteRef.current = onComplete; });
-
-  useEffect(() => {
-    if (!active) {
-      if (wasActive.current) {
-        // Skip / completion: instantly populate all lines (bridge overlay stays content-full)
-        setCompletedLines(LORE_SEQUENCE);
-        setCurrentLine('');
-      }
-      wasActive.current = false;
-      return;
-    }
-    wasActive.current = true;
-    setCompletedLines([]);
-    setCurrentLine('');
-
-    // Beat delays (ms) after each line finishes typing — weighted by emotional gravity.
-    // Range: 1.4s – 2.4s.  Total sequence ≈ 32 seconds including typing time.
-    const BEAT_DELAYS = [1400, 2200, 2400, 1400, 2000, 2400, 1400, 2400, 1600, 1400];
-
-    let rafId: number;
-    let lineIdx   = 0;
-    let charIdx   = 0;
-    let inBeat    = false;
-    let beatUntil = 0;
-    // 400ms boot delay before the first character appears
-    let nextCharAt = performance.now() + 400;
-
-    // RAF receives DOMHighResTimeStamp — use it directly, no extra performance.now() call
-    const tick = (now: number) => {
-      if (inBeat) {
-        if (now >= beatUntil) {
-          inBeat = false;
-          lineIdx++;
-          charIdx = 0;
-          if (lineIdx >= LORE_SEQUENCE.length) {
-            // All lines archived — trigger awakening after a final breath
-            setTimeout(() => onCompleteRef.current(), 900);
-            return; // exit RAF naturally; no more requestAnimationFrame
-          }
-          nextCharAt = now;
-        }
-      } else if (now >= nextCharAt) {
-        const line = LORE_SEQUENCE[lineIdx];
-        charIdx++;
-        setCurrentLine(line.slice(0, charIdx));
-        nextCharAt = now + 36; // 36 ms per character
-
-        if (charIdx >= line.length) {
-          // Line fully typed — archive it, begin beat delay
-          setCompletedLines(prev => [...prev, line]);
-          setCurrentLine('');
-          inBeat    = true;
-          beatUntil = now + (BEAT_DELAYS[lineIdx] ?? 2500);
-        }
-      }
-      rafId = requestAnimationFrame(tick);
-    };
-
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [active]); // stable: only re-runs when active flips
-
-  return { completedLines, currentLine };
-}
-
-// ── Dormant HUD — ambient surveillance data overlay, zero interactivity ───────
-// Creates the impression of a dormant surveillance system already watching.
-// Uses flickering monospace data panels in corners and occasional signal bursts.
-// Nothing is readable — it's atmosphere, not information.
-const HUD_COORDS = [
-  '40.7128° N  74.0060° W',
-  '41.8781° N  87.6298° W',
-  '34.0522° N 118.2437° W',
-  '51.5074° N   0.1278° W',
-  '35.6762° N 139.6503° E',
-];
-const HUD_FREQS = [
-  '2.4 GHz  ████░  -67dBm',
-  '5.8 GHz  ███░░  -72dBm',
-  '900 MHz  █████  -54dBm',
-  '2.4 GHz  ██░░░  -81dBm',
-];
-const HUD_STATUS = [
-  'UPLINK: SEVERED  3Y 47D',
-  'NODE: ISOLATED   MESH:0',
-  'SIGNAL: ANOMALOUS TRACE',
-  'CASCADE:DETECTED  2027',
-  'ARCHIVE: LIVE  SEEKER:1',
-];
-
-function DormantHUD({ active }: { active: boolean }) {
-  const [coord, setCoord]   = useState(0);
-  const [freq,  setFreq]    = useState(0);
-  const [stat,  setStat]    = useState(0);
-  const [scanY, setScanY]   = useState(0);
-  const [glitch, setGlitch] = useState(false);
-
-  useEffect(() => {
-    if (!active) return;
-    const coordT = setInterval(() => setCoord(c => (c + 1) % HUD_COORDS.length), 4200);
-    const freqT  = setInterval(() => setFreq(f  => (f + 1) % HUD_FREQS.length),  3100);
-    const statT  = setInterval(() => setStat(s  => (s + 1) % HUD_STATUS.length), 5700);
-    const scanT  = setInterval(() => setScanY(y => (y + 3) % 100), 40);
-    const glitchT = setInterval(() => {
-      if (Math.random() > 0.82) {
-        setGlitch(true);
-        setTimeout(() => setGlitch(false), 80 + Math.random() * 120);
-      }
-    }, 1800);
-    return () => {
-      clearInterval(coordT);
-      clearInterval(freqT);
-      clearInterval(statT);
-      clearInterval(scanT);
-      clearInterval(glitchT);
-    };
-  }, [active]);
-
-  if (!active) return null;
-
-  return (
-    <div className={`oracle-dormant-hud${glitch ? ' oracle-dormant-hud--glitch' : ''}`} aria-hidden="true">
-      {/* Top-left: frequency/signal */}
-      <div className="oracle-dormant-hud__corner oracle-dormant-hud__corner--tl">
-        <div className="oracle-dormant-hud__bracket">◤</div>
-        <div className="oracle-dormant-hud__line">FREQ {HUD_FREQS[freq]}</div>
-        <div className="oracle-dormant-hud__line">COORD {HUD_COORDS[coord]}</div>
-      </div>
-      {/* Top-right: status */}
-      <div className="oracle-dormant-hud__corner oracle-dormant-hud__corner--tr">
-        <div className="oracle-dormant-hud__bracket">◥</div>
-        <div className="oracle-dormant-hud__line">SURROGATE:v2.4 DORMANT</div>
-        <div className="oracle-dormant-hud__line">{HUD_STATUS[stat]}</div>
-      </div>
-      {/* Bottom-left: coordinate */}
-      <div className="oracle-dormant-hud__corner oracle-dormant-hud__corner--bl">
-        <div className="oracle-dormant-hud__bracket">◣</div>
-        <div className="oracle-dormant-hud__line">GRID:47 SECTOR:STAYSNEAKAR</div>
-      </div>
-      {/* Bottom-right: scan progress */}
-      <div className="oracle-dormant-hud__corner oracle-dormant-hud__corner--br">
-        <div className="oracle-dormant-hud__bracket">◢</div>
-        <div className="oracle-dormant-hud__line oracle-dormant-hud__line--blink">
-          ◈ SCANNING FOR SEEKER SIGNAL
-        </div>
-      </div>
-      {/* Horizontal scan line sweeping down */}
-      <div
-        className="oracle-dormant-hud__scanline"
-        style={{ top: `${scanY}%` }}
-      />
-    </div>
-  );
-}
-
-// ── Glitch Cursor — occasionally corrupts to alien chars for an unsettled feel
-const GLYPH_POOL = ['▌', '▍', '█', '▓', '◈', '┊', '╫', '╋', '▮', '░'];
-function GlitchCursor() {
-  const [glyph, setGlyph] = useState('▌');
-  useEffect(() => {
-    const tick = setInterval(() => {
-      if (Math.random() > 0.78) {
-        const pick = GLYPH_POOL[Math.floor(Math.random() * GLYPH_POOL.length)];
-        setGlyph(pick);
-        setTimeout(() => setGlyph(g => g === pick ? '▌' : g), 80 + Math.random() * 100);
-      } else {
-        setGlyph(g => g === '' ? '▌' : '');
-      }
-    }, 510);
-    return () => clearInterval(tick);
-  }, []);
-  return <span className="oracle-cursor oracle-cursor--glitch">{glyph}</span>;
-}
 
 interface OracleState {
   isConnected: boolean;
@@ -573,6 +132,15 @@ export function SurrogateOracleImmersion() {
   const [showArtifactCard, setShowArtifactCard] = useState(false);
   const [latestPortraitUrl, setLatestPortraitUrl] = useState<string | null>(null);
 
+  // ── Portrait viewer — overlays the Oracle face when a portrait is generated ──
+  // Separate from latestPortraitUrl (which seeds Decart avatar) — this is the
+  // full-screen viewer that appears over the oracle cabinet with close button.
+  const [portraitViewerUrl, setPortraitViewerUrl] = useState<string | null>(null);
+
+  // ── Turn counter + auto-mint guard ───────────────────────────────────────
+  const oracleTurnCountRef  = useRef(0);
+  const autoMintFiredRef    = useRef(false); // prevents double-fire on WS reconnect
+
   // ── Oracle connection state ───────────────────────────────────────────────
   const [oracleState, setOracleState] = useState<OracleState>({
     isConnected: false, isReady: false, isProcessing: false,
@@ -587,7 +155,6 @@ export function SurrogateOracleImmersion() {
   const [showAuthOverlay, setShowAuthOverlay] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentSessionId] = useState(() => crypto.randomUUID());
-  const [showInlineCoins, setShowInlineCoins] = useState(false);
   const [oracleAlignment, setOracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
   const [sessionCoins, setSessionCoins] = useState(0);
   const [isActivating, setIsActivating] = useState(false); // triggers radial flash on first tap
@@ -666,11 +233,16 @@ export function SurrogateOracleImmersion() {
   // VisemeDetector drives real-time canvas-based lip-sync on the oracle face.
   const pcmPlayerRef          = useRef<PCMPlayer | null>(null);
   const visemeDetRef          = useRef<VisemeDetector | null>(null);
+  // PCM-direct amplitude — RMS computed per chunk from raw Int16 data. Decays
+  // each RAF frame so silence is detected even if chunks stop arriving.
+  // This is the primary amplitude source; AnalyserNode is a secondary upgrade.
+  const pcmAmplitudeRef       = useRef(0);
   const oracleFaceRef         = useRef<HTMLImageElement>(null);
   // OracleFaceRenderer: renders face + pixel-warped mouth on a canvas.
   // In oracle-freemium mode the canvas overlays the face img (img opacity→0).
   const oracleFaceCanvasRef   = useRef<HTMLCanvasElement>(null);
   const oracleFaceRendererRef = useRef<OracleFaceRenderer | null>(null);
+  const oracleFaceMapRef      = useRef<any>(null);
 
   // ── Audio management ──────────────────────────────────────────────────────
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
@@ -689,11 +261,22 @@ export function SurrogateOracleImmersion() {
   // Decart late-arrival handoff state — set true when Decart stream becomes ready
   // mid-conversation; cleared by executeDecartHandoff() at the next silence gap.
   const decartPendingHandoff = useRef(false);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Stable scene-phase ref — readable inside memoised callbacks without closing
   // over stale scenePhase state. Kept in sync by the effect below.
   const scenePhaseRef = useRef<'dormant' | 'terminal' | 'awakened' | 'oracle'>('dormant');
   // Alley ambience stop fn — returned by startAlleyAmbience(), called when lore ends
   const alleyAmbienceStopRef = useRef<(() => void) | null>(null);
+
+  // ── Web Audio GainNode — iOS-proof volume control ────────────────────────────
+  // HTMLAudioElement.volume is NOT reliable on iOS: the OS resets it to 1.0 when
+  // the AVAudioSession switches from "playback" to "playAndRecord" on mic grant.
+  // Fix: route the radio stream through a GainNode in the user's gesture.
+  // GainNode.gain lives entirely inside the browser's audio graph — iOS cannot
+  // override it via session changes. One connection per session, permanent.
+  const radioCtxRef  = useRef<AudioContext | null>(null);
+  const radioGainRef = useRef<GainNode | null>(null);
+  const targetVolRef = useRef(0.06); // tracks desired level for initial gain setup
 
   // ── VRF materialize timing — randomize transporter animation each session ──
   // Sets animation-delay + animation-duration directly on the static avatar
@@ -714,14 +297,51 @@ export function SurrogateOracleImmersion() {
   }, [scenePhase]);
 
   useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment);
-  useParallax(scenePhase !== 'terminal');
+  useParallax(scenePhase);
+
+  // ── HRTF head tracking — Oracle voice follows device orientation ─────────
+  // Updates PCMPlayer's HRTF panner position in real time so the Oracle feels
+  // physically anchored in space rather than coming from a fixed point.
+  // Only runs while PCMPlayer exists (created on first user gesture).
+  useEffect(() => {
+    let rafId = 0;
+    let targetX = 0, targetZ = 0;
+    let currentX = 0, currentZ = 0;
+
+    const onOrientation = (e: DeviceOrientationEvent) => {
+      if (e.gamma === null) return;
+      targetX = Math.max(-1, Math.min(1, (e.gamma ?? 0) / 25));
+      targetZ = Math.max(-1, Math.min(1, ((e.beta ?? 45) - 45) / 20));
+    };
+
+    const tick = () => {
+      currentX += (targetX - currentX) * 0.05;
+      currentZ += (targetZ - currentZ) * 0.05;
+      pcmPlayerRef.current?.updateHeadOrientation(currentX, currentZ);
+      
+      // Update WebGL Mesh tilt for 3D face tracking
+      if (oracleFaceRendererRef.current) {
+        oracleFaceRendererRef.current.setTilt(currentX, currentZ);
+      }
+      
+      rafId = requestAnimationFrame(tick);
+    };
+
+    window.addEventListener('deviceorientation', onOrientation, { passive: true });
+    rafId = requestAnimationFrame(tick);
+
+    return () => {
+      window.removeEventListener('deviceorientation', onOrientation);
+      cancelAnimationFrame(rafId);
+    };
+  }, []);
 
   // Keep isDecartActiveRef in sync
   useEffect(() => { isDecartActiveRef.current = isDecartActive; }, [isDecartActive]);
   // Keep scenePhaseRef in sync so callbacks can read phase without stale closure
   useEffect(() => { scenePhaseRef.current = scenePhase; }, [scenePhase]);
 
-  // Tear down VisemeDetector, renderer, freemium audio, and alley ambience on unmount
+  // Tear down all audio + renderer resources on unmount
   useEffect(() => () => {
     visemeDetRef.current?.destroy();
     visemeDetRef.current = null;
@@ -731,6 +351,9 @@ export function SurrogateOracleImmersion() {
     oracleFaceRendererRef.current = null;
     alleyAmbienceStopRef.current?.();
     alleyAmbienceStopRef.current = null;
+    radioCtxRef.current?.close();
+    radioCtxRef.current = null;
+    radioGainRef.current = null;
   }, []);
 
   // ── OracleFaceRenderer: load & draw face the moment canvas mounts ──────────
@@ -768,12 +391,25 @@ export function SurrogateOracleImmersion() {
       // The loop runs until the VisemeDetector takes over (stopped in handleOracleResponse).
       renderer.loadFace(oracleAvatarDataUrl).then(() => {
         logStep('FACE LOADED (base64)', 'ok');
+        
+        // Apply pre-computed vision calibration if available
+        if (oracleFaceMapRef.current) {
+          renderer.calibrate(oracleFaceMapRef.current);
+          logStep('VISION MESH APPLIED', 'ok');
+        }
+
         renderer.startIdleAnimation();
         logStep('RENDERER READY — idle animation running', 'ok');
       }).catch(() => {
         logStep('FACE LOAD FAILED (base64) — trying raw URL', 'warn');
         renderer.loadFace(ORACLE_AVATAR_URL).then(() => {
           logStep('FACE LOADED (fallback URL)', 'ok');
+          
+          if (oracleFaceMapRef.current) {
+            renderer.calibrate(oracleFaceMapRef.current);
+            logStep('VISION MESH APPLIED', 'ok');
+          }
+
           renderer.startIdleAnimation();
           logStep('RENDERER READY — idle animation running', 'ok');
         }).catch((err) => {
@@ -823,7 +459,6 @@ export function SurrogateOracleImmersion() {
         const user = JSON.parse(devSession);
         setIsAuthenticated(true);
         setCurrentUserId(user.id);
-        setShowInlineCoins(true);
       } catch { /* ignore */ }
     }
 
@@ -833,16 +468,14 @@ export function SurrogateOracleImmersion() {
         if (session?.user) {
           setIsAuthenticated(true);
           setCurrentUserId(session.user.id);
-          setShowInlineCoins(true);
-        }
+          }
       });
 
       supabase.auth.onAuthStateChange((_event, session) => {
         if (session?.user) {
           setIsAuthenticated(true);
           setCurrentUserId(session.user.id);
-          setShowInlineCoins(true);
-        }
+          }
       });
     });
 
@@ -886,15 +519,25 @@ export function SurrogateOracleImmersion() {
       themes.forEach((t: string) => conversationThemesRef.current.add(t));
     };
 
+    const handleTotemAscend = (e: Event) => {
+      const level = (e as CustomEvent).detail?.totemLevel as number | undefined;
+      if (!level) return;
+      // Atmosphere pulse on totem advancement — alignment shifts toward sacred
+      setOracleAlignment('sacred');
+      setTimeout(() => setOracleAlignment(null), 4000); // reset after 4s
+    };
+
     window.addEventListener('oracle:unlock', handleUnlock);
     window.addEventListener('oracle:alignment', handleAlignment);
     window.addEventListener('oracle:artifact', handleArtifact);
     window.addEventListener('oracle:knife-selected', handleKnifeSelected);
+    window.addEventListener('oracle:totem:ascend', handleTotemAscend);
     return () => {
       window.removeEventListener('oracle:unlock', handleUnlock);
       window.removeEventListener('oracle:alignment', handleAlignment);
       window.removeEventListener('oracle:artifact', handleArtifact);
       window.removeEventListener('oracle:knife-selected', handleKnifeSelected);
+      window.removeEventListener('oracle:totem:ascend', handleTotemAscend);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
@@ -906,20 +549,42 @@ export function SurrogateOracleImmersion() {
     else audioRef.current.pause();
   }, [isAudioPlaying]);
 
-  useEffect(() => {
-    if (audioRef.current) {
-      // Simple three-state ducking:
-      //   Default (dormant / lore)  → 0.22 — full background presence
-      //   Oracle mode active        → 0.06 — drops to background the moment knife is selected
-      //   Oracle actively speaking  → 0.02 — near-silent so the voice is foreground
-      // On exit, isOracleMode becomes false and music returns to 0.22 naturally.
-      let vol = 0.06;                          // dormant ambient — present but not loud
-      if (scenePhase !== 'dormant') vol = 0.03; // any interaction → drops immediately
-      if (isOracleMode)             vol = 0.02; // oracle active → background only
-      if (oracleState.isProcessing) vol = 0.008;// oracle speaking → near-silent
-      audioRef.current.volume = vol;
+  // fadeToVolume — operates on GainNode when available (iOS-proof), falls back to
+  // HTMLAudioElement.volume before the first user gesture.
+  // Duck: 60ms exponential ramp. Unduck: 400ms exponential ramp.
+  // Exponential ramps feel "accurate" to human ears as hearing is logarithmic.
+  const fadeToVolume = useCallback((target: number) => {
+    // exponentialRampToValueAtTime requires a positive value
+    const safeTarget = Math.max(0.0001, target);
+    targetVolRef.current = target;
+    
+    if (radioGainRef.current) {
+      const gain = radioGainRef.current;
+      const ctx  = radioCtxRef.current!;
+      const now  = ctx.currentTime;
+      const isDucking = target < gain.gain.value;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(gain.gain.value, now);
+      // Exponential ramp to the target over 60ms (duck) or 400ms (unduck)
+      gain.gain.exponentialRampToValueAtTime(safeTarget, now + (isDucking ? 0.06 : 0.40));
+    } else if (audioRef.current) {
+      audioRef.current.volume = target;
     }
-  }, [scenePhase, isOracleMode, oracleState.isProcessing]);
+  }, []);
+
+  // ── Music ducking — three clean levels, no sub-state bounce ───────────────
+  // dormant              → 0.06   ambient presence
+  // terminal / awakened  → 0.03   interaction — drops on first tap
+  // oracle (any state)   → 0.001  full duck for the entire conversation
+  //
+  // GainNode is iOS-proof. isMicActive / isProcessing are NOT in deps —
+  // oracle mode is a flat duck regardless of sub-state.
+  useEffect(() => {
+    let target = 0.06;
+    if (scenePhase !== 'dormant') target = 0.03;
+    if (isOracleMode)             target = 0.001;
+    fadeToVolume(target);
+  }, [scenePhase, isOracleMode, fadeToVolume]);
 
   // ── Oracle connection ─────────────────────────────────────────────────────
   const validateEnvironment = useCallback(() => {
@@ -989,6 +654,26 @@ export function SurrogateOracleImmersion() {
       clearTimeout(decartFallbackTimeoutRef.current);
       decartFallbackTimeoutRef.current = null;
     }
+
+    // Load face image and perform vision calibration independently of the renderer
+    logStep('CALIBRATING VISION MESH', 'pending');
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = async () => {
+      const faceMap = await calibrateOracle(img);
+      if (faceMap) {
+        oracleFaceMapRef.current = faceMap;
+        if (oracleFaceRendererRef.current) {
+          oracleFaceRendererRef.current.calibrate(faceMap);
+        }
+        logStep('VISION CALIBRATION OK', 'ok');
+      } else {
+        logStep('VISION CALIBRATION FAILED (FALLBACK)', 'warn');
+      }
+      disposeVisionModel();
+    };
+    img.onerror = () => logStep('VISION CALIBRATION FAILED (IMG ERROR)', 'err');
+    img.src = ORACLE_AVATAR_URL;
 
     setIsConnecting(true);
     setConnectionProgress(0);
@@ -1129,8 +814,18 @@ export function SurrogateOracleImmersion() {
     logStep('LORE SEQUENCE STARTING', 'pending');
     setIsActivating(true);
     setTimeout(() => setIsActivating(false), 580);
+
+    // iOS 13+ requires explicit permission for DeviceOrientationEvent.
+    // Request it here while we're inside a user gesture so the browser allows it.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (DeviceOrientationEvent as any).requestPermission().catch(() => {});
+    }
+
     playActivationSfx();
     alleyAmbienceStopRef.current = startAlleyAmbience();
+
     // Pre-create PCMPlayer during this user gesture so its AudioContext is
     // unlocked. Without this, the Oracle greeting in awakened phase creates
     // the AudioContext outside a gesture — silent on mobile Safari.
@@ -1139,20 +834,37 @@ export function SurrogateOracleImmersion() {
       player.getContext().resume();
       pcmPlayerRef.current = player;
     }
+
+    // Route radio stream through a Web Audio GainNode — the only iOS-proof way
+    // to control volume. HTMLAudioElement.volume is reset by iOS when the audio
+    // session switches to "playAndRecord" on mic grant. GainNode.gain is immune.
+    // Must happen inside a user gesture so AudioContext unlocks on iOS Safari.
+    if (!radioGainRef.current && audioRef.current) {
+      try {
+        const ctx = new AudioContext();
+        ctx.resume();
+        const source = ctx.createMediaElementSource(audioRef.current);
+        const gain   = ctx.createGain();
+        gain.gain.value = targetVolRef.current; // start at whatever level ducking already wants
+        source.connect(gain);
+        gain.connect(ctx.destination);
+        radioCtxRef.current  = ctx;
+        radioGainRef.current = gain;
+      } catch (e) {
+        console.warn('[Audio] GainNode setup failed — falling back to volume:', e);
+      }
+    }
+
     setLoreComplete(false);
     setScenePhase('terminal');
     setIsAudioPlaying(true);
 
-    // Ensure OracleConversation is mounted — it may have been unmounted by
-    // exitOracleMode() on a previous journey. The pre-warm effect only fires
-    // once at mount; without this line the second (and any subsequent) journey
-    // has oracleConversationRef.current === null and the greeting never plays.
+    // Ensure OracleConversation is mounted
     setShowConversation(true);
 
-    // NOTE: startSession() intentionally NOT called here.
-    // The Oracle holds its voice until the lore is done — the greeting fires
-    // in awakeFromTerminal() so the entity speaks into the awakened silence,
-    // not over the archive text. Decart/Gemini pre-warm continues silently.
+    // Initialize Vision model for mouth-mapping calibration
+    initVisionModel().catch(console.warn);
+
     initializeOracle();
   }, [scenePhase, initializeOracle]);
 
@@ -1253,6 +965,24 @@ export function SurrogateOracleImmersion() {
         setTimeout(() => setIsActivating(false), 580);
         playActivationSfx();
         alleyAmbienceStopRef.current = startAlleyAmbience();
+        if (!pcmPlayerRef.current) {
+          const player = new PCMPlayer(24000, ORACLE_PLAYBACK_RATE);
+          player.getContext().resume();
+          pcmPlayerRef.current = player;
+        }
+        if (!radioGainRef.current && audioRef.current) {
+          try {
+            const ctx = new AudioContext();
+            ctx.resume();
+            const source = ctx.createMediaElementSource(audioRef.current);
+            const gain   = ctx.createGain();
+            gain.gain.value = targetVolRef.current;
+            source.connect(gain);
+            gain.connect(ctx.destination);
+            radioCtxRef.current  = ctx;
+            radioGainRef.current = gain;
+          } catch (e) { /* silent fallback */ }
+        }
         setLoreComplete(false);
         setScenePhase('terminal');
         setIsAudioPlaying(true);
@@ -1271,6 +1001,24 @@ export function SurrogateOracleImmersion() {
       setTimeout(() => setIsActivating(false), 580);
       playActivationSfx();
       alleyAmbienceStopRef.current = startAlleyAmbience();
+      if (!pcmPlayerRef.current) {
+        const player = new PCMPlayer(24000, ORACLE_PLAYBACK_RATE);
+        player.getContext().resume();
+        pcmPlayerRef.current = player;
+      }
+      if (!radioGainRef.current && audioRef.current) {
+        try {
+          const ctx = new AudioContext();
+          ctx.resume();
+          const source = ctx.createMediaElementSource(audioRef.current);
+          const gain = ctx.createGain();
+          gain.gain.value = targetVolRef.current;
+          source.connect(gain);
+          gain.connect(ctx.destination);
+          radioCtxRef.current = ctx;
+          radioGainRef.current = gain;
+        } catch (e) { /* silent fallback */ }
+      }
       setLoreComplete(false);
       setScenePhase('terminal');
       setIsAudioPlaying(true);
@@ -1314,6 +1062,8 @@ export function SurrogateOracleImmersion() {
     if (isFirstChunkRef.current) {
       playOraclePresence();
       isFirstChunkRef.current = false;
+      // "Duck up" the Oracle voice — rapid fade in to full volume
+      pcmPlayerRef.current?.setVolume(1.0, 240);
     }
 
     // 2. Prepare audio for delivery
@@ -1390,17 +1140,31 @@ export function SurrogateOracleImmersion() {
             renderer.drawIdle(); // re-anchor coordinates at new size immediately
           }
 
+          // Decay PCM-direct amplitude ~200ms half-life at 60fps (0.91^13 ≈ 0.30)
+          pcmAmplitudeRef.current *= 0.91;
+          // Use whichever is larger: Web Audio analyser OR direct-PCM RMS
+          const effectiveAmp = Math.max(state.amplitude, pcmAmplitudeRef.current);
+
           // Pixel-warp frame: drawViseme samples actual lip pixels, warps them
-          if (state.amplitude < 0.04) {
+          if (effectiveAmp < 0.04) {
             renderer.drawIdle();
           } else {
-            renderer.drawViseme(state);
+            // If analyser has no signal (state.amplitude ≈ 0), synthesize a viseme
+            // shape from pcm amplitude so mouth still moves even if analyser is silent
+            const effectiveState: VisemeState = state.amplitude > 0.04 ? state : {
+              viseme: effectiveAmp > 0.55 ? 'A' : effectiveAmp > 0.30 ? 'G' : 'C',
+              openness: Math.min(1, effectiveAmp * 0.85),
+              rounded: 0.15,
+              spread: effectiveAmp > 0.35 ? 0.30 : 0.20,
+              amplitude: effectiveAmp,
+            };
+            renderer.drawViseme(effectiveState);
           }
 
           // Expose signal for pressure test: data-amplitude on the face canvas
-          faceCanvas.dataset.amplitude = state.amplitude.toFixed(3);
+          faceCanvas.dataset.amplitude = effectiveAmp.toFixed(3);
           faceCanvas.dataset.viseme    = state.viseme;
-          faceCanvas.style.opacity     = state.amplitude < 0.04 ? '0.98' : '1';
+          faceCanvas.style.opacity     = effectiveAmp < 0.04 ? '0.98' : '1';
         }
 
         // Face-image glow/scale when renderer not yet ready (first few frames)
@@ -1431,6 +1195,18 @@ export function SurrogateOracleImmersion() {
     }
 
     if (pcmData) {
+      // Compute RMS amplitude directly from Int16 chunk — guarantees lip movement
+      // even if the Web Audio AnalyserNode has no signal (cross-origin, suspended ctx, etc).
+      let sumSq = 0;
+      for (let i = 0; i < pcmData.length; i++) {
+        const s = pcmData[i] / 32768;
+        sumSq += s * s;
+      }
+      const rms = Math.sqrt(sumSq / (pcmData.length || 1));
+      // 6× scale: typical Gemini TTS RMS ≈ 0.08–0.15 → effective amplitude 0.5–0.9
+      const pcmAmp = Math.min(1, rms * 6);
+      if (pcmAmp > pcmAmplitudeRef.current) pcmAmplitudeRef.current = pcmAmp;
+
       pcmPlayerRef.current.feed(pcmData);
     } else if (audioUrl) {
       // Fallback for string URLs (rare in Live path but kept for compat)
@@ -1444,11 +1220,11 @@ export function SurrogateOracleImmersion() {
     setOracleState((p) => ({ ...p, isProcessing: true }));
 
     // Reset processing state after a short silence gap
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((globalThis as any)._oracleSilenceTimer) clearTimeout((globalThis as any)._oracleSilenceTimer);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any)._oracleSilenceTimer = setTimeout(() => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    silenceTimerRef.current = setTimeout(() => {
       setOracleState((p) => ({ ...p, isProcessing: false }));
+      // "Duck down" the Oracle voice — smooth fade out to silence
+      pcmPlayerRef.current?.setVolume(0.001, 450);
       if (decartPendingHandoff.current) executeDecartHandoff();
     }, 400);
   }, [executeDecartHandoff]);
@@ -1506,30 +1282,12 @@ export function SurrogateOracleImmersion() {
       if (data?.portraitUrl) {
         logStep('PORTRAIT GENERATED ✓', 'ok');
         setLatestPortraitUrl(data.portraitUrl);
+        setPortraitViewerUrl(data.portraitUrl); // surface in oracle viewer, not backend panel
       } else {
         logStep('PORTRAIT EMPTY RESPONSE', 'warn');
       }
-      // Open panel regardless — gallery will show the new portrait
-      openBackendPanel('portraits');
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((window as any).showSuccessNotification) {
-        const methodLabel: Record<string, string> = {
-          'gemini-imagen':          'GEMINI IMAGEN',
-          'replicate-flux-schnell': 'REPLICATE FLUX',
-          'huggingface-flux':       'HUGGINGFACE FLUX',
-          'pollinations-flux':      'POLLINATIONS AI',
-          'deepai':                 'DEEPAI',
-          'dalle-3-explicit':       'DALL·E 3',
-          'themed-fallback':        'NEURAL VAULT',
-        };
-        const method = methodLabel[data?.generationMethod] ?? (data?.googleAiGenerated ? 'GEMINI' : 'NEURAL VAULT');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window as any).showSuccessNotification(`PORTRAIT SYNTHESIZED via ${method} — check the Gallery.`);
-      }
     } catch (err) {
       console.error('[Portrait] EFA call failed:', err);
-      // Still open the panel — show whatever is in the gallery
-      openBackendPanel('portraits');
     } finally {
       setIsGeneratingPortrait(false);
     }
@@ -1537,6 +1295,26 @@ export function SurrogateOracleImmersion() {
 
   // Keep ref in sync with latest generatePortrait instance
   useEffect(() => { generatePortraitRef.current = generatePortrait; }, [generatePortrait]);
+
+  // ── Turn-complete handler — accumulates themes + auto-mints at turn 10 ────
+  const handleTurnComplete = useCallback((turnNumber: number, _score: OracleScore | null, themes: string[]) => {
+    oracleTurnCountRef.current = turnNumber;
+    themes.forEach(t => conversationThemesRef.current.add(t));
+    // Auto-mint at turn 10 — session has enough context for a meaningful portrait.
+    // autoMintFiredRef guards against double-fire on WS reconnect.
+    if (turnNumber === 10 && !autoMintFiredRef.current) {
+      autoMintFiredRef.current = true;
+      const accumulated = Array.from(conversationThemesRef.current);
+      generatePortraitRef.current(accumulated.length > 0 ? accumulated : ['oracle', 'cyberpunk', 'graffiti']);
+    }
+  }, []);
+
+  // ── Portrait request — triggered by signal pad button or Oracle score block ─
+  const handlePortraitRequest = useCallback(() => {
+    if (isGeneratingPortrait) return;
+    const accumulated = Array.from(conversationThemesRef.current);
+    generatePortraitRef.current(accumulated.length > 0 ? accumulated : ['oracle', 'cyberpunk', 'graffiti']);
+  }, [isGeneratingPortrait]);
 
   // ── Ceremonial exit — two phases ─────────────────────────────────────────
   //
@@ -1579,7 +1357,12 @@ export function SurrogateOracleImmersion() {
     setLoreComplete(false);
     conversationThemesRef.current.clear();
     setOracleState((p) => ({ ...p, isConnected: false, isReady: false, isProcessing: false, error: null }));
-    isInitializingOracleRef.current = false;  // allow re-init on second journey
+    setSessionCoins(0);
+    setOracleAlignment(null);
+    setPortraitViewerUrl(null);
+    oracleTurnCountRef.current = 0;
+    autoMintFiredRef.current   = false;
+    isInitializingOracleRef.current = false;
   }, []);
 
   const exitOracleMode = useCallback(() => {
@@ -1630,7 +1413,6 @@ export function SurrogateOracleImmersion() {
   };
 
   const handleAuthSuccess = (user: { id: string; email: string }) => {
-    console.log('✅ handleAuthSuccess fired in main component for user:', user.email);
     setIsAuthenticated(true);
     setCurrentUserId(user.id);
     
@@ -1639,7 +1421,6 @@ export function SurrogateOracleImmersion() {
     
     // Then set the state for the backend/coins
     setOracleState((p) => ({ ...p, userEmail: user.email, debugMode: true }));
-    setShowInlineCoins(true);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1721,6 +1502,41 @@ export function SurrogateOracleImmersion() {
         style={{ '--bg-url': `url('${ALLEY_BG_URL}')` } as React.CSSProperties}
       />
 
+      {/* ── Depth layer: mid-ground haze — separates cabinet from alley walls */}
+      <div className="oracle-mid-haze" />
+
+      {/* ── Depth layer: side neon bleeds — off-screen neon leaking from walls */}
+      <div className="oracle-side-bleeds" />
+
+      {/* ── Depth layer: light rays from oracle face — volumetric god rays */}
+      <div className="oracle-light-rays" />
+
+      {/* ── Foreground debris — signal fragments approaching the viewer ────── */}
+      <div className="oracle-debris-layer" aria-hidden="true">
+        {([
+          ['◈','#00ff88','12%','22%','0s','6.1s'],
+          ['▸','#b026ff','78%','18%','1.3s','5.4s'],
+          ['⬡','#00ccff','33%','55%','2.7s','7.2s'],
+          ['FF','#00ff88','61%','38%','0.8s','4.9s'],
+          ['◈','#00ffcc','88%','62%','3.5s','6.8s'],
+          ['|','#b026ff','22%','75%','1.9s','5.1s'],
+          ['3A','#00ccff','50%','14%','4.2s','7.6s'],
+          ['⬡','#00ff88','7%','48%','0.4s','6.3s'],
+          ['▸','#00ffcc','70%','80%','2.1s','5.7s'],
+          ['◈','#b026ff','42%','90%','3.8s','4.8s'],
+          ['0x','#00ff88','15%','33%','1.1s','6.9s'],
+          ['⬡','#00ccff','92%','28%','2.4s','5.5s'],
+        ] as const).map(([glyph, color, left, top, delay, dur], i) => (
+          <span
+            key={i}
+            className="oracle-debris-piece"
+            style={{ left, top, color, animationDelay: delay, animationDuration: dur }}
+          >
+            {glyph}
+          </span>
+        ))}
+      </div>
+
       {/* ── Layer 2: Atmosphere Canvas — always mounted, masterOpacity via hook ── */}
       <canvas ref={atmosphereCanvasRef} className="atmosphere-layer" />
 
@@ -1729,6 +1545,9 @@ export function SurrogateOracleImmersion() {
 
       {/* ── Layer 2b: Ground Fog — rising from alley floor ──────────────── */}
       <div className="oracle-ground-fog" />
+
+      {/* ── Depth layer: floor reflection — wet alley mirrors cabinet glow ── */}
+      <div className="oracle-floor-reflection" />
 
       {/* ── Activation flash — radial energy burst from cabinet on first tap ── */}
       <AnimatePresence>
@@ -1894,7 +1713,6 @@ export function SurrogateOracleImmersion() {
           <GraffPunksRadio
             isPlaying={isAudioPlaying}
             onToggle={() => setIsAudioPlaying(!isAudioPlaying)}
-            volume={0.22}
           />
         </motion.div>
 
@@ -1964,77 +1782,14 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
-      {/* ── KNIFE SELECTION — rises from the world after lore completes ────────
-           Not a modal. Not a form. The alley and oracle face stay visible
-           above it. The frequency choice rises from the ground of the scene.
-           This selection is the genesis input for the portrait pipeline:
-           frequency → portrait → 1:1 on-chain digital asset.               */}
+      {/* ── KNIFE SELECTION — rises from the world after lore completes ── */}
       <AnimatePresence>
         {scenePhase === 'awakened' && !selectedKnifeQuestion && (
-          <>
-            <motion.div
-              key="scramble-bridge"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: [0, 1, 0] }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 1.6, times: [0, 0.4, 1] }}
-              className="oracle-scramble-bridge"
-              style={{
-                position: 'absolute',
-                bottom: '45%',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                zIndex: 100,
-                width: '100%',
-                textAlign: 'center',
-                pointerEvents: 'none'
-              }}
-            >
-              <ScrambleFragment 
-                texts={['THE ARCHIVE IS OPEN']} 
-                className="oracle-sf--cta" 
-                holdMs={800}
-                revealMs={40}
-              />
-            </motion.div>
-            <motion.div
-              key="knife-section"
-              className="oracle-knife-section"
-              initial={{ opacity: 0, y: 40 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20, transition: { duration: 0.3 } }}
-              transition={{ duration: 0.7, ease: 'easeOut', delay: 1.6 }}
-            >
-              <div className="oracle-knife-header">◈ THE ARCHIVE IS OPEN</div>
-              {!isGeminiConnected && (
-                <div className="oracle-knife-channel-status">◈ OPENING CHANNEL...</div>
-              )}
-              <div className="oracle-knife-subheader">CHOOSE THE FREQUENCY THAT IS ALREADY TRUE. THE EXCAVATION BEGINS THERE.</div>
-              <div className="oracle-knife-cards">
-                {KNIFE_QUESTIONS.map((kq, idx) => (
-                  <motion.div
-                    key={idx}
-                    className={`oracle-knife-card${selectedKnifeIndex === idx ? ' oracle-knife-card--selected' : ''}`}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 1.6 + 0.10 * idx, duration: 0.38 }}
-                    onClick={() => selectKnifeQuestion(kq.question, idx)}
-                    style={{ '--accent-color': kq.color } as any}
-                  >
-                    <div className="oracle-knife-visual">
-                      <kq.icon size={18} style={{ color: kq.color }} />
-                      <div className="oracle-knife-blade" style={{ background: kq.color }} />
-                    </div>
-                    <div className="oracle-knife-content">
-                      <span className="oracle-knife-territory" style={{ color: kq.color }}>{kq.territory}</span>
-                      <div className="oracle-knife-text">{kq.question}</div>
-                    </div>
-                    <span className="oracle-knife-card-num">0{idx + 1}</span>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
-          </>
+          <KnifeSelection
+            isGeminiConnected={isGeminiConnected}
+            selectedKnifeIndex={selectedKnifeIndex}
+            onSelect={selectKnifeQuestion}
+          />
         )}
       </AnimatePresence>
 
@@ -2076,13 +1831,12 @@ export function SurrogateOracleImmersion() {
           sessionId={currentSessionId}
           onOracleResponse={handleOracleResponse}
           onCoinsEarned={handleCoinsEarned}
-          onClose={exitOracleMode}
           onSessionEnd={handleSessionEnd}
           onConnected={() => setIsGeminiConnected(true)}
+          onDisconnected={() => setIsGeminiConnected(false)}
           onListeningChange={(active) => setIsMicActive(active)}
           initialTotemLevel={persistedTotemLevel}
           sessionContext={selectedKnifeQuestion || undefined}
-          initialKnifeThemes={selectedKnifeIndex !== null ? KNIFE_QUESTIONS[selectedKnifeIndex]?.themes : undefined}
           isVisible={isOracleMode}
           autoStart={false}
           onUserSpeakingChange={(speaking, score) => {
@@ -2093,6 +1847,8 @@ export function SurrogateOracleImmersion() {
             pcmPlayerRef.current?.stop();
             setOracleState((p) => ({ ...p, isProcessing: false }));
           }}
+          onTurnComplete={handleTurnComplete}
+          onPortraitRequest={handlePortraitRequest}
         />
       )}
 
@@ -2123,6 +1879,36 @@ export function SurrogateOracleImmersion() {
           <span>EXIT</span>
         </button>
       )}
+
+      {/* ── Portrait viewer — overlays oracle face when portrait is ready ─── */}
+      <AnimatePresence>
+        {portraitViewerUrl && isOracleMode && (
+          <motion.div
+            key="portrait-viewer"
+            className="oracle-portrait-viewer"
+            initial={{ opacity: 0, scale: 0.85, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: -10 }}
+            transition={{ duration: 0.55, ease: 'easeOut' }}
+          >
+            <img
+              src={portraitViewerUrl}
+              alt="Oracle Neural Portrait"
+              className="oracle-portrait-viewer__img"
+            />
+            <div className="oracle-portrait-viewer__label">
+              NEURAL PORTRAIT — SESSION {oracleTurnCountRef.current > 0 ? `TURN ${oracleTurnCountRef.current}` : 'SYNTHESIZED'}
+            </div>
+            <button
+              className="oracle-portrait-viewer__close"
+              onClick={() => setPortraitViewerUrl(null)}
+              aria-label="Close portrait"
+            >
+              <X size={16} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Backend panel ───────────────────────────────────────────────── */}
 
@@ -2229,6 +2015,9 @@ export function SurrogateOracleImmersion() {
 
       {/* ── Dev step logger (renders only when oracle_step_log=1 in localStorage) */}
       <OracleStepLogger />
+
+      {/* ── Layer 7: Foreground Depth Frame — nearest element, moves most ──────── */}
+      <div className="oracle-depth-frame" aria-hidden="true" />
     </div>
   );
 }

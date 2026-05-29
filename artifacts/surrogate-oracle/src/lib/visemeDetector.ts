@@ -108,6 +108,7 @@ export class VisemeDetector {
   }
 
   start() {
+    if (this.rafId !== null) return; // already running — guard against double invocation
     this.lastFrameTime = performance.now();
     // RAF passes DOMHighResTimeStamp as first argument — use it directly (no extra call)
     const tick = (now: number) => {

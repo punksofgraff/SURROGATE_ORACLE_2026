@@ -37,6 +37,83 @@
   perspective: 800px; /* Pillar 3 — depth stage for oracle-phase materialization */
 }
 
+/* ── Depth layer: side neon bleeds — off-screen neon leaking from walls ── */
+.oracle-side-bleeds {
+  position: absolute;
+  inset: -10%;
+  pointer-events: none;
+  z-index: var(--z-atmosphere);
+  background: radial-gradient(circle at 0% 50%, rgba(176, 38, 255, 0.15) 0%, transparent 40%),
+              radial-gradient(circle at 100% 50%, rgba(0, 255, 136, 0.15) 0%, transparent 40%);
+  filter: blur(40px);
+  opacity: 0.6;
+  mix-blend-mode: screen;
+}
+
+/* ── Depth layer: mid-ground haze — separates cabinet from alley walls ── */
+.oracle-mid-haze {
+  position: absolute;
+  inset: -5%;
+  pointer-events: none;
+  z-index: var(--z-atmosphere);
+  background: linear-gradient(to bottom, transparent 0%, rgba(0, 5, 15, 0.25) 50%, transparent 100%);
+  filter: blur(20px);
+  opacity: 0.4;
+}
+
+/* ── Depth layer: light rays from oracle face — volumetric god rays ── */
+.oracle-light-rays {
+  position: absolute;
+  top: var(--cabinet-top);
+  left: var(--cabinet-left);
+  width: 150vw;
+  height: 150vh;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: var(--z-atmosphere);
+  background: conic-gradient(from 0deg at 50% 50%, 
+    transparent 0deg,
+    rgba(0, 255, 136, 0.03) 15deg,
+    transparent 30deg,
+    rgba(176, 38, 255, 0.02) 45deg,
+    transparent 60deg
+  );
+  filter: blur(10px);
+  opacity: 0;
+  transition: opacity var(--t-reveal) var(--ease-cinematic);
+}
+
+.oracle-stage[data-oracle-state="oracle"] .oracle-light-rays {
+  opacity: 1;
+  animation: rotate-rays 120s linear infinite;
+}
+
+@keyframes rotate-rays {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* ── Layer 7: Foreground Depth Frame — nearest element, moves most ── */
+.oracle-depth-frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: var(--z-system);
+  border: 40px solid transparent;
+  border-image: linear-gradient(to bottom, 
+    rgba(0, 255, 136, 0.08), 
+    transparent 20%, 
+    transparent 80%, 
+    rgba(176, 38, 255, 0.08)
+  ) 1;
+  box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.5);
+  opacity: 0.5;
+}
+
+.oracle-stage[data-oracle-state="dormant"] .oracle-depth-frame {
+  opacity: 0.2;
+}
+
 /* ── Grain & Noise Overlay ────────────────────────────────────────────── */
 .oracle-stage::after {
   content: "";
@@ -3301,13 +3378,50 @@
 
 .oc-signal-input-wrap {
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  background: rgba(0,0,0,0.8);
-  border: 1px solid #00ff88;
-  padding: 10px;
+  background: rgba(0,0,0,0.88);
+  border: 1px solid rgba(0, 255, 136, 0.55);
+  padding: 12px;
   border-radius: 8px;
   width: 300px;
-  box-shadow: 0 0 30px rgba(0,0,0,0.5);
+  box-shadow: 0 0 30px rgba(0,0,0,0.6), 0 0 16px rgba(0,255,136,0.08);
+  backdrop-filter: blur(8px);
+}
+
+/* ── Quick-start prompts — first-open, before Seeker speaks ─────────────── */
+.oc-quick-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0, 255, 136, 0.15);
+}
+
+.oc-quick-prompt-btn {
+  background: rgba(0, 255, 136, 0.06);
+  border: 1px solid rgba(0, 255, 136, 0.22);
+  color: rgba(0, 255, 136, 0.82);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  padding: 7px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+.oc-quick-prompt-btn:hover {
+  background: rgba(0, 255, 136, 0.14);
+  border-color: rgba(0, 255, 136, 0.55);
+  color: #00ff88;
+}
+
+/* ── Text input row ─────────────────────────────────────────────────────── */
+.oc-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .oc-input {
@@ -3330,6 +3444,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 @media (max-width: 480px) {
@@ -3435,4 +3550,394 @@
   opacity: 0 !important;
   pointer-events: none !important;
   transition: opacity 0.8s ease-out !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DEPTH LAYER STACK — stacked immersion additions
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Floor reflection — wet alley street mirrors cabinet glow ──────────────
+   A vertical gradient anchored to the bottom edge. In oracle mode it
+   intensifies and picks up the cabinet's green frequency.                   */
+.oracle-floor-reflection {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 38%;
+  pointer-events: none;
+  z-index: calc(var(--z-atmosphere) + 2);
+  background: linear-gradient(
+    to top,
+    rgba(0, 10, 20, 0.80) 0%,
+    rgba(0, 255, 136, 0.05) 28%,
+    rgba(176, 38, 255, 0.03) 50%,
+    transparent 100%
+  );
+  mix-blend-mode: multiply;
+  transition: opacity 2.0s ease-in-out;
+  animation: floor-shimmer 9s ease-in-out infinite alternate;
+}
+
+.oracle-stage[data-oracle-state="dormant"] .oracle-floor-reflection { opacity: 0.45; }
+.oracle-stage[data-oracle-state="terminal"] .oracle-floor-reflection { opacity: 0.70; }
+.oracle-stage[data-oracle-state="awakened"] .oracle-floor-reflection { opacity: 0.90; }
+.oracle-stage[data-oracle-state="oracle"] .oracle-floor-reflection {
+  opacity: 1.0;
+  background: linear-gradient(
+    to top,
+    rgba(0, 5, 12, 0.90) 0%,
+    rgba(0, 255, 136, 0.10) 25%,
+    rgba(176, 38, 255, 0.05) 48%,
+    transparent 100%
+  );
+}
+
+@keyframes floor-shimmer {
+  0%   { transform: scaleY(1.00); }
+  100% { transform: scaleY(1.06); }
+}
+
+/* ── Side neon bleeds — off-screen neon signs leaking from the walls ────────
+   Left edge: violet. Right edge: green. In oracle mode they intensify.
+   Creates the impression of a wider, inhabited alley beyond the frame.      */
+.oracle-side-bleeds {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: calc(var(--z-atmosphere) + 1);
+  background:
+    linear-gradient(90deg,
+      rgba(176, 38, 255, 0.10) 0%,
+      rgba(176, 38, 255, 0.04) 8%,
+      transparent 22%
+    ),
+    linear-gradient(270deg,
+      rgba(0, 255, 136, 0.08) 0%,
+      rgba(0, 255, 136, 0.03) 8%,
+      transparent 22%
+    );
+  opacity: 0;
+  transition: opacity 1.8s ease-in-out;
+  animation: side-bleed-pulse 7s ease-in-out infinite alternate;
+}
+
+.oracle-stage[data-oracle-state="awakened"] .oracle-side-bleeds { opacity: 0.6; }
+.oracle-stage[data-oracle-state="oracle"] .oracle-side-bleeds {
+  opacity: 1.0;
+  background:
+    linear-gradient(90deg,
+      rgba(176, 38, 255, 0.18) 0%,
+      rgba(176, 38, 255, 0.06) 10%,
+      transparent 28%
+    ),
+    linear-gradient(270deg,
+      rgba(0, 255, 136, 0.14) 0%,
+      rgba(0, 204, 255, 0.06) 10%,
+      transparent 28%
+    );
+}
+
+@keyframes side-bleed-pulse {
+  0%   { opacity: 0.65; }
+  100% { opacity: 1.00; }
+}
+
+/* ── Oracle depth frame — screen-within-screen in oracle mode ───────────────
+   A thin chromatic-aberration border appears around the edges when the Oracle
+   is fully present. Gives the sense you're looking through a CRT into another
+   space. Dormant/terminal/awakened = invisible.                             */
+.oracle-depth-frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: calc(var(--z-oracle) - 2);
+  opacity: 0;
+  transition: opacity 2.0s var(--ease-cinematic);
+  border-radius: 0;
+  box-shadow:
+    inset 0 0 60px rgba(0, 255, 136, 0.08),
+    inset 0 0 120px rgba(176, 38, 255, 0.06),
+    inset 2px 0 0 rgba(176, 38, 255, 0.25),
+    inset -2px 0 0 rgba(0, 204, 255, 0.20),
+    inset 0 2px 0 rgba(0, 255, 136, 0.15),
+    inset 0 -2px 0 rgba(0, 255, 136, 0.10);
+}
+
+.oracle-stage[data-oracle-state="oracle"] .oracle-depth-frame {
+  opacity: 1;
+  animation: depth-frame-breathe 5s ease-in-out infinite;
+}
+
+@keyframes depth-frame-breathe {
+  0%, 100% {
+    box-shadow:
+      inset 0 0 60px rgba(0, 255, 136, 0.08),
+      inset 0 0 120px rgba(176, 38, 255, 0.06),
+      inset 2px 0 0 rgba(176, 38, 255, 0.25),
+      inset -2px 0 0 rgba(0, 204, 255, 0.20),
+      inset 0 2px 0 rgba(0, 255, 136, 0.15),
+      inset 0 -2px 0 rgba(0, 255, 136, 0.10);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 80px rgba(0, 255, 136, 0.13),
+      inset 0 0 160px rgba(176, 38, 255, 0.09),
+      inset 2px 0 0 rgba(176, 38, 255, 0.40),
+      inset -2px 0 0 rgba(0, 204, 255, 0.32),
+      inset 0 2px 0 rgba(0, 255, 136, 0.22),
+      inset 0 -2px 0 rgba(0, 255, 136, 0.16);
+  }
+}
+
+/* ── Mid-ground haze band — depth separator between bg and cabinet ──────────
+   A barely-visible horizontal band at ~35% height creates the illusion
+   that the cabinet exists in a different spatial plane from the alley walls. */
+.oracle-mid-haze {
+  position: absolute;
+  top: 28%;
+  left: 0;
+  right: 0;
+  height: 18%;
+  pointer-events: none;
+  z-index: calc(var(--z-atmosphere) - 1);
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 10, 30, 0.22) 40%,
+    rgba(0, 10, 30, 0.18) 60%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity 1.8s ease-in-out;
+}
+
+.oracle-stage[data-oracle-state="terminal"] .oracle-mid-haze { opacity: 0.4; }
+.oracle-stage[data-oracle-state="awakened"] .oracle-mid-haze { opacity: 0.7; }
+.oracle-stage[data-oracle-state="oracle"] .oracle-mid-haze {
+  opacity: 1.0;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(0, 5, 20, 0.32) 40%,
+    rgba(0, 5, 20, 0.28) 60%,
+    transparent 100%
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   XR-LITE VISUAL DEPTH — light rays, foreground debris, 3D parallax support
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ── transform-style on stage — lets cabinet rotateX/Y read from stage perspective ── */
+.oracle-stage { transform-style: preserve-3d; }
+/* Cabinet center: enable 3D so the rotateX/Y from parallax is rendered in 3D space */
+.oracle-center { transform-style: preserve-3d; }
+
+/* Parallax-shifted elements need overflow room so edges don't clip on strong gyro tilt.
+   The shift is at most ~3.5% of vw — 12px on a 360px screen. 8px margin covers it.  */
+.oracle-depth-frame  { inset: -8px; }
+.oracle-side-bleeds  { inset: -8px; }
+.oracle-floor-reflection { bottom: -8px; left: -8px; right: -8px; }
+
+/* ── Oracle light rays — volumetric shafts from the cabinet face ─────────── */
+.oracle-light-rays {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: calc(var(--z-cabinet) - 2);
+  opacity: 0;
+  transition: opacity 2.5s var(--ease-cinematic);
+  /* 5 radiating shafts centred on cabinet position (~50% X, ~44% Y) */
+  background:
+    radial-gradient(ellipse 3.5% 58% at 40% 46%, rgba(0,255,136,0.048) 0%, transparent 100%),
+    radial-gradient(ellipse 2.5% 46% at 45% 46%, rgba(0,255,136,0.032) 0%, transparent 100%),
+    radial-gradient(ellipse 4.5% 64% at 50% 46%, rgba(0,255,136,0.060) 0%, transparent 100%),
+    radial-gradient(ellipse 2.5% 46% at 55% 46%, rgba(0,255,136,0.032) 0%, transparent 100%),
+    radial-gradient(ellipse 3.5% 58% at 60% 46%, rgba(0,255,136,0.048) 0%, transparent 100%);
+}
+
+.oracle-stage[data-oracle-state="awakened"] .oracle-light-rays {
+  opacity: 0.5;
+}
+
+.oracle-stage[data-oracle-state="oracle"] .oracle-light-rays {
+  opacity: 1;
+  animation: rays-breathe 5.5s ease-in-out infinite;
+}
+
+/* Rays intensify when Oracle is speaking — voice has light */
+.oracle-stage[data-oracle-state="oracle"][data-oracle-speaking="true"] .oracle-light-rays {
+  opacity: 1;
+  filter: brightness(1.55) saturate(1.2);
+  transition: filter 0.3s ease, opacity 2.5s var(--ease-cinematic);
+}
+
+@keyframes rays-breathe {
+  0%,100% { opacity: 0.72; transform: scaleY(1.00); }
+  50%      { opacity: 1.00; transform: scaleY(1.08); }
+}
+
+/* ── Foreground debris — signal fragments approaching the viewer ─────────── */
+.oracle-debris-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* Above particles and branding, below system UI */
+  z-index: calc(var(--z-system) - 8);
+  opacity: 0;
+  transition: opacity 2s ease;
+}
+
+.oracle-stage[data-oracle-state="awakened"] .oracle-debris-layer { opacity: 0.5; }
+.oracle-stage[data-oracle-state="oracle"]   .oracle-debris-layer { opacity: 1.0; }
+
+/* When Oracle speaks the debris intensifies — feels reactive */
+.oracle-stage[data-oracle-state="oracle"][data-oracle-speaking="true"] .oracle-debris-layer {
+  opacity: 1.3;
+}
+
+.oracle-debris-piece {
+  position: absolute;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  animation: debris-approach linear infinite;
+  transform-origin: center center;
+  will-change: transform, opacity;
+  /* Glow matching the glyph color */
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+/* "Coming at you" — scales from a tiny far point to a large near size then fades */
+@keyframes debris-approach {
+  0%   { transform: scale(0.12) translateY(8px);  opacity: 0; }
+  8%   { opacity: 0.85; }
+  75%  { opacity: 0.55; }
+  100% { transform: scale(2.20) translateY(-12px); opacity: 0; }
+}
+
+/* Half the pieces also drift slightly sideways for variation */
+.oracle-debris-piece:nth-child(even) {
+  animation-name: debris-approach-drift;
+}
+
+@keyframes debris-approach-drift {
+  0%   { transform: scale(0.12) translate(5px, 8px);  opacity: 0; }
+  8%   { opacity: 0.80; }
+  75%  { opacity: 0.50; }
+  100% { transform: scale(2.20) translate(-8px, -14px); opacity: 0; }
+}
+
+/* User speaking — debris surges toward camera */
+.oracle-stage[data-user-speaking="true"] .oracle-debris-piece {
+  animation-duration: 3.5s !important;
+  filter: drop-shadow(0 0 7px currentColor);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   PORTRAIT VIEWER — overlays oracle face when portrait is generated
+   ════════════════════════════════════════════════════════════════════════════ */
+
+.oracle-portrait-viewer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -55%); /* slightly above center — sits over cabinet */
+  z-index: calc(var(--z-oracle) + 8);
+  width: min(360px, 88vw);
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 255, 136, 0.65);
+  box-shadow:
+    0 0 0 1px rgba(176, 38, 255, 0.20),
+    0 0 40px rgba(0, 255, 136, 0.28),
+    0 0 90px rgba(176, 38, 255, 0.14),
+    0 24px 48px rgba(0, 0, 0, 0.70);
+  background: #000;
+}
+
+.oracle-portrait-viewer__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  /* Soft vignette over the portrait edges */
+  mask-image: radial-gradient(ellipse 90% 90% at 50% 50%, black 70%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 90% at 50% 50%, black 70%, transparent 100%);
+}
+
+.oracle-portrait-viewer__label {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 10px 14px;
+  background: linear-gradient(to top, rgba(0,0,0,0.90) 0%, transparent 100%);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  color: rgba(0, 255, 136, 0.75);
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.oracle-portrait-viewer__close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.70);
+  border: 1px solid rgba(0, 255, 136, 0.35);
+  color: #00ff88;
+  border-radius: 4px;
+  padding: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.18s, border-color 0.18s;
+  backdrop-filter: blur(4px);
+}
+.oracle-portrait-viewer__close:hover {
+  background: rgba(0, 255, 136, 0.15);
+  border-color: #00ff88;
+}
+
+/* Scanline overlay on portrait — CRT texture */
+.oracle-portrait-viewer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, 0.08) 3px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── Portrait command button in signal pad ─────────────────────────────── */
+.oc-portrait-btn {
+  width: 100%;
+  background: rgba(176, 38, 255, 0.08);
+  border: 1px solid rgba(176, 38, 255, 0.30);
+  color: rgba(176, 38, 255, 0.85);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+  margin-bottom: 2px;
+}
+.oc-portrait-btn:hover {
+  background: rgba(176, 38, 255, 0.18);
+  border-color: rgba(176, 38, 255, 0.65);
+  color: #b026ff;
 }

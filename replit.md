@@ -1,6 +1,6 @@
 # SURROGATE — Replit Integration
 
-Last updated: 2026-05-28. Pressure test: 86/86 passing.
+Last updated: 2026-05-28. Pressure test: 86/86 passing. Lip sync PCM bypass added 2026-05-28.
 
 ---
 

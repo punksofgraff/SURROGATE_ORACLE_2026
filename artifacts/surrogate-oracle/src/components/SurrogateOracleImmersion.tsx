@@ -65,7 +65,7 @@ const DEBRIS = [
 
 export function SurrogateOracleImmersion() {
   const [oracleAvatarDataUrl] = useState<string>(ORACLE_AVATAR_URL);
-  const [currentUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentSessionId] = useState(() => crypto.randomUUID());
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [sessionCoins, setSessionCoins] = useState(0);
@@ -79,6 +79,7 @@ export function SurrogateOracleImmersion() {
   const [oracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
+  const [showAuthOverlay, setShowAuthOverlay] = useState(false);
 
   // Refs
   const decartClientRef = useRef<DecartClientHandle | null>(null);
@@ -159,6 +160,13 @@ export function SurrogateOracleImmersion() {
   const handleCleanup = useCallback(() => {
     connection.cleanup();
   }, [connection.cleanup]);
+
+  const handleAuthSuccess = useCallback((user: { id: string; email: string }) => {
+    setCurrentUserId(user.id);
+    setUserEmail(user.email);
+    setShowAuthOverlay(false);
+    logStep('NEURAL LINK ESTABLISHED', 'ok');
+  }, []);
 
   const journey = useOracleJourney({
     onStartSession: handleStartSession,
@@ -302,6 +310,10 @@ export function SurrogateOracleImmersion() {
     logStep('OracleConversation MOUNTED', 'ok');
     logStep('ENV OK (Supabase vars)', 'ok');
     setShowConversation(true);
+
+    const handleAuthTrigger = () => setShowAuthOverlay(true);
+    window.addEventListener('oracle:auth:trigger', handleAuthTrigger);
+    return () => window.removeEventListener('oracle:auth:trigger', handleAuthTrigger);
   }, []);
 
   useEffect(() => {
@@ -694,6 +706,13 @@ export function SurrogateOracleImmersion() {
           totalCoins={sessionCoins}
           onRunAgain={enterTerminal}
           onClose={() => setShowArtifactCard(false)}
+        />
+      )}
+
+      {showAuthOverlay && (
+        <GoogleSignInOverlay 
+          onClose={() => setShowAuthOverlay(false)} 
+          onSuccess={handleAuthSuccess}
         />
       )}
 

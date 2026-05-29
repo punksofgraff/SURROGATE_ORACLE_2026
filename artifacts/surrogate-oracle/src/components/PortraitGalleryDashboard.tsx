@@ -21,6 +21,7 @@ interface Portrait {
 interface PortraitGalleryProps {
   userId?: string;
   userEmail?: string;
+  sessionId?: string;
   maxPortraits?: number;
   isBackendCabinetTab?: boolean;
 }
@@ -28,6 +29,7 @@ interface PortraitGalleryProps {
 export function PortraitGalleryDashboard({
   userId,
   userEmail,
+  sessionId,
   maxPortraits = 20,
   isBackendCabinetTab = false,
 }: PortraitGalleryProps) {
@@ -52,8 +54,17 @@ export function PortraitGalleryDashboard({
         .order('created_at', { ascending: false })
         .limit(maxPortraits);
 
-      if (userId) query = query.eq('user_id', userId);
-      else if (userEmail) query = query.eq('email', userEmail);
+      if (userId) {
+        query = query.eq('user_id', userId);
+      } else if (userEmail) {
+        query = query.eq('email', userEmail);
+      } else if (sessionId) {
+        query = query.eq('session_id', sessionId);
+      } else {
+        setPortraits([]);
+        setIsLoading(false);
+        return;
+      }
 
       const { data, error } = await query;
       if (error) throw error;
@@ -175,82 +186,110 @@ export function PortraitGalleryDashboard({
           </div>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {portraits.map((p) => {
-            const imgUrl = p.image_url || p.portrait_url;
-            const hasError = imageErrors.has(p.id);
-            return (
-              <div
-                key={p.id}
-                style={{
-                  position: 'relative',
-                  borderRadius: 10,
-                  overflow: 'hidden',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  background: '#0a0a14',
-                  cursor: 'pointer',
-                  aspectRatio: '1',
-                }}
-                onClick={() => { setSelectedPortrait(p); setIsViewerOpen(true); }}
-              >
-                {imgUrl && !hasError ? (
-                  <img
-                    src={imgUrl}
-                    alt="Oracle portrait"
-                    onError={() => handleImageError(p.id)}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#333', fontSize: '2rem' }}>
-                    {hasError ? <XCircle size={24} style={{ color: '#ff0050' }} /> : '🎨'}
-                  </div>
-                )}
-
-                {/* Hover overlay */}
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {portraits.map((p) => {
+              const imgUrl = p.image_url || p.portrait_url;
+              const hasError = imageErrors.has(p.id);
+              return (
                 <div
+                  key={p.id}
                   style={{
-                    position: 'absolute', inset: 0,
-                    background: 'rgba(0,0,0,0.7)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                    opacity: 0, transition: 'opacity 0.2s ease',
+                    position: 'relative',
+                    borderRadius: 10,
+                    overflow: 'hidden',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: '#0a0a14',
+                    cursor: 'pointer',
+                    aspectRatio: '1',
                   }}
-                  className="portrait-overlay"
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0'; }}
+                  onClick={() => { setSelectedPortrait(p); setIsViewerOpen(true); }}
                 >
-                  <button
-                    onClick={(e) => { e.stopPropagation(); downloadPortrait(p); }}
-                    style={{ background: 'rgba(0,255,136,0.2)', border: '1px solid rgba(0,255,136,0.5)', borderRadius: 6, padding: 6, color: '#00ff88', cursor: 'pointer' }}
-                    title="Download"
-                  >
-                    <Download size={14} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); sharePortrait(p); }}
-                    style={{ background: 'rgba(176,38,255,0.2)', border: '1px solid rgba(176,38,255,0.5)', borderRadius: 6, padding: 6, color: '#b026ff', cursor: 'pointer' }}
-                    title="Share"
-                  >
-                    <Share size={14} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deletePortrait(p); }}
-                    style={{ background: 'rgba(176,38,255,0.2)', border: '1px solid rgba(176,38,255,0.5)', borderRadius: 6, padding: 6, color: '#cc00ff', cursor: 'pointer' }}
-                    title="Delete"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                  {imgUrl && !hasError ? (
+                    <img
+                      src={imgUrl}
+                      alt="Oracle portrait"
+                      onError={() => handleImageError(p.id)}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#333', fontSize: '2rem' }}>
+                      {hasError ? <XCircle size={24} style={{ color: '#ff0050' }} /> : '🎨'}
+                    </div>
+                  )}
 
-                {/* AI badge */}
-                {(p.dalle_generated || p.google_ai_generated) && (
-                  <div style={{ position: 'absolute', top: 6, left: 6, background: 'linear-gradient(135deg, #170529, #b026ff)', borderRadius: 4, padding: '2px 6px', fontSize: '0.55rem', color: '#ffffff', fontWeight: 700 }}>
-                    AI
+                  {/* Hover overlay */}
+                  <div
+                    style={{
+                      position: 'absolute', inset: 0,
+                      background: 'rgba(0,0,0,0.7)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                      opacity: 0, transition: 'opacity 0.2s ease',
+                    }}
+                    className="portrait-overlay"
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0'; }}
+                  >
+                    <button
+                      onClick={(e) => { e.stopPropagation(); downloadPortrait(p); }}
+                      style={{ background: 'rgba(0,255,136,0.2)', border: '1px solid rgba(0,255,136,0.5)', borderRadius: 6, padding: 6, color: '#00ff88', cursor: 'pointer' }}
+                      title="Download"
+                    >
+                      <Download size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); sharePortrait(p); }}
+                      style={{ background: 'rgba(176,38,255,0.2)', border: '1px solid rgba(176,38,255,0.5)', borderRadius: 6, padding: 6, color: '#b026ff', cursor: 'pointer' }}
+                      title="Share"
+                    >
+                      <Share size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deletePortrait(p); }}
+                      style={{ background: 'rgba(176,38,255,0.2)', border: '1px solid rgba(176,38,255,0.5)', borderRadius: 6, padding: 6, color: '#cc00ff', cursor: 'pointer' }}
+                      title="Delete"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
-                )}
+
+                  {/* AI badge */}
+                  {(p.dalle_generated || p.google_ai_generated) && (
+                    <div style={{ position: 'absolute', top: 6, left: 6, background: 'linear-gradient(135deg, #170529, #b026ff)', borderRadius: 4, padding: '2px 6px', fontSize: '0.55rem', color: '#ffffff', fontWeight: 700 }}>
+                      AI
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {!userId && !userEmail && (
+            <div style={{ 
+              marginTop: 20, padding: 16, 
+              background: 'linear-gradient(135deg, rgba(176,38,255,0.1), rgba(0,255,136,0.1))',
+              border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12,
+              textAlign: 'center'
+            }}>
+              <div style={{ fontSize: '0.72rem', color: '#fff', marginBottom: 10, letterSpacing: '0.05em' }}>
+                ANONYMOUS SIGNAL DETECTED
               </div>
-            );
-          })}
-        </div>
+              <p style={{ fontSize: '0.65rem', color: '#ffffff99', marginBottom: 12, lineHeight: 1.5 }}>
+                Your neural prints will be lost when the session ends. Sign up to persist your consciousness.
+              </p>
+              <button 
+                onClick={() => window.dispatchEvent(new CustomEvent('oracle:auth:trigger'))}
+                style={{
+                  width: '100%', padding: '10px', background: '#b026ff', border: 'none',
+                  borderRadius: 8, color: '#fff', fontSize: '0.7rem', fontWeight: 700,
+                  cursor: 'pointer', fontFamily: "'PhillySans', 'Orbitron', monospace"
+                }}
+              >
+                SIGN UP TO PERSIST
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Viewer Modal */}

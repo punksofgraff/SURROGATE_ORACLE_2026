@@ -444,6 +444,8 @@ export const BackendControlPanel = ({
               {activeTab === 'portraits' && (
                 <PortraitGalleryDashboard
                   userId={userId}
+                  userEmail={userEmail}
+                  sessionId={sessionId}
                   maxPortraits={20}
                   isBackendCabinetTab
                 />

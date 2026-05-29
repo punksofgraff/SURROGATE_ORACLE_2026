@@ -160,6 +160,10 @@ const OracleConversation = forwardRef(
     const currentResponseText = useRef('');
     const sessionBootedRef = useRef(false);
     const pendingBootRef = useRef(false);
+    // Tracks user-initiated closes so onclose can distinguish from Gemini-side drops
+    const userInitiatedCloseRef = useRef(false);
+    // Mirror of `turns` state — closure-safe ref for reconnect context injection
+    const turnsRef = useRef<Turn[]>([]);
 
     // Debug tracking for BackendControlPanel
     const debugInfo = useRef({
@@ -169,6 +173,9 @@ const OracleConversation = forwardRef(
       lastError: null as string | null,
       recentMessages: [] as string[],
     });
+
+    // Keep turnsRef in sync for closure-safe access in reconnect handler
+    useEffect(() => { turnsRef.current = turns; }, [turns]);
 
     const onConnectedRef = useRef(onConnected);
     useEffect(() => { onConnectedRef.current = onConnected; }, [onConnected]);
@@ -290,7 +297,17 @@ const OracleConversation = forwardRef(
           if ((autoStart || pendingBootRef.current) && !sessionBootedRef.current) {
             sessionBootedRef.current = true;
             pendingBootRef.current = false;
-            setTimeout(() => sendText('__ORACLE_BOOT__'), 200);
+            if (reconnectAttemptsRef.current > 0 && turnsRef.current.length > 0) {
+              // Session refresh — inject context from last turns instead of full greeting
+              const lastTurns = turnsRef.current.slice(-6)
+                .map(t => `${t.role === 'user' ? 'Seeker' : 'Oracle'}: ${t.content.slice(0, 200)}`)
+                .join('\n');
+              const restoreMsg = `[SIGNAL RESTORED — you just reconnected mid-session. Do NOT re-introduce yourself. Continue the conversation naturally from where it was. Last exchange:\n${lastTurns}]`;
+              logStep('SESSION CONTEXT RESTORED', 'ok');
+              setTimeout(() => sendText(restoreMsg, true), 300);
+            } else {
+              setTimeout(() => sendText('__ORACLE_BOOT__'), 200);
+            }
           }
         }
           if (msg.type === 'server.content') {
@@ -393,15 +410,21 @@ const OracleConversation = forwardRef(
       ws.onclose = (e) => {
         setIsConnected(false);
         onDisconnectedRef.current?.();
-        logStep(`GEMINI WS CLOSED (${e.code})`, e.code === 1000 ? 'ok' : 'err');
+        logStep(`GEMINI WS CLOSED (${e.code}${e.reason ? ' · ' + e.reason : ''})`, e.code === 1000 ? 'ok' : 'err');
         console.warn('[Oracle] WebSocket closed:', e.code, e.reason);
-        // Auto-reconnect on unexpected drop during an active session (not user-initiated close)
-        if (e.code !== 1000 && sessionBootedRef.current && reconnectAttemptsRef.current < 3) {
+
+        // Reconnect on ANY close that wasn't triggered by the user (code 1000 covers
+        // both clean user closes AND Gemini context-limit / session-timeout drops).
+        // Use userInitiatedCloseRef to tell the two apart.
+        const wasActive = sessionBootedRef.current;
+        if (!userInitiatedCloseRef.current && wasActive && reconnectAttemptsRef.current < 3) {
           reconnectAttemptsRef.current++;
-          const delay = reconnectAttemptsRef.current * 1000;
-          logStep('RECONNECTING FOR SESSION', 'pending');
+          sessionBootedRef.current = false; // allow re-boot on new session
+          const delay = reconnectAttemptsRef.current * 1500;
+          logStep(`SESSION REFRESH (attempt ${reconnectAttemptsRef.current}/3)`, 'warn');
           setTimeout(() => connectToGeminiRef.current(), delay);
         }
+        userInitiatedCloseRef.current = false;
       };
     }, [sendText, autoStart]);
 
@@ -484,9 +507,10 @@ const OracleConversation = forwardRef(
     useEffect(() => {
       connectToGemini();
       return () => {
-        if (wsRef.current) wsRef.current.close();
-        // Report session results to parent so totem level can be persisted
-        // and the XR sign-off postMessage can fire.
+        if (wsRef.current) {
+          userInitiatedCloseRef.current = true;
+          wsRef.current.close(1000, 'Component unmounted');
+        }
         onSessionEndRef.current?.(
           sessionAlignRef.current,
           sessionTotemRef.current,
@@ -503,7 +527,10 @@ const OracleConversation = forwardRef(
     useImperativeHandle(ref, () => ({
       sendTextMessage: (text: string, isHidden = false) => sendText(text, isHidden),
       getSessionCoins: () => sessionCoinsRef.current,
-      disconnect: () => wsRef.current?.close(),
+      disconnect: () => {
+        userInitiatedCloseRef.current = true;
+        wsRef.current?.close(1000, 'User disconnected');
+      },
       getWsDebugInfo: () => ({ 
         wsState: wsRef.current?.readyState,
         model: GEMINI_MODEL,

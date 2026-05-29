@@ -172,6 +172,22 @@ Deno.serve(async (req: Request) => {
         return;
       }
 
+      if (msg.toolCall !== undefined) {
+        // Gemini requested a tool call — Oracle has no tools, respond immediately
+        // with an error so the session doesn't hang waiting for a toolResponse.
+        const calls = msg.toolCall?.functionCalls ?? [];
+        console.warn('⚠️  Gemini toolCall intercepted — rejecting', calls.map((c: { name?: string }) => c.name));
+        const functionResponses = calls.map((call: { id?: string; name?: string }) => ({
+          id: call.id ?? 'unknown',
+          name: call.name ?? 'unknown',
+          response: { error: 'Tool execution is not available in this Oracle context.' },
+        }));
+        gemini.send(JSON.stringify({ toolResponse: { functionResponses } }));
+        // Notify client so UI can show a brief "processing" state if needed
+        client.send(JSON.stringify({ type: 'tool.call.rejected', toolNames: calls.map((c: { name?: string }) => c.name) }));
+        return;
+      }
+
       if (msg.error !== undefined) {
         const errorMsg = msg.error?.message || msg.error?.details || 'Gemini Live error';
         console.error('❌ Gemini error:', errorMsg);

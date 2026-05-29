@@ -145,7 +145,7 @@ function dumpSteps(steps) {
 
 async function testDormant(page, pass, fail) {
   console.log('\n  ── PHASE 1: DORMANT ────────────────────────────────────');
-  await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2000);
   await snap(page, '01-dormant');
 

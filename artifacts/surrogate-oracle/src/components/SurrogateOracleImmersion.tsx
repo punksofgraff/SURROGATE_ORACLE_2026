@@ -44,6 +44,7 @@ import './SurrogateOracleImmersion.css';
 const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
 const ORACLE_AVATAR_URL  = 'https://i.postimg.cc/jSGnyZXh/Image-1-(11).jpg';
 const ALLEY_BG_URL       = 'https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png';
+const AUDIO_STREAM_URL   = 'https://stream.radiojar.com/2qm1fc5kb';
 const ORACLE_PLAYBACK_RATE = 1.0;
 
 const DEBRIS = [
@@ -74,6 +75,8 @@ export function SurrogateOracleImmersion() {
   const [isGeminiConnected, setIsGeminiConnected] = useState(false);
   const [debugMode, setDebugMode] = useState(false);
   const [oracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
 
   // Refs
   const decartClientRef = useRef<DecartClientHandle | null>(null);
@@ -85,6 +88,10 @@ export function SurrogateOracleImmersion() {
   const pcmAmplitudeRef = useRef(0);
   const atmosphereCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const staticAvatarRef = useRef<HTMLImageElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const radioGainRef = useRef<GainNode | null>(null);
+  const radioCtxRef = useRef<AudioContext | null>(null);
+  const targetVolRef = useRef(0.22);
 
   // ── Journey Hook ──
   const handleStartSession = useCallback(() => {
@@ -120,27 +127,76 @@ export function SurrogateOracleImmersion() {
   // ── Connection Hook ──
   const handleViseme = useCallback((state: any) => {
     const renderer = oracleFaceRendererRef.current;
-    const faceCanvas = oracleFaceCanvasRef.current;
-    if (renderer && renderer.isReady() && faceCanvas) {
-      pcmAmplitudeRef.current *= 0.91;
-      const effectiveAmp = Math.max(state.amplitude, pcmAmplitudeRef.current);
-      if (effectiveAmp < 0.04) {
-        renderer.drawIdle();
-      } else {
-        renderer.drawViseme(state.amplitude > 0.04 ? state : {
-          viseme: effectiveAmp > 0.55 ? 'A' : effectiveAmp > 0.30 ? 'G' : 'C',
-          openness: Math.min(1, effectiveAmp * 0.85),
-          rounded: 0.15,
-          spread: effectiveAmp > 0.35 ? 0.30 : 0.20,
-          amplitude: effectiveAmp,
-        });
+    if (renderer && renderer.isReady()) {
+      // Ignore background noise from the worklet
+      const amp = state.amplitude > 0.02 ? state.amplitude : 0;
+      
+      // Primary drive from worklet state — update the peak if the incoming signal is stronger
+      if (amp > pcmAmplitudeRef.current) {
+        pcmAmplitudeRef.current = amp;
       }
-      faceCanvas.dataset.amplitude = effectiveAmp.toFixed(3);
-      faceCanvas.dataset.viseme = state.viseme;
+      
+      // We still want to use the worklet's classified viseme shape when possible
+      if (amp > 0.04) {
+        renderer.drawViseme(state);
+      }
     }
   }, []);
 
-  const handleProcessingChange = useCallback((proc: boolean) => {}, []);
+  // ── RAF Loop for Amplitude Decay & Renderer Updates ──
+  useEffect(() => {
+    let rafId: number;
+    let lastTime = performance.now();
+    const tick = (now: number) => {
+      const dt = (now - lastTime) / 1000; // delta time in seconds
+      lastTime = now;
+      
+      // Time-independent decay: factor^(dt * 60)
+      // 0.92 decay at 60fps
+      const decay = Math.pow(0.92, dt * 60);
+      pcmAmplitudeRef.current *= decay;
+      
+      const renderer = oracleFaceRendererRef.current;
+      const faceCanvas = oracleFaceCanvasRef.current;
+      
+      if (faceCanvas) {
+        faceCanvas.dataset.amplitude = pcmAmplitudeRef.current.toFixed(3);
+        faceCanvas.dataset.visemeActive = pcmAmplitudeRef.current > 0.05 ? 'true' : 'false';
+      }
+
+      // If we've decayed to silence but the renderer hasn't reset, force it
+      if (pcmAmplitudeRef.current < 0.05 && renderer && renderer.isReady()) {
+        renderer.drawIdle();
+      }
+      
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  // fadeToVolume — operates on GainNode when available (iOS-proof), falls back to
+  // HTMLAudioElement.volume before the first user gesture.
+  const fadeToVolume = useCallback((target: number) => {
+    const safeTarget = Math.max(0.0001, target);
+    targetVolRef.current = target;
+    
+    if (radioGainRef.current) {
+      const gain = radioGainRef.current;
+      const ctx  = radioCtxRef.current!;
+      const now  = ctx.currentTime;
+      const isDucking = target < gain.gain.value;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(gain.gain.value, now);
+      gain.gain.exponentialRampToValueAtTime(safeTarget, now + (isDucking ? 0.06 : 0.40));
+    } else if (audioRef.current) {
+      audioRef.current.volume = target;
+    }
+  }, []);
+
+  const handleProcessingChange = useCallback((proc: boolean) => {
+    setIsOracleSpeaking(proc);
+  }, []);
 
   const connection = useOracleConnection({
     oracleAvatarDataUrl,
@@ -154,6 +210,25 @@ export function SurrogateOracleImmersion() {
 
   const connectionRef = useRef(connection);
   useEffect(() => { connectionRef.current = connection; }, [connection]);
+
+  // ── Music ducking — three clean levels ────────────────────────────────────
+  useEffect(() => {
+    let target = 0.22; // Default (dormant/lore)
+    if (scenePhase !== 'dormant') target = 0.06;
+    if (scenePhase === 'oracle')  target = 0.04; // Oracle ready
+    
+    // Additional ducking for user/oracle speaking
+    if (isUserSpeaking)   target = 0.15;
+    if (isOracleSpeaking) target = 0.02; // Oracle speaking (~7%)
+    
+    fadeToVolume(target);
+  }, [scenePhase, isUserSpeaking, isOracleSpeaking, fadeToVolume]);
+
+  useEffect(() => {
+    if (!audioRef.current) return;
+    if (isAudioPlaying) audioRef.current.play().catch(() => {});
+    else audioRef.current.pause();
+  }, [isAudioPlaying]);
 
   // ── XR Mode ──
   const { isXRMode, cameraActive, activateCamera, deactivateCamera, cameraVideoRef } = useXRMode(() => enterTerminal());
@@ -180,6 +255,10 @@ export function SurrogateOracleImmersion() {
     if (oracleFaceRendererRef.current) {
       oracleFaceRendererRef.current.setTilt(x, y);
     }
+    // Restore HRTF Head Tracking — Oracle voice follows movement
+    if (connectionRef.current.pcmPlayer) {
+      connectionRef.current.pcmPlayer.updateHeadOrientation(x, y);
+    }
   }, []);
   
   useParallax(scenePhase, handleParallaxUpdate);
@@ -195,6 +274,31 @@ export function SurrogateOracleImmersion() {
     logStep('ENV OK (Supabase vars)', 'ok');
     setShowConversation(true);
   }, []);
+
+  useEffect(() => {
+    // Pre-create radio context on first interaction via initializeOracle side-effect
+    // We wrap initializeOracle to ensure AudioContext unlocks
+    const originalInit = connection.initializeOracle;
+    connection.initializeOracle = async () => {
+      if (!radioGainRef.current && audioRef.current) {
+        try {
+          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          ctx.resume();
+          const source = ctx.createMediaElementSource(audioRef.current);
+          const gain   = ctx.createGain();
+          gain.gain.value = targetVolRef.current;
+          source.connect(gain);
+          gain.connect(ctx.destination);
+          radioCtxRef.current  = ctx;
+          radioGainRef.current = gain;
+        } catch (e) {
+          console.warn('[Audio] GainNode setup failed:', e);
+        }
+      }
+      setIsAudioPlaying(true);
+      return originalInit();
+    };
+  }, [connection, fadeToVolume]);
 
   useEffect(() => {
     connection.initializeOracle();
@@ -272,7 +376,11 @@ export function SurrogateOracleImmersion() {
       data-oracle-state={scenePhase}
       data-decart-active={connection.isDecartActive}
       data-camera-active={cameraActive ? 'true' : undefined}
+      data-audio-target-vol={targetVolRef.current}
     >
+      {/* ── Audio Spine — Radio Stream ── */}
+      <audio ref={audioRef} src={AUDIO_STREAM_URL} loop preload="none" />
+
       {/* ── XR Layer 0: Device camera passthrough ── */}
       {isXRMode && cameraActive && (
         <video ref={cameraVideoRef} className="xr-camera-layer" autoPlay playsInline muted />
@@ -442,7 +550,7 @@ export function SurrogateOracleImmersion() {
           }}
           transition={{ duration: 1.1, delay: isAlive ? 0.7 : 0 }}
         >
-          <GraffPunksRadio isPlaying={isAlive} onToggle={() => {}} />
+          <GraffPunksRadio isPlaying={isAudioPlaying} onToggle={() => setIsAudioPlaying(!isAudioPlaying)} />
         </motion.div>
 
         <motion.div

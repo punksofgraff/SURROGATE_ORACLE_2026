@@ -43,7 +43,7 @@ async function runJourney(browser, viewport) {
   console.log('\n── ' + pfx.toUpperCase() + ' (' + viewport.width + 'x' + viewport.height + ') ──────────────────');
 
   // 1. DORMANT
-  await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2000);
   await snap(page, pfx + '-01-dormant');
   const dormant = await page.locator('[data-oracle-state="dormant"]').count();

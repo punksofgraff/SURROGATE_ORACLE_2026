@@ -24,7 +24,7 @@ interface VisemeState {
   amplitude: number;
 }
 
-const SILENCE_THRESH = 0.04; // Slightly lower for more sensitivity
+const SILENCE_THRESH = 0.05; // Slightly higher for more robustness
 
 class OracleAudioProcessor extends AudioWorkletProcessor {
   private buffer: Float32Array;
@@ -96,9 +96,18 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
 
     const state = this.analyze(output);
     
-    // Use faster lerp for decay (when current amplitude is lower than smoothed)
-    const lerpFactor = state.amplitude < this.smoothed.amplitude ? 0.15 : 0.45;
-    this.smoothed = this.lerpState(this.smoothed, state, lerpFactor);
+    // If analyzed state is silent, force a faster decay or snap to zero
+    if (state.amplitude === 0) {
+      this.smoothed.amplitude *= 0.85;
+      if (this.smoothed.amplitude < 0.001) this.smoothed.amplitude = 0;
+      this.smoothed.openness *= 0.85;
+      this.smoothed.rounded *= 0.85;
+      this.smoothed.spread *= 0.85;
+    } else {
+      // Use faster lerp for decay (when current amplitude is lower than smoothed)
+      const lerpFactor = state.amplitude < this.smoothed.amplitude ? 0.15 : 0.45;
+      this.smoothed = this.lerpState(this.smoothed, state, lerpFactor);
+    }
 
     const now = currentTime;
     if (now - this.lastUpdate > this.UPDATE_INTERVAL) {
@@ -115,7 +124,9 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
     let rms = 0;
     for (let i = 0; i < frame.length; i++) rms += frame[i] * frame[i];
     rms = Math.sqrt(rms / (frame.length || 1));
-    const amplitude = Math.min(1, rms * 5.5); // Boosted for better detection
+    
+    // Explicitly zero-out near-silent signals to allow decay
+    const amplitude = rms < 0.005 ? 0 : Math.min(1, rms * 5.5);
 
     if (amplitude < SILENCE_THRESH) {
       return { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };

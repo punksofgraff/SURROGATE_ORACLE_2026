@@ -43,17 +43,23 @@ async function runJourney(browser, viewport) {
   console.log('\n── ' + pfx.toUpperCase() + ' (' + viewport.width + 'x' + viewport.height + ') ──────────────────');
 
   // 1. DORMANT
-  await page.goto(BASE_URL, { waitUntil: 'networkidle' });
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2000);
   await snap(page, pfx + '-01-dormant');
   const dormant = await page.locator('[data-oracle-state="dormant"]').count();
   dormant > 0 ? pass.push('dormant state') : fail.push('dormant state MISSING');
   console.log('  ' + (dormant>0?'✓':'✗') + '  dormant state');
+  
+  const dormantVol = await page.locator('.oracle-stage').getAttribute('data-audio-target-vol');
+  console.log('  ℹ  dormant audio volume: ' + dormantVol);
 
   // 2. TERMINAL
   await page.click('.oracle-stage', { position: { x: viewport.width/2, y: viewport.height/2 } });
   await page.waitForTimeout(800);
   await snap(page, pfx + '-02-terminal');
+  
+  const terminalVol = await page.locator('.oracle-stage').getAttribute('data-audio-target-vol');
+  console.log('  ℹ  terminal audio volume: ' + terminalVol);
 
   // 3. SKIP LORE → AWAKENED via dev hook (lore now ~47s to type; hook bypasses it)
   await page.waitForTimeout(1200); // let at least 1 line start typing
@@ -79,6 +85,9 @@ async function runJourney(browser, viewport) {
   await waitForPhase(page, 'oracle', 10000);
   await page.waitForTimeout(1500);
   await snap(page, pfx + '-05-oracle');
+
+  const oracleVol = await page.locator('.oracle-stage').getAttribute('data-audio-target-vol');
+  console.log('  ℹ  oracle audio volume: ' + oracleVol);
 
   const avatarVisible = await page.locator('.oracle-avatar-canvas').isVisible();
   avatarVisible ? pass.push('avatar-canvas visible') : fail.push('avatar-canvas NOT visible');
@@ -176,7 +185,7 @@ async function runJourney(browser, viewport) {
       console.log('  ' + (unique.length>1?'✓':'ℹ') + '  visemes sampled: [' + unique.join(', ') + ']');
 
       // Wait for audio end → mouth should reset
-      await page.waitForTimeout(3500);
+      await page.waitForTimeout(5000); // Increased from 3500 to allow decay
       var resetState = await page.evaluate(function() {
         var el = document.querySelector('.oracle-avatar-canvas');
         return { active: el?.dataset.visemeActive, amp: el?.dataset.amplitude };

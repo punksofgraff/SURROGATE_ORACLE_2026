@@ -22,6 +22,10 @@ export function getAudioContext(): AudioContext {
     _ctx = new (window.AudioContext || (window as any).webkitAudioContext)({
       sampleRate: 24000 // Match Gemini PCM stream exactly
     });
+    // Expose for testing
+    if (typeof window !== 'undefined') {
+      (window as any).__audioContext = _ctx;
+    }
   }
   if (_ctx.state === 'suspended') {
     _ctx.resume().catch(() => {});

@@ -1,6 +1,6 @@
 # SURROGATE — Replit Integration
 
-Last updated: 2026-05-29. Phase 4 Enterprise Overhaul complete.
+Last updated: 2026-05-30. Decart Residue Removal + Brand Kit Overhaul complete.
 
 ---
 
@@ -18,8 +18,7 @@ Last updated: 2026-05-29. Phase 4 Enterprise Overhaul complete.
 | Secret | Used By | Notes |
 |--------|---------|-------|
 | `GEMINI_API_KEY` | Gemini WS/REST | Google AI Studio free-tier key |
-| `DECART_API_KEY` | Decart WebRTC | Realtime video avatar |
-| `REPLICATE_API_TOKEN` | Portrait EFA | Flux-schnell generation |
+| `REPLICATE_API_TOKEN` | Portrait EFA | Flux-schnell generation (Gemini fallback) |
 | `SUPABASE_URL` | Client + EFAs | Project reference URL |
 
 ---
@@ -43,7 +42,7 @@ Runs a full end-to-end Playwright journey: dormant → terminal → awakened →
 
 ```bash
 # Start dev server first (separate terminal)
-npm run dev
+pnpm --filter @workspace/surrogate-oracle run dev
 
 # Run pressure test
 node scripts/oracle-pressure.mjs
@@ -61,23 +60,23 @@ node scripts/oracle-pressure.mjs
 ```
 SurrogateOracleImmersion.tsx    ← root (decoupled orchestrator)
   ├── useOracleJourney          ← state machine (dormant → oracle)
-  ├── useOracleConnection       ← WS, ICE, PCM lifecycle
-  ├── usePortraitPipeline       ← neural synthesis cascade
+  ├── useOracleConnection       ← WS handshake, PCM lifecycle
+  ├── usePortraitPipeline       ← Gemini-exclusive synthesis cascade
   ├── OracleConversation.tsx    ← Gemini Live WS, VAD
-  ├── OracleFaceRenderer.ts     ← WebGL mesh-warp (landmark skinned)
+  ├── OracleAvatar3D.tsx        ← Three.js GLB renderer (Primary)
   └── oracle-audio.worklet.ts   ← off-thread PCM playback + detection
 ```
 
 **Audio Routing:**
 Gemini PCM → `PCMPlayer` → `AudioWorklet` (FFT/visemes) → `GainNode` → `Speakers`.
-Static portraits minted via the pipeline materialize directly in the arcade cabinet.
+Static portraits minted via the pipeline materialize directly in the arcade cabinet screen.
 
 ---
 
-## Known Open Issues
-
-| Issue | Impact | Workaround |
-|-------|--------|------------|
-| 10-turn dropout | High — WS drop | Reconnect |
-| Web tool crash | High — silent fail | Avoid tool prompts |
-| CI Audio gaps | Low — test noise | Ignore MIC FAILED in CI |
+## Session Overhaul: 2026-05-30
+- Removed `DECART_API_KEY` requirement (residue deleted).
+- Standardized on `OracleAvatar3D` (Three.js) as the only rendering engine.
+- Implemented "Cheshire Cat" branding persistence.
+- Added "Glitch-Phase" downward float materialization.
+- Restored canonical static avatar (`orackle-only-static.png`).
+- Applied brand kit (`aAnotherTag` / `PhillySans`) to all overlays.

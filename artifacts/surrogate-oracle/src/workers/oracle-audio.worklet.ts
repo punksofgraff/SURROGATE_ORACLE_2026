@@ -105,7 +105,10 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
     // If analyzed state is silent, force a faster decay or snap to zero
     if (state.amplitude === 0) {
       this.smoothed.amplitude *= 0.70;
-      if (this.smoothed.amplitude < 0.001) this.smoothed.amplitude = 0;
+      if (this.smoothed.amplitude < 0.001) {
+        this.smoothed.amplitude = 0;
+        this.smoothed.viseme = 'X';
+      }
       this.smoothed.openness *= 0.70;
       this.smoothed.rounded *= 0.70;
       this.smoothed.spread *= 0.70;

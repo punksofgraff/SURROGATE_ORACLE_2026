@@ -4,6 +4,7 @@ import { logStep } from '../components/CodeAuditor';
 
 export function useIpCheck() {
   const [isReturning, setIsReturning] = useState(false);
+  const [hasCompletedLore, setHasCompletedLore] = useState(false);
   const [ipAddress, setIpAddress] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(true);
 
@@ -21,12 +22,17 @@ export function useIpCheck() {
         if (localFlag) {
           setIsReturning(true);
         }
+        
+        const loreFlag = localStorage.getItem(`surrogate_lore_completed_${ip}`);
+        if (loreFlag) {
+          setHasCompletedLore(true);
+        }
 
         // 3. Optional: check database if we want a hard backend check
         // We do a soft fail here so the experience doesn't block on DB
         const { data: walletData, error } = await supabase
           .from('user_wallets')
-          .select('ip_address')
+          .select('ip_address, onboarding_status')
           .eq('ip_address', ip)
           .limit(1)
           .single();
@@ -34,6 +40,12 @@ export function useIpCheck() {
         if (walletData && !error) {
           setIsReturning(true);
           localStorage.setItem(`surrogate_visited_${ip}`, 'true');
+          
+          if (walletData.onboarding_status === 'lore_completed') {
+            setHasCompletedLore(true);
+            localStorage.setItem(`surrogate_lore_completed_${ip}`, 'true');
+          }
+          
           logStep('IP CHECK: RETURN TRIP VERIFIED', 'ok');
         } else {
           // If not in DB but we are here, we might just be new.
@@ -66,5 +78,22 @@ export function useIpCheck() {
     }
   };
 
-  return { isReturning, isChecking, ipAddress, markVisited };
+  const markLoreCompleted = async () => {
+    if (!ipAddress) return;
+    localStorage.setItem(`surrogate_lore_completed_${ipAddress}`, 'true');
+    setHasCompletedLore(true);
+    setIsReturning(true); // Implied
+
+    try {
+      await supabase.from('user_wallets').upsert({
+        ip_address: ipAddress,
+        onboarding_status: 'lore_completed'
+      }, { onConflict: 'ip_address' });
+      logStep('LORE STATUS: COMPLETED (Persisted)', 'ok');
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  return { isReturning, hasCompletedLore, isChecking, ipAddress, markVisited, markLoreCompleted };
 }

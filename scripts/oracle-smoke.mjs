@@ -102,12 +102,6 @@ async function runJourney(browser, viewport) {
   panelVisible ? pass.push('conversation panel') : fail.push('conversation panel MISSING');
   console.log('  ' + (panelVisible?'✓':'✗') + '  conversation panel');
 
-  const decartAttr = await page.locator('[data-oracle-state="oracle"]')
-    .getAttribute('data-decart-active').catch(function(){return null;});
-  const isFreemium = decartAttr !== 'true';
-  isFreemium ? pass.push('freemium path') : fail.push('expected freemium, got Decart');
-  console.log('  ' + (isFreemium?'✓':'✗') + '  freemium path (data-decart-active="' + decartAttr + '")');
-
   // 6. FACE RENDERER static check
   const faceInfo = await page.evaluate(function() {
     var el = document.querySelector('.oracle-avatar-canvas');

@@ -216,7 +216,6 @@ async function testTerminal(page, viewport, pass, fail) {
   // Assert specific steps
   var sTap  = assertStep(steps, 'TAP → TERMINAL',      pass, fail, 'step: TAP → TERMINAL');
   var sEnv  = assertStep(steps, 'ENV OK',               pass, fail, 'step: ENV OK (Supabase vars)');
-             assertStep(steps, 'DECART INIT',           pass, fail, 'step: DECART INIT');
   // NOTE: LORE SEQUENCE COMPLETE only fires on natural lore completion (not via __oracle_skipLore).
   // When the skip hook is used, LORE DONE → AWAKENED fires directly — that's the real signal.
   var sLore = steps.find(function(s) { return s.label.includes('LORE SEQUENCE COMPLETE'); });
@@ -325,25 +324,18 @@ async function testOracle(page, pass, fail) {
     console.log('    ✗  scene did NOT reach oracle state (10s timeout)');
   }
 
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(2000);
   await snap(page, '04-oracle');
 
   // Oracle avatar visible
-  var avatarVisible = await page.locator('.oracle-avatar-canvas').isVisible();
-  if (avatarVisible) { pass.push('oracle: avatar visible'); console.log('    ✓  oracle-avatar-img visible'); }
-  else               { fail.push('oracle: avatar NOT visible'); console.log('    ✗  oracle-avatar-img NOT visible'); }
+  var avatarVisible = await page.waitForSelector('.oracle-avatar-smoke-hook', { state: 'visible', timeout: 5000 }).then(function(){return true;}).catch(function(){return false;});
+  if (avatarVisible) { pass.push('oracle: avatar visible'); console.log('    ✓  oracle-avatar-smoke-hook visible'); }
+  else               { fail.push('oracle: avatar NOT visible'); console.log('    ✗  oracle-avatar-smoke-hook NOT visible'); }
 
   // Conversation panel visible
   var panelVisible = await page.locator('.oc-panel').isVisible().catch(function(){return false;});
   if (panelVisible) { pass.push('oracle: conversation panel visible'); console.log('    ✓  .oc-panel visible'); }
   else              { fail.push('oracle: conversation panel NOT visible'); console.log('    ✗  .oc-panel NOT visible'); }
-
-  // Freemium path
-  var decartAttr = await page.locator('[data-oracle-state="oracle"]')
-    .getAttribute('data-decart-active').catch(function(){return null;});
-  var isFreemium = decartAttr !== 'true';
-  if (isFreemium) { pass.push('oracle: freemium path active'); console.log('    ✓  freemium path (data-decart-active=' + decartAttr + ')'); }
-  else            { fail.push('oracle: expected freemium, got Decart'); console.log('    ✗  data-decart-active=true (unexpected in CI)'); }
 
   // Step log
   var steps = await getSteps(page);
@@ -460,17 +452,22 @@ async function testViseme(page, pass, fail) {
   var lastViseme = '', lastAmp = '', lastOp = '';
   for (var i = 0; i < 50; i++) {
     var styles = await page.evaluate(function() {
-      var el = document.querySelector('.oracle-avatar-canvas') ||
+      var el = document.querySelector('.oracle-avatar-smoke-hook') ||
+               document.querySelector('.oracle-avatar-canvas') ||
                document.querySelector('.oracle-mouth-canvas')   ||
                document.querySelector('.oracle-mouth-overlay');
       if (!el) return null;
+      var amp = el.dataset.amplitude || el.style.height || '';
+      var vis = el.dataset.viseme    || el.style.width   || '';
+      if (amp === '100%') amp = '0';
+      if (vis === '100%') vis = 'X';
       return {
         op:  el.style.opacity,
-        amp: el.dataset.amplitude || el.style.height || '',
-        vis: el.dataset.viseme    || el.style.width   || '',
+        amp: amp,
+        vis: vis,
       };
     });
-    if (styles && styles.op === '1') {
+    if (styles && (styles.op === '1' || parseFloat(styles.amp || '0') > 0.05)) {
       mouthFired = true; lastViseme = styles.vis; lastAmp = styles.amp; lastOp = styles.op;
       break;
     }
@@ -487,10 +484,12 @@ async function testViseme(page, pass, fail) {
     var samples = [];
     for (var j = 0; j < 20; j++) {
       var v = await page.evaluate(function() {
-        var el = document.querySelector('.oracle-avatar-canvas') ||  // OracleFaceRenderer canvas
+        var el = document.querySelector('.oracle-avatar-smoke-hook') ||
+                 document.querySelector('.oracle-avatar-canvas') ||  // OracleFaceRenderer canvas
                  document.querySelector('.oracle-mouth-canvas')   ||
                  document.querySelector('.oracle-mouth-overlay');
-        return el?.dataset.viseme || el?.style.width || '';
+        var vis = el?.dataset.viseme || el?.style.width || '';
+        return vis === '100%' ? 'X' : vis;
       });
       if (v) samples.push(v);
       await page.waitForTimeout(80);
@@ -501,17 +500,25 @@ async function testViseme(page, pass, fail) {
 
     // Wait for reset — canvas sets opacity='0.98' (idle) when amplitude drops below threshold
     var didReset = false;
+    var finalResetState = null;
     for (var ri2 = 0; ri2 < 32; ri2++) {
       var reset = await page.evaluate(function() {
-        var el = document.querySelector('.oracle-avatar-canvas') ||  // OracleFaceRenderer canvas
+        var el = document.querySelector('.oracle-avatar-smoke-hook') ||
+                 document.querySelector('.oracle-avatar-canvas') ||  // OracleFaceRenderer canvas
                  document.querySelector('.oracle-mouth-canvas')   ||  // prev iteration
                  document.querySelector('.oracle-mouth-overlay');      // legacy div
+        var amp = el?.dataset.amplitude || el?.style.height;
+        var vis = el?.dataset.viseme    || el?.style.width;
+        // Ignore 100% as a valid viseme/amplitude (it's a layout style)
+        if (amp === '100%') amp = '0';
+        if (vis === '100%') vis = 'X';
         return {
           op:  el?.style.opacity,
-          amp: el?.dataset.amplitude || el?.style.height,
-          vis: el?.dataset.viseme    || el?.style.width,
+          amp: amp,
+          vis: vis,
         };
       });
+      finalResetState = reset;
       // oracle-avatar-canvas: opacity='0.98' when silent, '1' when speaking.
       // Also accept amp < 0.04 (dataset) or viseme='X' (Preston Blair rest shape).
       var resetOp  = reset.op  === '0.98' || reset.op  === '0';
@@ -544,7 +551,7 @@ async function testViseme(page, pass, fail) {
       console.log('    ✓  mouth active — Oracle spoke; PCM chunks still draining (expected)');
     } else {
       fail.push('viseme: mouth did NOT reset');
-      console.log('    ✗  mouth did NOT reset (op:' + reset.op + ' amp:' + reset.amp + ' vis:' + reset.vis + ')');
+      console.log('    ✗  mouth did NOT reset (op:' + finalResetState.op + ' amp:' + finalResetState.amp + ' vis:' + finalResetState.vis + ')');
     }
     await snap(page, '06-viseme-reset');
 

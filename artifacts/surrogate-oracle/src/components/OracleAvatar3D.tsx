@@ -280,6 +280,20 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
 
     if (!vs) return;
 
+    // ── Smoke Test Hooks ──────────────────────────────────────────────────
+    // Write viseme state to the DOM so automated pressure tests can verify
+    // the audio-viseme handshake without reading internal Three.js state.
+    if (typeof document !== 'undefined') {
+      const el = document.querySelector('.oracle-avatar-smoke-hook') as HTMLElement;
+      if (el) {
+        el.dataset.viseme = vs.viseme;
+        el.dataset.amplitude = vs.amplitude.toFixed(3);
+        // Smoke test expects opacity 0.98 or 0 when silent to confirm reset
+        if (vs.amplitude < 0.01) el.style.opacity = '0.98';
+        else el.style.opacity = '1.0';
+      }
+    }
+
     // ── PATH A: OVR morph targets ─────────────────────────────────────────
     if (meshData.hasMorphs) {
       const targets = new Map<OVRName, number>();

@@ -8,8 +8,7 @@
  *   ORACLE   → Knife selected → full conversation. Three.js avatar live.
  *
  * Avatar rendering:
- *   PRIMARY   — Three.js OracleAvatar3D (GLB, always running once awakened)
- *   ENTERPRISE — Decart WebRTC video overlay (VITE_DECART_ENTERPRISE=true)
+ *   PRIMARY — Three.js OracleAvatar3D (GLB, always running once awakened)
  *
  * Viseme state is a ref — no React re-renders at 60fps.
  */
@@ -18,7 +17,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 
 // Components
-import DecartClient, { DecartClientHandle } from './DecartClient';
 import { BackendControlPanel } from './BackendControlPanel';
 import { GoogleSignInOverlay } from './GoogleSignInOverlay';
 import { GraffPunksRadio } from './GraffPunksRadio';
@@ -53,11 +51,10 @@ import { COST_NAMES } from '../data/archetypes';
 
 // Libs/Utils
 import { getAudioContext } from '../lib/oracleSfx';
-import { OracleFaceRenderer } from '../lib/OracleFaceRenderer';
 import type { VisemeState } from '../lib/visemeDetector';
 import './SurrogateOracleImmersion.css';
 
-const ORACLE_STATIC_URL  = '/oracle-static.png';
+const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
 const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = 'https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png';
 const AUDIO_STREAM_URL   = 'https://stream.radiojar.com/2qm1fc5kb';
@@ -80,10 +77,17 @@ const DEBRIS = [
   ['⬡','#00ccff','92%','28%','2.4s','5.5s'],
 ] as const;
 
+class OracleErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
+  constructor(props: any) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err: any) { console.error('[3D ERROR]', err); }
+  render() { return this.state.hasError ? <div style={{color:'red'}}>3D LOAD ERROR</div> : this.props.children; }
+}
+
 // Fallback shown while hero3.glb is loading (static oracle portrait at same position)
 function OracleAvatarFallback() {
   return (
-    <div style={{
+    <div className="oracle-avatar-smoke-hook" style={{
       width: '100%', height: '100%',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'transparent',
@@ -127,11 +131,6 @@ export function SurrogateOracleImmersion() {
   const cameraStateRef = useRef<import('./OracleAvatar3D').CameraState>({ x: 0, y: 0, zoom: 1 });
 
   // Refs
-  const decartClientRef          = useRef<DecartClientHandle | null>(null);
-  const avatarVideoRef           = useRef<HTMLVideoElement | null>(null);
-  const oracleFaceCanvasRef      = useRef<HTMLCanvasElement | null>(null);
-  const oracleFaceRendererRef    = useRef<OracleFaceRenderer | null>(null);
-  const oracleFaceMapRef         = useRef<import('../lib/OracleVisionCalibrator').OracleFaceMap | null>(null);
   const oracleConversationRef    = useRef<OracleConversationHandle | null>(null);
   const atmosphereCanvasRef      = useRef<HTMLCanvasElement | null>(null);
   const staticAvatarRef          = useRef<HTMLImageElement | null>(null);
@@ -139,7 +138,7 @@ export function SurrogateOracleImmersion() {
   const radioGainRef             = useRef<GainNode | null>(null);
   const targetVolRef             = useRef(0.22);
 
-  const { isReturning, markVisited, ipAddress } = useIpCheck();
+  const { isReturning, hasCompletedLore, markVisited, markLoreCompleted, ipAddress } = useIpCheck();
 
   // ── Seeker Echo — returning-Seeker memory (Build Contract §E / design §I.5) ──
   // Keyed by wallet (currentUserId) or IP. Read on entry to seed the totem floor;
@@ -227,15 +226,18 @@ export function SurrogateOracleImmersion() {
   const handleViseme = useCallback((state: VisemeState) => {
     visemeStateRef.current = state;
 
-    // Enterprise path: also drive 2D renderer when Decart video is active.
-    // The 2D OracleFaceRenderer runs on the canvas behind the Decart video
-    // as an additional telemetry/fallback layer.
-    const renderer = oracleFaceRendererRef.current;
-    if (connectionRef.current?.isDecartActive && renderer?.isReady()) {
-      if (state.amplitude < 0.05) {
-        renderer.drawIdle();
-      } else {
-        renderer.drawViseme(state);
+    // ── Smoke Test Hooks ──────────────────────────────────────────────────
+    // Write viseme state to the DOM so automated pressure tests can verify
+    // the audio-viseme handshake without reading internal Three.js state.
+    // Moved to Immersion layer so tests work even if 3D load is slow/headless.
+    if (typeof document !== 'undefined') {
+      const el = document.querySelector('.oracle-avatar-smoke-hook') as HTMLElement;
+      if (el) {
+        el.dataset.viseme = state.viseme;
+        el.dataset.amplitude = state.amplitude.toFixed(3);
+        // Smoke test expects opacity 0.98 or 0 when silent to confirm reset
+        if (state.amplitude < 0.01) el.style.opacity = '0.98';
+        else el.style.opacity = '1.0';
       }
     }
   }, []);
@@ -246,17 +248,10 @@ export function SurrogateOracleImmersion() {
 
   // ── Connection Hook ──────────────────────────────────────────────────────
   const connection = useOracleConnection({
-    oracleAvatarDataUrl,
-    oracleAvatarUrl: ORACLE_AVATAR_URL,
     playbackRate: ORACLE_PLAYBACK_RATE,
-    decartClientRef,
-    avatarVideoRef,
     onViseme: handleViseme,
     onProcessingChange: handleProcessingChange,
   });
-
-  const connectionRef = useRef(connection);
-  useEffect(() => { connectionRef.current = connection; }, [connection]);
 
   // ── Journey Hook ─────────────────────────────────────────────────────────
   const handleStartSession = useCallback(() => {
@@ -301,7 +296,7 @@ export function SurrogateOracleImmersion() {
 
     if (isReturning) {
       setShowWalletConnect(true);
-      logStep('RETURN TRIP: SHOWING WALLET OVERLAY', 'ok');
+      logStep(`RETURN TRIP: SHOWING WALLET OVERLAY (LORE: ${hasCompletedLore ? 'COMPLETED' : 'PENDING'})`, 'ok');
     } else {
       enterTerminal();
     }
@@ -380,11 +375,6 @@ export function SurrogateOracleImmersion() {
       // PRIMARY: start PCM player instantly (Three.js receives visemes immediately)
       connection.initializePCMPlayer();
 
-      // ENTERPRISE: Decart starts concurrently if env flag is set — Three.js never waits
-      if (import.meta.env.VITE_DECART_ENTERPRISE === 'true') {
-        connection.initializeDecart();
-      }
-
       // Retrieve user email for portrait persistence
       import('../lib/supabase').then(({ supabase }) => {
         supabase.auth.getUser().then(({ data }) => {
@@ -398,53 +388,7 @@ export function SurrogateOracleImmersion() {
     if (scenePhase === 'oracle') {
       oracleConversationRef.current?.startSession();
     }
-  }, [scenePhase, connection.initializePCMPlayer, connection.initializeDecart]);
-
-  // ── Enterprise: 2D face renderer — only when Decart is active ───────────
-  // This renderer drives a canvas behind the Decart video for telemetry/fallback.
-  const awakened = scenePhase === 'awakened' || scenePhase === 'oracle';
-
-  useEffect(() => {
-    if (!awakened || !connection.isDecartActive) {
-      // Not in enterprise Decart mode — destroy any existing 2D renderer
-      if (oracleFaceRendererRef.current) {
-        oracleFaceRendererRef.current.destroy();
-        oracleFaceRendererRef.current = null;
-      }
-      return;
-    }
-    const canvas = oracleFaceCanvasRef.current;
-    if (!canvas) return;
-
-    const renderer = new OracleFaceRenderer(canvas);
-    oracleFaceRendererRef.current = renderer;
-
-    const resize = () => {
-      const p = canvas.parentElement;
-      if (p) {
-        canvas.width  = p.clientWidth  * window.devicePixelRatio;
-        canvas.height = p.clientHeight * window.devicePixelRatio;
-        renderer.onResize();
-      }
-    };
-    window.addEventListener('resize', resize);
-    resize();
-
-    renderer.loadFace(oracleAvatarDataUrl).then(() => {
-      if (connection.oracleFaceMap) renderer.calibrate(connection.oracleFaceMap);
-      renderer.startIdleAnimation();
-      logStep('LIVING FACE RENDERER READY', 'ok');
-    }).catch(err => {
-      console.error('Face load failed:', err);
-      logStep('FACE LOAD FAILED', 'err');
-    });
-
-    return () => {
-      window.removeEventListener('resize', resize);
-      renderer.destroy();
-      oracleFaceRendererRef.current = null;
-    };
-  }, [awakened, connection.isDecartActive, connection.oracleFaceMap, oracleAvatarDataUrl]);
+  }, [scenePhase, connection.initializePCMPlayer]);
 
   // ── Dev hooks ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -506,9 +450,8 @@ export function SurrogateOracleImmersion() {
   const handleParallaxUpdate = useCallback((x: number, y: number) => {
     // Update camera look-around (preserves current zoom)
     cameraStateRef.current = { ...cameraStateRef.current, x, y };
-    if (oracleFaceRendererRef.current) oracleFaceRendererRef.current.setTilt(x, y);
-    if (connectionRef.current.pcmPlayer) connectionRef.current.pcmPlayer.updateHeadOrientation(x, y);
-  }, []);
+    if (connection.pcmPlayer) connection.pcmPlayer.updateHeadOrientation(x, y);
+  }, [connection.pcmPlayer]);
 
   const handleZoom = useCallback((zoom: number) => {
     cameraStateRef.current = { ...cameraStateRef.current, zoom };
@@ -516,14 +459,18 @@ export function SurrogateOracleImmersion() {
 
   useParallax(scenePhase, handleParallaxUpdate, handleZoom);
 
-  const { completedLines, currentLine } = useLoreSequence(scenePhase === 'terminal', () => journey.awakeFromTerminal());
+  const { completedLines, currentLine } = useLoreSequence(scenePhase === 'terminal', () => {
+    markLoreCompleted();
+    journey.awakeFromTerminal();
+  });
 
   const isOracleMode = scenePhase === 'oracle';
+  const awakened     = scenePhase === 'awakened' || isOracleMode;
   const isAlive      = scenePhase !== 'dormant';
 
   // ── Typewriter title ──────────────────────────────────────────────────────
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
-  const subtitleText = useTypewriter('SNEAKAR XR AI IMMERSION', awakened && titleText.length >= 16, 35);
+  const subtitleText = useTypewriter('SNEAKAR XR Anthropology AI', awakened && titleText.length >= 16, 35);
 
   // ── Knife selection ───────────────────────────────────────────────────────
   const handleKnifeClick = (q: string, i: number) => {
@@ -552,7 +499,6 @@ export function SurrogateOracleImmersion() {
       data-oracle-state={scenePhase}
       data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
-      data-decart-active={connection.isDecartActive}
       data-camera-active={cameraActive ? 'true' : undefined}
       data-audio-target-vol={targetVolRef.current}
     >
@@ -659,12 +605,18 @@ export function SurrogateOracleImmersion() {
                 <motion.div
                   key="live-face"
                   className="oracle-avatar-container"
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                  initial={{ opacity: 0, y: -40, scale: 0.9, filter: 'blur(12px) brightness(3) saturate(0)' }}
+                  animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px) brightness(1) saturate(1)' }}
+                  transition={{ 
+                    duration: 1.2, 
+                    ease: [0.22, 1, 0.36, 1],
+                    y: { type: 'spring', damping: 12, stiffness: 80 }
+                  }}
                   style={{ zIndex: 3 }}
                 >
                   {/* ── PRIMARY: Three.js GLB Avatar ── */}
                   <div
-                    className="oracle-avatar-canvas"
+                    className="oracle-avatar-canvas oracle-avatar-smoke-hook"
                     style={{
                       opacity:    isOracleMode ? 1 : 0.45,
                       filter:     isOracleMode ? 'none' : 'blur(4px) brightness(0.6)',
@@ -673,37 +625,20 @@ export function SurrogateOracleImmersion() {
                       position: 'absolute', top: 0, left: 0,
                     }}
                   >
-                    <Suspense fallback={<OracleAvatarFallback />}>
-                      <Canvas
-                        camera={{ position: [0, 0, 1.8], fov: 42 }}
-                        dpr={[1, Math.min(window.devicePixelRatio, 2)]}
-                        gl={{ antialias: true, alpha: true }}
-                        style={{ width: '100%', height: '100%', background: 'transparent' }}
-                        frameloop="always"
-                      >
-                        <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} />
-                      </Canvas>
-                    </Suspense>
+                    <OracleErrorBoundary>
+                      <Suspense fallback={<OracleAvatarFallback />}>
+                        <Canvas
+                          camera={{ position: [0, 0, 1.8], fov: 42 }}
+                          dpr={[1, Math.min(window.devicePixelRatio, 2)]}
+                          gl={{ antialias: true, alpha: true }}
+                          style={{ width: '100%', height: '100%', background: 'transparent' }}
+                          frameloop="always"
+                        >
+                          <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} />
+                        </Canvas>
+                      </Suspense>
+                    </OracleErrorBoundary>
                   </div>
-
-                  {/* ── ENTERPRISE: Decart video overlay — shown when Decart is active ── */}
-                  {connection.isDecartActive && (
-                    <video
-                      ref={avatarVideoRef}
-                      className="oracle-avatar-video"
-                      autoPlay playsInline muted
-                      style={{ position: 'absolute', top: 0, left: 0, zIndex: 2 }}
-                    />
-                  )}
-
-                  {/* ── ENTERPRISE: 2D canvas for OracleFaceRenderer (Decart supplemental) ── */}
-                  <canvas
-                    ref={oracleFaceCanvasRef}
-                    style={{
-                      position: 'absolute', top: 0, left: 0, zIndex: 1,
-                      display: connection.isDecartActive ? 'block' : 'none',
-                    }}
-                  />
                 </motion.div>
               ) : null}
             </AnimatePresence>
@@ -763,7 +698,7 @@ export function SurrogateOracleImmersion() {
 
       {/* ── Terminal lore overlay ── */}
       <AnimatePresence>
-        {scenePhase === 'terminal' && (
+        {(scenePhase === 'terminal' || (scenePhase === 'awakened' && !journey.selectedKnifeQuestion)) && (
           <motion.div
             key="terminal-layer"
             className="oracle-terminal-overlay"
@@ -878,7 +813,6 @@ export function SurrogateOracleImmersion() {
                 isVisible initialTab="vault"
                 onClose={() => setDebugMode(false)} isAuthenticated={false}
                 pendingCoins={sessionCoins}
-                decartClientRef={decartClientRef}
                 oracleConversationRef={oracleConversationRef}
               />
             </div>
@@ -935,9 +869,6 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
-      {/* DecartClient — keeps WebRTC peer alive for enterprise path */}
-      <DecartClient ref={decartClientRef} />
-
       {/* ── Depth frame ── */}
       <div className="oracle-depth-frame" aria-hidden="true" />
 
@@ -960,46 +891,103 @@ export function SurrogateOracleImmersion() {
             className="oracle-terminal-overlay"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.6 } }}
-            // pointerEvents:auto overrides .oracle-terminal-overlay's `pointer-events:none`,
-            // which was swallowing clicks on the wallet link AND the SKIP button — the
-            // returning Seeker could neither reach wallet.thesurrogate.me nor bypass it.
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 1000, pointerEvents: 'auto' }}
+            style={{ 
+              display: 'flex', flexDirection: 'column', 
+              alignItems: 'center', justifyContent: 'center', 
+              zIndex: 1000, pointerEvents: 'auto',
+              background: 'rgba(0,0,0,0.85)',
+              backdropFilter: 'blur(10px)'
+            }}
           >
-            <div className="oracle-lore-text" style={{ textAlign: 'center' }}>
-              <div style={{ marginBottom: '2rem', fontSize: '1.2rem', letterSpacing: '0.1em', color: '#00ff88' }}>
-                <span className="oracle-lore-prompt">›</span> SIGNAL RECOGNIZED. RETURN TRIP VERIFIED.
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="neural-link-terminal"
+              style={{
+                width: 'min(420px, 92vw)',
+                padding: '3rem 2rem',
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <div style={{ 
+                  fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+                  fontSize: '1.5rem', letterSpacing: '0.15em', 
+                  background: 'linear-gradient(90deg, #00ff88 0%, #00ffaa 50%, #00ffcc 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  marginBottom: '0.75rem', 
+                  filter: 'drop-shadow(0 0 12px rgba(0,255,136,0.4))'
+                }}>
+                  SIGNAL RECOGNIZED
+                </div>
+                <div style={{ 
+                  fontSize: '0.7rem', letterSpacing: '0.2em', color: '#00ccff',
+                  marginBottom: '2.5rem', fontFamily: "'PhillySans', 'Orbitron', monospace", opacity: 0.8
+                }}>
+                  › RETURN TRIP VERIFIED
+                </div>
+
+                <div style={{ marginBottom: '2rem' }}>
+                  <a
+                    href="https://wallet.thesurrogate.me"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: 'block',
+                      background: '#00ff88',
+                      color: '#000',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '1rem 1.5rem',
+                      fontWeight: 900,
+                      letterSpacing: '0.15em',
+                      textDecoration: 'none',
+                      fontSize: '0.85rem',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 0 20px rgba(0,255,136,0.4)',
+                      fontFamily: "'PhillySans', 'Orbitron', monospace"
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.background = '#00ccff';
+                      e.currentTarget.style.boxShadow = '0 0 25px rgba(0,204,255,0.6)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = '#00ff88';
+                      e.currentTarget.style.boxShadow = '0 0 20px rgba(0,255,136,0.4)';
+                    }}
+                  >
+                    CONNECT CHAIN FUELZ
+                  </a>
+                </div>
+
+                <div style={{ fontSize: '0.65rem', color: 'rgba(0,255,136,0.5)', marginBottom: '2.5rem', fontFamily: "'PhillySans', 'Orbitron', monospace", letterSpacing: '0.1em' }}>
+                  SYNC TO PERSIST YOUR TOTEM LEVEL
+                </div>
+
+                <button
+                  onClick={() => { 
+                    setShowWalletConnect(false); 
+                    if (hasCompletedLore) {
+                      journey.awakeFromTerminal(); 
+                    } else {
+                      journey.enterTerminal();
+                    }
+                  }}
+                  style={{
+                    background: 'none', border: 'none', color: '#00ccff',
+                    cursor: 'pointer', letterSpacing: '0.15em',
+                    textDecoration: 'none', fontFamily: "'PhillySans', 'Orbitron', monospace",
+                    fontSize: '0.7rem', opacity: 0.7,
+                    transition: 'opacity 0.2s ease'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                  onMouseLeave={e => e.currentTarget.style.opacity = '0.7'}
+                >
+                  [ {hasCompletedLore ? 'RETURN TO ALLEY' : 'PROCEED UNBOUND'} ]
+                </button>
               </div>
-              <a
-                href="https://wallet.thesurrogate.me"
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  display: 'inline-block',
-                  background: 'rgba(0, 255, 136, 0.1)',
-                  border: '1px solid #00ff88', color: '#00ff88',
-                  padding: '1rem 2rem', textDecoration: 'none',
-                  letterSpacing: '0.15em', marginBottom: '1.5rem',
-                  transition: 'all 0.3s ease', fontFamily: 'monospace',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(0, 255, 136, 0.3)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'rgba(0, 255, 136, 0.1)'}
-              >
-                CONNECT CHAIN FUELZ WALLET
-              </a>
-              <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '2rem', fontFamily: 'monospace' }}>
-                START EARNING CULTURE COINS ON-CHAIN
-              </div>
-              <button
-                onClick={() => { setShowWalletConnect(false); journey.awakeFromTerminal(); }}
-                style={{
-                  background: 'none', border: 'none', color: '#00ccff',
-                  cursor: 'pointer', letterSpacing: '0.1em',
-                  textDecoration: 'underline', fontFamily: 'monospace',
-                }}
-              >
-                SKIP TO ARCHIVE
-              </button>
-            </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

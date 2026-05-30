@@ -1,16 +1,16 @@
 # SURROGATE — Development Guide
 
 Canonical mandates for the Surrogate project. Follow strictly.
-Last audited: 2026-05-29. Phase 4 Enterprise Overhaul complete. AudioWorklet + Landmark Skinning live.
+Last updated: 2026-05-30. Decart Residue Removal + Brand Kit Overhaul complete.
 
 ---
 
 ## Technical Stack
 - **Frontend:** React (TypeScript), Vite, Tailwind CSS, Framer Motion.
 - **Backend:** Supabase Edge Functions (Deno).
-- **AI:** Gemini 2.5 Flash (Live WebSocket + REST), Decart (Realtime Video Avatar).
-- **Audio:** Web Audio API, `oracle-audio.worklet.ts` (PCM streaming, Viseme detection), `PCMPlayer` (HRTF).
-- **Vision:** MediaPipe Face Landmarker (calibration during pre-warm).
+- **AI Engine:** Gemini 2.5 Flash (Live WebSocket + REST).
+- **Audio:** Web Audio API, `oracle-audio.worklet.ts` (PCM streaming, Viseme detection), `PCMPlayer`.
+- **3D Rendering:** Three.js / React Three Fiber (`OracleAvatar3D.tsx`).
 
 ---
 
@@ -23,13 +23,13 @@ Last audited: 2026-05-29. Phase 4 Enterprise Overhaul complete. AudioWorklet + L
 | **Dormant** | Alley. DormantHUD. Ghost transmissions. Cabinet pulses. | Silent |
 | **Terminal** | First tap → lore sequence types in. Alley ambience plays. | Silent — Oracle NEVER speaks during lore |
 | **Awakened** | Lore done → Oracle greets → announces territories → knife cards | Greets at +300ms. Territory announcement at +1200ms. |
-| **Oracle** | Knife selected → full conversation. WebGL landmark mesh sync (freemium) or Decart. | Full conversation |
+| **Oracle** | Knife selected → full conversation. `OracleAvatar3D` live morph targets. | Full conversation |
 
 **Critical hooks:**
 - `useOracleJourney`: Manages the state machine (dormant → oracle).
-- `useOracleConnection`: Handles WS, ICE negotiation, and PCM lifecycle.
-- `usePortraitPipeline`: Coordinates neural image synthesis.
-- `startSession()` fires in `awakeFromTerminal()` — the ONLY place the greeting is triggered.
+- `useOracleConnection`: Handles WS handshake and PCM lifecycle.
+- `usePortraitPipeline`: Coordinates Gemini-exclusive neural image synthesis.
+- **Return Journey:** `awakeFromTerminal()` bypasses lore if `hasCompletedLore` is detected.
 
 ### 2. Audio & Volume (Enterprise Pipeline)
 
@@ -39,7 +39,7 @@ Last audited: 2026-05-29. Phase 4 Enterprise Overhaul complete. AudioWorklet + L
 - **Off-Thread:** All heavy audio tasks (PCM accumulation, FFT) are in the `AudioWorklet`.
 - **Latency:** Zero intermediate file creation. Direct base64 → Int16 → Float32 streaming.
 
-Music ducking levels: Dormant=`0.06`, Terminal/Awakened=`0.03`, Oracle=`0.001` (constant).
+Music ducking levels: Dormant=`0.06`, Terminal=`0.06`, Awakened=`0.03`, Oracle=`0.08` (active=`0.015`).
 
 ### 3. Step Logging — Canonical Step Names
 
@@ -48,7 +48,6 @@ The pressure test asserts on these exact strings. **Never rename without updatin
 ```
 OracleConversation MOUNTED          ok      — on component mount
 ENV OK (Supabase vars)              ok      — validateEnvironment() passes
-DECART INIT                         ok      — initializeOracle() starts
 GEMINI WS CONNECTING                pending — connectToGemini() fires
 GEMINI WS OPENED                    ok      — ws.onopen
 GEMINI SESSION CREATED              ok      — session.created message
@@ -67,23 +66,16 @@ ORACLE TURN COMPLETE                ok      — turnComplete signal from Gemini
 ORACLE SCORE: <phase> / <align> / +<n>c   ok   — score parsed from turn
 ORACLE INTERRUPTED (barge-in)       warn    — serverContent.interrupted received
 GEMINI WS ERROR                     err     — ws.onerror
-DECART READY ✓                      ok      — onStreamReady fired
-FREEMIUM PATH READY                 warn    — Decart failed or timed out, freemium active
 INVOKING PORTRAIT EFA               pending
 NEURAL PORTRAIT SYNTHESIZED ✓       ok
 ```
 
-### 4. VAD Realtime Spine (Input)
+### 4. Visual Standards (Brand Kit)
 
-Input format: `audio/pcm;rate=16000` — raw Int16 PCM, mono, 16kHz.
-Sent via `client.realtimeInput` mediaChunks. **VAD gate is mandatory.**
-
-### 5. WebGL Landmark Lip-Sync (Output)
-
-- **Renderer:** `OracleFaceRenderer.ts` uses WebGL mesh-warp.
-- **Accuracy:** 468 MediaPipe landmarks drive specific mesh vertices. Skinning weights computed during pre-warm.
-- **Synthesis:** If the analyser is silent but PCM is arriving, the Worklet synthesizes visemes from direct amplitude.
-- **Materialization:** Minted portraits appear inside the arcade cabinet with a "NEURAL SYNTHESIS" transition.
+- **Typography (Headers):** `aAnotherTag` with brand gradient (`#00ff88` → `#00ffcc`).
+- **Typography (Body/UI):** `PhillySans` (Heavy weight, tracking 0.15em).
+- **Panels:** `.neural-link-terminal` (Holographic glass, `blur(12px)`, Sacred Green borders, scanline overlay).
+- **Entrance:** "Glitch-Phase" downward float with high-frequency chromatic aberration frames.
 
 ---
 
@@ -91,10 +83,10 @@ Sent via `client.realtimeInput` mediaChunks. **VAD gate is mandatory.**
 
 | Bug | Severity | File | Notes |
 |-----|----------|------|-------|
-| Oracle breaks after ~10 turns | High | `OracleConversation.tsx` | WS timeout or context limit; silent fail. |
-| Oracle crashes on web tool use | High | `OracleConversation.tsx` | Tool-use config mismatch. Avoid tool prompts. |
+| Oracle breaks after ~10 turns | High | `OracleConversation.tsx` | WS timeout or context limit. |
+| Oracle crashes on web tool use | High | `OracleConversation.tsx` | Tool-use config mismatch. |
 | No contemplative fillers | Medium | `OracleConversation.tsx` | Silence while Oracle processes response. |
-| CI Audio Limitations | Low | `scripts/` | Headless CI cannot use mic or play audio, causing some test failures. |
+| CI Audio Limitations | Low | `scripts/` | Headless CI cannot use mic. |
 
 ---
 

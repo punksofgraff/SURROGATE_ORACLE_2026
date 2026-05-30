@@ -9,7 +9,6 @@
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "inject": "node scripts/oracle-morph-inject.mjs",
-    "calibrate": "node scripts/oracle-calibrate.mjs",
     "verify": "node scripts/oracle-morph-verify.mjs",
     "gaze-verify": "node scripts/oracle-gaze-verify.mjs",
     "smoke": "node scripts/oracle-smoke-screenshot.mjs",
@@ -86,8 +85,6 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "@decartai/sdk": "^0.0.63",
-    "@mediapipe/tasks-vision": "^0.10.35",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@supabase/supabase-js": "^2.105.4",

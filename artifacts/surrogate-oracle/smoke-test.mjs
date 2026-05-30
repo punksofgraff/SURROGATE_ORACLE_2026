@@ -56,7 +56,7 @@ async function run() {
 
   // ── TEST 1: App loads ─────────────────────────────────────────────────────
   console.log('TEST 1 — App loads and lands in DORMANT phase');
-  await page.goto(BASE, { waitUntil: 'networkidle', timeout: 15000 }).catch(async (e) => {
+  await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(async (e) => {
     FAIL(`Page failed to load: ${e.message}`);
     await browser.close();
     process.exit(1);
@@ -140,9 +140,12 @@ async function run() {
   await page.waitForTimeout(2500);
   await screenshot(page, '03-terminal-lore-playing');
 
-  // Skip lore
-  await page.click('.oracle-terminal-overlay');
-  INFO('Clicked lore overlay to skip');
+  // Skip lore — force click because the avatar wrapper may intercept
+  await page.evaluate(() => {
+    const el = document.querySelector('.oracle-terminal-overlay');
+    if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  INFO('Dispatched click to lore overlay to skip');
 
   // ── TEST 5: Auto-advance to AWAKENED after lore completes ────────────────
   console.log('\nTEST 5 — Auto-advance to AWAKENED phase after lore skip');
@@ -151,7 +154,7 @@ async function run() {
       const s = document.querySelector('.oracle-stage')?.getAttribute('data-oracle-state');
       return s === 'awakened' || s === 'oracle';
     },
-    { timeout: 5000 }
+    { timeout: 15000 }
   ).catch(() => {});
 
   const awakenedState = await page.getAttribute('.oracle-stage', 'data-oracle-state');
@@ -161,7 +164,53 @@ async function run() {
     FAIL(`Still in "${awakenedState}" — lore sequence did not advance to awakened`);
   }
 
+  // ── TEST 5b: Lore Completion Tracking (The Ticker) ──────────────────────
+  console.log('\nTEST 5b — Verify lore completion ticker');
+  // Wait a moment for async markLoreCompleted (Supabase call) to finish
+  await page.waitForTimeout(1000);
+  const loreCompleted = await page.evaluate(() => {
+    // We can't easily know the IP here, so we check if any key matching the pattern exists
+    for (let i = 0; i < localStorage.length; i++) {
+      if (localStorage.key(i).startsWith('surrogate_lore_completed_')) return true;
+    }
+    return false;
+  });
+  if (loreCompleted) {
+    PASS('Lore completion marker found in localStorage ✓');
+  } else {
+    FAIL('Lore completion marker NOT found after finishing/skipping lore');
+  }
+
   await screenshot(page, '04-awakened');
+
+  // ── TEST 5c: Returning Seeker Routing (Agnostic Path) ───────────────────
+  console.log('\nTEST 5c — Returning Seeker Routing (Lore Completed)');
+  // We'll simulate a return trip by manually injecting the keys and reloading
+  // (In headless/CI, IP-based detection can be flaky due to network sandboxing)
+  await page.evaluate(() => {
+    localStorage.setItem('surrogate_visited_smoke_ip', 'true');
+    localStorage.setItem('surrogate_lore_completed_smoke_ip', 'true');
+  });
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+  
+  // Should show wallet connect
+  await page.waitForSelector('text=CONNECT CHAIN FUELZ WALLET', { timeout: 15000 });
+  const buttonText = await page.textContent('button:has-text("RETURN TO ALLEY"), button:has-text("PROCEED UNBOUND")');
+  if (buttonText === 'RETURN TO ALLEY') {
+    PASS('Wallet overlay shows "RETURN TO ALLEY" for completed lore Seeker ✓');
+  } else {
+    FAIL(`Expected "RETURN TO ALLEY", got "${buttonText}"`);
+  }
+
+  // Click it — should go straight to awakened (knives)
+  await page.click('button:has-text("RETURN TO ALLEY")');
+  await page.waitForTimeout(1000);
+  const routingState = await page.getAttribute('.oracle-stage', 'data-oracle-state');
+  if (routingState === 'awakened' || routingState === 'oracle') {
+    PASS(`Released to "${routingState}" (knives) — bypassed lore archive correctly ✓`);
+  } else {
+    FAIL(`Expected skip to awakened/oracle, but got state: "${routingState}"`);
+  }
 
   // ── TEST 6: Branding typewriter starts in awakened phase ─────────────────
   console.log('\nTEST 6 — Branding typewriter starts in AWAKENED phase');

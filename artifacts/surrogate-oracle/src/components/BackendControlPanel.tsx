@@ -7,7 +7,6 @@
  *   VAULT        — Culture Coins + Neural Vault (ChainFuelz)
  *   SQUAD        — Learn2Earn interface
  *   NEURAL PRINTS — Portrait gallery
- *   DECART LIVE  — Decart WebRTC stream diagnostics
  *   GEMINI LIVE  — Gemini Live WebSocket diagnostics
  *   DEV          — Password-protected developer console
  */
@@ -20,17 +19,15 @@ import { PortraitGalleryDashboard } from './PortraitGalleryDashboard';
 import { Learn2EarnInterface } from './Learn2EarnInterface';
 import { supabaseEdgeFunctionHeaders } from '../lib/supabase';
 import { useChainFuelz } from '../hooks/useChainFuelz';
-import type { DecartClientHandle } from './DecartClient';
 import type { OracleConversationHandle } from './OracleConversation';
 
 // ── Tab definition ────────────────────────────────────────────────────────────
-type Tab = 'vault' | 'squad' | 'portraits' | 'decart' | 'gemini' | 'dev';
+type Tab = 'vault' | 'squad' | 'portraits' | 'gemini' | 'dev';
 
 const TABS: { id: Tab; label: string; icon?: string }[] = [
   { id: 'vault',    label: 'VAULT' },
   { id: 'squad',    label: 'SQUAD' },
   { id: 'portraits', label: 'NEURAL\nPRINTS' },
-  { id: 'decart',   label: 'DECART\nLIVE' },
   { id: 'gemini',   label: 'GEMINI\nLIVE' },
   { id: 'dev',      label: 'DEV' },
 ];
@@ -142,7 +139,6 @@ interface BackendControlPanelProps {
   isAuthenticated?: boolean;
   userEmail?: string;
   pendingCoins?: number;
-  decartClientRef?: RefObject<DecartClientHandle | null>;
   oracleConversationRef?: RefObject<OracleConversationHandle | null>;
 }
 
@@ -155,7 +151,6 @@ export const BackendControlPanel = ({
   isAuthenticated = false,
   userEmail,
   pendingCoins = 0,
-  decartClientRef,
   oracleConversationRef,
 }: BackendControlPanelProps) => {
   const [activeTab, setActiveTab] = useState<Tab>(() => {
@@ -179,7 +174,6 @@ export const BackendControlPanel = ({
   const [showRawAddress, setShowRawAddress] = useState(false);
 
   // Live debug polling state
-  const [decartInfo, setDecartInfo] = useState<ReturnType<DecartClientHandle['getDebugInfo']> | null>(null);
   const [geminiInfo, setGeminiInfo] = useState<ReturnType<OracleConversationHandle['getWsDebugInfo']> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -201,14 +195,13 @@ export const BackendControlPanel = ({
 
   // Poll debug info when on debug tabs
   useEffect(() => {
-    if (activeTab === 'decart' || activeTab === 'gemini') {
+    if (activeTab === 'gemini') {
       pollRef.current = setInterval(() => {
-        if (decartClientRef?.current) setDecartInfo(decartClientRef.current.getDebugInfo());
         if (oracleConversationRef?.current) setGeminiInfo(oracleConversationRef.current.getWsDebugInfo());
       }, 600);
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [activeTab, decartClientRef, oracleConversationRef]);
+  }, [activeTab, oracleConversationRef]);
 
   const handleDebugPasswordSubmit = () => {
     if (debugPassword === '3nculturate!') {
@@ -259,7 +252,7 @@ export const BackendControlPanel = ({
           zIndex: 150,
           display: 'flex',
           flexDirection: 'column',
-          fontFamily: "'PhillySans', 'Orbitron', monospace",
+          fontFamily: "'aAnotherTag', 'Orbitron', monospace",
           overflowY: 'hidden',
           boxShadow: '-20px 0 80px rgba(0,0,0,0.7), -2px 0 0 rgba(176,38,255,0.18)',
         }}
@@ -318,7 +311,7 @@ export const BackendControlPanel = ({
                   border: 'none',
                   borderBottom: `2px solid ${isActive ? '#00ff88' : 'transparent'}`,
                   color: isActive ? '#00ff88' : '#ffffff66',
-                  fontFamily: "'PhillySans', 'Orbitron', monospace",
+                  fontFamily: "'aAnotherTag', 'Orbitron', monospace",
                   fontSize: '0.52rem',
                   letterSpacing: '0.06em',
                   cursor: 'pointer',
@@ -479,58 +472,6 @@ export const BackendControlPanel = ({
                   maxPortraits={20}
                   isBackendCabinetTab
                 />
-              )}
-
-              {/* ── DECART LIVE tab ───────────────────────────────────── */}
-              {activeTab === 'decart' && (
-                <HoloCard glowColor="#b026ff">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                    <Activity size={14} color="#b026ff" />
-                    <span style={{ fontSize: '0.7rem', color: '#b026ff', fontWeight: 700, letterSpacing: '0.12em' }}>
-                      DECART LIVE
-                    </span>
-                  </div>
-
-                  {decartInfo ? (
-                    <>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-                        <StatusBadge
-                          label={decartInfo.connectionState.toUpperCase()}
-                          ok={decartInfo.connectionState === 'connected'}
-                          warn={decartInfo.connectionState === 'connecting'}
-                        />
-                        <StatusBadge label={decartInfo.isActive ? 'STREAM ACTIVE' : 'NO STREAM'} ok={decartInfo.isActive} />
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.62rem' }}>
-                        {[
-                          ['TALK COUNT', decartInfo.talkCount],
-                          ['UPTIME', decartInfo.streamUptimeMs != null ? `${Math.round(decartInfo.streamUptimeMs / 1000)}s` : '—'],
-                        ].map(([k, v]) => (
-                          <div key={k as string} style={{
-                            background: 'rgba(0,0,0,0.4)', borderRadius: 6, padding: '7px 10px',
-                            border: '1px solid rgba(176,38,255,0.12)',
-                          }}>
-                            <div style={{ color: '#00ccff', fontSize: '0.52rem', letterSpacing: '0.12em', marginBottom: 3 }}>{k}</div>
-                            <div style={{ color: '#fff', fontFamily: 'monospace' }}>{v}</div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {decartInfo.lastError && (
-                        <div style={{ marginTop: 10, padding: '7px 10px', background: 'rgba(176,38,255,0.1)', border: '1px solid rgba(176,38,255,0.25)', borderRadius: 6 }}>
-                          <div style={{ fontSize: '0.55rem', color: '#cc88ff', fontFamily: 'monospace' }}>{decartInfo.lastError}</div>
-                        </div>
-                      )}
-
-                      <TerminalLog lines={decartInfo.recentCallbacks} label="CALLBACK LOG" />
-                    </>
-                  ) : (
-                    <div style={{ fontSize: '0.62rem', color: '#ffffff44', fontStyle: 'italic', textAlign: 'center', padding: '20px 0' }}>
-                      Decart stream not initialized yet.<br />Enter the Oracle to begin.
-                    </div>
-                  )}
-                </HoloCard>
               )}
 
               {/* ── GEMINI LIVE tab ───────────────────────────────────── */}
@@ -747,7 +688,6 @@ export const BackendControlPanel = ({
                         <div>User: {userId || 'anonymous'}</div>
                         <div>Auth: {isAuthenticated ? '✅' : '❌'}</div>
                         <div>Supabase: {supabaseUrl ? '✅' : '❌ Not configured'}</div>
-                        <div>Decart: {import.meta.env.VITE_DECART_API_KEY ? '✅' : '⚠️ (via edge fn)'}</div>
                       </div>
                     </HoloCard>
                   </div>

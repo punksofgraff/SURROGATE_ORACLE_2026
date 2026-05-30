@@ -66,7 +66,6 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
   };
 
   const panelStyle: React.CSSProperties = {
-    borderRadius: '4px',
     padding: '40px',
     maxWidth: '420px',
     width: '90%',
@@ -165,10 +164,25 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
 
         <div style={{ textAlign: 'center', marginBottom: 28, position: 'relative', zIndex: 2 }}>
           <Terminal size={48} style={{ color: '#00ff88', margin: '0 auto 16px', opacity: 0.8 }} />
-          <h2 style={{ fontSize: '1.2rem', letterSpacing: '0.15em', marginBottom: 8, color: '#00ff88', textShadow: '0 0 10px rgba(0,255,136,0.5)' }}>
+          <h2 style={{ 
+            fontSize: '1.4rem', 
+            fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+            letterSpacing: '0.15em', 
+            marginBottom: 8, 
+            background: 'linear-gradient(90deg, #00ff88 0%, #00ffaa 50%, #00ffcc 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            filter: 'drop-shadow(0 0 10px rgba(0,255,136,0.5))'
+          }}>
             ESTABLISH NEURAL LINK
           </h2>
-          <p style={{ fontSize: '0.75rem', color: '#ffffff', lineHeight: 1.6, letterSpacing: '0.05em' }}>
+          <p style={{ 
+            fontSize: '0.75rem', 
+            color: '#ffffff', 
+            lineHeight: 1.6, 
+            letterSpacing: '0.05em',
+            fontFamily: "'PhillySans', 'Orbitron', monospace" 
+          }}>
             {step === 'email' 
               ? 'VERIFY SEEKER FREQUENCY TO ACCESS THE CULTURE CREW ENCLAVE.' 
               : 'ACCESS CODE SENT. CALIBRATE NEURAL FREQUENCY NOW.'}
@@ -177,7 +191,16 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
 
         <div style={{ position: 'relative', zIndex: 2 }}>
             {error && (
-            <div style={{ background: 'rgba(176,38,255,0.1)', border: '1px solid rgba(176,38,255,0.45)', padding: '8px 12px', marginBottom: 16, fontSize: '0.75rem', color: '#cc88ff', letterSpacing: '0.05em' }}>
+            <div style={{ 
+              background: 'rgba(176,38,255,0.1)', 
+              border: '1px solid rgba(176,38,255,0.45)', 
+              padding: '8px 12px', 
+              marginBottom: 16, 
+              fontSize: '0.75rem', 
+              color: '#cc88ff', 
+              letterSpacing: '0.05em',
+              fontFamily: "'PhillySans', 'Orbitron', monospace"
+            }}>
                 FREQUENCY REJECTED — {error.toUpperCase()}
             </div>
             )}
@@ -211,7 +234,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                     <button 
                       type="submit" 
                       disabled={isLoading} 
-                      style={buttonStyle}
+                      style={{ ...buttonStyle, fontFamily: "'PhillySans', 'Orbitron', monospace" }}
                       onClick={() => console.log('🖱️ Submit button explicitly clicked')}
                     >
                       INITIALIZE LINK
@@ -232,13 +255,18 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
                         required
                       />
                     </div>
-                    <button type="submit" disabled={isLoading} style={buttonStyle}>
+                    <button type="submit" disabled={isLoading} style={{ ...buttonStyle, fontFamily: "'PhillySans', 'Orbitron', monospace" }}>
                       CALIBRATE LINK
                     </button>
                     <button 
                       type="button" 
                       onClick={() => setStep('email')}
-                      style={{ background: 'none', border: 'none', color: '#ffffff', fontSize: '0.65rem', marginTop: 12, cursor: 'pointer', width: '100%', textAlign: 'center' }}
+                      style={{ 
+                        background: 'none', border: 'none', color: '#ffffff', 
+                        fontSize: '0.65rem', marginTop: 12, cursor: 'pointer', 
+                        width: '100%', textAlign: 'center',
+                        fontFamily: "'PhillySans', 'Orbitron', monospace"
+                      }}
                     >
                       WRONG IDENTIFIER? ABORT AND RETRY.
                     </button>

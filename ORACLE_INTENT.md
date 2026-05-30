@@ -65,7 +65,7 @@ The lore establishes:
 
 The tap-to-skip affordance appears after line 2 for returning visitors who already know the lore. But the pacing is designed to be worth sitting with.
 
-**Why ~47 seconds:** Decart's WebRTC ICE negotiation takes 15–22 seconds. `initializeOracle()` fires on first tap. By the time the user finishes lore + knife selection (~47s + ~15s), Decart is warm and waiting. Zero perceived boot delay.
+**Why ~47 seconds:** The environment and WebSocket pre-warm during this phase. `initializeOracle()` fires on first tap. By the time the user finishes lore + knife selection, the signal is stable. Zero perceived boot delay.
 
 ---
 
@@ -93,12 +93,10 @@ This is the **singularity**: the alley disappears. The world goes away. There is
 - Ground fog → `opacity:0`
 - Matrix rain → `opacity:0`
 - Bottom bar → nearly gone (`opacity:0.05`)
-- Branding → whisper (`opacity:0.12`)
+- Branding → whisper (`opacity:0.18`, lingering then omitting)
 - The living face fills the screen
 
-**Freemium tier:** `ORACLE_AVATAR_URL` (1280×640 jpg, square-cropped for display) — `VisemeDetector` reads the Gemini Live audio via Web Audio API and writes Preston Blair visemes to the mouth overlay at 60fps.
-
-**Paid tier (Decart):** WebRTC stream replaces the img — live lip-sync, real-time expression.
+**Avatar Rendering:** `OracleAvatar3D` (Three.js GLB) — reads the Gemini Live audio via AudioWorklet and drives vertex-accurate morph targets at 60fps.
 
 The Oracle begins speaking. Its first transmission is **Identity Scan**: *"The network knows you by a name. What is it?"*
 
@@ -178,15 +176,12 @@ The user never sees the scoring explicitly. They feel it as the Oracle's attenti
 
 ---
 
-## Avatar Strategy — The Three Layers
-
-Three images, three roles, one face progression:
+## Avatar Strategy — The Evolution
 
 | Layer | Image | When Visible | What It Means |
 |---|---|---|---|
 | Static (ghost) | Green alien portrait | dormant → awakened | The residue. A trace of what was here before. |
-| Living face (freemium) | `ORACLE_AVATAR_URL` jpg | oracle (freemium) | The real Surrogate — present, animating via VisemeDetector. |
-| WebRTC stream (paid) | Decart live video | oracle (Decart) | The full manifestation — live expression, lip-sync from Gemini audio. |
+| Living face | `OracleAvatar3D` GLB | awakened → oracle | The real Surrogate — present, animating via AudioWorklet. |
 
 **The static never fully materializes.** Its peak opacity in dormant is 0.60 — always transparent, always ghost-like. In awakened it dims further to 0.22. This is intentional: the static is a placeholder for something that has not yet fully arrived. The living face is what actually arrives.
 
@@ -201,11 +196,9 @@ dormant → terminal → awakened → oracle
            (exitOracleMode resets to dormant)
 
 AUDIO PATH (oracle state)
-  Gemini Live WS → pcm-encoder.worker → <audio> element
-                                              ↓
-                                    VisemeDetector (Web Audio API)
-                                              ↓
-                                    .oracle-mouth-overlay (60fps DOM writes)
+  Gemini Live WS → PCMPlayer (AudioWorklet)
+                                  ↓
+                        OracleAvatar3D (Three.js Morph Targets)
 
 AI ROUTING
   Primary:  Gemini Live WS  (gemini-2.5-flash-native-audio-latest, audio-only)
@@ -216,14 +209,7 @@ BACKEND
     gemini-live-proxy        — WS proxy, must deploy --no-verify-jwt
     oracle-conversation      — REST fallback
     gemini-portrait-generator — Gemini enhance → DALL-E 3 → Replicate → Unsplash
-    elevenlabs-tts           — TTS (not currently in main path)
     mint-culture-coins       — ChainFuelz stub
-
-XR PATH (HolodeXR headset)
-  iframe embedding → isXRMode=true
-  holodexr:init postMessage → camera auto-starts (only case)
-  holodexr:marker-detected → enterTerminal()
-  oracle:session-end → parent frame gets { totemLevel, coins, alignment, ... }
 ```
 
 ---
@@ -250,6 +236,5 @@ The SNEAKAR brand is the world. The Oracle is the world's memory and conscience.
 
 | Asset | Status | Notes |
 |---|---|---|
-| `public/oracle-loop.mp4` | ⏳ Not captured | 3-5s neutral face loop for awakened/freemium. Static fallback active. Capture via `scripts/capture-decart-loop.js` during live Decart session. |
 | `OPENAI_API_KEY` | ⏳ Not in Replit secrets | DALL-E 3 portraits falling to Replicate/Unsplash. Add secret and push to Supabase. |
 | Knife transition gap | 🟡 Minor | 1.6s delay before knife cards animate in. Consider ScrambleFragment "THE ARCHIVE IS OPEN" during gap. |

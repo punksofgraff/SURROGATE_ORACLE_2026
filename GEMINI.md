@@ -1,7 +1,7 @@
 # SURROGATE:ORACLE — Gemini Integration Reference
 
 Canonical knowledge base for the Gemini integration. Update when anything structural changes.
-Last updated: 2026-05-29. Phase 4 Enterprise Overhaul complete. AudioWorklet + Landmark Skinning live.
+Last updated: 2026-05-30. Decart Residue Removal + Brand Kit Overhaul complete.
 
 ---
 
@@ -11,10 +11,10 @@ Last updated: 2026-05-29. Phase 4 Enterprise Overhaul complete. AudioWorklet + L
 |---------|--------|-------|
 | **Gemini Live WebSocket** (`gemini-live-proxy`) | ✅ Live | Free-tier AI Studio key (`GEMINI_API_KEY`). Model: `gemini-2.5-flash-native-audio-latest` |
 | **Gemini REST fallback** (`oracle-conversation`) | ✅ Live | Same `GOOGLE_AI_API_KEY`. Model: `gemini-2.5-flash`. Text-only on WS drop |
-| **Portrait prompt enhance** (`gemini-portrait-generator`) | ✅ Live | `gemini-2.5-flash` enriches theme → DALL-E/Replicate prompt |
-| **DALL-E 3 portraits** | ⚠️ Needs key | `OPENAI_API_KEY` not in Replit secrets — falls back to Replicate/Unsplash |
-| **Decart WebRTC avatar** | ✅ Live | `DECART_API_KEY` in Replit + Supabase. ICE warms during lore (~18s). |
-| **Enterprise Lip-Sync** | ✅ Live | `OracleFaceRenderer` WebGL landmark skinning. 468 MediaPipe landmarks drive vertex-accurate mesh deformation. Off-thread processing via `AudioWorklet`. |
+| **Portrait Gen (Gemini)** (`gemini-portrait-generator`) | ✅ Live | `gemini-2.5-flash` enriches theme → **Gemini 2.0 Flash (Imagination Engine)** |
+| **DALL-E 3 portraits** | ❌ DEPRECATED | Removed in favor of Gemini-exclusive pipeline |
+| **Decart WebRTC avatar** | ❌ DEPRECATED | Removed residue. Standardized on `OracleAvatar3D` (Three.js) |
+| **Living Lip-Sync** | ✅ Live | `OracleAvatar3D` Three.js morph targets. 409 frames/s capture. Off-thread processing via `AudioWorklet`. |
 
 ---
 
@@ -29,26 +29,23 @@ awakened  ← +300ms: startSession() → Oracle greets "Greetings... Seeker"
            ← +1200ms: sendTextMessage(territories, hidden) → Oracle announces knives
            ← knife cards visible
   ↓ knife selected → selectKnifeQuestion() → +1600ms: setScenePhase('oracle')
-oracle    ← OracleFaceRenderer WebGL live, AudioWorklet active, mic starts after first turn
+oracle    ← OracleAvatar3D Three.js live, AudioWorklet active, mic starts after first turn
   ↓ EXIT button → exitOracleMode() → 2500ms ceremony → dormant
 ```
 
 **Key invariants:**
 - `startSession()` in `awakeFromTerminal()` is the PRIMARY path that sends `__ORACLE_BOOT__`.
 - The oracle-phase `useEffect` calls `startSession()` again; `sessionBootedRef` makes it a no-op (logs `SESSION ALREADY ACTIVE`).
-- `autoStart=false` on `<OracleConversation>` — the component pre-connects but never greets autonomously.
-- **Neural Synthesis:** During portrait generation, the cabinet enters a "NEURAL SYNTHESIS" mode. The minted portrait materializes directly inside the screen, replacing the Oracle.
+- **Return Journey:** Returning seekers (IP/Local Storage) can bypass lore via "RETURN TO ALLEY".
+- **Neural Synthesis:** During portrait generation, the minted portrait materializes directly inside the screen, replacing the Oracle face.
 
 ---
 
 ## API Key Map
 
-> ⚠️ Two Google keys exist in Replit. Only one works for Gemini.
-
 | Replit Secret | Supabase Secret | Works For |
 |---|---|---|
-| `GEMINI_API_KEY` | `GOOGLE_AI_API_KEY` | ✅ Google AI Studio free-tier key. Used by all three EFAs |
-| `GOOGLE_AI_API_KEY` (Replit) | — | ❌ GCP service key. Does NOT work with `generativelanguage.googleapis.com` |
+| `GEMINI_API_KEY` | `GOOGLE_AI_API_KEY` | ✅ Google AI Studio free-tier key. Used by all EFAs. |
 
 ---
 
@@ -56,127 +53,25 @@ oracle    ← OracleFaceRenderer WebGL live, AudioWorklet active, mic starts aft
 
 | Model | Location | Current ID | Notes |
 |-------|----------|------------|-------|
-| Gemini Live (primary) | `OracleConversation.tsx:24` | `models/gemini-2.5-flash-native-audio-latest` | AUDIO-only modality. Voice: `Charon` |
+| Gemini Live (primary) | `OracleConversation.tsx` | `models/gemini-2.5-flash-native-audio-latest` | AUDIO-only modality. Voice: `Charon` |
 | Gemini REST (fallback) | `oracle-conversation/index.ts` | `gemini-2.5-flash` | Text-only |
-| Portrait prompt enhance | `gemini-portrait-generator/index.ts` | `gemini-2.5-flash` | Text generation |
-
-**`speakingRate` is NOT valid in Gemini Live WS `speechConfig`** — it belongs to the TTS REST API only. Speed is handled client-side via `PCMPlayer.playbackRate = ORACLE_PLAYBACK_RATE`.
+| Portrait Engine | `gemini-portrait-generator/index.ts` | `gemini-2.0-flash-preview-image-generation` | Image generation |
 
 ---
 
-## Gemini Live WebSocket — Protocol Detail
-
-### Message Translation (gemini-live-proxy EFA)
-
-```
-Browser → Proxy (custom)           Proxy → Gemini (native BidiGenerateContent)
-────────────────────────────        ─────────────────────────────────────────
-{ type: "session.config", ... }  → { setup: { model, systemInstruction, ... } }
-{ type: "client.realtimeInput" } → { realtimeInput: { mediaChunks: [...] } }
-
-Gemini → Proxy (native)            Proxy → Browser (translated)
-───────────────────────────         ────────────────────────────
-{ serverContent: {...} }         → { type: "server.content", serverContent: {...} }
-{ setupComplete }                   (swallowed — proxy sends its own session.created)
-```
-
-### ⚠️ Critical: Blob Frames
-
-Gemini Live sends **ALL messages** as **binary WebSocket frames**, not text frames:
-
-```typescript
-// CORRECT — async handler, .text() on Blob before JSON.parse
-gemini.onmessage = async (event: MessageEvent) => {
-  const text = event.data instanceof Blob ? await event.data.text() : event.data;
-  const msg = JSON.parse(text);
-};
-```
-
-### Audio Pipeline (Enterprise Grade)
+## Audio Pipeline (Enterprise Grade)
 
 **Path:** Gemini WS → `PCMPlayer.feed()` → `OracleAudioProcessor` (AudioWorklet) → `MasterGain` → `Speakers`.
 
 - **Off-Thread:** All PCM accumulation and FFT analysis happens in `oracle-audio.worklet.ts`.
 - **Viseme Detection:** Real-time Preston Blair viseme detection performed on the audio thread.
 - **Latency:** Zero intermediate file creation. Direct base64 → Int16 → Float32 streaming.
-- **VAD Gating:** Mandatory on input. Only send mic frames during `isSpeaking`.
 
 ---
 
-## ORACLE_SCORE Annotation Protocol
-
-Oracle responses carry a hidden annotation parsed and stripped client-side:
-
-```
-[[ORACLE_SCORE: {"alignment":"sacred","coinAward":10,"totemAdvancement":"ascend","totemLevel":2,"unlockTrigger":null,"sessionPhase":"claim","archetypeTitle":null}]]
-```
-
-- Parsed in `OracleConversation.tsx → parseScore()` → drives totem, coins, portrait unlock.
-- Stripped from all user-visible display.
-- If missing or malformed: logs `SCORE PARSE FAILED [warn]` — no error thrown.
-- Score log format: `ORACLE SCORE: <sessionPhase> / <alignment> / +<coinAward>c`
-
-Valid `sessionPhase` values: `claim`, `evidence`, `cost`, `mirror`
-Valid `alignment` values: `sacred`, `profane` (neutral is handled by the absence of strong alignment)
-
----
-
-## Step Logger — Gemini-Specific Steps
-
-Steps that relate directly to the Gemini WS handshake, in chronological order:
-
-```
-GEMINI WS CONNECTING        pending  t=~0ms from component mount
-GEMINI WS OPENED            ok       t=~300-600ms (network dependent)
-GEMINI SESSION CREATED      ok       t=~400-800ms
-startSession() CALLED       ok       t=9s (after lore)
-__ORACLE_BOOT__ path triggered ok    t=9s
-ORACLE AUDIO START          ok       t=first PCM chunk of first turn
-ORACLE TURN COMPLETE        ok       t=after last chunk + turnComplete signal
-ORACLE SCORE: ...           ok       t=same as TURN COMPLETE
-MIC STARTED                 ok       t=TURN COMPLETE + 1200ms delay
-ORACLE INTERRUPTED          warn     t=whenever seeker speaks over Oracle
-GEMINI WS CLOSED (1000)     ok       t=on clean exit
-GEMINI WS CLOSED (≠1000)    err      t=unexpected drop
-GEMINI WS ERROR             err      t=ws.onerror
-```
-
----
-
-## Portrait Generation Pipeline
-
-Triggered by `portrait_unlock` oracle:unlock event when totem threshold reached.
-Themes accumulate per-conversation in `conversationThemesRef` (Set, seeded by knife selection).
-
-```
-gemini-portrait-generator EFA (cascade — first success wins):
-  1. Gemini 2.5 Flash — enriches theme string → vivid 280-char DALL-E prompt
-  2a. DALL-E 3         — if OPENAI_API_KEY present (currently missing)
-  2b. Replicate flux-schnell — ✅ active key in Supabase
-  2c. HuggingFace FLUX.1-schnell — if HUGGINGFACE_API_KEY set
-  2d. Pollinations.ai — zero config, URL-based, no key needed
-  3. Themed Unsplash fallback — always succeeds
-```
-
----
-
-## Supabase Project
-
-- Ref: `velmmplevfrtrtrypoch`
-- Dashboard: https://supabase.com/dashboard/project/velmmplevfrtrtrypoch
-- Key tables: `surrogate_sessions`, `surrogate_portraits`, `oracle_interactions`, `culture_crew`
-- Secrets: `npx supabase secrets list --project-ref velmmplevfrtrtrypoch`
-
-EFAs that must be deployed `--no-verify-jwt`:
-```bash
-npx supabase functions deploy gemini-live-proxy --no-verify-jwt
-```
-
----
-
-## Phase 4 Token Economy (implemented 2026-05-28)
-
-- **Score block** stripped from UI — no raw JSON shown to Seeker.
-- **Totem ascend world event:** when `score.totemAdvancement === 'ascend'`, `oracle:totem:ascend` event fires + Oracle speaks one line acknowledging the shift (+400ms delay, hidden turn).
-- **Session-end coin reveal:** on exit, if `sessionCoinsRef.current > 0`, Oracle delivers one closing line that names the coin count as "signal carried out."
-- `getSessionCoins()` on `OracleConversationHandle` exposes accumulated session coins to parent.
+## Session Summary: 2026-05-30 Overhaul
+- **Residue Removal:** Deleted all Decart, MediaPipe, and legacy `OracleFaceRenderer` source code/styles.
+- **Visuals:** Implemented "Cheshire Cat" branding (linger into omit) and "Glitch-Phase" downward float Oracle entrance.
+- **Brand Kit:** Applied `aAnotherTag` gradient headers and `PhillySans` subtext to all overlays.
+- **Architecture:** Transitioned to Gemini-exclusive portrait pipeline; removed OpenAI/DALL-E 3.
+- **Verification:** Empirically verified 60fps viseme sync via live-fire pressure tests (409 active frames captured).

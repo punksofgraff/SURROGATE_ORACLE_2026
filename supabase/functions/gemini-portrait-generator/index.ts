@@ -8,15 +8,12 @@
  *   4. HuggingFace FLUX.1     → free-tier AI image gen
  *   5. Pollinations.ai        → zero-config, no key needed
  *   6. DeepAI                 → key-gated fallback
- *   7. DALL-E 3               → only when request body includes { dalleExplicit: true }
- *                               (premium path, only call when explicitly requested)
- *   8. Themed Unsplash        → static fallback if every AI path fails
+ *   7. Themed Unsplash        → static fallback if every AI path fails
  *
  * Secrets required (set via: npx supabase secrets set KEY=value --project-ref <ref>):
  *   GOOGLE_AI_API_KEY   — Google AI Studio key (covers both Gemini text + imagen)
  *   REPLICATE_API_TOKEN — Replicate token (flux-schnell free tier)
  *   HUGGINGFACE_API_KEY — HuggingFace Inference API key
- *   OPENAI_API_KEY      — OpenAI key (only used when dalleExplicit = true)
  *   DEEPAI_API_KEY      — DeepAI text2img key (optional)
  *
  * Deploy:
@@ -37,8 +34,6 @@ interface PortraitRequest {
   themes: string[];
   style?: string;
   userPrompt?: string;
-  /** Set true to explicitly route to DALL-E 3 (premium, billed per image). */
-  dalleExplicit?: boolean;
 }
 
 Deno.serve(async (req: Request) => {
@@ -67,7 +62,7 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const { sessionId, email, themes, style = 'freakdali-graff-punks', userPrompt, dalleExplicit = false } = body;
+  const { sessionId, email, themes, style = 'freakdali-graff-punks', userPrompt } = body;
 
   if (!sessionId || !themes?.length) {
     return new Response(
@@ -76,13 +71,12 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  console.log(`🎨 Portrait request — session: ${sessionId}, themes: ${themes.join(', ')}, dalleExplicit: ${dalleExplicit}`);
+  console.log(`🎨 Portrait request — session: ${sessionId}, themes: ${themes.join(', ')}`);
 
   const basePrompt = userPrompt ?? buildBasePrompt(themes);
   let portraitUrl = '';
   let generationMethod = 'themed-fallback';
   let googleAiGenerated = false;
-  let dalleGenerated = false;
   let googleAiError = '';
   let imageErrors: string[] = [];
 
@@ -175,7 +169,6 @@ Deno.serve(async (req: Request) => {
         console.log('✅ Gemini imagen portrait uploaded to Supabase Storage:', publicUrl.slice(0, 60));
       }
       generationMethod = 'gemini-imagen';
-      dalleGenerated = true; // flag = "AI generated"
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('❌ Gemini imagen failed:', msg);
@@ -222,7 +215,6 @@ Deno.serve(async (req: Request) => {
       if (!outputUrl) throw new Error('Replicate returned no output URL');
       portraitUrl = outputUrl;
       generationMethod = 'replicate-flux-schnell';
-      dalleGenerated = true;
       console.log('✅ Replicate flux-schnell portrait generated');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -263,7 +255,6 @@ Deno.serve(async (req: Request) => {
         console.log('✅ HuggingFace portrait uploaded to Supabase Storage');
       }
       generationMethod = 'huggingface-flux';
-      dalleGenerated = true;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('❌ HuggingFace failed:', msg);
@@ -278,7 +269,6 @@ Deno.serve(async (req: Request) => {
       const encoded = encodeURIComponent(enhancedPrompt.slice(0, 400));
       portraitUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
       generationMethod = 'pollinations-flux';
-      dalleGenerated = true;
       console.log('✅ Pollinations.ai portrait URL constructed');
     } catch (e: unknown) {
       console.error('❌ Pollinations URL construction failed:', e);
@@ -302,7 +292,6 @@ Deno.serve(async (req: Request) => {
       if (!json.output_url) throw new Error('No output_url in DeepAI response');
       portraitUrl = json.output_url;
       generationMethod = 'deepai';
-      dalleGenerated = true;
       console.log('✅ DeepAI portrait generated');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -311,44 +300,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── STEP 7: DALL-E 3 — Last AI Resort ─────────────────────────────────────
-  // This is a premium path (~$0.04/image). 
-  // Called if explicitly requested OR as a final attempt if all free paths failed.
-  const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-  if ((dalleExplicit || !portraitUrl) && openaiApiKey && !portraitUrl) {
-    try {
-      console.log(dalleExplicit ? '🎨 DALL-E 3 explicitly requested — generating…' : '🎨 All free AI paths failed — trying DALL-E 3 as last resort…');
-      const r = await fetch('https://api.openai.com/v1/images/generations', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${openaiApiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'dall-e-3',
-          prompt: enhancedPrompt,
-          n: 1,
-          size: '1024x1024',
-          quality: 'standard',
-          // NOTE: `style` deliberately omitted — rejected by API
-        }),
-      });
-      if (!r.ok) throw new Error(`DALL-E ${r.status}: ${await r.text()}`);
-      const json = await r.json();
-      const url = json.data?.[0]?.url;
-      if (!url) throw new Error('No URL in DALL-E response');
-      portraitUrl = url;
-      generationMethod = dalleExplicit ? 'dalle-3-explicit' : 'dalle-3-fallback';
-      dalleGenerated = true;
-      console.log(`✅ DALL-E 3 portrait generated (${generationMethod})`);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error('❌ DALL-E failed:', msg);
-      imageErrors.push(`DALL-E: ${msg}`);
-    }
-  } else if (dalleExplicit && !openaiApiKey && !portraitUrl) {
-    console.warn('⚠️  dalleExplicit=true but OPENAI_API_KEY not set');
-    imageErrors.push('DALL-E: OPENAI_API_KEY not configured');
-  }
-
-  // ── STEP 8: Themed static fallback ────────────────────────────────────────
+  // ── STEP 7: Themed static fallback ────────────────────────────────────────
   if (!portraitUrl) {
     portraitUrl = getThemedFallback(themes);
     generationMethod = 'themed-fallback';
@@ -362,7 +314,6 @@ Deno.serve(async (req: Request) => {
     conversation_themes: themes,
     dalle_prompt: enhancedPrompt,
     image_url: portraitUrl,
-    dalle_generated: dalleGenerated,
     google_ai_generated: googleAiGenerated,
     procedural_framework: {
       style,
@@ -382,7 +333,6 @@ Deno.serve(async (req: Request) => {
       success: !!portraitUrl,
       portraitUrl,
       googleAiGenerated,
-      dalleGenerated,
       generationMethod,
       ...(googleAiError && { googleAiError }),
       ...(imageErrors.length && { imageErrors }),

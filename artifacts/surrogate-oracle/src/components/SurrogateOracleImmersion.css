@@ -598,17 +598,14 @@
 .oracle-stage[data-oracle-state="oracle"] .oracle-cabinet {
   animation: cabinet-breathe 4s ease-in-out infinite;
   border-color: rgba(0,255,136,0.6);
-  /* Immersive Capsule Shape: very rounded, taller than wide */
   padding: 8px;
-  border-radius: 200px;
+  border-radius: 16px;
   background: rgba(0,10,25,0.75);
-  /* Enhanced glass/depth effect with rim lighting (no weird purple) */
   box-shadow:
-    0 0 15px rgba(0,255,136,0.5),
-    0 0 40px rgba(0,255,136,0.2),
-    inset 0 0 20px rgba(0,255,136,0.15),
-    inset 0 0 45px rgba(0,0,0,0.8),
-    inset 0 10px 20px rgba(255,255,255,0.08); /* top rim light only */
+    0 0 15px rgba(0,255,136,0.4),
+    0 0 35px rgba(0,255,136,0.15),
+    inset 0 0 20px rgba(0,255,136,0.10),
+    inset 0 0 45px rgba(0,0,0,0.7);
   border-width: 2px;
 }
 
@@ -727,13 +724,13 @@
    The face is now large enough for pixel-mapped lip-sync to be readable. */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-wrapper {
   width: clamp(200px, 82vmin, 420px);
-  aspect-ratio: 0.85 / 1; /* Taller aspect ratio for the capsule */
+  aspect-ratio: 0.82 / 1;
   transform: none;
   box-shadow: none;
   z-index: auto;
   overflow: hidden;
-  border-radius: 180px; /* Highly rounded for capsule look */
-  border: 1px solid rgba(0,255,136,0.2);
+  border-radius: 12px;
+  border: 1px solid rgba(0,255,136,0.15);
 }
 
 /* ── Static arcade cabinet display — dormant / terminal / awakened only ──────
@@ -778,20 +775,20 @@
 }
 
 @keyframes oracle-materialize {
-  0%   { opacity: 0.04; transform: scale(0.03);                filter: blur(18px) saturate(0)    brightness(4.5) hue-rotate(220deg); }
-  6%   { opacity: 0.32; transform: scale(0.14) translateX(10%); filter: blur(11px) saturate(0.06) brightness(3.4) hue-rotate(135deg); }
-  11%  { opacity: 0.05; transform: scale(0.05) translateX(-8%); filter: blur(20px) saturate(0)    brightness(5.5) hue-rotate(295deg); }
-  18%  { opacity: 0.55; transform: scale(0.30) translateY(-4%); filter: blur(8px)  saturate(0.16) brightness(2.8) hue-rotate(72deg);  }
-  25%  { opacity: 0.08; transform: scale(0.09) translateX(14%); filter: blur(16px) saturate(0)    brightness(4.2) hue-rotate(185deg); }
-  34%  { opacity: 0.70; transform: scale(0.48);                filter: blur(5px)  saturate(0.30) brightness(2.2) hue-rotate(36deg);  }
-  42%  { opacity: 0.25; transform: scale(0.33) translateY(7%); filter: blur(11px) saturate(0.10) brightness(3.0) hue-rotate(105deg); }
-  52%  { opacity: 0.82; transform: scale(0.64);                filter: blur(3px)  saturate(0.50) brightness(1.6) hue-rotate(20deg);  }
-  60%  { opacity: 0.40; transform: scale(0.53) translateX(9%); filter: blur(7px)  saturate(0.26) brightness(2.0) hue-rotate(52deg);  }
-  70%  { opacity: 0.90; transform: scale(0.82) translateX(-2%); filter: blur(1.5px) saturate(0.72) brightness(1.24) hue-rotate(10deg); }
-  78%  { opacity: 0.55; transform: scale(0.72) translateX(5%); filter: blur(5px)  saturate(0.42) brightness(1.60) hue-rotate(30deg); }
-  86%  { opacity: 0.95; transform: scale(0.96);                filter: blur(0.5px) saturate(0.88) brightness(1.08);                  }
-  93%  { opacity: 0.68; transform: scale(0.88) translateX(-1%); filter: blur(2.5px) saturate(0.65) brightness(1.20) hue-rotate(7deg); }
-  100% { opacity: 0.62; transform: scale(1.0)  translateX(0);  filter: brightness(0.65) grayscale(0.35) contrast(1.25);              }
+  0%   { opacity: 0.04; transform: scale(0.03);                 filter: blur(18px) saturate(0)    brightness(4.5); }
+  6%   { opacity: 0.32; transform: scale(0.14) translateX(10%); filter: blur(11px) saturate(0.06) brightness(3.4); }
+  11%  { opacity: 0.05; transform: scale(0.05) translateX(-8%); filter: blur(20px) saturate(0)    brightness(5.5); }
+  18%  { opacity: 0.55; transform: scale(0.30) translateY(-4%); filter: blur(8px)  saturate(0.16) brightness(2.8); }
+  25%  { opacity: 0.08; transform: scale(0.09) translateX(14%); filter: blur(16px) saturate(0)    brightness(4.2); }
+  34%  { opacity: 0.70; transform: scale(0.48);                 filter: blur(5px)  saturate(0.30) brightness(2.2); }
+  42%  { opacity: 0.25; transform: scale(0.33) translateY(7%);  filter: blur(11px) saturate(0.10) brightness(3.0); }
+  52%  { opacity: 0.82; transform: scale(0.64);                 filter: blur(3px)  saturate(0.50) brightness(1.6); }
+  60%  { opacity: 0.40; transform: scale(0.53) translateX(9%);  filter: blur(7px)  saturate(0.26) brightness(2.0); }
+  70%  { opacity: 0.90; transform: scale(0.82) translateX(-2%); filter: blur(1.5px) saturate(0.72) brightness(1.24); }
+  78%  { opacity: 0.55; transform: scale(0.72) translateX(5%);  filter: blur(5px)  saturate(0.42) brightness(1.60); }
+  86%  { opacity: 0.95; transform: scale(0.96);                 filter: blur(0.5px) saturate(0.88) brightness(1.08); }
+  93%  { opacity: 0.68; transform: scale(0.88) translateX(-1%); filter: blur(2.5px) saturate(0.65) brightness(1.20); }
+  100% { opacity: 0.62; transform: scale(1.0)  translateX(0);   filter: brightness(0.65) grayscale(0.35) contrast(1.25); }
 }
 
 /* AWAKENED — static RECEDES. Living face rises. Static is the ghost of what was. */
@@ -1389,7 +1386,7 @@
   border-radius: 8px;
   border: 1px solid rgba(0,255,136, 0.5);
   background: rgba(0,255,136, 0.12);
-  color: rgba(200, 160, 255, 0.90);
+  color: rgba(0, 255, 136, 0.85);
   font-family: 'Orbitron', monospace;
   font-size: clamp(0.6rem, 1.3vw, 0.78rem);
   font-weight: 600;
@@ -1445,7 +1442,7 @@
   gap: 8px;
   background: rgba(0, 5, 15, 0.72);
   border: 1px solid rgba(0,255,136, 0.30);
-  color: rgba(200, 160, 255, 0.65);
+  color: rgba(0, 255, 136, 0.60);
   font-family: 'Share Tech Mono', monospace;
   font-size: clamp(0.65rem, 1.2vw, 0.78rem);
   letter-spacing: 0.15em;
@@ -1459,8 +1456,8 @@
 
 .oracle-exit-btn:hover {
   border-color: rgba(0,255,136, 0.65);
-  color: rgba(220, 190, 255, 0.90);
-  background: rgba(10, 0, 20, 0.85);
+  color: rgba(0, 255, 136, 0.90);
+  background: rgba(0, 10, 20, 0.85);
   box-shadow: 0 0 12px rgba(0,255,136, 0.22);
   transform: translateY(-1px);
 }

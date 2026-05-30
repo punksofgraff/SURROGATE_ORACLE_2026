@@ -550,24 +550,7 @@ export function SurrogateOracleImmersion() {
             />
 
             <AnimatePresence mode="wait">
-              {portrait.isGenerating ? (
-                <motion.div
-                  key="synthesis-loading"
-                  className="oracle-avatar-container oracle-synthesis-loading"
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                  style={{ zIndex: 10, background: 'rgba(0,0,0,0.85)' }}
-                >
-                  <div className="oracle-synthesis-label">NEURAL SYNTHESIS</div>
-                  <div className="oracle-synthesis-status">SCANNING FREQUENCY...</div>
-                  <div className="oracle-synthesis-progress">
-                    <motion.div
-                      className="oracle-synthesis-progress-fill"
-                      initial={{ width: '0%' }} animate={{ width: '100%' }}
-                      transition={{ duration: 4, ease: 'linear', repeat: Infinity }}
-                    />
-                  </div>
-                </motion.div>
-              ) : portraitViewerUrl ? (
+              {portraitViewerUrl ? (
                 <motion.div
                   key="minted-portrait"
                   className="oracle-avatar-container"
@@ -828,6 +811,38 @@ export function SurrogateOracleImmersion() {
           onSuccess={handleAuthSuccess}
         />
       )}
+
+      {/* ── Portrait synthesis loading — full-screen overlay, not inside the cabinet ── */}
+      <AnimatePresence>
+        {portrait.isGenerating && (
+          <motion.div
+            key="synthesis-loading"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 90,
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(0,0,0,0.75)',
+              backdropFilter: 'blur(6px)',
+              fontFamily: 'monospace',
+            }}
+          >
+            <div style={{ color: '#00ff88', letterSpacing: '0.2em', fontSize: '0.85rem', marginBottom: '1rem' }}>
+              NEURAL SYNTHESIS
+            </div>
+            <div style={{ color: 'rgba(0,255,136,0.55)', letterSpacing: '0.12em', fontSize: '0.7rem', marginBottom: '1.5rem' }}>
+              SCANNING FREQUENCY...
+            </div>
+            <div style={{ width: '200px', height: '2px', background: 'rgba(0,255,136,0.15)', borderRadius: '1px', overflow: 'hidden' }}>
+              <motion.div
+                style={{ height: '100%', background: '#00ff88', borderRadius: '1px' }}
+                initial={{ width: '0%' }} animate={{ width: '100%' }}
+                transition={{ duration: 4, ease: 'linear', repeat: Infinity }}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* DecartClient — keeps WebRTC peer alive for enterprise path */}
       <DecartClient ref={decartClientRef} />

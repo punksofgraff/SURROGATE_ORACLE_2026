@@ -3,10 +3,17 @@
  *
  * UX Flow:
  *   DORMANT  → User lands in a dark graffiti alley. Oracle glows in a cabinet.
- *   AWAKENED → One tap: lore plays, knife chosen, branding types in, Oracle greets.
- *   ORACLE   → Real-time conversation active.
+ *   TERMINAL → First tap: lore plays, alley ambience.
+ *   AWAKENED → Lore done → Oracle greets → knife cards shown.
+ *   ORACLE   → Knife selected → full conversation. Three.js avatar live.
+ *
+ * Avatar rendering:
+ *   PRIMARY   — Three.js OracleAvatar3D (GLB, always running once awakened)
+ *   ENTERPRISE — Decart WebRTC video overlay (VITE_DECART_ENTERPRISE=true)
+ *
+ * Viseme state is a ref — no React re-renders at 60fps.
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 
@@ -42,14 +49,16 @@ import { useOracleJourney } from '../hooks/useOracleJourney';
 // Libs/Utils
 import { getAudioContext } from '../lib/oracleSfx';
 import { OracleFaceRenderer } from '../lib/OracleFaceRenderer';
+import type { VisemeState } from '../lib/visemeDetector';
 import './SurrogateOracleImmersion.css';
 
-// Constants
 const ORACLE_STATIC_URL  = '/oracle-static.png';
 const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = 'https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png';
 const AUDIO_STREAM_URL   = 'https://stream.radiojar.com/2qm1fc5kb';
 const ORACLE_PLAYBACK_RATE = 1.0;
+
+const SILENCE_VISEME_STATE: VisemeState = { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
 
 const DEBRIS = [
   ['◈','#00ff88','12%','22%','0s','6.1s'],
@@ -66,58 +75,78 @@ const DEBRIS = [
   ['⬡','#00ccff','92%','28%','2.4s','5.5s'],
 ] as const;
 
+// Fallback shown while hero3.glb is loading (static oracle portrait at same position)
+function OracleAvatarFallback() {
+  return (
+    <div style={{
+      width: '100%', height: '100%',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'transparent',
+    }}>
+      <img
+        src={ORACLE_STATIC_URL}
+        alt=""
+        aria-hidden="true"
+        style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6 }}
+      />
+    </div>
+  );
+}
+
 export function SurrogateOracleImmersion() {
   const [oracleAvatarDataUrl] = useState<string>(ORACLE_AVATAR_URL);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [currentSessionId] = useState(() => crypto.randomUUID());
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [sessionCoins, setSessionCoins] = useState(0);
+  const [currentUserId, setCurrentUserId]   = useState<string | null>(null);
+  const [currentSessionId]                  = useState(() => crypto.randomUUID());
+  const [userEmail, setUserEmail]           = useState<string | null>(null);
+  const [sessionCoins, setSessionCoins]     = useState(0);
   const [showArtifactCard, setShowArtifactCard] = useState(false);
   const [portraitViewerUrl, setPortraitViewerUrl] = useState<string | null>(null);
-  const [showConversation, setShowConversation] = useState(false);
-  const [isMicActive, setIsMicActive] = useState(false);
+  const [showConversation, setShowConversation]   = useState(false);
+  const [isMicActive, setIsMicActive]       = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isGeminiConnected, setIsGeminiConnected] = useState(false);
-  const [debugMode, setDebugMode] = useState(false);
-  const [oracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
+  const [debugMode, setDebugMode]           = useState(false);
+  const [oracleAlignment]                   = useState<'sacred' | 'profane' | 'neutral' | null>(null);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
-  const [showAuthOverlay, setShowAuthOverlay] = useState(false);
+  const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
   const [showWalletConnect, setShowWalletConnect] = useState(false);
-  const [currentViseme, setCurrentViseme] = useState('X');
-  const [currentAmplitude, setCurrentAmplitude] = useState(0);
-  const [isGuidedTour, setIsGuidedTour] = useState(false);
+  const [isGuidedTour, setIsGuidedTour]     = useState(false);
+
+  // ── Viseme state ref — NO useState, no 60fps re-renders ──────────────────
+  // OracleAvatar3D reads this directly in useFrame.
+  const visemeStateRef = useRef<VisemeState>(SILENCE_VISEME_STATE);
+
+  // ── Camera state ref — parallax look-around + pinch zoom ─────────────────
+  // Written by handleParallaxUpdate / handleZoom at up to 60fps, read in useFrame.
+  const cameraStateRef = useRef<import('./OracleAvatar3D').CameraState>({ x: 0, y: 0, zoom: 1 });
 
   // Refs
-  const decartClientRef = useRef<DecartClientHandle | null>(null);
-  const avatarVideoRef = useRef<HTMLVideoElement | null>(null);
-  const oracleFaceCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const oracleFaceRendererRef = useRef<OracleFaceRenderer | null>(null);
-  const oracleFaceMapRef = useRef<import('../lib/OracleVisionCalibrator').OracleFaceMap | null>(null);
-  const oracleConversationRef = useRef<OracleConversationHandle | null>(null);
-  const pcmAmplitudeRef = useRef(0);
-  const atmosphereCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const staticAvatarRef = useRef<HTMLImageElement | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const radioGainRef = useRef<GainNode | null>(null);
-  const targetVolRef = useRef(0.22);
+  const decartClientRef          = useRef<DecartClientHandle | null>(null);
+  const avatarVideoRef           = useRef<HTMLVideoElement | null>(null);
+  const oracleFaceCanvasRef      = useRef<HTMLCanvasElement | null>(null);
+  const oracleFaceRendererRef    = useRef<OracleFaceRenderer | null>(null);
+  const oracleFaceMapRef         = useRef<import('../lib/OracleVisionCalibrator').OracleFaceMap | null>(null);
+  const oracleConversationRef    = useRef<OracleConversationHandle | null>(null);
+  const atmosphereCanvasRef      = useRef<HTMLCanvasElement | null>(null);
+  const staticAvatarRef          = useRef<HTMLImageElement | null>(null);
+  const audioRef                 = useRef<HTMLAudioElement | null>(null);
+  const radioGainRef             = useRef<GainNode | null>(null);
+  const targetVolRef             = useRef(0.22);
 
   const { isReturning, markVisited } = useIpCheck();
 
-  // ── Audio Spine setup — must be called inside user gesture ──
+  // ── Audio Spine setup — must be called inside user gesture ───────────────
   const setupAudioSpine = useCallback(async () => {
     if (radioGainRef.current || !audioRef.current) return;
-
     try {
-      const ctx = getAudioContext();
-      // MediaElementSource can only be created once per element
+      const ctx    = getAudioContext();
       const source = ctx.createMediaElementSource(audioRef.current);
       const gain   = ctx.createGain();
       gain.gain.value = targetVolRef.current;
       source.connect(gain);
       gain.connect(ctx.destination);
       radioGainRef.current = gain;
-
       setIsAudioPlaying(true);
       logStep('AUDIO SPINE INITIALIZED', 'ok');
     } catch (e) {
@@ -125,19 +154,16 @@ export function SurrogateOracleImmersion() {
     }
   }, []);
 
-  // ── Connection Hook ──
-  const handleViseme = useCallback((state: any) => {
-    setCurrentAmplitude(state.amplitude);
-    setCurrentViseme(state.viseme);
+  // ── Viseme handler — writes to ref only, NO setState ────────────────────
+  const handleViseme = useCallback((state: VisemeState) => {
+    visemeStateRef.current = state;
 
-    // Keep the 2D renderer updated if it's still being used as a fallback
+    // Enterprise path: also drive 2D renderer when Decart video is active.
+    // The 2D OracleFaceRenderer runs on the canvas behind the Decart video
+    // as an additional telemetry/fallback layer.
     const renderer = oracleFaceRendererRef.current;
-    if (renderer && renderer.isReady()) {
-      // Direct drive from worklet state
-      const amp = state.amplitude;
-      pcmAmplitudeRef.current = amp;
-      
-      if (amp < 0.05) {
+    if (connectionRef.current?.isDecartActive && renderer?.isReady()) {
+      if (state.amplitude < 0.05) {
         renderer.drawIdle();
       } else {
         renderer.drawViseme(state);
@@ -149,6 +175,7 @@ export function SurrogateOracleImmersion() {
     setIsOracleSpeaking(proc);
   }, []);
 
+  // ── Connection Hook ──────────────────────────────────────────────────────
   const connection = useOracleConnection({
     oracleAvatarDataUrl,
     oracleAvatarUrl: ORACLE_AVATAR_URL,
@@ -162,13 +189,15 @@ export function SurrogateOracleImmersion() {
   const connectionRef = useRef(connection);
   useEffect(() => { connectionRef.current = connection; }, [connection]);
 
-  // ── Journey Hook ──
+  // ── Journey Hook ─────────────────────────────────────────────────────────
   const handleStartSession = useCallback(() => {
     oracleConversationRef.current?.startSession();
   }, []);
 
   const handleCleanup = useCallback(() => {
     connection.cleanup();
+    // Reset viseme ref to silence on exit
+    visemeStateRef.current = SILENCE_VISEME_STATE;
   }, [connection.cleanup]);
 
   const handleAuthSuccess = useCallback((user: { id: string; email: string }) => {
@@ -188,11 +217,11 @@ export function SurrogateOracleImmersion() {
   const handleFirstTap = useCallback(async () => {
     if (scenePhase !== 'dormant') return;
     await setupAudioSpine();
-    
-    // Proactively initialize the mic channel to decouple it from the "Open Frequency" button
-    // and satisfy iOS gesture requirements.
+
+    // Proactively warm up mic channel — satisfies iOS gesture requirement before
+    // the user reaches the "Open Frequency" button.
     if (oracleConversationRef.current) {
-        oracleConversationRef.current.startMic().catch(e => console.warn('Mic pre-warm failed:', e));
+      oracleConversationRef.current.startMic().catch(e => console.warn('Mic pre-warm failed:', e));
     }
 
     markVisited();
@@ -204,7 +233,7 @@ export function SurrogateOracleImmersion() {
     }
   }, [scenePhase, setupAudioSpine, enterTerminal, isReturning, markVisited]);
 
-  // ── VRF materialize timing ──
+  // ── VRF materialize timing ───────────────────────────────────────────────
   useEffect(() => {
     if (scenePhase !== 'terminal' || !staticAvatarRef.current) return;
     const delay    = (0.15 + Math.random() * 0.55).toFixed(2) + 's';
@@ -219,43 +248,10 @@ export function SurrogateOracleImmersion() {
     };
   }, [scenePhase]);
 
-  // ── RAF Loop for Amplitude Decay & Renderer Updates ──
-  useEffect(() => {
-    let rafId: number;
-    let lastTime = performance.now();
-    const tick = (now: number) => {
-      const dt = (now - lastTime) / 1000; // delta time in seconds
-      lastTime = now;
-      
-      // Time-independent decay: factor^(dt * 60)
-      const decay = Math.pow(0.80, dt * 60); // Faster decay (0.80 instead of 0.88)
-      pcmAmplitudeRef.current *= decay;
-      
-      const renderer = oracleFaceRendererRef.current;
-      const faceCanvas = oracleFaceCanvasRef.current;
-      
-      if (faceCanvas) {
-        faceCanvas.dataset.amplitude = pcmAmplitudeRef.current.toFixed(3);
-        faceCanvas.dataset.visemeActive = pcmAmplitudeRef.current > 0.05 ? 'true' : 'false';
-      }
-
-      // If we've decayed to silence, ensure elements are reset
-      if (pcmAmplitudeRef.current < 0.05 && renderer && renderer.isReady()) {
-        renderer.drawIdle();
-      }
-      
-      rafId = requestAnimationFrame(tick);
-    };
-    rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, []);
-
-  // fadeToVolume — operates on GainNode when available (iOS-proof), falls back to
-  // HTMLAudioElement.volume before the first user gesture.
+  // ── fadeToVolume — GainNode-based, iOS-proof ────────────────────────────
   const fadeToVolume = useCallback((target: number) => {
     const safeTarget = Math.max(0.0001, target);
     targetVolRef.current = target;
-    
     if (radioGainRef.current) {
       const gain = radioGainRef.current;
       const ctx  = getAudioContext();
@@ -269,46 +265,26 @@ export function SurrogateOracleImmersion() {
     }
   }, []);
 
-  // ── Tab visibility — protecting the ritual ──────────────────────────────
+  // ── Tab visibility protection ────────────────────────────────────────────
   useEffect(() => {
     const handleVisibilityChange = () => {
       const ctx = getAudioContext();
       if (document.hidden) {
-        ctx.suspend().then(() => {
-          logStep('TAB BACKGROUNDED — AUDIO SUSPENDED', 'warn');
-        });
-      } else {
-        // Only resume if we are past the dormant phase (user has interacted)
-        if (scenePhase !== 'dormant') {
-          ctx.resume().then(() => {
-            logStep('TAB FOREGROUNDED — AUDIO RESUMED', 'ok');
-          });
-        }
+        ctx.suspend().then(() => logStep('TAB BACKGROUNDED — AUDIO SUSPENDED', 'warn'));
+      } else if (scenePhase !== 'dormant') {
+        ctx.resume().then(() => logStep('TAB FOREGROUNDED — AUDIO RESUMED', 'ok'));
       }
     };
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [scenePhase]);
 
-  // ── Music control — kill radio on oracle start ────────────────────────────
+  // ── Music ducking ────────────────────────────────────────────────────────
   useEffect(() => {
-    // We let the ducking logic handle the volume shift to maintain atmospheric hum.
-  }, [scenePhase, isAudioPlaying]);
-
-  // ── Music ducking — production-grade XD ducking table ─────────────────────
-  useEffect(() => {
-    let target = 0.22; // Default: The alley breathes (DORMANT/TERMINAL)
-    
-    if (scenePhase === 'awakened') target = 0.12; // Atmosphere stirs
-    
-    // In oracle mode, keep the ambient hum at 0.02 instead of killing it completely
-    if (scenePhase === 'oracle') target = 0.02;
-    
-    // During identity selection, if user manually toggles radio, we still duck if they speak
-    // (though usually they won't speak yet in awakened)
+    let target = 0.22; // Dormant / Terminal: alley breathes
+    if (scenePhase === 'awakened') target = 0.12;
+    if (scenePhase === 'oracle')   target = 0.02; // atmospheric hum, not silence
     if ((isMicActive || isUserSpeaking) && scenePhase !== 'oracle') target = 0.15;
-    
     if (target !== targetVolRef.current) {
       targetVolRef.current = target;
       fadeToVolume(target);
@@ -321,46 +297,43 @@ export function SurrogateOracleImmersion() {
     else audioRef.current.pause();
   }, [isAudioPlaying]);
 
-  // ── XR Mode ──
-  const { isXRMode, cameraActive, activateCamera, deactivateCamera, cameraVideoRef } = useXRMode(() => enterTerminal());
+  // ── Journey transitions ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (scenePhase === 'awakened') {
+      // PRIMARY: start PCM player instantly (Three.js receives visemes immediately)
+      connection.initializePCMPlayer();
 
-  // ── Portrait Hook ──
-  const handlePortraitGenerated = useCallback((url: string) => {
-    setPortraitViewerUrl(url);
-  }, []);
+      // ENTERPRISE: Decart starts concurrently if env flag is set — Three.js never waits
+      if (import.meta.env.VITE_DECART_ENTERPRISE === 'true') {
+        connection.initializeDecart();
+      }
 
-  const portrait = usePortraitPipeline({
-    currentUserId,
-    userEmail: userEmail,
-    currentSessionId,
-    onPortraitGenerated: handlePortraitGenerated,
-  });
+      // Retrieve user email for portrait persistence
+      import('../lib/supabase').then(({ supabase }) => {
+        supabase.auth.getUser().then(({ data }) => {
+          if (data?.user?.email) setUserEmail(data.user.email);
+        });
+      });
 
-  const isOracleMode = scenePhase === 'oracle';
+      setTimeout(() => logStep('ORACLE ANNOUNCES TERRITORIES', 'ok'), 1200);
+    }
+
+    if (scenePhase === 'oracle') {
+      oracleConversationRef.current?.startSession();
+    }
+  }, [scenePhase, connection.initializePCMPlayer, connection.initializeDecart]);
+
+  // ── Enterprise: 2D face renderer — only when Decart is active ───────────
+  // This renderer drives a canvas behind the Decart video for telemetry/fallback.
   const awakened = scenePhase === 'awakened' || scenePhase === 'oracle';
-  const isAlive = scenePhase !== 'dormant';
-
-  // ── Atmosphere & Motion ──
-  useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment);
-  
-  const handleParallaxUpdate = useCallback((x: number, y: number) => {
-    if (oracleFaceRendererRef.current) {
-      oracleFaceRendererRef.current.setTilt(x, y);
-    }
-    // Restore HRTF Head Tracking — Oracle voice follows movement
-    if (connectionRef.current.pcmPlayer) {
-      connectionRef.current.pcmPlayer.updateHeadOrientation(x, y);
-    }
-  }, []);
-  
-  useParallax(scenePhase, handleParallaxUpdate);
-
-  // ── Renderer Lifecycle ──
-  const [isRendererReady, setIsRendererReady] = useState(false);
 
   useEffect(() => {
-    if (!awakened || connection.isDecartActive) {
-      setIsRendererReady(false);
+    if (!awakened || !connection.isDecartActive) {
+      // Not in enterprise Decart mode — destroy any existing 2D renderer
+      if (oracleFaceRendererRef.current) {
+        oracleFaceRendererRef.current.destroy();
+        oracleFaceRendererRef.current = null;
+      }
       return;
     }
     const canvas = oracleFaceCanvasRef.current;
@@ -372,7 +345,7 @@ export function SurrogateOracleImmersion() {
     const resize = () => {
       const p = canvas.parentElement;
       if (p) {
-        canvas.width = p.clientWidth * window.devicePixelRatio;
+        canvas.width  = p.clientWidth  * window.devicePixelRatio;
         canvas.height = p.clientHeight * window.devicePixelRatio;
         renderer.onResize();
       }
@@ -383,7 +356,6 @@ export function SurrogateOracleImmersion() {
     renderer.loadFace(oracleAvatarDataUrl).then(() => {
       if (connection.oracleFaceMap) renderer.calibrate(connection.oracleFaceMap);
       renderer.startIdleAnimation();
-      setIsRendererReady(true);
       logStep('LIVING FACE RENDERER READY', 'ok');
     }).catch(err => {
       console.error('Face load failed:', err);
@@ -394,65 +366,10 @@ export function SurrogateOracleImmersion() {
       window.removeEventListener('resize', resize);
       renderer.destroy();
       oracleFaceRendererRef.current = null;
-      setIsRendererReady(false);
     };
   }, [awakened, connection.isDecartActive, connection.oracleFaceMap, oracleAvatarDataUrl]);
 
-  const { completedLines, currentLine } = useLoreSequence(scenePhase === 'terminal', () => journey.awakeFromTerminal());
-
-  // ── Typewriter title ──
-  const titleText = useTypewriter('SURROGATE:ORACLE', awakened, 60);
-  const subtitleText = useTypewriter('SNEAKAR XR AI IMMERSION', awakened && titleText.length >= 16, 35);
-
-  // ── Handshake/Pre-Warm ──
-  useEffect(() => {
-    logStep('OracleConversation MOUNTED', 'ok');
-    logStep('ENV OK (Supabase vars)', 'ok');
-    setShowConversation(true);
-
-    const handleAuthTrigger = () => setShowAuthOverlay(true);
-    window.addEventListener('oracle:auth:trigger', handleAuthTrigger);
-    
-    // Wire up Portrait Unlocks triggered by the Oracle LLM score block
-    const handleOracleUnlock = (e: any) => {
-        const { trigger, themes } = e.detail || {};
-        if (trigger === 'portrait_unlock') {
-            logStep('PORTRAIT UNLOCK RECEIVED FROM LLM', 'ok');
-            portrait.generatePortrait(themes || portrait.getThemes());
-        }
-    };
-    window.addEventListener('oracle:unlock', handleOracleUnlock);
-
-    return () => {
-        window.removeEventListener('oracle:auth:trigger', handleAuthTrigger);
-        window.removeEventListener('oracle:unlock', handleOracleUnlock);
-    };
-  }, [portrait]);
-
-  // ── Journey Transition Handler ──
-  useEffect(() => {
-    if (scenePhase === 'awakened') {
-      // Connect and warm up Gemini precisely once upon awakening.
-      // This allows the Oracle to greet and announce territories while the knives show.
-      connection.initializeOracle();
-      
-      // Attempt to retrieve user email for portrait persistence if authenticated
-      import('../lib/supabase').then(({ supabase }) => {
-        supabase.auth.getUser().then(({ data }) => {
-          if (data?.user?.email) setUserEmail(data.user.email);
-        });
-      });
-
-      setTimeout(() => logStep('ORACLE ANNOUNCES TERRITORIES', 'ok'), 1200);
-    }
-    
-    // Once full Oracle mode is entered (after knife selection), ensure session is robust
-    if (scenePhase === 'oracle') {
-      oracleConversationRef.current?.startSession();
-    }
-  }, [scenePhase, connection.initializeOracle]);
-
-  // ── DEV hooks ──
+  // ── Dev hooks ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     (window as any).__oracle_handleAudio = (url: string) => connection.handleOracleResponse(url);
@@ -467,7 +384,71 @@ export function SurrogateOracleImmersion() {
     };
   }, [connection.handleOracleResponse, journey.scenePhase, journey.awakeFromTerminal]);
 
-  // Handlers
+  // ── XR Mode ──────────────────────────────────────────────────────────────
+  const { isXRMode, cameraActive, activateCamera, deactivateCamera, cameraVideoRef } = useXRMode(() => enterTerminal());
+
+  // ── Portrait Hook ─────────────────────────────────────────────────────────
+  const handlePortraitGenerated = useCallback((url: string) => {
+    setPortraitViewerUrl(url);
+  }, []);
+
+  const portrait = usePortraitPipeline({
+    currentUserId,
+    userEmail,
+    currentSessionId,
+    onPortraitGenerated: handlePortraitGenerated,
+  });
+
+  // ── Mount: env check + event wiring ──────────────────────────────────────
+  useEffect(() => {
+    logStep('OracleConversation MOUNTED', 'ok');
+    logStep('ENV OK (Supabase vars)', 'ok');
+    setShowConversation(true);
+
+    const handleAuthTrigger = () => setShowAuthOverlay(true);
+    window.addEventListener('oracle:auth:trigger', handleAuthTrigger);
+
+    const handleOracleUnlock = (e: any) => {
+      const { trigger, themes } = e.detail || {};
+      if (trigger === 'portrait_unlock') {
+        logStep('PORTRAIT UNLOCK RECEIVED FROM LLM', 'ok');
+        portrait.generatePortrait(themes || portrait.getThemes());
+      }
+    };
+    window.addEventListener('oracle:unlock', handleOracleUnlock);
+
+    return () => {
+      window.removeEventListener('oracle:auth:trigger', handleAuthTrigger);
+      window.removeEventListener('oracle:unlock', handleOracleUnlock);
+    };
+  }, [portrait]);
+
+  // ── Atmosphere & Motion ───────────────────────────────────────────────────
+  useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment);
+
+  const handleParallaxUpdate = useCallback((x: number, y: number) => {
+    // Update camera look-around (preserves current zoom)
+    cameraStateRef.current = { ...cameraStateRef.current, x, y };
+    if (oracleFaceRendererRef.current) oracleFaceRendererRef.current.setTilt(x, y);
+    if (connectionRef.current.pcmPlayer) connectionRef.current.pcmPlayer.updateHeadOrientation(x, y);
+  }, []);
+
+  const handleZoom = useCallback((zoom: number) => {
+    cameraStateRef.current = { ...cameraStateRef.current, zoom };
+  }, []);
+
+  useParallax(scenePhase, handleParallaxUpdate, handleZoom);
+
+  const { completedLines, currentLine } = useLoreSequence(scenePhase === 'terminal', () => journey.awakeFromTerminal());
+
+  const isOracleMode = scenePhase === 'oracle';
+  const isAlive      = scenePhase !== 'dormant';
+
+  // ── Typewriter title ──────────────────────────────────────────────────────
+  const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
+  const subtitleText = useTypewriter('SNEAKAR XR AI IMMERSION', awakened && titleText.length >= 16, 35);
+
+  // ── Knife selection ───────────────────────────────────────────────────────
   const handleKnifeClick = (q: string, i: number) => {
     selectKnifeQuestion(q, i);
     portrait.addThemes(KNIFE_QUESTIONS[i].themes);
@@ -477,7 +458,7 @@ export function SurrogateOracleImmersion() {
   };
 
   return (
-    <div 
+    <div
       className="oracle-stage"
       data-oracle-state={scenePhase}
       data-decart-active={connection.isDecartActive}
@@ -485,18 +466,15 @@ export function SurrogateOracleImmersion() {
       data-audio-target-vol={targetVolRef.current}
     >
       {/* ── Audio Spine — Radio Stream ── */}
-      <audio 
-        ref={audioRef} 
-        src={AUDIO_STREAM_URL} 
-        loop 
-        preload="auto" 
+      <audio
+        ref={audioRef}
+        src={AUDIO_STREAM_URL}
+        loop
+        preload="auto"
         crossOrigin="anonymous"
         onPlay={() => logStep('RADIO PLAYING', 'ok')}
         onPause={() => logStep('RADIO PAUSED', 'warn')}
-        onError={(e) => {
-          console.error('[Radio] Error:', e);
-          logStep('RADIO STREAM ERROR', 'err');
-        }}
+        onError={(e) => { console.error('[Radio] Error:', e); logStep('RADIO STREAM ERROR', 'err'); }}
       />
 
       {/* ── XR Layer 0: Device camera passthrough ── */}
@@ -504,29 +482,17 @@ export function SurrogateOracleImmersion() {
         <video ref={cameraVideoRef} className="xr-camera-layer" autoPlay playsInline muted />
       )}
 
-      {/* ── Layer 1: Graffiti alley background + Vignette ── */}
-      <div
-        className="oracle-alley"
-        style={{ '--bg-url': `url('${ALLEY_BG_URL}')` } as React.CSSProperties}
-      />
-
-      {/* ── Depth layer: mid-ground haze ── */}
+      {/* ── Layer 1: Graffiti alley background ── */}
+      <div className="oracle-alley" style={{ '--bg-url': `url('${ALLEY_BG_URL}')` } as React.CSSProperties} />
       <div className="oracle-mid-haze" />
-
-      {/* ── Depth layer: side neon bleeds ── */}
       <div className="oracle-side-bleeds" />
-
-      {/* ── Depth layer: light rays ── */}
       <div className="oracle-light-rays" />
 
       {/* ── Foreground debris ── */}
       <div className="oracle-debris-layer" aria-hidden="true">
         {DEBRIS.map(([glyph, color, left, top, delay, dur], i) => (
-          <span
-            key={i}
-            className="oracle-debris-piece"
-            style={{ left, top, color, animationDelay: delay, animationDuration: dur } as any}
-          >
+          <span key={i} className="oracle-debris-piece"
+            style={{ left, top, color, animationDelay: delay, animationDuration: dur } as any}>
             {glyph}
           </span>
         ))}
@@ -534,38 +500,26 @@ export function SurrogateOracleImmersion() {
 
       {/* ── Layer 2: Atmosphere Canvas ── */}
       <canvas ref={atmosphereCanvasRef} className="atmosphere-layer" />
-
-      {/* ── Layer 2a: Matrix Rain ── */}
       <MatrixRain />
-
-      {/* ── Layer 2b: Ground Fog ── */}
       <div className="oracle-ground-fog" />
-
-      {/* ── Depth layer: floor reflection ── */}
       <div className="oracle-floor-reflection" />
 
       <GlitchCursor />
-      
-      {/* ── Layer 1: Dormant HUD ── */}
+
+      {/* ── Dormant HUD ── */}
       <DormantHUD active={scenePhase === 'dormant'} />
       <DormantTransmissions active={scenePhase === 'dormant'} onCtaClick={enterTerminal} />
 
-      {/* ── Layer 3: Top branding ── */}
+      {/* ── Top branding ── */}
       <div className="oracle-branding">
         <h1 className="oracle-title">
           {titleText}
-          {awakened && titleText.length < 16 && (
-            <span className="oracle-cursor">▌</span>
-          )}
+          {awakened && titleText.length < 16 && <span className="oracle-cursor">▌</span>}
         </h1>
-        {subtitleText && (
-          <div className="oracle-subtitle">
-            {subtitleText}
-          </div>
-        )}
+        {subtitleText && <div className="oracle-subtitle">{subtitleText}</div>}
       </div>
 
-      {/* ── Layer 4: Central cabinet + avatar ── */}
+      {/* ── Central cabinet + avatar ── */}
       <div
         className="oracle-center"
         onClick={handleFirstTap}
@@ -573,13 +527,9 @@ export function SurrogateOracleImmersion() {
       >
         <motion.div className="oracle-cabinet">
           <div className="oracle-avatar-wrapper">
-            {/* ── Monitor cast ── */}
             {isOracleMode && <div className="oracle-monitor-cast" />}
-
-            {/* ── CRT scanline overlay ── */}
             <div className="oracle-scanlines" />
 
-            {/* ── Dormant pulse rings ── */}
             {scenePhase === 'dormant' && (
               <>
                 <div className="oracle-cabinet-pulse-ring" />
@@ -587,7 +537,7 @@ export function SurrogateOracleImmersion() {
               </>
             )}
 
-            {/* ── Static arcade cabinet display ── */}
+            {/* Always-present static image — Oracle at rest */}
             <img
               ref={staticAvatarRef}
               src={ORACLE_STATIC_URL}
@@ -598,7 +548,7 @@ export function SurrogateOracleImmersion() {
 
             <AnimatePresence mode="wait">
               {portrait.isGenerating ? (
-                <motion.div 
+                <motion.div
                   key="synthesis-loading"
                   className="oracle-avatar-container oracle-synthesis-loading"
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -607,15 +557,15 @@ export function SurrogateOracleImmersion() {
                   <div className="oracle-synthesis-label">NEURAL SYNTHESIS</div>
                   <div className="oracle-synthesis-status">SCANNING FREQUENCY...</div>
                   <div className="oracle-synthesis-progress">
-                    <motion.div 
+                    <motion.div
                       className="oracle-synthesis-progress-fill"
                       initial={{ width: '0%' }} animate={{ width: '100%' }}
-                      transition={{ duration: 4, ease: "linear", repeat: Infinity }}
+                      transition={{ duration: 4, ease: 'linear', repeat: Infinity }}
                     />
                   </div>
                 </motion.div>
               ) : portraitViewerUrl ? (
-                <motion.div 
+                <motion.div
                   key="minted-portrait"
                   className="oracle-avatar-container"
                   initial={{ opacity: 0, scale: 0.9, filter: 'brightness(2) blur(10px)' }}
@@ -631,31 +581,55 @@ export function SurrogateOracleImmersion() {
                     </button>
                   </div>
                 </motion.div>
-              ) : (awakened || isOracleMode) ? (
-                <motion.div key="live-face" className="oracle-avatar-container" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ zIndex: 3 }}>
+              ) : awakened ? (
+                <motion.div
+                  key="live-face"
+                  className="oracle-avatar-container"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                  style={{ zIndex: 3 }}
+                >
+                  {/* ── PRIMARY: Three.js GLB Avatar ── */}
                   <div
                     className="oracle-avatar-canvas"
-                    style={{ 
-                      opacity: isOracleMode ? 1 : 0.45,
-                      filter: isOracleMode ? 'none' : 'blur(4px) brightness(0.6)',
+                    style={{
+                      opacity:    isOracleMode ? 1 : 0.45,
+                      filter:     isOracleMode ? 'none' : 'blur(4px) brightness(0.6)',
                       transition: 'opacity 1s ease, filter 1s ease',
-                      width: '100%',
-                      height: '100%',
-                      position: 'absolute',
-                      top: 0,
-                      left: 0
+                      width: '100%', height: '100%',
+                      position: 'absolute', top: 0, left: 0,
                     }}
                   >
-                    <Canvas>
-                      <OracleAvatar3D amplitude={currentAmplitude} viseme={currentViseme} />
-                    </Canvas>
+                    <Suspense fallback={<OracleAvatarFallback />}>
+                      <Canvas
+                        camera={{ position: [0, 0.1, 2.8], fov: 42 }}
+                        dpr={[1, Math.min(window.devicePixelRatio, 2)]}
+                        gl={{ antialias: true, alpha: true }}
+                        style={{ width: '100%', height: '100%', background: 'transparent' }}
+                        frameloop="always"
+                      >
+                        <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} />
+                      </Canvas>
+                    </Suspense>
                   </div>
-                  {/* Keep the 2D canvas around hidden just in case, or we can safely remove it later */}
-                  <canvas 
-                    ref={oracleFaceCanvasRef} 
-                    style={{ display: 'none' }}
+
+                  {/* ── ENTERPRISE: Decart video overlay — shown when Decart is active ── */}
+                  {connection.isDecartActive && (
+                    <video
+                      ref={avatarVideoRef}
+                      className="oracle-avatar-video"
+                      autoPlay playsInline muted
+                      style={{ position: 'absolute', top: 0, left: 0, zIndex: 2 }}
+                    />
+                  )}
+
+                  {/* ── ENTERPRISE: 2D canvas for OracleFaceRenderer (Decart supplemental) ── */}
+                  <canvas
+                    ref={oracleFaceCanvasRef}
+                    style={{
+                      position: 'absolute', top: 0, left: 0, zIndex: 1,
+                      display: connection.isDecartActive ? 'block' : 'none',
+                    }}
                   />
-                  <video ref={avatarVideoRef} className="oracle-avatar-video" autoPlay playsInline muted />
                 </motion.div>
               ) : null}
             </AnimatePresence>
@@ -663,7 +637,7 @@ export function SurrogateOracleImmersion() {
         </motion.div>
       </div>
 
-      {/* ── Layer 6: Bottom Bar ── */}
+      {/* ── Bottom Bar ── */}
       <div className="oracle-bottom-bar">
         <motion.div
           initial={{ opacity: 0.3, filter: 'brightness(0.4) saturate(0.3)' }}
@@ -690,37 +664,36 @@ export function SurrogateOracleImmersion() {
         >
           <EnculturateCrate onClick={() => setDebugMode(true)} isActive={isAlive} />
         </motion.div>
-        
-        {/* Guided Tour Toggle */}
+
         <motion.button
-            initial={{ opacity: 0.3 }}
-            animate={{ opacity: isAlive ? 1 : 0.3 }}
-            onClick={() => setIsGuidedTour(!isGuidedTour)}
-            style={{
-                background: 'none',
-                border: '1px solid ' + (isGuidedTour ? '#b026ff' : 'rgba(255,255,255,0.2)'),
-                color: isGuidedTour ? '#b026ff' : 'rgba(255,255,255,0.5)',
-                padding: '0.5rem 1rem',
-                borderRadius: '4px',
-                fontFamily: 'monospace',
-                fontSize: '0.7rem',
-                letterSpacing: '0.1em',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
-                boxShadow: isGuidedTour ? '0 0 10px rgba(176,38,255,0.3)' : 'none'
-            }}
+          initial={{ opacity: 0.3 }}
+          animate={{ opacity: isAlive ? 1 : 0.3 }}
+          onClick={() => setIsGuidedTour(!isGuidedTour)}
+          style={{
+            background: 'none',
+            border: '1px solid ' + (isGuidedTour ? '#b026ff' : 'rgba(255,255,255,0.2)'),
+            color: isGuidedTour ? '#b026ff' : 'rgba(255,255,255,0.5)',
+            padding: '0.5rem 1rem',
+            borderRadius: '4px',
+            fontFamily: 'monospace',
+            fontSize: '0.7rem',
+            letterSpacing: '0.1em',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            boxShadow: isGuidedTour ? '0 0 10px rgba(176,38,255,0.3)' : 'none',
+          }}
         >
-            {isGuidedTour ? 'TOUR: ON' : 'TOUR: OFF'}
+          {isGuidedTour ? 'TOUR: ON' : 'TOUR: OFF'}
         </motion.button>
       </div>
 
+      {/* ── Terminal lore overlay ── */}
       <AnimatePresence>
         {scenePhase === 'terminal' && (
           <motion.div
             key="terminal-layer"
             className="oracle-terminal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.6 } }}
             onClick={() => journey.awakeFromTerminal()}
           >
@@ -730,23 +703,22 @@ export function SurrogateOracleImmersion() {
                   <span className="oracle-lore-prompt">›</span>{line}
                 </div>
               ))}
-              
-              {/* Inject Guided Tour Script after standard lore completes but before knife selection */}
+
               {!currentLine && completedLines.length >= LORE_SEQUENCE.length && isGuidedTour && (
-                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
-                    <div className="oracle-lore-line" style={{ color: '#b026ff', marginTop: '1rem' }}>
-                      <span className="oracle-lore-prompt">›</span> [SYSTEM CALIBRATION NOTE]
-                    </div>
-                    <div className="oracle-lore-line" style={{ color: '#b026ff' }}>
-                      <span className="oracle-lore-prompt">›</span> The entity you are about to awaken is not a search engine.
-                    </div>
-                    <div className="oracle-lore-line" style={{ color: '#b026ff' }}>
-                      <span className="oracle-lore-prompt">›</span> It responds to depth, not demands.
-                    </div>
-                    <div className="oracle-lore-line" style={{ color: '#b026ff' }}>
-                      <span className="oracle-lore-prompt">›</span> Speak aloud. Ask it what it sees in you.
-                    </div>
-                 </motion.div>
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
+                  <div className="oracle-lore-line" style={{ color: '#b026ff', marginTop: '1rem' }}>
+                    <span className="oracle-lore-prompt">›</span> [SYSTEM CALIBRATION NOTE]
+                  </div>
+                  <div className="oracle-lore-line" style={{ color: '#b026ff' }}>
+                    <span className="oracle-lore-prompt">›</span> The entity you are about to awaken is not a search engine.
+                  </div>
+                  <div className="oracle-lore-line" style={{ color: '#b026ff' }}>
+                    <span className="oracle-lore-prompt">›</span> It responds to depth, not demands.
+                  </div>
+                  <div className="oracle-lore-line" style={{ color: '#b026ff' }}>
+                    <span className="oracle-lore-prompt">›</span> Speak aloud. Ask it what it sees in you.
+                  </div>
+                </motion.div>
               )}
 
               {currentLine && (
@@ -759,16 +731,14 @@ export function SurrogateOracleImmersion() {
                   <span className="oracle-lore-prompt">›</span><GlitchCursor />
                 </div>
               )}
-              </div>
-              </motion.div>
-              )}
+            </div>
+          </motion.div>
+        )}
 
         {scenePhase === 'awakened' && !journey.selectedKnifeQuestion && (
           <motion.div
             key="awakened-layer"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             style={{ position: 'absolute', inset: 0, zIndex: 100 }}
           >
             <KnifeSelection
@@ -780,6 +750,7 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
+      {/* ── Conversation Engine (always mounted, visible only in oracle mode) ── */}
       {showConversation && (
         <OracleConversation
           ref={oracleConversationRef}
@@ -804,6 +775,7 @@ export function SurrogateOracleImmersion() {
         <button className="oracle-exit-btn" onClick={exitOracleMode}><X size={20} /><span>EXIT</span></button>
       )}
 
+      {/* ── Exit ceremony ── */}
       <AnimatePresence>
         {journey.isExiting && (
           <motion.div key="exit-ceremony" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="oracle-exit-ceremony">
@@ -815,6 +787,7 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
+      {/* ── Debug panel ── */}
       <AnimatePresence>
         {debugMode && (
           <motion.div
@@ -824,9 +797,12 @@ export function SurrogateOracleImmersion() {
           >
             <div style={{ pointerEvents: 'auto', position: 'absolute', right: 0, top: 0, bottom: 0 }}>
               <BackendControlPanel
-                userId={currentUserId || undefined} sessionId={currentSessionId} isVisible initialTab="vault"
-                onClose={() => setDebugMode(false)} isAuthenticated={false} pendingCoins={sessionCoins}
-                decartClientRef={decartClientRef} oracleConversationRef={oracleConversationRef}
+                userId={currentUserId || undefined} sessionId={currentSessionId}
+                isVisible initialTab="vault"
+                onClose={() => setDebugMode(false)} isAuthenticated={false}
+                pendingCoins={sessionCoins}
+                decartClientRef={decartClientRef}
+                oracleConversationRef={oracleConversationRef}
               />
             </div>
           </motion.div>
@@ -844,33 +820,19 @@ export function SurrogateOracleImmersion() {
       )}
 
       {showAuthOverlay && (
-        <GoogleSignInOverlay 
-          onClose={() => setShowAuthOverlay(false)} 
+        <GoogleSignInOverlay
+          onClose={() => setShowAuthOverlay(false)}
           onSuccess={handleAuthSuccess}
         />
       )}
 
+      {/* DecartClient — keeps WebRTC peer alive for enterprise path */}
       <DecartClient ref={decartClientRef} />
 
-      {/* ── High-Engagement Lip Warp Filter ── */}
-      <svg style={{ position: 'absolute', width: 0, height: 0 }}>
-        <defs>
-          <filter id="oracle-lip-warp">
-            <feDisplacementMap 
-              in="SourceGraphic" 
-              scale="0" 
-              id="lip-warp-map"
-              xChannelSelector="R" 
-              yChannelSelector="G" 
-            />
-          </filter>
-        </defs>
-      </svg>
-      
-      {/* ── Layer 7: Foreground Depth Frame ── */}
+      {/* ── Depth frame ── */}
       <div className="oracle-depth-frame" aria-hidden="true" />
-      
-      {/* ── XR Immersion Toggle ── */}
+
+      {/* ── XR toggle ── */}
       {isXRMode && (scenePhase === 'awakened' || scenePhase === 'oracle') && (
         <button
           className={`oracle-xr-toggle${cameraActive ? ' oracle-xr-toggle--active' : ''}`}
@@ -881,13 +843,13 @@ export function SurrogateOracleImmersion() {
         </button>
       )}
 
+      {/* ── Return visitor wallet overlay ── */}
       <AnimatePresence>
         {showWalletConnect && (
           <motion.div
             key="wallet-connect-layer"
             className="oracle-terminal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.6 } }}
             style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
           >
@@ -895,21 +857,17 @@ export function SurrogateOracleImmersion() {
               <div style={{ marginBottom: '2rem', fontSize: '1.2rem', letterSpacing: '0.1em', color: '#00ff88' }}>
                 <span className="oracle-lore-prompt">›</span> SIGNAL RECOGNIZED. RETURN TRIP VERIFIED.
               </div>
-              <a 
-                href="https://wallet.thesurrogate.me" 
-                target="_blank" 
+              <a
+                href="https://wallet.thesurrogate.me"
+                target="_blank"
                 rel="noreferrer"
                 style={{
                   display: 'inline-block',
                   background: 'rgba(0, 255, 136, 0.1)',
-                  border: '1px solid #00ff88',
-                  color: '#00ff88',
-                  padding: '1rem 2rem',
-                  textDecoration: 'none',
-                  letterSpacing: '0.15em',
-                  marginBottom: '1.5rem',
-                  transition: 'all 0.3s ease',
-                  fontFamily: 'monospace'
+                  border: '1px solid #00ff88', color: '#00ff88',
+                  padding: '1rem 2rem', textDecoration: 'none',
+                  letterSpacing: '0.15em', marginBottom: '1.5rem',
+                  transition: 'all 0.3s ease', fontFamily: 'monospace',
                 }}
                 onMouseEnter={e => e.currentTarget.style.background = 'rgba(0, 255, 136, 0.3)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'rgba(0, 255, 136, 0.1)'}
@@ -919,19 +877,12 @@ export function SurrogateOracleImmersion() {
               <div style={{ fontSize: '0.8rem', color: '#888', marginBottom: '2rem', fontFamily: 'monospace' }}>
                 START EARNING CULTURE COINS ON-CHAIN
               </div>
-              <button 
-                onClick={() => {
-                  setShowWalletConnect(false);
-                  journey.awakeFromTerminal();
-                }}
+              <button
+                onClick={() => { setShowWalletConnect(false); journey.awakeFromTerminal(); }}
                 style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#00ccff',
-                  cursor: 'pointer',
-                  letterSpacing: '0.1em',
-                  textDecoration: 'underline',
-                  fontFamily: 'monospace'
+                  background: 'none', border: 'none', color: '#00ccff',
+                  cursor: 'pointer', letterSpacing: '0.1em',
+                  textDecoration: 'underline', fontFamily: 'monospace',
                 }}
               >
                 SKIP TO ARCHIVE

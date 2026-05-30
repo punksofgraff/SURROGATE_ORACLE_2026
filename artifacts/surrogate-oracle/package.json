@@ -8,6 +8,10 @@
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "inject": "node scripts/oracle-morph-inject.mjs",
+    "calibrate": "node scripts/oracle-calibrate.mjs",
+    "verify": "node scripts/oracle-morph-verify.mjs",
+    "gaze-verify": "node scripts/oracle-gaze-verify.mjs",
     "deploy:functions": "npx supabase functions deploy gemini-live-proxy --project-ref $SUPABASE_PROJECT_REF --use-api",
     "set:gemini-secret": "npx supabase secrets set GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY --project-ref $SUPABASE_PROJECT_REF"
   },

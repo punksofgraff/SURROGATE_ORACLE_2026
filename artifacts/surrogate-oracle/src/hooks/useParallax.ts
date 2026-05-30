@@ -1,9 +1,14 @@
 /**
- * useParallax — gyro/mouse depth parallax with phase-aware intensity.
+ * useParallax — gyro/mouse/touch depth parallax + pinch zoom with phase-aware intensity.
  *
- * Six depth targets at different multipliers so everything moves at its own
- * spatial layer. The depth frame (foreground) moves most; the alley (far bg)
- * moves least. On mobile the cabinet also gets gyro-driven 3D rotateX/Y tilt.
+ * Input sources (auto-detected, priority order):
+ *   1. Gyro (DeviceOrientationEvent) — mobile physical tilt
+ *   2. Touch drag (1 finger) — mobile touch look-around when no gyro
+ *   3. Mouse move — desktop look-around
+ *
+ * Zoom inputs (independent, additive):
+ *   • Pinch (2-finger touch) — zoom in/out on the 3D avatar
+ *   • Scroll wheel (desktop) — zoom in/out
  *
  * Depth order (near → far):
  *   depth-frame   0.058×  foreground CRT border — feels closest, moves most
@@ -13,37 +18,46 @@
  *   mid-haze      0.022×  mid-ground haze separator
  *   alley         0.028×  far background — barely moves, depth anchor
  *   floor-refl    0.014×  floor (less parallax = feels grounded)
- *
- * Phase intensity multiplier:
- *   dormant  0.35× — subtle, world is nearly still
- *   terminal 0.55× — lore is the focus, motion stays peripheral
- *   awakened 1.00× — full spatial presence
- *   oracle   1.00× — full
  */
 import { useEffect } from 'react';
 
 type Phase = 'dormant' | 'terminal' | 'awakened' | 'oracle';
 
-const LERP      = 0.08; // Increased from 0.06 for more "fidelity" responsiveness
-const GYRO_LERP = 0.06; // Increased from 0.04
+const LERP           = 0.08;
+const GYRO_LERP      = 0.06;
+const ZOOM_LERP      = 0.09; // zoom catches up slightly faster than look-around
 const GYRO_MAX_GAMMA = 25;
 const GYRO_MAX_BETA  = 20;
+const ZOOM_MIN       = 1.0;
+const ZOOM_MAX       = 4.0;
 
 const PHASE_INTENSITY: Record<Phase, number> = {
-  dormant:  0.48, // Increased from 0.45
-  terminal: 0.70, // Increased from 0.65
+  dormant:  0.48,
+  terminal: 0.70,
   awakened: 1.00,
-  oracle:   1.20, // Increased from 1.00 for maximum oracle-phase engagement
+  oracle:   1.20,
 };
 
-export function useParallax(phase: Phase, onUpdate?: (x: number, y: number) => void) {
+export function useParallax(
+  phase: Phase,
+  onUpdate?: (x: number, y: number) => void,
+  onZoom?:   (zoom: number) => void,
+) {
   useEffect(() => {
     const intensity = PHASE_INTENSITY[phase] ?? 1.0;
 
     let targetX = 0, targetY = 0;
     let currentX = 0, currentY = 0;
+    let targetZoom = 1.0, currentZoom = 1.0;
     let rafId = 0;
     let usingGyro = false;
+
+    // Pinch tracking
+    let pinchInitialDist = 0;
+    let pinchBaseZoom    = 1.0;
+
+    // Touch drag tracking (single finger, non-gyro fallback)
+    let touchDragStart: { x: number; y: number } | null = null;
 
     // ── Gyro input ────────────────────────────────────────────────────────────
     const onDeviceOrientation = (e: DeviceOrientationEvent) => {
@@ -62,17 +76,67 @@ export function useParallax(phase: Phase, onUpdate?: (x: number, y: number) => v
       targetY = (e.clientY - window.innerHeight / 2) / (window.innerHeight / 2);
     };
 
+    // ── Scroll wheel zoom (desktop) ───────────────────────────────────────────
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      targetZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, targetZoom - e.deltaY * 0.0015));
+    };
+
+    // ── Touch events (mobile) ─────────────────────────────────────────────────
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        // Pinch start — record initial distance and zoom baseline
+        pinchInitialDist = Math.hypot(
+          e.touches[1].clientX - e.touches[0].clientX,
+          e.touches[1].clientY - e.touches[0].clientY,
+        );
+        pinchBaseZoom = targetZoom;
+        touchDragStart = null; // cancel any active drag
+      } else if (e.touches.length === 1 && !usingGyro) {
+        // Single-finger drag start (only when no gyro)
+        touchDragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && pinchInitialDist > 0) {
+        // Pinch — scale zoom relative to baseline
+        e.preventDefault();
+        const dist  = Math.hypot(
+          e.touches[1].clientX - e.touches[0].clientX,
+          e.touches[1].clientY - e.touches[0].clientY,
+        );
+        const scale = dist / pinchInitialDist;
+        targetZoom  = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinchBaseZoom * scale));
+      } else if (e.touches.length === 1 && touchDragStart && !usingGyro) {
+        // Single-finger drag — look-around (same feel as mouse move)
+        const dx = e.touches[0].clientX - touchDragStart.x;
+        const dy = e.touches[0].clientY - touchDragStart.y;
+        targetX   = Math.max(-1, Math.min(1, dx / (window.innerWidth  * 0.4)));
+        targetY   = Math.max(-1, Math.min(1, dy / (window.innerHeight * 0.4)));
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        pinchInitialDist = 0;
+        if (e.touches.length === 0) touchDragStart = null;
+      }
+    };
+
     const el = (sel: string) => document.querySelector(sel) as HTMLElement | null;
 
     const tick = () => {
-      const lerp = usingGyro ? GYRO_LERP : LERP;
-      currentX += (targetX - currentX) * lerp;
-      currentY += (targetY - currentY) * lerp;
+      const lerpXY = usingGyro ? GYRO_LERP : LERP;
+      currentX    += (targetX    - currentX)    * lerpXY;
+      currentY    += (targetY    - currentY)    * lerpXY;
+      currentZoom += (targetZoom - currentZoom) * ZOOM_LERP;
 
       const ix = currentX * intensity;
       const iy = currentY * intensity;
-      
+
       if (onUpdate) onUpdate(ix, iy);
+      if (onZoom && Math.abs(currentZoom - 1) > 0.001) onZoom(currentZoom);
 
       const vw = window.innerWidth;
       const vh = window.innerHeight;
@@ -142,17 +206,25 @@ export function useParallax(phase: Phase, onUpdate?: (x: number, y: number) => v
       rafId = requestAnimationFrame(tick);
     };
 
-    if (!window.matchMedia('(hover: none)').matches) {
+    const isTouchDevice = window.matchMedia('(hover: none)').matches;
+    if (!isTouchDevice) {
       window.addEventListener('mousemove', onMouseMove, { passive: true });
+      window.addEventListener('wheel', onWheel, { passive: false });
     }
     window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
+    window.addEventListener('touchstart', onTouchStart, { passive: false });
+    window.addEventListener('touchmove',  onTouchMove,  { passive: false });
+    window.addEventListener('touchend',   onTouchEnd,   { passive: true });
     rafId = requestAnimationFrame(tick);
 
     return () => {
       window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('wheel', onWheel);
       window.removeEventListener('deviceorientation', onDeviceOrientation);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove',  onTouchMove);
+      window.removeEventListener('touchend',   onTouchEnd);
       cancelAnimationFrame(rafId);
-      // Reset all transforms to CSS defaults
       ['.oracle-alley', '.oracle-floor-reflection', '.oracle-mid-haze',
        '.oracle-center', '.oracle-branding', '.oracle-side-bleeds',
        '.oracle-depth-frame', '.oracle-light-rays'].forEach(sel => {

@@ -552,12 +552,11 @@ export function SurrogateOracleImmersion() {
       <div className="oracle-branding">
         <h1 className="oracle-title" style={{
           display: 'inline-block',
-          backgroundImage: 'linear-gradient(135deg, #00d4ff 0%, #00ff88 100%)',
+          background: 'linear-gradient(135deg, #0066ff 0%, #00ff88 100%)',
           backgroundClip: 'text',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent',
           color: 'transparent',
-          filter: 'drop-shadow(0 0 20px rgba(0,255,136,0.45))'
         }}>
           {titleText}
         </h1>
@@ -565,12 +564,11 @@ export function SurrogateOracleImmersion() {
         {subtitleText && (
           <div className="oracle-subtitle" style={{
             display: 'inline-block',
-            backgroundImage: 'linear-gradient(135deg, #00d4ff 0%, #00ff88 100%)',
+            background: 'linear-gradient(135deg, #0066ff 0%, #00ff88 100%)',
             backgroundClip: 'text',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             color: 'transparent',
-            filter: 'drop-shadow(0 0 12px rgba(0,255,136,0.35))',
             marginTop: '10px'
           }}>
             {subtitleText}
@@ -935,13 +933,12 @@ export function SurrogateOracleImmersion() {
                 <div style={{ 
                   fontFamily: "'aAnotherTag', 'Orbitron', monospace",
                   fontSize: '1.5rem', letterSpacing: '0.15em', 
-                  backgroundImage: 'linear-gradient(135deg, #00d4ff 0%, #00ff88 100%)',
+                  background: 'linear-gradient(135deg, #0066ff 0%, #00ff88 100%)',
                   backgroundClip: 'text',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
                   color: 'transparent',
                   marginBottom: '0.75rem', 
-                  filter: 'drop-shadow(0 0 12px rgba(0,255,136,0.4))'
                 }}>
                   SIGNAL RECOGNIZED
                 </div>

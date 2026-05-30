@@ -4156,3 +4156,187 @@
   border-color: #00ffcc;
   transform: translateY(-1px);
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   ORACLE LIVE STATE — IMMERSIVE ALLEY OVERHAUL
+   The cabinet becomes a frameless window. The alley is the world.
+   Oracle is a projection INTO the space, not behind a screen.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Cabinet: completely frameless in oracle live state ─────────────────────
+   The border/background/shadow were making it feel like a TV screen.
+   The avatar canvas IS the presence — no frame needed.                       */
+.oracle-stage[data-oracle-state="oracle"] .oracle-cabinet {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  backdrop-filter: none !important;
+  /* Voice pulse is now on the alley (via data-oracle-speaking CSS), not the cabinet */
+  animation: none !important;
+}
+
+/* Remove the glass reflection pseudo-element in oracle mode */
+.oracle-stage[data-oracle-state="oracle"] .oracle-cabinet::before {
+  display: none;
+}
+
+/* Remove scanlines — they looked like a TV artifact, not a presence */
+.oracle-stage[data-oracle-state="oracle"] .oracle-scanlines {
+  display: none;
+}
+
+/* ── Avatar wrapper: full immersive presence ─────────────────────────────────
+   Wider, taller aspect ratio — the Oracle fills more of the alley space.
+   Subtle bottom fade so the avatar bleeds naturally into the ground fog.      */
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-wrapper {
+  width: clamp(280px, 92vw, 520px) !important;
+  aspect-ratio: 0.72 / 1 !important;
+  border: none !important;
+  border-radius: 4px !important;
+  overflow: hidden;
+  /* Fade bottom so Oracle bleeds into the alley floor */
+  -webkit-mask-image: linear-gradient(to bottom, black 75%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 75%, transparent 100%);
+}
+
+/* ── Oracle center: sit slightly lower, more in the alley middle-ground ─────*/
+.oracle-stage[data-oracle-state="oracle"] .oracle-center {
+  top: 38%;
+}
+@media (max-width: 480px) {
+  .oracle-stage[data-oracle-state="oracle"] .oracle-center {
+    top: 40%;
+  }
+}
+
+/* ── Alley: Oracle speaking makes the walls breathe harder ──────────────────
+   This now fires correctly because data-oracle-speaking is set on the stage. */
+.oracle-stage[data-oracle-state="oracle"][data-oracle-speaking="true"] .oracle-alley {
+  filter: saturate(1.50) brightness(1.28) blur(0px) !important;
+  transition: filter 0.10s ease-out !important;
+}
+.oracle-stage[data-oracle-state="oracle"]:not([data-oracle-speaking="true"]) .oracle-alley {
+  filter: saturate(1.20) brightness(1.12) blur(0px);
+  transition: filter 2.0s var(--ease-cinematic) !important;
+}
+
+/* ── Alley: user speaking shifts to cool cyan ────────────────────────────────
+   The walls react to the Seeker's voice differently — cooler, receptive.    */
+.oracle-stage[data-oracle-state="oracle"][data-user-speaking="true"] .oracle-alley {
+  filter: saturate(1.10) brightness(1.10) hue-rotate(15deg) blur(0px) !important;
+  transition: filter 0.15s ease-out !important;
+}
+
+/* ── oc-panel: strip the opaque panel, go transparent bottom strip ───────────
+   The dark gradient was blocking the alley. Now the panel is a near-invisible
+   tray at the very bottom — just enough to hold the mic orb and captions.   */
+.oracle-stage[data-oracle-state="oracle"] .oc-panel-v2 {
+  height: auto !important;
+  min-height: 0 !important;
+  background: transparent !important;
+  padding: 0 16px 24px !important;
+  justify-content: flex-end !important;
+  gap: 6px !important;
+}
+
+/* ── Mic trigger: smaller orb, no label ─────────────────────────────────────
+   In the alley you don't need a button — you just speak.
+   The orb glows when active; silence speaks for itself.                      */
+.oracle-stage[data-oracle-state="oracle"] .oc-mic-trigger {
+  width: 48px !important;
+  height: 48px !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+  border-color: rgba(0, 255, 136, 0.5) !important;
+  backdrop-filter: blur(6px);
+}
+
+/* Hide the text label under the mic button — visual state is enough */
+.oracle-stage[data-oracle-state="oracle"] .oc-mic-label {
+  display: none !important;
+}
+
+/* ── Status pill: hidden — alley glow communicates this ─────────────────────*/
+.oracle-stage[data-oracle-state="oracle"] .oc-status-pill {
+  display: none !important;
+}
+
+/* ── Hero row: horizontal, compact ─────────────────────────────────────────*/
+.oracle-stage[data-oracle-state="oracle"] .oc-hero {
+  flex-direction: row !important;
+  gap: 0 !important;
+  margin-bottom: 0 !important;
+  justify-content: center;
+}
+
+/* ── Conversation log: caption style, barely-there ──────────────────────────
+   Last Oracle turn floats as a dim caption. User turns hidden.
+   This keeps context visible without breaking immersion.                     */
+.oracle-stage[data-oracle-state="oracle"] .oc-log {
+  max-height: 72px !important;
+  background: transparent !important;
+  padding: 0 4px 8px !important;
+  gap: 0 !important;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 40%) !important;
+}
+
+/* Only show the latest turn in caption mode */
+.oracle-stage[data-oracle-state="oracle"] .oc-log .oc-turn:not(:last-child) {
+  display: none !important;
+}
+
+/* Oracle turn as floating caption — no background box */
+.oracle-stage[data-oracle-state="oracle"] .oc-turn-oracle {
+  background: transparent !important;
+  border-left: none !important;
+  border-bottom: 1px solid rgba(0, 255, 136, 0.12) !important;
+  font-size: 0.78rem !important;
+  color: rgba(255, 255, 255, 0.55) !important;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 1), 0 0 4px rgba(0, 255, 136, 0.2) !important;
+  padding: 4px 8px !important;
+  max-width: 100% !important;
+  align-self: center !important;
+  text-align: center !important;
+}
+
+/* User turns hidden in caption mode — the alley belongs to the Oracle */
+.oracle-stage[data-oracle-state="oracle"] .oc-turn-user {
+  display: none !important;
+}
+
+/* ── Signal pad: stays at bottom-right, no change needed ─────────────────── */
+
+/* ── Ground fog: subtle return in oracle mode for depth ─────────────────────
+   Previous rule set it to 0 opacity. A thin veil at the bottom grounds Oracle
+   and stops the avatar from floating rootless.                               */
+.oracle-stage[data-oracle-state="oracle"] .oracle-ground-fog {
+  opacity: 0.18 !important;
+  height: 22% !important;
+  transition: opacity 2.0s ease-out !important;
+}
+
+/* ── Depth frame: slightly more present in oracle mode ──────────────────────
+   The CRT border adds just enough frame to feel contained in the alley.      */
+.oracle-stage[data-oracle-state="oracle"] .oracle-depth-frame {
+  opacity: 0.35 !important;
+}
+
+/* ── Monitor cast halo: stronger when Oracle speaks ─────────────────────────
+   This replaces the cabinet pulse as the primary speaking feedback visual.   */
+.oracle-stage[data-oracle-state="oracle"][data-oracle-speaking="true"] .oracle-monitor-cast {
+  animation: oracle-speaking-cast 0.6s ease-in-out infinite !important;
+}
+
+@keyframes oracle-speaking-cast {
+  0%, 100% {
+    opacity: 1.0;
+    transform: translate(-50%, -50%) scale(1.0);
+    background: radial-gradient(ellipse at center, rgba(0,255,136,0.22) 0%, rgba(0,255,136,0.08) 35%, transparent 65%);
+  }
+  50% {
+    opacity: 1.0;
+    transform: translate(-50%, -50%) scale(1.25);
+    background: radial-gradient(ellipse at center, rgba(0,255,136,0.35) 0%, rgba(0,255,136,0.14) 35%, transparent 65%);
+  }
+}
+

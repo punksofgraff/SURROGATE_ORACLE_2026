@@ -280,13 +280,13 @@ export function SurrogateOracleImmersion() {
   }, [scenePhase]);
 
   // ── Music ducking ────────────────────────────────────────────────────────
-  // Canonical levels (CLAUDE.md): Dormant=0.06, Terminal/Awakened=0.03, Oracle=0.001.
-  // isOracleSpeaking pushes to near-inaudible so the Oracle voice is never competing.
+  // Oracle voice = 1.0 (PCMPlayer full). Radio in oracle mode = 10% of that = 0.08.
+  // When Oracle speaks, radio drops to 1.5% so the voice is never competing.
   useEffect(() => {
     let target = 0.06; // Dormant / Terminal
     if (scenePhase === 'awakened') target = 0.03;
-    if (scenePhase === 'oracle')   target = 0.001;  // near-zero atmospheric hum
-    if (isOracleSpeaking)          target = 0.0001; // inaudible while Oracle talks
+    if (scenePhase === 'oracle')   target = 0.08;  // 8% — audible alley texture
+    if (isOracleSpeaking)          target = 0.015; // 1.5% — Oracle voice dominant
     if ((isMicActive || isUserSpeaking) && scenePhase !== 'oracle') target = 0.04;
     if (target !== targetVolRef.current) {
       targetVolRef.current = target;
@@ -464,6 +464,8 @@ export function SurrogateOracleImmersion() {
     <div
       className="oracle-stage"
       data-oracle-state={scenePhase}
+      data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
+      data-user-speaking={isUserSpeaking ? 'true' : undefined}
       data-decart-active={connection.isDecartActive}
       data-camera-active={cameraActive ? 'true' : undefined}
       data-audio-target-vol={targetVolRef.current}

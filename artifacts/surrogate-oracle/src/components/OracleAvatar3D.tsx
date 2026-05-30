@@ -119,19 +119,25 @@ export interface OracleAvatar3DProps {
 }
 
 // Camera orbit bounds
-const CAM_DEFAULT_Z = 2.8;
-const CAM_MIN_Z     = 0.7;  // maximum zoom-in (face close-up)
+// The avatar group is offset -1.59 on Y so the Wolf3D face sits at world Y≈0.
+// All camera constants are in face-centered space (0 = face center).
+const CAM_DEFAULT_Z = 1.8;  // portrait distance — head + upper chest visible
+const CAM_MIN_Z     = 0.4;  // maximum zoom-in (eyes fill the frame)
 const CAM_X_RANGE   = 0.30; // horizontal look-around extent (world units)
-const CAM_Y_CENTER  = 0.10; // vertical center (eye-level on the avatar)
+const CAM_Y_CENTER  = 0.0;  // face center (group is offset so face is at Y=0)
 const CAM_Y_RANGE   = 0.22; // vertical look-around extent
-const CAM_LERP      = 0.05; // cinematic smooth-follow (lower = more cinematic)
+const CAM_LERP      = 0.05; // cinematic smooth-follow
+
+// Wolf3D head center in world space: (1.4322 + 1.7431) / 2 ≈ 1.5877
+// We shift the group down by this amount so the face lands at Y=0 for the camera.
+const AVATAR_Y_OFFSET = -1.59;
 
 export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3DProps) {
   const { scene }  = useGLTF('/hero3.glb');
   const { camera } = useThree();
   const groupRef   = useRef<THREE.Group>(null);
   // Smooth camera target — avoids snapping on sudden gesture changes
-  const camTarget  = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
+  const camTarget = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
 
   // Cache skinned meshes + gaze bones — found once on mount, zero traversal per frame.
   const meshData = useMemo(() => {
@@ -208,8 +214,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
     }
     const cf = CAM_LERP * lerpDt;
     camera.position.lerp(camTarget.current, cf);
-    // Always face the avatar's face center, not world origin
-    camera.lookAt(0, CAM_Y_CENTER, 0);
+    camera.lookAt(0, CAM_Y_CENTER, 0); // face is at Y=0 after group offset
 
     // ── Gaze tracking — Oracle watches the viewer ─────────────────────────
     // Eyes lead, head follows, neck barely moves. Hierarchy mirrors how a real
@@ -248,11 +253,11 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
       }
     }
 
-    // ── Idle breathing on root group ──
+    // ── Idle breathing — subtle Y drift around the face-centered offset ──
     if (groupRef.current) {
       groupRef.current.position.y = THREE.MathUtils.lerp(
         groupRef.current.position.y,
-        Math.sin(state.clock.elapsedTime * 1.4) * 0.008 - 0.05,
+        AVATAR_Y_OFFSET + Math.sin(state.clock.elapsedTime * 1.4) * 0.008,
         lerpDt * 0.04,
       );
     }

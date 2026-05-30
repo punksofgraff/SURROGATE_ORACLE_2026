@@ -280,16 +280,19 @@ export function SurrogateOracleImmersion() {
   }, [scenePhase]);
 
   // ── Music ducking ────────────────────────────────────────────────────────
+  // Canonical levels (CLAUDE.md): Dormant=0.06, Terminal/Awakened=0.03, Oracle=0.001.
+  // isOracleSpeaking pushes to near-inaudible so the Oracle voice is never competing.
   useEffect(() => {
-    let target = 0.22; // Dormant / Terminal: alley breathes
-    if (scenePhase === 'awakened') target = 0.12;
-    if (scenePhase === 'oracle')   target = 0.02; // atmospheric hum, not silence
-    if ((isMicActive || isUserSpeaking) && scenePhase !== 'oracle') target = 0.15;
+    let target = 0.06; // Dormant / Terminal
+    if (scenePhase === 'awakened') target = 0.03;
+    if (scenePhase === 'oracle')   target = 0.001;  // near-zero atmospheric hum
+    if (isOracleSpeaking)          target = 0.0001; // inaudible while Oracle talks
+    if ((isMicActive || isUserSpeaking) && scenePhase !== 'oracle') target = 0.04;
     if (target !== targetVolRef.current) {
       targetVolRef.current = target;
       fadeToVolume(target);
     }
-  }, [scenePhase, isMicActive, isUserSpeaking, fadeToVolume]);
+  }, [scenePhase, isMicActive, isUserSpeaking, isOracleSpeaking, fadeToVolume]);
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -601,7 +604,7 @@ export function SurrogateOracleImmersion() {
                   >
                     <Suspense fallback={<OracleAvatarFallback />}>
                       <Canvas
-                        camera={{ position: [0, 0.1, 2.8], fov: 42 }}
+                        camera={{ position: [0, 0, 1.8], fov: 42 }}
                         dpr={[1, Math.min(window.devicePixelRatio, 2)]}
                         gl={{ antialias: true, alpha: true }}
                         style={{ width: '100%', height: '100%', background: 'transparent' }}

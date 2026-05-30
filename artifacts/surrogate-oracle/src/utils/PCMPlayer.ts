@@ -18,6 +18,7 @@ export class PCMPlayer {
   private workletNode: AudioWorkletNode | null = null;
   private workletReady: Promise<void>;
   private onViseme: ((state: any) => void) | null = null;
+  private onProcessingChange: ((isProcessing: boolean) => void) | null = null;
 
   private panner: PannerNode | null = null;
   private masterGain: GainNode | null = null;
@@ -66,16 +67,24 @@ export class PCMPlayer {
     }
 
     // ── Load AudioWorklet ──────────────────────────────────────────────────
+    console.log('[PCMPlayer] Initializing AudioWorklet at sampleRate:', this.context.sampleRate);
     this.workletReady = this.context.audioWorklet.addModule(
       new URL('../workers/oracle-audio.worklet.ts', import.meta.url).href
     ).then(() => {
+      console.log('[PCMPlayer] AudioWorklet module loaded');
       this.workletNode = new AudioWorkletNode(this.context, 'oracle-audio-processor');
       this.workletNode.port.onmessage = (e) => {
         if (e.data.type === 'viseme' && this.onViseme) {
           this.onViseme(e.data.state);
+        } else if (e.data.type === 'ended') {
+          this.onProcessingChange?.(false);
         }
       };
       
+      this.workletNode.onprocessorerror = (err) => {
+        console.error('[PCMPlayer] AudioWorklet Processor Error:', err);
+      };
+
       this.workletNode.connect(this.analyser);
 
       if (this.panner) {
@@ -92,6 +101,10 @@ export class PCMPlayer {
 
   public setVisemeCallback(callback: (state: any) => void) {
     this.onViseme = callback;
+  }
+
+  public setProcessingCallback(callback: (isProcessing: boolean) => void) {
+    this.onProcessingChange = callback;
   }
 
   public setVolume(target: number, rampMs: number = 200) {
@@ -113,6 +126,8 @@ export class PCMPlayer {
     }
 
     await this.workletReady;
+
+    this.onProcessingChange?.(true);
 
     if (this.workletNode) {
       this.workletNode.port.postMessage({ type: 'feed', pcm: data });
@@ -154,6 +169,7 @@ export class PCMPlayer {
   }
 
   public stop() {
+    this.onProcessingChange?.(false);
     if (this.workletNode) {
       this.workletNode.port.postMessage({ type: 'stop' });
     }

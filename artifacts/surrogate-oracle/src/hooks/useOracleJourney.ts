@@ -6,7 +6,7 @@
  * and the ceremonial timings/SFX associated with each step.
  */
 import { useState, useCallback, useRef, useMemo } from 'react';
-import { logStep } from '../components/OracleStepLogger';
+import { logStep } from '../components/CodeAuditor';
 import { 
   playActivationSfx, 
   startAlleyAmbience, 
@@ -48,11 +48,11 @@ export function useOracleJourney({
     alleyAmbienceStopRef.current?.();
     alleyAmbienceStopRef.current = null;
     
-    // Auto-start Gemini session after a brief breath
+    // Auto-start Gemini session after a brief breath (the 900ms 'performer pause')
     logStep('startSession() CALLED', 'ok');
     setTimeout(() => {
       onStartSession();
-    }, 300);
+    }, 900);
   }, [onStartSession]);
 
   const selectKnifeQuestion = useCallback((question: string, index: number) => {

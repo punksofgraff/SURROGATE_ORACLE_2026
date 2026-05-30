@@ -1,5 +1,5 @@
 /**
- * OracleStepLogger — dev overlay for watching the sleep→wake handshake
+ * CodeAuditor — enterprise-grade handshake & execution auditor
  *
  * Listens to window CustomEvent 'oracle:step':
  *   window.dispatchEvent(new CustomEvent('oracle:step', {
@@ -64,16 +64,35 @@ export function logStep(label: string, status: StepStatus = 'ok') {
   );
 }
 
-export function OracleStepLogger() {
+export function CodeAuditor() {
   // Opt-in only — never auto-enables in DEV builds.
   // To open: add ?devui to the URL, or localStorage.setItem('oracle_step_log','1') + reload.
   const enabled = DEBUG_ENABLED;
-  const [steps, setSteps] = useState<OracleStep[]>([]);
-  const [minimized, setMinimized] = useState(false);
+  const [steps, setSteps] = useState<OracleStep[]>(() => {
+    if (!enabled) return [];
+    try {
+      const saved = localStorage.getItem('oracle_steps_sticky');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [minimized, setMinimized] = useState(() => {
+    return localStorage.getItem('oracle_step_minimized') === '1';
+  });
   const startRef = useRef<number | null>(null);
   const prevRef  = useRef<number | null>(null);
-  const counterRef = useRef(0);
+  const counterRef = useRef(steps.length > 0 ? Math.max(...steps.map(s => s.id)) + 1 : 0);
   const listRef  = useRef<HTMLDivElement | null>(null);
+
+  // Sync minimized state
+  useEffect(() => {
+    localStorage.setItem('oracle_step_minimized', minimized ? '1' : '0');
+  }, [minimized]);
+
+  // Sync steps to localStorage for "stickiness"
+  useEffect(() => {
+    if (!enabled) return;
+    localStorage.setItem('oracle_steps_sticky', JSON.stringify(steps));
+  }, [steps, enabled]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -81,8 +100,25 @@ export function OracleStepLogger() {
     const handler = (e: Event) => {
       const { label, status = 'ok' } = (e as CustomEvent).detail as { label: string; status: StepStatus };
       const now = Date.now();
-      if (startRef.current === null) startRef.current = now;
-      const ts    = now - startRef.current;
+      
+      // If we have existing steps, we should probably try to maintain a continuous timeline
+      // but for a fresh session after reload, resetting the startRef is cleaner.
+      if (startRef.current === null) {
+        if (steps.length > 0) {
+          // Continue from last step's wall time if it was recent, else reset
+          const lastStep = steps[steps.length - 1];
+          if (now - lastStep.wall < 30000) {
+             startRef.current = lastStep.wall - lastStep.ts;
+             prevRef.current = lastStep.wall;
+          } else {
+             startRef.current = now;
+          }
+        } else {
+          startRef.current = now;
+        }
+      }
+
+      const ts    = now - startRef.current!;
       const delta = prevRef.current !== null ? now - prevRef.current : 0;
       prevRef.current = now;
 
@@ -95,19 +131,18 @@ export function OracleStepLogger() {
         delta,
       };
 
-      setSteps(prev => [...prev.slice(-40), step]); // keep last 40
+      setSteps(prev => [...prev.slice(-59), step]); // keep last 60 for sticky mode
     };
 
     window.addEventListener('oracle:step', handler);
     return () => window.removeEventListener('oracle:step', handler);
-  }, [enabled]);
+  }, [enabled, steps.length]);
 
-  // Auto-scroll to bottom
-  useEffect(() => {
-    if (listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
-  }, [steps]);
+  const copyLogs = () => {
+    const text = steps.map(s => `[${ICON[s.status]}] T+${(s.ts/1000).toFixed(2)}s (+${s.delta}ms) ${s.label}`).join('\n');
+    navigator.clipboard.writeText(text);
+    logStep('LOGS COPIED TO CLIPBOARD', 'ok');
+  };
 
   if (!enabled) return null;
 
@@ -116,58 +151,82 @@ export function OracleStepLogger() {
       position:     'fixed',
       bottom:       12,
       right:        12,
-      width:        minimized ? 120 : 320,
-      maxHeight:    minimized ? 32  : 420,
-      background:   'rgba(0,4,12,0.92)',
+      width:        minimized ? 140 : 340,
+      maxHeight:    minimized ? 32  : 460,
+      background:   'rgba(0,4,12,0.94)',
       border:       '1px solid rgba(0,255,136,0.35)',
       borderRadius: 6,
       fontFamily:   'monospace',
       fontSize:     11,
       zIndex:       99999,
       overflow:     'hidden',
-      backdropFilter: 'blur(4px)',
-      transition:   'all 0.2s ease',
+      backdropFilter: 'blur(8px)',
+      transition:   'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
       userSelect:   'none',
+      boxShadow:    '0 8px 32px rgba(0,0,0,0.8)',
     }}>
       {/* Header */}
       <div
-        onClick={() => setMinimized(m => !m)}
         style={{
           padding:        '4px 8px',
           background:     'rgba(0,255,136,0.08)',
           borderBottom:   minimized ? 'none' : '1px solid rgba(0,255,136,0.15)',
           color:          '#00ff88',
-          cursor:         'pointer',
           display:        'flex',
           justifyContent: 'space-between',
           alignItems:     'center',
         }}
       >
-        <span>⬡ STEP LOG ({steps.length})</span>
-        <span style={{ opacity: 0.6 }}>{minimized ? '▲' : '▼'}</span>
+        <span onClick={() => setMinimized(m => !m)} style={{ cursor: 'pointer', flex: 1 }}>
+          ⬡ CODE AUDITOR ({steps.length})
+        </span>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {!minimized && (
+            <button 
+              onClick={copyLogs}
+              style={{ 
+                background: 'none', border: 'none', color: '#00ff88', 
+                fontSize: 9, cursor: 'pointer', padding: '2px 4px',
+                opacity: 0.6,
+              }}
+              title="Copy Logs"
+            >
+              COPY
+            </button>
+          )}
+          <span 
+            onClick={() => setMinimized(m => !m)} 
+            style={{ opacity: 0.6, cursor: 'pointer', padding: '0 4px' }}
+          >
+            {minimized ? '▲' : '▼'}
+          </span>
+        </div>
       </div>
 
       {!minimized && (
         <>
           {/* Steps list */}
-          <div ref={listRef} style={{ maxHeight: 360, overflowY: 'auto', padding: '4px 0' }}>
+          <div ref={listRef} style={{ maxHeight: 380, overflowY: 'auto', padding: '4px 0', scrollBehavior: 'smooth' }}>
             {steps.length === 0 && (
-              <div style={{ padding: '8px 10px', color: 'rgba(255,255,255,0.3)' }}>
-                waiting for steps…
+              <div style={{ padding: '12px 10px', color: 'rgba(255,255,255,0.3)', textAlign: 'center' }}>
+                waiting for signal…
               </div>
             )}
             {steps.map((s, i) => (
               <div key={s.id} style={{
-                padding:         '2px 8px',
+                padding:         '3px 8px',
                 display:         'grid',
-                gridTemplateColumns: '14px 1fr 52px',
-                gap:             4,
+                gridTemplateColumns: '14px 1fr 58px',
+                gap:             6,
                 borderLeft:      i === steps.length - 1 ? `2px solid ${COLOR[s.status]}` : '2px solid transparent',
-                background:      i === steps.length - 1 ? 'rgba(0,255,136,0.04)' : 'transparent',
+                background:      i === steps.length - 1 ? 'rgba(0,255,136,0.06)' : 'transparent',
+                borderBottom:    '1px solid rgba(255,255,255,0.03)',
               }}>
-                <span style={{ color: COLOR[s.status] }}>{ICON[s.status]}</span>
-                <span style={{ color: '#e0e8ff', lineHeight: '16px' }}>{s.label}</span>
-                <span style={{ color: 'rgba(255,255,255,0.35)', textAlign: 'right', lineHeight: '16px' }}>
+                <span style={{ color: COLOR[s.status], fontWeight: 'bold' }}>{ICON[s.status]}</span>
+                <span style={{ color: '#e0e8ff', lineHeight: '16px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.label}
+                </span>
+                <span style={{ color: 'rgba(0,255,136,0.4)', textAlign: 'right', fontSize: 9, lineHeight: '16px' }}>
                   {s.delta > 0 ? `+${s.delta}ms` : `t=0`}
                 </span>
               </div>
@@ -178,19 +237,22 @@ export function OracleStepLogger() {
           <div
             onClick={() => {
               setSteps([]);
+              localStorage.removeItem('oracle_steps_sticky');
               startRef.current = null;
               prevRef.current  = null;
               counterRef.current = 0;
             }}
             style={{
-              padding:      '3px 8px',
+              padding:      '4px 8px',
               borderTop:    '1px solid rgba(0,255,136,0.1)',
               color:        'rgba(0,255,136,0.4)',
               cursor:       'pointer',
               textAlign:    'center',
+              fontSize:     9,
+              letterSpacing: '0.1em',
             }}
           >
-            RESET
+            CLEAR AUDIT TRAIL
           </div>
         </>
       )}

@@ -17,7 +17,7 @@ import React, {
 } from 'react';
 import { createVADProcessor, type VADFrame } from '../hooks/useVAD';
 import { motion, AnimatePresence } from 'framer-motion';
-import { logStep } from './OracleStepLogger';
+import { logStep } from './CodeAuditor';
 import { Mic, MicOff, Send, X, Zap } from 'lucide-react';
 import { getAudioContext } from '../lib/oracleSfx';
 
@@ -112,6 +112,7 @@ interface OracleConversationProps {
   onUserSpeakingChange?: (isSpeaking: boolean, score: number) => void;
   onBargeIn?: () => void;
   onDisconnected?: () => void;
+  isGuidedTour?: boolean;
 }
 
 export interface OracleConversationHandle {
@@ -129,6 +130,7 @@ export interface OracleConversationHandle {
     recentMessages: string[];
   };
   startSession: () => void;
+  startMic: () => Promise<void>;
 }
 
 const SAMPLE_RATE_INPUT = 16000;
@@ -136,6 +138,7 @@ const SAMPLE_RATE_INPUT = 16000;
 const OracleConversation = forwardRef(
   (props: OracleConversationProps, ref: React.ForwardedRef<OracleConversationHandle>) => {
     const {
+      userId, sessionId,
       onOracleResponse, onCoinsEarned,
       onConnected, onListeningChange,
       isVisible = true,
@@ -143,15 +146,30 @@ const OracleConversation = forwardRef(
       sessionContext,
       initialTotemLevel = 0,
       onUserSpeakingChange, onBargeIn, onDisconnected,
-
+      isGuidedTour,
       onSessionEnd, onTurnComplete, onPortraitRequest,
     } = props;
 
     const [isConnected, setIsConnected] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
-    const [turns, setTurns] = useState<Turn[]>([]);
+    const [turns, setTurns] = useState<Turn[]>(() => {
+      try {
+        const saved = localStorage.getItem(`oracle_turns_${sessionId}`);
+        return saved ? JSON.parse(saved) : [];
+      } catch { return []; }
+    });
     const [inputText, setInputText] = useState('');
+    
+    // ... rest of the component state ...
+
+    // Sync turns to localStorage for stickiness
+    useEffect(() => {
+      if (sessionId) {
+        localStorage.setItem(`oracle_turns_${sessionId}`, JSON.stringify(turns));
+      }
+    }, [turns, sessionId]);
+
     const [showSignalPad, setShowSignalPad] = useState(false);
 
     const wsRef = useRef<WebSocket | null>(null);
@@ -323,10 +341,14 @@ const OracleConversation = forwardRef(
               if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
                 if (debugInfo.current.audioChunksReceived === 0) logStep('ORACLE AUDIO START', 'ok');
                 debugInfo.current.audioChunksReceived++;
-                const raw = atob(part.inlineData.data);
-                const pcmData = new Int16Array(raw.length / 2);
-                const view = new DataView(new Uint8Array([...raw].map(c => c.charCodeAt(0))).buffer);
-                for (let i = 0; i < pcmData.length; i++) pcmData[i] = view.getInt16(i * 2, true);
+                
+                // Efficient Base64 to Int16Array conversion
+                const binaryString = atob(part.inlineData.data);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                  bytes[i] = binaryString.charCodeAt(i);
+                }
+                const pcmData = new Int16Array(bytes.buffer);
 
                 setIsOracleSpeaking(true);
                 onOracleResponseRef.current?.(pcmData);
@@ -440,21 +462,36 @@ const OracleConversation = forwardRef(
 
         processorRef.current.onaudioprocess = (e) => {
           const input = e.inputBuffer.getChannelData(0);
-          const pcm = new Int16Array(input.length);
-          for (let i = 0; i < input.length; i++) pcm[i] = Math.max(-1, Math.min(1, input[i])) * 0x7FFF;
+          
+          // Downsample from 24000 to 16000 (3:2 ratio)
+          const targetLength = Math.floor(input.length * (16000 / ctx.sampleRate));
+          const resampled = new Float32Array(targetLength);
+          for (let i = 0; i < targetLength; i++) {
+            const srcIdx = i * (ctx.sampleRate / 16000);
+            const idx = Math.floor(srcIdx);
+            const fract = srcIdx - idx;
+            if (idx + 1 < input.length) {
+              resampled[i] = input[idx] * (1 - fract) + input[idx + 1] * fract;
+            } else {
+              resampled[i] = input[idx];
+            }
+          }
+
+          const pcm = new Int16Array(resampled.length);
+          for (let i = 0; i < resampled.length; i++) {
+            pcm[i] = Math.max(-1, Math.min(1, resampled[i])) * 0x7FFF;
+          }
 
           // Encode first so pre-roll buffer contains real audio data
           const base64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
-          const chunk: VADFrame = { data: base64, mimeType: 'audio/pcm;rate=16000' };
+          const chunk: VADFrame = { data: base64, mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}` };
 
-          const result = vadRef.current.processFrame(input, chunk);
+          const result = vadRef.current.processFrame(resampled, chunk);
           onUserSpeakingChangeRef.current?.(result.isSpeaking, result.vadScore);
 
           if (wsRef.current?.readyState !== WebSocket.OPEN) return;
 
           // Flush pre-roll on speech onset so leading consonants aren't clipped.
-          // Use else-if to avoid sending the onset frame twice — it's already
-          // in the pre-roll buffer and will be flushed here.
           if (result.isOnsetStart) {
             vadRef.current.flushPreRoll().forEach(frame => {
               if (frame.data) wsRef.current!.send(JSON.stringify({
@@ -466,7 +503,7 @@ const OracleConversation = forwardRef(
             // Gate: only stream to Gemini while VAD confirms active speech
             wsRef.current.send(JSON.stringify({
               type: 'client.realtimeInput',
-              realtimeInput: { mediaChunks: [{ data: base64, mimeType: 'audio/pcm;rate=16000' }] }
+              realtimeInput: { mediaChunks: [{ data: base64, mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}` }] }
             }));
           }
         };
@@ -559,6 +596,11 @@ const OracleConversation = forwardRef(
           sendText('__ORACLE_BOOT__');
         } else {
           logStep('SESSION ALREADY ACTIVE — terminal boot confirmed', 'ok');
+        }
+      },
+      startMic: async () => {
+        if (!isListeningRef.current) {
+            await startMicRef.current?.();
         }
       }
     }));
@@ -670,6 +712,13 @@ const OracleConversation = forwardRef(
                   >
                     ⚗ SUMMON PORTRAIT
                   </button>
+                )}
+                
+                {/* Guided Tour Helper */}
+                {isGuidedTour && (
+                  <div style={{ color: '#b026ff', fontSize: '0.75rem', marginBottom: '0.5rem', fontFamily: 'monospace', opacity: 0.8 }}>
+                    <span className="oracle-lore-prompt">›</span> Tour Guide: Try asking "What did the cascade take from you?" or "Generate my portrait."
+                  </div>
                 )}
 
                 <div className="oc-input-row">

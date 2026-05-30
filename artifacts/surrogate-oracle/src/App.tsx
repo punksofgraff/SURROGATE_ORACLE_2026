@@ -1,11 +1,11 @@
 import { SurrogateOracleImmersion } from './components/SurrogateOracleImmersion';
-import { OracleStepLogger } from './components/OracleStepLogger';
+import { CodeAuditor } from './components/CodeAuditor';
 
 function App() {
   return (
     <>
       <SurrogateOracleImmersion />
-      <OracleStepLogger />
+      <CodeAuditor />
     </>
   );
 }

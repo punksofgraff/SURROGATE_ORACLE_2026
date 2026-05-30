@@ -5,7 +5,7 @@
  * Handles Decart ICE negotiation, vision calibration, and PCM player lifecycle.
  */
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { logStep } from '../components/OracleStepLogger';
+import { logStep } from '../components/CodeAuditor';
 import { PCMPlayer } from '../utils/PCMPlayer';
 import { calibrateOracle, disposeVisionModel } from '../lib/OracleVisionCalibrator';
 import type { DecartClientHandle } from '../components/DecartClient';
@@ -162,6 +162,7 @@ export function useOracleConnection({
     if (!pcmPlayerRef.current) {
       const player = new PCMPlayer(24000, playbackRate, getAudioContext());
       player.setVisemeCallback(onViseme);
+      player.setProcessingCallback(onProcessingChange);
       pcmPlayerRef.current = player;
     }
 
@@ -220,7 +221,6 @@ export function useOracleConnection({
         console.error('Audio URL decode failed:', err);
       }
     }
-    onProcessingChange(true);
   }, [playbackRate, onViseme, onProcessingChange, decartClientRef]);
 
   const resetFirstChunk = useCallback(() => {

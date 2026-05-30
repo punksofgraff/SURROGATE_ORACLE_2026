@@ -19,7 +19,9 @@ let _ctx: AudioContext | null = null;
  */
 export function getAudioContext(): AudioContext {
   if (!_ctx || _ctx.state === 'closed') {
-    _ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    _ctx = new (window.AudioContext || (window as any).webkitAudioContext)({
+      sampleRate: 24000 // Match Gemini PCM stream exactly
+    });
   }
   if (_ctx.state === 'suspended') {
     _ctx.resume().catch(() => {});

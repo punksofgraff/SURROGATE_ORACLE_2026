@@ -22,6 +22,8 @@ const GHOST_TEXTS = [
   'the streets remember everything the grid forgot',
 ];
 
+const HEADPHONE_NUDGE = '⟁ headphones open the full depth of this signal';
+
 // 10 zones spread across the full mobile viewport.
 // rightAlign: true  → x is CSS `right` % (text flows left — prevents right-edge overflow)
 // rightAlign: false → x is CSS `left` %
@@ -47,6 +49,25 @@ interface GhostInstance {
   y: number;
   zoneIdx: number;
   rightAlign?: boolean;
+}
+
+// Headphone detection (best-effort — browser API coverage varies)
+async function detectAudioOutput(): Promise<'headphones' | 'speakers' | 'unknown'> {
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) return 'unknown';
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const outputs = devices.filter(d => d.kind === 'audiooutput');
+    
+    // Most browsers only return labels AFTER a user interaction (like clicking DORMANT)
+    // but some return it if permission was previously granted.
+    const hasHeadphones = outputs.some(d =>
+      /headphone|headset|earphone|airpod|earbud/i.test(d.label)
+    );
+    
+    return hasHeadphones ? 'headphones' : outputs.length > 0 ? 'speakers' : 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 
 function GhostText({
@@ -100,6 +121,7 @@ function GhostText({
 
 export function DormantTransmissions({ active, onCtaClick }: { active: boolean; onCtaClick?: () => void }) {
   const [instances, setInstances] = useState<GhostInstance[]>([]);
+  const [isUsingSpeakers, setIsUsingSpeakers] = useState(false);
   const activeZones  = useRef(new Set<number>());
   const textHistory  = useRef<number[]>([]);
   const spawnTimers  = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -112,12 +134,17 @@ export function DormantTransmissions({ active, onCtaClick }: { active: boolean; 
     return available[Math.floor(Math.random() * available.length)];
   };
 
-  const pickText = (): number => {
+  const pickText = (): string => {
+    // 20% chance to show headphone nudge if speakers detected and it wasn't shown recently
+    if (isUsingSpeakers && Math.random() > 0.8) {
+      return HEADPHONE_NUDGE;
+    }
+
     const recent = textHistory.current.slice(-5);
     const pool   = GHOST_TEXTS.map((_, i) => i).filter(i => !recent.includes(i));
     const idx    = pool.length ? pool[Math.floor(Math.random() * pool.length)] : Math.floor(Math.random() * GHOST_TEXTS.length);
     textHistory.current.push(idx);
-    return idx;
+    return GHOST_TEXTS[idx];
   };
 
   const spawn = useCallback(() => {
@@ -129,10 +156,10 @@ export function DormantTransmissions({ active, onCtaClick }: { active: boolean; 
     const id      = ++_gtId;
     activeZones.current.add(zoneIdx);
     setInstances(prev => [...prev, {
-      id, text: GHOST_TEXTS[pickText()], x, y, zoneIdx,
+      id, text: pickText(), x, y, zoneIdx,
       rightAlign: zone.rightAlign ?? false,
     }]);
-  }, [instances.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [instances.length, isUsingSpeakers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDone = useCallback((id: number, zoneIdx: number) => {
     setInstances(prev => prev.filter(g => g.id !== id));
@@ -149,6 +176,12 @@ export function DormantTransmissions({ active, onCtaClick }: { active: boolean; 
       activeZones.current.clear();
       return;
     }
+    
+    // Check for speakers on mount
+    detectAudioOutput().then(type => {
+      if (type === 'speakers') setIsUsingSpeakers(true);
+    });
+
     const t1 = setTimeout(spawn, 1200);
     spawnTimers.current.push(t1);
     return clearAll;

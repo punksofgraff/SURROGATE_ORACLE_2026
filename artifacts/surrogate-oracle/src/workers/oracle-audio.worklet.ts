@@ -13,6 +13,7 @@ declare class AudioWorkletProcessor {
 }
 declare function registerProcessor(name: string, processorCtor: any): void;
 declare const currentTime: number;
+declare const sampleRate: number;
 
 type Viseme = 'X' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
 
@@ -92,7 +93,12 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
     const output = outputs[0][0];
     if (!output) return true;
 
+    const prevSize = this.size;
     this.dequeue(output.length, output);
+
+    if (prevSize > 0 && this.size === 0) {
+      this.port.postMessage({ type: 'ended' });
+    }
 
     const state = this.analyze(output);
     
@@ -119,7 +125,7 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
   }
 
   private analyze(frame: Float32Array): VisemeState {
-    const sampleRate = 24000; 
+    const sRate = typeof sampleRate !== 'undefined' ? sampleRate : 24000;
     
     let rms = 0;
     for (let i = 0; i < frame.length; i++) rms += frame[i] * frame[i];
@@ -138,7 +144,7 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
 
     for (const f of freqs) {
       let re = 0, im = 0;
-      const omega = (2 * Math.PI * f) / sampleRate;
+      const omega = (2 * Math.PI * f) / sRate;
       for (let i = 0; i < N; i++) {
         re += frame[i] * Math.cos(omega * i);
         im += frame[i] * Math.sin(omega * i);
@@ -152,7 +158,7 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
     }
 
     const T = totalE || 1;
-    const centroid = weightedF / (T * sampleRate / 2);
+    const centroid = weightedF / (T * sRate / 2);
 
     let zcr = 0;
     for (let i = 1; i < N; i++) {

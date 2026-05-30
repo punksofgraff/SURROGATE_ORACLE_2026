@@ -77,10 +77,28 @@ function HoloCard({
 
 // ── TerminalLog — monospace scrollable log box ────────────────────────────────
 function TerminalLog({ lines, label }: { lines: string[]; label: string }) {
+  const copyLines = () => {
+    navigator.clipboard.writeText(lines.join('\n'));
+    // We don't have a toast here, but we can log to console
+    console.log(`[ORACLE:AUDIT] Copied ${label} logs`);
+  };
+
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{ fontSize: '0.58rem', color: '#00ccff', letterSpacing: '0.15em', marginBottom: 5 }}>
-        {label}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+        <div style={{ fontSize: '0.58rem', color: '#00ccff', letterSpacing: '0.15em' }}>
+          {label}
+        </div>
+        <button 
+          onClick={copyLines}
+          style={{ 
+            background: 'none', border: 'none', color: '#00ff88', 
+            fontSize: '0.5rem', cursor: 'pointer', opacity: 0.5,
+            padding: '2px 4px'
+          }}
+        >
+          COPY
+        </button>
       </div>
       <div style={{
         background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(0,255,136,0.15)',
@@ -140,8 +158,20 @@ export const BackendControlPanel = ({
   decartClientRef,
   oracleConversationRef,
 }: BackendControlPanelProps) => {
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const saved = localStorage.getItem('oracle_crate_active_tab');
+    if (saved) return saved as Tab;
+    return initialTab;
+  });
   const [debugPasswordEntered, setDebugPasswordEntered] = useState(false);
+  
+  // ... rest of the component state ...
+
+  // Sync activeTab to localStorage
+  useEffect(() => {
+    localStorage.setItem('oracle_crate_active_tab', activeTab);
+  }, [activeTab]);
+
   const [debugPassword, setDebugPassword] = useState('');
   const [testResults, setTestResults] = useState<Record<string, unknown>>({});
   const [isLoading, setIsLoading] = useState(false);

@@ -5,7 +5,7 @@
  * Coordinates Gemini prompt enrichment, DALL-E/Replicate generation, and Supabase storage.
  */
 import { useState, useCallback, useRef } from 'react';
-import { logStep } from '../components/OracleStepLogger';
+import { logStep } from '../components/CodeAuditor';
 
 interface UsePortraitPipelineProps {
   currentUserId?: string | null;

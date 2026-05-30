@@ -39,8 +39,6 @@ const SHAPES: Record<string, { open: number; spread: number; rounded: number }> 
   A: { open: 0.95, spread: 0.55, rounded: 0.20 },
 };
 
-const U_START = 0.25;
-const U_END   = 0.75;
 const ROWS = 32; // Higher resolution for enterprise
 const COLS = 32;
 const VERTS = (ROWS + 1) * (COLS + 1);
@@ -97,10 +95,12 @@ export class OracleFaceRenderer {
   private _tiltY = 0;
 
   private faceMap: OracleFaceMap | null = null;
+  private uStart = 0;
+  private uEnd   = 1;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    this.gl = canvas.getContext('webgl', { alpha: false, antialias: true, powerPreference: 'high-performance' })!;
+    this.gl = canvas.getContext('webgl', { alpha: true, antialias: true, powerPreference: 'high-performance' })!;
     this._initShaders();
     this._buildMesh();
   }
@@ -108,17 +108,63 @@ export class OracleFaceRenderer {
   isReady(): boolean { return this.img !== null; }
 
   loadFace(src: string): Promise<void> {
+    console.log('[OracleFaceRenderer] Loading face from:', src);
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
+        console.log('[OracleFaceRenderer] Image loaded successfully:', img.width, 'x', img.height);
         this.img = img;
+        this._computeUVs();
         this._uploadTexture();
         resolve();
       };
-      img.onerror = () => reject(new Error('OracleFaceRenderer: image load failed'));
+      img.onerror = (err) => {
+        console.error('[OracleFaceRenderer] Image load failed for:', src, err);
+        reject(new Error('OracleFaceRenderer: image load failed'));
+      };
       img.src = src;
     });
+  }
+
+  private _computeUVs() {
+    if (!this.img) return;
+    const imgAspect = this.img.width / (this.img.height || 1);
+    let canvasAspect = 1.0;
+    if (this.canvas.width > 0 && this.canvas.height > 0) {
+      canvasAspect = this.canvas.width / this.canvas.height;
+    }
+
+    // Cover logic: crop the image to fit the canvas aspect ratio
+    if (imgAspect > canvasAspect) {
+      // Image is wider than canvas — crop sides
+      const visibleWidth = canvasAspect / imgAspect;
+      this.uStart = 0.5 - visibleWidth / 2;
+      this.uEnd   = 0.5 + visibleWidth / 2;
+    } else {
+      // Image is taller than canvas — crop top/bottom
+      this.uStart = 0;
+      this.uEnd   = 1;
+    }
+
+    // Update UV buffer
+    for (let r = 0; r <= ROWS; r++) {
+      for (let c = 0; c <= COLS; c++) {
+        const i = (r * (COLS + 1) + c) * 2;
+        const nx = c / COLS, ny = r / ROWS;
+        this.uvs[i] = this.uStart + nx * (this.uEnd - this.uStart);
+        this.uvs[i + 1] = ny;
+      }
+    }
+    if (this.gl && this.uvBuffer) {
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.uvBuffer);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, this.uvs, this.gl.STATIC_DRAW);
+    }
+
+    // If already calibrated, re-compute skinning as landmarks might have shifted in UV space
+    if (this.faceMap) {
+      this._computeSkinning();
+    }
   }
 
   calibrate(map: OracleFaceMap) {
@@ -132,9 +178,8 @@ export class OracleFaceRenderer {
 
     for (let i = 0; i < VERTS; i++) {
       const vx = (this.basePos[i * 2] + 1) / 2; // 0..1 clip space
-      // UV crop logic: mesh covers full -1..1 but texture is cropped.
-      // u = U_START + nx * (U_END - U_START)
-      const u = U_START + vx * (U_END - U_START);
+      // u = uStart + nx * (uEnd - uStart)
+      const u = this.uStart + vx * (this.uEnd - this.uStart);
       const v = 1 - (this.basePos[i * 2 + 1] + 1) / 2;
 
       // Find 2 nearest landmarks
@@ -182,14 +227,11 @@ export class OracleFaceRenderer {
     this._lerpRounded += (target.rounded        - this._lerpRounded)  * LERP_MOUTH;
 
     // Eye blendshapes — derived from speech features
-    // Brows raise with open vowels and high amplitude; slow to move (expressive, not twitchy)
     const targetBrowRaise = openness * 0.40 + (amplitude > 0.65 ? 0.14 : 0);
-    // Squint slightly on rounded/puckered sounds (H=oo, G=oh)
     const targetEyeSquint = rounded * 0.30;
-    // Micro alert-widening at peak amplitude
     const targetEyeAlert  = amplitude > 0.75 ? (amplitude - 0.75) * 0.40 : 0;
 
-    const LERP_EYE = 0.18; // slower than mouth for naturalism
+    const LERP_EYE = 0.18;
     this._lerpBrowRaise += (targetBrowRaise - this._lerpBrowRaise) * LERP_EYE;
     this._lerpEyeSquint += (targetEyeSquint - this._lerpEyeSquint) * LERP_EYE;
     this._lerpEyeAlert  += (targetEyeAlert  - this._lerpEyeAlert)  * LERP_EYE;
@@ -203,7 +245,6 @@ export class OracleFaceRenderer {
     const rounded = this._lerpRounded;
     const breath  = Math.sin(now * 0.00157) * 0.003;
 
-    // Blink curve: sin arch over BLINK_MS so lids close then reopen smoothly
     const blinkT = this.blinkStartedAt >= 0
       ? Math.min(1, (now - this.blinkStartedAt) / this.BLINK_MS)
       : 0;
@@ -216,7 +257,6 @@ export class OracleFaceRenderer {
       for (let j = 0; j < 468; j++) {
         let dx = 0, dy = 0;
 
-        // ── Mouth & jaw ──
         if (L_UPPER_LIP.includes(j)) {
           dy -= open * 0.015;
         } else if (L_LOWER_LIP.includes(j)) {
@@ -228,26 +268,19 @@ export class OracleFaceRenderer {
           dx += (spread - 0.15) * 0.02 * sx;
           dy += open * 0.025;
         }
-
-        // ── Eye: brows raise on open vowels ──
         else if (L_LEFT_BROW.includes(j) || L_RIGHT_BROW.includes(j)) {
           dy -= this._lerpBrowRaise * 0.030;
         }
-
-        // ── Eye: upper lids — squint + blink close ──
         else if (L_LEFT_UPPER_LID.includes(j) || L_RIGHT_UPPER_LID.includes(j)) {
-          dy += this._lerpEyeSquint * 0.012;       // squint: lid drops slightly
-          dy -= this._lerpEyeAlert  * 0.010;       // alert: lid lifts slightly
-          dy += blinkCurve          * 0.035;        // blink: upper lid sweeps down
+          dy += this._lerpEyeSquint * 0.012;
+          dy -= this._lerpEyeAlert  * 0.010;
+          dy += blinkCurve          * 0.035;
         }
-
-        // ── Eye: lower lids — squint lifts them ──
         else if (L_LEFT_LOWER_LID.includes(j) || L_RIGHT_LOWER_LID.includes(j)) {
           dy -= this._lerpEyeSquint * 0.008;
-          dy -= blinkCurve          * 0.010;        // lower lid rises slightly during blink
+          dy -= blinkCurve          * 0.010;
         }
 
-        // ── Pucker influence (all landmarks near mouth) ──
         const du = lms[j].x - this.faceMap.mouthCenter.x;
         const dv = lms[j].y - this.faceMap.mouthCenter.y;
         const dist = Math.sqrt(du * du + dv * dv);
@@ -273,21 +306,14 @@ export class OracleFaceRenderer {
         const i2 = this.skinIndices[i * 2 + 1];
         const w1 = this.skinWeights[i * 2];
         const w2 = this.skinWeights[i * 2 + 1];
-
-        // Displacements are in UV space, convert back to clip space for pos
-        // clipX = (u - U_START) / (U_END - U_START) * 2 - 1
-        // clipY = 1 - v * 2
-        // deltaClipX = deltaU / (U_END - U_START) * 2
-        // deltaClipY = -deltaV * 2
         
         const dUX = (deltas[i1 * 2] * w1 + deltas[i2 * 2] * w2);
         const dUY = (deltas[i1 * 2 + 1] * w1 + deltas[i2 * 2 + 1] * w2);
         
-        dx = dUX / (U_END - U_START) * 2;
+        dx = dUX / (this.uEnd - this.uStart) * 2;
         dy = -dUY * 2;
       }
 
-      // 3. Perspective tilt
       const tx = this._tiltX, ty = this._tiltY;
       dx += tx * 0.05 * (1.0 - Math.abs(bx) * 0.4) + bx * tx * 0.08;
       dy += ty * 0.04 * (1.0 - Math.abs(by) * 0.4) + by * ty * 0.08;
@@ -304,7 +330,7 @@ export class OracleFaceRenderer {
     this._deformMesh(now);
 
     gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.clearColor(0, 0, 0, 1);
+    gl.clearColor(0.0, 0.05, 0.02, 0.0); // Faint emerald green tint clear (alpha 0)
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(this.program!);
 
@@ -329,7 +355,6 @@ export class OracleFaceRenderer {
     this._tickBlink(now);
   }
 
-  // ... (rest of methods: _initShaders, _buildMesh, _uploadTexture, _tickBlink, destroy, etc.)
   private _initShaders() {
     const gl = this.gl;
     const compile = (type: number, src: string) => {
@@ -354,7 +379,7 @@ export class OracleFaceRenderer {
         const nx = c / COLS, ny = r / ROWS;
         this.basePos[i] = nx * 2 - 1;
         this.basePos[i + 1] = 1 - ny * 2;
-        this.uvs[i] = U_START + nx * (U_END - U_START);
+        this.uvs[i] = nx; 
         this.uvs[i + 1] = ny;
       }
     }
@@ -410,6 +435,7 @@ export class OracleFaceRenderer {
 
   drawIdle() { this._drawFrame(performance.now()); }
   setTilt(x: number, y: number) { this._tiltX = x; this._tiltY = y; }
+  onResize() { this._computeUVs(); }
   destroy() {
     this.stopIdleAnimation(); this.img = null;
     if (this.texture) this.gl.deleteTexture(this.texture);

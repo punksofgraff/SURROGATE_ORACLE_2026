@@ -418,11 +418,15 @@
   font-size: clamp(4rem, 10vw, 10rem);
   font-weight: 900;
   letter-spacing: 0.10em;
+  
   /* Sacred Green → Profane Cyan gradient */
-  background: linear-gradient(90deg, #00ff88 0%, #00ffaa 58%, #00ffcc 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  display: inline-block;
+  background-image: linear-gradient(135deg, #00d4ff 0%, #00ff88 100%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+
   margin: 0;
   filter:
     drop-shadow(3px 3px 0px rgba(0,255,136,0.2))
@@ -450,11 +454,15 @@
   font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(2rem, 5.5vw, 4.5rem);
   font-weight: 500;
+  
   /* Matching title gradient */
-  background: linear-gradient(90deg, #00ff88 0%, #00ffaa 60%, #00ffcc 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  display: inline-block;
+  background-image: linear-gradient(135deg, #00d4ff 0%, #00ff88 100%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+
   margin: 20px 0 0;
   letter-spacing: 0.20em;
   text-transform: uppercase;
@@ -1004,7 +1012,7 @@
   /* opacity managed via direct DOM write */
 }
 
-/* ── Boot HUD — Decart connecting state overlay ───────────────────────────── */
+/* ── Boot HUD — Decart connecting state overlay ─────────────────────────────
    NOT a blackout. The avatar (oracle-avatar-static) is the hero — it pulses
    and zoom-breathes in the awakened state. This HUD anchors to the bottom of
    the cabinet frame: gradient fade up from the bottom edge, lore-matched
@@ -1248,8 +1256,8 @@
   5% { opacity: 0.5; transform: skewX(10deg); filter: blur(1px); }
   10% { opacity: 0.9; transform: skewX(0deg); filter: blur(0px); }
   15% { opacity: 0.9; transform: skewX(0deg); }
-  18% { opacity: 1; transform: skewX(-5deg); text-shadow: 2px 0 0 #00ffcc, -2px 0 0 #00ccff; }
-  20% { opacity: 0.9; transform: skewX(0deg); text-shadow: 0 0 12px rgba(0,255,136,0.7); }
+  18% { opacity: 1; transform: skewX(-5deg); filter: drop-shadow(2px 0 0 #00ffcc) drop-shadow(-2px 0 0 #00ccff); }
+  20% { opacity: 0.9; transform: skewX(0deg); filter: drop-shadow(0 0 12px rgba(0,255,136,0.7)); }
   100% { opacity: 0.9; }
 }
 
@@ -1697,36 +1705,35 @@
 /* Title chromatic aberration resolves to graffiti multi-shadow */
 @keyframes title-chroma-resolve {
   0% {
-    text-shadow:
-      -8px 0 rgba(0,255,136, 1.0),
-       8px 0 rgba(0, 204, 255, 1.0),
-       0 0 0px rgba(0, 255, 136, 0);
-    filter: blur(3px);
+    filter: 
+      blur(3px)
+      drop-shadow(-8px 0 rgba(0,255,136, 1.0))
+      drop-shadow(8px 0 rgba(0, 204, 255, 1.0));
     opacity: 0;
   }
   35% {
-    text-shadow:
-      -4px 0 rgba(0,255,136, 0.70),
-       4px 0 rgba(0, 204, 255, 0.70),
-       0 0 18px rgba(0, 255, 136, 0.7);
-    filter: blur(1px);
+    filter: 
+      blur(1px)
+      drop-shadow(-4px 0 rgba(0,255,136, 0.70))
+      drop-shadow(4px 0 rgba(0, 204, 255, 0.70))
+      drop-shadow(0 0 18px rgba(0, 255, 136, 0.7));
     opacity: 1;
   }
   70% {
-    text-shadow:
-      -1px 0 rgba(0,255,136, 0.20),
-       1px 0 rgba(0, 204, 255, 0.20),
-       0 0 12px rgba(0, 255, 136, 0.85);
-    filter: blur(0);
+    filter: 
+      blur(0)
+      drop-shadow(-1px 0 rgba(0,255,136, 0.20))
+      drop-shadow(1px 0 rgba(0, 204, 255, 0.20))
+      drop-shadow(0 0 12px rgba(0, 255, 136, 0.85));
   }
   100% {
-    text-shadow:
-      2px 2px 0px rgba(0,255,136,0.7),
-      -2px -2px 0px rgba(0,204,255,0.7),
-      0 0 10px rgba(0,255,136,0.8),
-      0 0 30px rgba(0,255,136,0.4),
-      0 0 60px rgba(0,255,136,0.2);
-    filter: blur(0);
+    filter: 
+      blur(0)
+      drop-shadow(2px 2px 0px rgba(0,255,136,0.7))
+      drop-shadow(-2px -2px 0px rgba(0,204,255,0.7))
+      drop-shadow(0 0 10px rgba(0,255,136,0.8))
+      drop-shadow(0 0 30px rgba(0,255,136,0.4))
+      drop-shadow(0 0 60px rgba(0,255,136,0.2));
     opacity: 1;
   }
 }
@@ -2439,13 +2446,13 @@
 
 /* ── XR branding: holographic HUD header ─────────────────────────────────── */
 .oracle-stage[data-xr-mode="true"] .oracle-title {
-  text-shadow:
-    0 0 4px rgba(0, 255, 136, 1),
-    0 0 18px rgba(0, 255, 136, 0.85),
-    0 0 45px rgba(0, 255, 136, 0.55),
-    0 0 90px rgba(0,255,136, 0.35),
-    -2px 0 3px rgba(0,255,136, 0.6),
-     2px 0 3px rgba(0, 255, 200, 0.5);
+  filter:
+    drop-shadow(0 0 4px rgba(0, 255, 136, 1))
+    drop-shadow(0 0 18px rgba(0, 255, 136, 0.85))
+    drop-shadow(0 0 45px rgba(0, 255, 136, 0.55))
+    drop-shadow(0 0 90px rgba(0,255,136, 0.35))
+    drop-shadow(-2px 0 3px rgba(0,255,136, 0.6))
+    drop-shadow(2px 0 3px rgba(0, 255, 200, 0.5));
   animation: xr-title-chroma 7s ease-in-out infinite;
 }
 
@@ -3245,10 +3252,11 @@
   font-size: clamp(1.4rem, 4.5vw, 1.8rem);
   letter-spacing: 0.15em;
   /* Brand gradient */
-  background: linear-gradient(90deg, #00ff88 0%, #00ffaa 50%, #00ffcc 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  background-image: linear-gradient(135deg, #00d4ff 0%, #00ff88 100%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
   text-align: center;
   filter:
     drop-shadow(0 0 15px rgba(0, 255, 136, 0.45)),

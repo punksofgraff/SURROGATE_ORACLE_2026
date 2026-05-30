@@ -169,9 +169,11 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
             fontFamily: "'aAnotherTag', 'Orbitron', monospace",
             letterSpacing: '0.15em', 
             marginBottom: 8, 
-            background: 'linear-gradient(90deg, #00ff88 0%, #00ffaa 50%, #00ffcc 100%)',
+            backgroundImage: 'linear-gradient(135deg, #00d4ff 0%, #00ff88 100%)',
+            backgroundClip: 'text',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
+            color: 'transparent',
             filter: 'drop-shadow(0 0 10px rgba(0,255,136,0.5))'
           }}>
             ESTABLISH NEURAL LINK

@@ -501,6 +501,7 @@ export function SurrogateOracleImmersion() {
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
       data-camera-active={cameraActive ? 'true' : undefined}
       data-audio-target-vol={targetVolRef.current}
+      data-xr-mode={isXRMode ? 'true' : undefined}
     >
       {/* ── Audio Spine — Radio Stream ── */}
       <audio
@@ -549,11 +550,32 @@ export function SurrogateOracleImmersion() {
 
       {/* ── Top branding ── */}
       <div className="oracle-branding">
-        <h1 className="oracle-title">
+        <h1 className="oracle-title" style={{
+          display: 'inline-block',
+          backgroundImage: 'linear-gradient(135deg, #00d4ff 0%, #00ff88 100%)',
+          backgroundClip: 'text',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          color: 'transparent',
+          filter: 'drop-shadow(0 0 20px rgba(0,255,136,0.45))'
+        }}>
           {titleText}
-          {awakened && titleText.length < 16 && <span className="oracle-cursor">▌</span>}
         </h1>
-        {subtitleText && <div className="oracle-subtitle">{subtitleText}</div>}
+        {awakened && titleText.length < 16 && <span className="oracle-cursor">▌</span>}
+        {subtitleText && (
+          <div className="oracle-subtitle" style={{
+            display: 'inline-block',
+            backgroundImage: 'linear-gradient(135deg, #00d4ff 0%, #00ff88 100%)',
+            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            color: 'transparent',
+            filter: 'drop-shadow(0 0 12px rgba(0,255,136,0.35))',
+            marginTop: '10px'
+          }}>
+            {subtitleText}
+          </div>
+        )}
       </div>
 
       {/* ── Central cabinet + avatar ── */}
@@ -913,9 +935,11 @@ export function SurrogateOracleImmersion() {
                 <div style={{ 
                   fontFamily: "'aAnotherTag', 'Orbitron', monospace",
                   fontSize: '1.5rem', letterSpacing: '0.15em', 
-                  background: 'linear-gradient(90deg, #00ff88 0%, #00ffaa 50%, #00ffcc 100%)',
+                  backgroundImage: 'linear-gradient(135deg, #00d4ff 0%, #00ff88 100%)',
+                  backgroundClip: 'text',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
+                  color: 'transparent',
                   marginBottom: '0.75rem', 
                   filter: 'drop-shadow(0 0 12px rgba(0,255,136,0.4))'
                 }}>

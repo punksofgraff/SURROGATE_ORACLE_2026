@@ -78,6 +78,16 @@ Deno.serve(async (req: Request) => {
         };
         if (msg.systemInstruction) setup.systemInstruction = msg.systemInstruction;
         if (msg.generationConfig)  setup.generationConfig  = msg.generationConfig;
+        // Step 1 — explicitly disable tool use (top-level setup field, NOT generationConfig).
+        // The Oracle has no tools; passing an empty list prevents the tool-call error loop
+        // documented in CLAUDE.md ("Oracle crashes on web tool use").
+        if (msg.tools !== undefined) setup.tools = msg.tools;
+        // Step 3 — native context-window compression. The server-side sliding window truncates
+        // the oldest turns instead of hard-closing the session (~turn 10). System instruction and
+        // prefix are guaranteed to survive the window, so the Oracle never forgets the persona.
+        setup.contextWindowCompression = { slidingWindow: {} };
+        // Step 4 (forward-compat) — relay session-resumption config when the client sends it.
+        if (msg.sessionResumption !== undefined) setup.sessionResumption = msg.sessionResumption;
         console.log('📤 Sending setup to Gemini, model:', msg.model);
         gemini.send(JSON.stringify({ setup }));
 
@@ -192,6 +202,24 @@ Deno.serve(async (req: Request) => {
         const errorMsg = msg.error?.message || msg.error?.details || 'Gemini Live error';
         console.error('❌ Gemini error:', errorMsg);
         client.send(JSON.stringify({ type: 'error', message: errorMsg }));
+        return;
+      }
+
+      // Step 2/4 — native session-management signals that were previously dropped.
+      // (usageMetadata may also ride along on a serverContent frame above, which the
+      //  serverContent branch forwards via the {...msg} spread — handled client-side.)
+      if (msg.goAway !== undefined) {
+        // timeLeft is a protobuf Duration string, e.g. "9.5s".
+        client.send(JSON.stringify({ type: 'goaway', timeLeft: msg.goAway?.timeLeft }));
+        return;
+      }
+      if (msg.sessionResumptionUpdate !== undefined) {
+        const u = msg.sessionResumptionUpdate;
+        client.send(JSON.stringify({ type: 'resume', handle: u?.newHandle, resumable: u?.resumable }));
+        return;
+      }
+      if (msg.usageMetadata !== undefined) {
+        client.send(JSON.stringify({ type: 'usage', usage: msg.usageMetadata }));
         return;
       }
 

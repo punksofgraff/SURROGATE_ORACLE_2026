@@ -23,7 +23,7 @@ import { BackendControlPanel } from './BackendControlPanel';
 import { GoogleSignInOverlay } from './GoogleSignInOverlay';
 import { GraffPunksRadio } from './GraffPunksRadio';
 import { EnculturateCrate } from './EnculturateCrate';
-import OracleConversation, { OracleConversationHandle } from './OracleConversation';
+import OracleConversation, { OracleConversationHandle, OracleScore } from './OracleConversation';
 import { MatrixRain } from './MatrixRain';
 import { ArtifactCard } from './ArtifactCard';
 import { ScrambleFragment } from './ScrambleFragment';
@@ -37,6 +37,8 @@ import { OracleAvatar3D } from './OracleAvatar3D';
 
 // Hooks
 import { useIpCheck } from '../hooks/useIpCheck';
+import { useSeekerEcho } from '../hooks/useSeekerEcho';
+import { useSeekerDefine } from '../hooks/useSeekerDefine';
 import { useAtmosphere } from '../hooks/useAtmosphere';
 import { useParallax } from '../hooks/useParallax';
 import { useXRMode } from '../hooks/useXRMode';
@@ -45,6 +47,9 @@ import { useLoreSequence, LORE_SEQUENCE } from '../hooks/useLoreSequence';
 import { useOracleConnection } from '../hooks/useOracleConnection';
 import { usePortraitPipeline } from '../hooks/usePortraitPipeline';
 import { useOracleJourney } from '../hooks/useOracleJourney';
+
+// Data
+import { COST_NAMES } from '../data/archetypes';
 
 // Libs/Utils
 import { getAudioContext } from '../lib/oracleSfx';
@@ -134,7 +139,71 @@ export function SurrogateOracleImmersion() {
   const radioGainRef             = useRef<GainNode | null>(null);
   const targetVolRef             = useRef(0.22);
 
-  const { isReturning, markVisited } = useIpCheck();
+  const { isReturning, markVisited, ipAddress } = useIpCheck();
+
+  // ── Seeker Echo — returning-Seeker memory (Build Contract §E / design §I.5) ──
+  // Keyed by wallet (currentUserId) or IP. Read on entry to seed the totem floor;
+  // written on session end with the latest archetype / cost / alignment / totem.
+  const { echo, loadEcho, saveEcho } = useSeekerEcho();
+  const { defineSeeker } = useSeekerDefine();
+  const seekerKeyRef = useRef<string | null>(null);
+  useEffect(() => { seekerKeyRef.current = currentUserId ?? ipAddress ?? null; }, [currentUserId, ipAddress]);
+  // The knife the Seeker drew — stashed so identity resolution can disambiguate by
+  // territory/themes without a TDZ dependency on `journey` (defined further down).
+  const lastKnifeRef = useRef<typeof KNIFE_QUESTIONS[number] | null>(null);
+
+  // Latest score facts the Oracle surfaced this session — what we persist on exit.
+  const echoTrackRef = useRef<{ archetype: string | null; cost: string | null; alignment: string | null }>(
+    { archetype: null, cost: null, alignment: null }
+  );
+
+  const handleTurnComplete = useCallback((_turn: number, score: OracleScore | null) => {
+    if (!score) return;
+    echoTrackRef.current.alignment = score.alignment;
+    if (score.archetypeTitle) {
+      echoTrackRef.current.archetype = score.archetypeTitle;
+      // The Oracle composes titles freely ("The Unfinished King"), so derive the
+      // cost-shape by scanning the title for a known cost word — best effort, null if none.
+      const found = COST_NAMES.find(c => score.archetypeTitle!.toLowerCase().includes(c.toLowerCase()));
+      if (found) echoTrackRef.current.cost = found;
+    }
+  }, []);
+
+  const handleSessionEnd = useCallback((alignment: string, totemLevel: number, _coins: number) => {
+    const key = seekerKeyRef.current;
+    if (key) {
+      saveEcho({
+        seekerKey: key,
+        lastArchetype: echoTrackRef.current.archetype,
+        lastCost: echoTrackRef.current.cost,
+        totemLevel,
+        alignment,
+      });
+    }
+    exitOracleMode();
+  }, [saveEcho]);
+
+  // The Oracle captured the Seeker's name/handles → resolve them IRL out-of-band
+  // (web-grounded, separate from the tool-free live voice) and persist the result.
+  // The IRL context is stored on seeker_echo for our side; it is NOT spoken back by
+  // the Oracle, whose signal still ends at 2027.
+  const handleSeekerIdentified = useCallback(async (name: string | null, handles: string[]) => {
+    const knife = lastKnifeRef.current;
+    const result = await defineSeeker({
+      name: name ?? undefined,
+      handles,
+      territory: knife?.territory,
+      themes: knife?.themes,
+    });
+    const key = seekerKeyRef.current;
+    if (key) {
+      saveEcho({
+        seekerKey: key,
+        name: name ?? undefined,
+        irlContext: result?.confident ? result.definition : undefined,
+      });
+    }
+  }, [defineSeeker, saveEcho]);
 
   // ── Audio Spine setup — must be called inside user gesture ───────────────
   const setupAudioSpine = useCallback(async () => {
@@ -225,13 +294,18 @@ export function SurrogateOracleImmersion() {
     }
 
     markVisited();
+
+    // Step E (Build Contract §E) — read the Seeker's echo on entry. Async; resolves
+    // well before the Oracle phase, so echo.totem_level can seed the totem floor.
+    if (seekerKeyRef.current) loadEcho(seekerKeyRef.current);
+
     if (isReturning) {
       setShowWalletConnect(true);
       logStep('RETURN TRIP: SHOWING WALLET OVERLAY', 'ok');
     } else {
       enterTerminal();
     }
-  }, [scenePhase, setupAudioSpine, enterTerminal, isReturning, markVisited]);
+  }, [scenePhase, setupAudioSpine, enterTerminal, isReturning, markVisited, loadEcho]);
 
   // ── VRF materialize timing ───────────────────────────────────────────────
   useEffect(() => {
@@ -454,9 +528,21 @@ export function SurrogateOracleImmersion() {
   // ── Knife selection ───────────────────────────────────────────────────────
   const handleKnifeClick = (q: string, i: number) => {
     selectKnifeQuestion(q, i);
-    portrait.addThemes(KNIFE_QUESTIONS[i].themes);
+    const knife = KNIFE_QUESTIONS[i];
+    lastKnifeRef.current = knife;
+    portrait.addThemes(knife.themes);
     setTimeout(() => {
-      oracleConversationRef.current?.sendTextMessage(q, true);
+      // Step 0 (Build Contract §F) — the Oracle previously received only the bare
+      // question text and never learned which territory the Seeker drew. Frame the
+      // send as the designed first-exchange seed: the chosen frequency + its themes
+      // ride alongside the question so the Oracle can carry the territory through the
+      // whole excavation (see ARCHETYPE_SYNTHESIS_BLOCK). Hidden = not shown as a turn.
+      const seed =
+        `[The Seeker has drawn their blade. Their frequency is ${knife.territory} ` +
+        `(themes: ${knife.themes.join(', ')}). This is the territory of the whole excavation — ` +
+        `carry it through every layer to the Mirror. Open the first layer now with their question:]\n` +
+        q;
+      oracleConversationRef.current?.sendTextMessage(seed, true);
     }, 1200);
   };
 
@@ -746,7 +832,10 @@ export function SurrogateOracleImmersion() {
           sessionId={currentSessionId}
           onOracleResponse={connection.handleOracleResponse}
           onCoinsEarned={(amt) => setSessionCoins(s => s + amt)}
-          onSessionEnd={() => journey.exitOracleMode()}
+          onSessionEnd={handleSessionEnd}
+          onTurnComplete={handleTurnComplete}
+          onSeekerIdentified={handleSeekerIdentified}
+          initialTotemLevel={echo?.totem_level ?? 0}
           onConnected={() => setIsGeminiConnected(true)}
           onDisconnected={() => setIsGeminiConnected(false)}
           onListeningChange={setIsMicActive}
@@ -871,7 +960,10 @@ export function SurrogateOracleImmersion() {
             className="oracle-terminal-overlay"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.6 } }}
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+            // pointerEvents:auto overrides .oracle-terminal-overlay's `pointer-events:none`,
+            // which was swallowing clicks on the wallet link AND the SKIP button — the
+            // returning Seeker could neither reach wallet.thesurrogate.me nor bypass it.
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 1000, pointerEvents: 'auto' }}
           >
             <div className="oracle-lore-text" style={{ textAlign: 'center' }}>
               <div style={{ marginBottom: '2rem', fontSize: '1.2rem', letterSpacing: '0.1em', color: '#00ff88' }}>

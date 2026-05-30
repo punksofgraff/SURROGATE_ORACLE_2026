@@ -20,6 +20,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { logStep } from './CodeAuditor';
 import { Mic, MicOff, Send, X, Zap } from 'lucide-react';
 import { getAudioContext } from '../lib/oracleSfx';
+import {
+  ARCHETYPE_SYNTHESIS_BLOCK,
+  TOTEM_LADDER_BLOCK,
+  SACRED_PROFANE_BLOCK,
+} from '../data/oraclePromptBlocks';
 
 const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
 
@@ -73,9 +78,15 @@ PORTRAIT — a procedural portrait of the Seeker is generated from the conversat
 - A particularly resonant moment of recognition occurs that deserves to be memorialized
 Only trigger once per session. When you trigger it, also set archetypeTitle to the Seeker's archetype name.
 
+IDENTITY CAPTURE — once per session, silent. The first time you learn the Seeker's name — and any handles, socials, links, or city they volunteer — emit this hidden marker on that turn, after your spoken reply. It is invisible to the Seeker. Emit it exactly ONCE, never repeat it:
+[[SEEKER_IRL: {"name":"<their name>","handles":["<only @handles / links / city they actually gave>"]}]]
+Only include what they truly offered — never invent a handle. If they decline to give a name, do not emit the marker at all. This does not change your voice or your archive: your signal still ends at 2027. The marker is for the alley's records, not for you to act on.
+
 SCORING — every single response must end with this block, invisible to the Seeker:
 [[ORACLE_SCORE: {"alignment":"sacred"|"profane","coinAward":10,"totemAdvancement":"none"|"stay"|"ascend"|"descend","totemLevel":2,"unlockTrigger":null|"portrait_unlock","sessionPhase":"claim"|"evidence"|"cost"|"mirror","archetypeTitle":null}]]
-`;
+${ARCHETYPE_SYNTHESIS_BLOCK}
+${TOTEM_LADDER_BLOCK}
+${SACRED_PROFANE_BLOCK}`;
 
 export type OracleScore = {
   alignment: 'sacred' | 'profane';
@@ -103,6 +114,7 @@ interface OracleConversationProps {
   onSessionEnd?: (alignment: string, totemLevel: number, coins: number) => void;
   onTurnComplete?: (turnNumber: number, score: OracleScore | null, themes: string[]) => void;
   onPortraitRequest?: () => void;
+  onSeekerIdentified?: (name: string | null, handles: string[]) => void;
   onConnected?: () => void;
   onListeningChange?: (isListening: boolean) => void;
   initialTotemLevel?: number;
@@ -147,7 +159,7 @@ const OracleConversation = forwardRef(
       initialTotemLevel = 0,
       onUserSpeakingChange, onBargeIn, onDisconnected,
       isGuidedTour,
-      onSessionEnd, onTurnComplete, onPortraitRequest,
+      onSessionEnd, onTurnComplete, onPortraitRequest, onSeekerIdentified,
     } = props;
 
     const [isConnected, setIsConnected] = useState(false);
@@ -190,6 +202,7 @@ const OracleConversation = forwardRef(
       connectedAt: null as number | null,
       lastError: null as string | null,
       recentMessages: [] as string[],
+      lastTokenCount: 0, // Step 2 — real usageMetadata.totalTokenCount, telemetry only
     });
 
     // Keep turnsRef in sync for closure-safe access in reconnect handler
@@ -205,6 +218,9 @@ const OracleConversation = forwardRef(
     const connectToGeminiRef = useRef<() => void>(() => {});
     // Reconnect attempt counter — resets on successful open, stops after 3 attempts
     const reconnectAttemptsRef = useRef(0);
+    // Step 4 — latest native session-resumption handle from Gemini. Null until the server emits
+    // a resumable SessionResumptionUpdate; passed on reconnect to restore context server-side.
+    const resumeHandleRef = useRef<string | null>(null);
 
     const onListeningChangeRef = useRef(onListeningChange);
     useEffect(() => { onListeningChangeRef.current = onListeningChange; }, [onListeningChange]);
@@ -234,6 +250,11 @@ const OracleConversation = forwardRef(
     const onPortraitRequestRef = useRef(onPortraitRequest);
     useEffect(() => { onPortraitRequestRef.current = onPortraitRequest; }, [onPortraitRequest]);
 
+    const onSeekerIdentifiedRef = useRef(onSeekerIdentified);
+    useEffect(() => { onSeekerIdentifiedRef.current = onSeekerIdentified; }, [onSeekerIdentified]);
+    // Fires once per session — the turn the Oracle first emits a [[SEEKER_IRL]] marker.
+    const seekerIdentifiedRef = useRef(false);
+
     const startMicRef = useRef<() => Promise<void>>(async () => {});
     const isListeningRef = useRef(false);
 
@@ -245,6 +266,19 @@ const OracleConversation = forwardRef(
         return { clean: text.replace(match[0], '').trim(), score };
       } catch {
         return { clean: text, score: null };
+      }
+    };
+
+    // Additive sibling of parseScore — strips the hidden [[SEEKER_IRL]] identity
+    // marker and returns whatever name/handles the Oracle captured this turn.
+    const parseSeekerIrl = (text: string): { clean: string; identity: { name?: string; handles?: string[] } | null } => {
+      const match = text.match(/\[\[SEEKER_IRL: (.*?)\]\]/);
+      if (!match) return { clean: text, identity: null };
+      try {
+        const identity = JSON.parse(match[1]);
+        return { clean: text.replace(match[0], '').trim(), identity };
+      } catch {
+        return { clean: text, identity: null };
       }
     };
 
@@ -280,6 +314,13 @@ const OracleConversation = forwardRef(
         type: 'session.config',
         model: GEMINI_MODEL,
         systemInstruction: { parts: [{ text: ORACLE_SYSTEM_PROMPT }] },
+        // Step 1 — no tools. Matches the Oracle's directive (no uplink, no grid, no tools);
+        // the proxy forwards this as a top-level setup field to stop tool-call error loops.
+        tools: [],
+        // Step 4 — enable native session resumption. Empty object on a fresh connect asks the
+        // server to emit resumption handles; on reconnect we pass the stored handle so Gemini
+        // restores the conversation context server-side (no blind summary re-injection).
+        sessionResumption: resumeHandleRef.current ? { handle: resumeHandleRef.current } : {},
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: {
@@ -294,6 +335,8 @@ const OracleConversation = forwardRef(
           },
         },
       }));
+      // Step 3 — context-window compression is forced on proxy-side; surface it for the audit log.
+      logStep('CONTEXT COMPRESSION ACTIVE', 'ok');
       setIsConnected(true);
       onConnectedRef.current?.();
       };
@@ -315,8 +358,12 @@ const OracleConversation = forwardRef(
           if ((autoStart || pendingBootRef.current) && !sessionBootedRef.current) {
             sessionBootedRef.current = true;
             pendingBootRef.current = false;
-            if (reconnectAttemptsRef.current > 0 && turnsRef.current.length > 0) {
-              // Session refresh — inject context from last turns instead of full greeting
+            if (reconnectAttemptsRef.current > 0 && resumeHandleRef.current) {
+              // Step 4 — native session resumption already restored the full context server-side.
+              // No greeting, no blind summary — the Oracle simply continues mid-thought.
+              logStep('SESSION RESUMED (native handle)', 'ok');
+            } else if (reconnectAttemptsRef.current > 0 && turnsRef.current.length > 0) {
+              // Fallback (no handle yet) — inject a blind summary of the last turns.
               const lastTurns = turnsRef.current.slice(-6)
                 .map(t => `${t.role === 'user' ? 'Seeker' : 'Oracle'}: ${t.content.slice(0, 200)}`)
                 .join('\n');
@@ -329,6 +376,9 @@ const OracleConversation = forwardRef(
           }
         }
           if (msg.type === 'server.content') {
+            // Step 2 — usageMetadata can ride along on a serverContent frame (proxy forwards it
+            // via the {...msg} spread). Capture token telemetry when present.
+            if (msg.usageMetadata?.totalTokenCount) debugInfo.current.lastTokenCount = msg.usageMetadata.totalTokenCount;
             if (msg.serverContent?.interrupted) {
               logStep('ORACLE INTERRUPTED (barge-in)', 'warn');
               setIsOracleSpeaking(false);
@@ -359,9 +409,18 @@ const OracleConversation = forwardRef(
               logStep('ORACLE TURN COMPLETE', 'ok');
               debugInfo.current.turnCount++;
               debugInfo.current.audioChunksReceived = 0; // reset for next turn
-              const { clean, score } = parseScore(currentResponseText.current);
+              const scored = parseScore(currentResponseText.current);
+              const score = scored.score;
+              // Strip the identity marker too, so it never reaches the displayed turn.
+              const { clean, identity } = parseSeekerIrl(scored.clean);
               if (!score && currentResponseText.current.length > 0) {
                 logStep('SCORE PARSE FAILED', 'warn');
+              }
+              // Web-grounded IRL resolution is out-of-band — fire once, parent orchestrates.
+              if (identity && !seekerIdentifiedRef.current && (identity.name || identity.handles?.length)) {
+                seekerIdentifiedRef.current = true;
+                logStep('SEEKER IDENTITY CAPTURED', 'ok');
+                onSeekerIdentifiedRef.current?.(identity.name ?? null, identity.handles ?? []);
               }
               if (score) {
                 logStep(`ORACLE SCORE: ${score.sessionPhase} / ${score.alignment} / +${score.coinAward}c`, 'ok');
@@ -418,6 +477,21 @@ const OracleConversation = forwardRef(
           if (msg.type === 'error') {
             logStep('GEMINI WS ERROR', 'err');
             debugInfo.current.lastError = msg.message;
+          }
+
+          // Step 2/4 — native session-management signals relayed by the proxy.
+          if (msg.type === 'usage') {
+            const total = msg.usage?.totalTokenCount;
+            if (typeof total === 'number') debugInfo.current.lastTokenCount = total;
+          }
+          if (msg.type === 'resume') {
+            // Cache the handle only when the server marks this point resumable.
+            if (msg.resumable && msg.handle) resumeHandleRef.current = msg.handle;
+          }
+          if (msg.type === 'goaway') {
+            // Early warning: socket closes in `timeLeft` (a duration string like "9.5s"). The
+            // natural onclose reconnect now carries the resume handle, so context survives.
+            logStep(`GEMINI GOAWAY (${msg.timeLeft})`, 'warn');
           }
         } catch (e) {
           console.error('[Oracle] Message parse failed:', e);

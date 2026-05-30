@@ -128,8 +128,10 @@ const CAM_Y_CENTER  = 0.0;  // face center (group is offset so face is at Y=0)
 const CAM_Y_RANGE   = 0.22; // vertical look-around extent
 const CAM_LERP      = 0.05; // cinematic smooth-follow
 
-// Wolf3D head center in world space: (1.4322 + 1.7431) / 2 ≈ 1.5877
-// We shift the group down by this amount so the face lands at Y=0 for the camera.
+// Fallback group offset if the head bone can't be located. The real offset is
+// computed per-model from the actual Head bone (see meshData.avatarYOffset) so a
+// swapped GLB (hero3.glb was replaced; .bak is the prior model) frames the FACE,
+// not the legs — the old hardcoded -1.59 was calibrated for the previous avatar.
 const AVATAR_Y_OFFSET = -1.59;
 
 export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3DProps) {
@@ -164,6 +166,20 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
 
     const hasMorphs = result.length > 0;
 
+    // ── Frame the FACE, not the legs — compute the group offset from the model ──
+    // The camera looks at world Y=0, so we shift the group down by the head bone's
+    // natural Y. Computed from THIS GLB rather than a hardcoded constant, so a
+    // swapped/rescaled model still lands head-and-shoulders in the cabinet.
+    let avatarYOffset = AVATAR_Y_OFFSET;
+    if (headBone) {
+      scene.updateMatrixWorld(true);
+      const headWorld = new THREE.Vector3();
+      (headBone as THREE.Object3D).getWorldPosition(headWorld);
+      // Drop the offset slightly below the head center so eyes/face sit at frame center.
+      if (Number.isFinite(headWorld.y) && headWorld.y > 0.01) avatarYOffset = -(headWorld.y - 0.05);
+      if (import.meta.env.DEV) console.log('[OracleAvatar3D] head Y =', headWorld.y, '→ avatarYOffset =', avatarYOffset);
+    }
+
     if (import.meta.env.DEV) {
       if (hasMorphs) {
         console.group('[OracleAvatar3D] Morph Target Dictionary');
@@ -190,7 +206,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
       }
     }
 
-    return { meshes: result, headBone, neckBone, leftEyeBone, rightEyeBone, hasMorphs };
+    return { meshes: result, headBone, neckBone, leftEyeBone, rightEyeBone, hasMorphs, avatarYOffset };
   }, [scene]);
 
   useFrame((state, delta) => {
@@ -257,7 +273,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
     if (groupRef.current) {
       groupRef.current.position.y = THREE.MathUtils.lerp(
         groupRef.current.position.y,
-        AVATAR_Y_OFFSET + Math.sin(state.clock.elapsedTime * 1.4) * 0.008,
+        meshData.avatarYOffset + Math.sin(state.clock.elapsedTime * 1.4) * 0.008,
         lerpDt * 0.04,
       );
     }

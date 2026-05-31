@@ -39,6 +39,8 @@ const OVR_NAMES = [
   'viseme_ih',   // "ih" as in bit
   'viseme_oh',   // "oh" as in go
   'viseme_ou',   // "oo" as in too
+  'eyeBlinkLeft',
+  'eyeBlinkRight',
 ] as const;
 
 type OVRName = typeof OVR_NAMES[number];
@@ -85,23 +87,30 @@ const ARKIT_FALLBACK: Partial<Record<OVRName, string[]>> = {
   viseme_ou:  ['mouthFunnel', 'Mouth_U'],
 };
 
-function buildIndexMap(dict: Record<string, number>): Map<OVRName, number> {
-  const map = new Map<OVRName, number>();
+// ── Blinking morphs ──────────────────────────────────────────────────────────
+const BLINK_NAMES = ['eyeBlinkLeft', 'eyeBlinkRight', 'EyeBlinkLeft', 'EyeBlinkRight'] as const;
+
+function buildIndexMap(dict: Record<string, number>): Map<string, number> {
+  const map = new Map<string, number>();
+  
+  // 1. OVR Standard
   for (const ovr of OVR_NAMES) {
-    // 1. OVR prefixed
     if (dict[ovr] !== undefined) { map.set(ovr, dict[ovr]); continue; }
-    // 2. Unprefixed (e.g. "aa", "E", "ih")
     const bare = ovr.replace('viseme_', '');
     if (dict[bare] !== undefined) { map.set(ovr, dict[bare]); continue; }
-    // 3. ARKit equivalents
     const arkit = ARKIT_FALLBACK[ovr];
     if (arkit) {
       for (const name of arkit) {
         if (dict[name] !== undefined) { map.set(ovr, dict[name]); break; }
       }
     }
-    // 4. Index fallback handled at apply-time (skip if no entry)
   }
+
+  // 2. Blinking
+  for (const b of BLINK_NAMES) {
+    if (dict[b] !== undefined) map.set(b, dict[b]);
+  }
+
   return map;
 }
 
@@ -141,11 +150,14 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
   // Smooth camera target — avoids snapping on sudden gesture changes
   const camTarget = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
 
+  // Blinking logic
+  const blinkRef = useRef({ intensity: 0, lastBlink: 0 });
+
   // Cache skinned meshes + gaze bones — found once on mount, zero traversal per frame.
   const meshData = useMemo(() => {
     const result: Array<{
       mesh:     THREE.SkinnedMesh;
-      indexMap: Map<OVRName, number>;
+      indexMap: Map<string, number>;
     }> = [];
     let headBone:     THREE.Object3D | null = null as THREE.Object3D | null;
     let neckBone:     THREE.Object3D | null = null as THREE.Object3D | null;
@@ -153,14 +165,43 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
     let rightEyeBone: THREE.Object3D | null = null as THREE.Object3D | null;
 
     scene.traverse((child) => {
+      // Mesh logging for debugging
+      if (child.type === 'SkinnedMesh' || child.type === 'Mesh') {
+        const m = child as THREE.Mesh;
+        if (m.morphTargetDictionary) {
+           const keys = Object.keys(m.morphTargetDictionary);
+           const eyeKeys = keys.filter(k => 
+             k.toLowerCase().includes('eye') || 
+             k.toLowerCase().includes('blink') || 
+             k.toLowerCase().includes('close') || 
+             k.toLowerCase().includes('lid')
+           );
+           console.log(`[OracleAvatar3D] Mesh "${m.name}" eye/blink morphs found:`, eyeKeys.join(', '));
+           
+           // Expose all morph names for debugging
+           if (import.meta.env.DEV) {
+             (window as any).__oracle_allMorphs = (window as any).__oracle_allMorphs || {};
+             (window as any).__oracle_allMorphs[m.name] = keys;
+           }
+        }
+      }
+
       if (child.name === 'Head'     && !headBone)     headBone     = child;
-      if (child.name === 'Neck'     && !neckBone)     neckBone     = child;
-      if (child.name === 'LeftEye'  && !leftEyeBone)  leftEyeBone  = child;
-      if (child.name === 'RightEye' && !rightEyeBone) rightEyeBone = child;
+      if (child.name.toLowerCase().includes('neck') && !neckBone)   neckBone     = child;
+      if (child.name.toLowerCase().includes('eyeleft')  && !leftEyeBone)  leftEyeBone  = child;
+      if (child.name.toLowerCase().includes('eyeright') && !rightEyeBone) rightEyeBone = child;
 
       const sm = child as THREE.SkinnedMesh;
       if (!sm.isSkinnedMesh || !sm.morphTargetDictionary || !sm.morphTargetInfluences) return;
       const indexMap = buildIndexMap(sm.morphTargetDictionary);
+      
+      // Auto-detect extra blinking morphs
+      const dict = sm.morphTargetDictionary;
+      const extraBlinks = ['eyeBlinkLeft', 'eyeBlinkRight', 'EyeBlinkLeft', 'EyeBlinkRight', 'eyesClosed', 'EyesClosed', 'blink'];
+      for (const b of extraBlinks) {
+        if (dict[b] !== undefined) indexMap.set(b, dict[b]);
+      }
+
       result.push({ mesh: sm, indexMap });
     });
 
@@ -185,23 +226,18 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
         console.group('[OracleAvatar3D] Morph Target Dictionary');
         result.forEach(({ mesh, indexMap }) => {
           console.log(`Mesh "${mesh.name}" — raw dict:`, mesh.morphTargetDictionary);
-          console.log(`Mesh "${mesh.name}" — resolved OVR map:`, Object.fromEntries(indexMap));
+          console.log(`Mesh "${mesh.name}" — resolved map:`, Object.fromEntries(indexMap));
         });
         console.groupEnd();
-
-        // Expose for oracle-calibrate.mjs
+        
+        // Expose for debugging
         (window as any).__oracle_morphDicts = result.map(({ mesh, indexMap }) => ({
           meshName: mesh.name,
           dict:     { ...mesh.morphTargetDictionary },
           resolved: Object.fromEntries(indexMap),
         }));
       } else {
-        console.warn(
-          '[OracleAvatar3D] hero3.glb has no morph targets.\n' +
-          'If this is a Ready Player Me avatar, re-download with:\n' +
-          '  https://models.readyplayer.me/<avatarId>.glb?morphTargets=Oculus+Visemes\n' +
-          'Falling back to Head bone speaking animation.'
-        );
+        console.warn('[OracleAvatar3D] hero3.glb has no morph targets.');
         (window as any).__oracle_morphDicts = [];
       }
     }
@@ -215,37 +251,33 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
     const lerpDt = Math.min(delta * 60, 1); // frame-rate independent
 
     // ── Camera: parallax look-around + pinch zoom ──────────────────────────
-    // Runs every frame so the cinematic lerp stays smooth even when the
-    // cameraStateRef hasn't changed (drift settle / breathing feel).
     if (cameraStateRef?.current) {
       const { x, y, zoom } = cameraStateRef.current;
-      // Map zoom 1→4 to Z distance 2.8→0.7 (reciprocal = natural optical zoom feel).
-      // Clamp both ends: zoom<1 must not send camera to Z=Infinity.
       const targetZ = Math.min(CAM_DEFAULT_Z, Math.max(CAM_MIN_Z, CAM_DEFAULT_Z / Math.max(zoom, 1)));
-      camTarget.current.set(
-        x * CAM_X_RANGE,
-        CAM_Y_CENTER - y * CAM_Y_RANGE,
-        targetZ,
-      );
+      camTarget.current.set(x * CAM_X_RANGE, CAM_Y_CENTER - y * CAM_Y_RANGE, targetZ);
     }
     const cf = CAM_LERP * lerpDt;
     camera.position.lerp(camTarget.current, cf);
-    camera.lookAt(0, CAM_Y_CENTER, 0); // face is at Y=0 after group offset
+    camera.lookAt(0, CAM_Y_CENTER, 0);
+
+    // ── Blinking ──────────────────────────────────────────────────────────
+    const now = state.clock.elapsedTime;
+    if (now - blinkRef.current.lastBlink > 3.5 + Math.random() * 4) {
+      blinkRef.current.lastBlink = now;
+      blinkRef.current.intensity = 1.0;
+    }
+    if (blinkRef.current.intensity > 0) {
+      blinkRef.current.intensity = Math.max(0, blinkRef.current.intensity - delta * 12);
+    }
 
     // ── Gaze tracking — Oracle watches the viewer ─────────────────────────
-    // Eyes lead, head follows, neck barely moves. Hierarchy mirrors how a real
-    // person maintains eye contact while the head lags behind the gaze.
-    // cameraStateRef.x/y are the same parallax values driving the CSS layers,
-    // so the Oracle's gaze is always aimed at wherever the user is looking from.
     if (cameraStateRef?.current) {
-      // Clamp to ±1 regardless of phase intensity overshoot
       const gx = Math.max(-1, Math.min(1,  cameraStateRef.current.x));
-      const gy = Math.max(-1, Math.min(1, -cameraStateRef.current.y)); // invert Y (up = positive)
+      const gy = Math.max(-1, Math.min(1, -cameraStateRef.current.y));
 
-      // Eye bones — snappy, wide angle (they do most of the work)
       const eyeLerpF = lerpDt * 0.14;
-      const eyeMaxH  =  0.30; // ~17° horizontal
-      const eyeMaxV  =  0.18; // ~10° vertical
+      const eyeMaxH  =  0.30;
+      const eyeMaxV  =  0.18;
       if (meshData.leftEyeBone) {
         meshData.leftEyeBone.rotation.y  = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.y,  gx * eyeMaxH, eyeLerpF);
         meshData.leftEyeBone.rotation.x  = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.x,  gy * eyeMaxV, eyeLerpF);
@@ -254,22 +286,14 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
         meshData.rightEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.y, gx * eyeMaxH, eyeLerpF);
         meshData.rightEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.x, gy * eyeMaxV, eyeLerpF);
       }
-
-      // Head bone — slower, narrower (compensates partially for eye movement)
       if (meshData.headBone) {
         const headLerpF = lerpDt * 0.04;
         meshData.headBone.rotation.y = THREE.MathUtils.lerp(meshData.headBone.rotation.y, gx * 0.10, headLerpF);
         meshData.headBone.rotation.x = THREE.MathUtils.lerp(meshData.headBone.rotation.x, gy * 0.06, headLerpF);
       }
-
-      // Neck — barely perceptible, just enough to feel organic
-      if (meshData.neckBone) {
-        const neckLerpF = lerpDt * 0.025;
-        meshData.neckBone.rotation.y = THREE.MathUtils.lerp(meshData.neckBone.rotation.y, gx * 0.04, neckLerpF);
-      }
     }
 
-    // ── Idle breathing — subtle Y drift around the face-centered offset ──
+    // ── Idle breathing ────────────────────────────────────────────────────
     if (groupRef.current) {
       groupRef.current.position.y = THREE.MathUtils.lerp(
         groupRef.current.position.y,
@@ -280,28 +304,18 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
 
     if (!vs) return;
 
-    // ── Smoke Test Hooks ──────────────────────────────────────────────────
-    // Write viseme state to the DOM so automated pressure tests can verify
-    // the audio-viseme handshake without reading internal Three.js state.
-    if (typeof document !== 'undefined') {
-      const el = document.querySelector('.oracle-avatar-smoke-hook') as HTMLElement;
-      if (el) {
-        el.dataset.viseme = vs.viseme;
-        el.dataset.amplitude = vs.amplitude.toFixed(3);
-        // Smoke test expects opacity 0.98 or 0 when silent to confirm reset
-        if (vs.amplitude < 0.01) el.style.opacity = '0.98';
-        else el.style.opacity = '1.0';
-      }
-    }
-
     // ── PATH A: OVR morph targets ─────────────────────────────────────────
     if (meshData.hasMorphs) {
-      const targets = new Map<OVRName, number>();
+      const targets = new Map<string, number>();
       OVR_NAMES.forEach(n => targets.set(n, 0));
+      
+      // Add blinking to targets
+      const bInt = blinkRef.current.intensity;
+      BLINK_NAMES.forEach(b => targets.set(b, bInt));
 
       if (amp > 0.01) {
         const dominant = ORACLE_TO_OVR[vs.viseme] ?? ['viseme_sil'];
-        const weight   = Math.min(amp * 1.4, 1.0);
+        const weight   = Math.min(amp * 1.5, 1.0);
         const perShape = weight / dominant.length;
         for (const name of dominant) {
           targets.set(name, (targets.get(name) ?? 0) + perShape);
@@ -319,31 +333,27 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
       const decayLerp  = lerpDt * 0.18;
 
       for (const { mesh, indexMap } of meshData.meshes) {
-        const infl      = mesh.morphTargetInfluences!;
-        const totalMorphs = infl.length;
-        for (const name of OVR_NAMES) {
+        const infl = mesh.morphTargetInfluences!;
+        for (const [name, value] of targets) {
           const idx = indexMap.get(name);
-          if (idx === undefined || idx >= totalMorphs) continue;
-          const target  = targets.get(name) ?? 0;
+          if (idx === undefined) continue;
           const current = infl[idx];
-          infl[idx] = THREE.MathUtils.lerp(current, target, target > current ? attackLerp : decayLerp);
+          infl[idx] = THREE.MathUtils.lerp(current, value, value > current ? attackLerp : decayLerp);
+        }
+        
+        // Occasional debug log
+        if (vs.amplitude > 0.3 && Math.random() < 0.005) {
+          console.log(`[OracleAvatar3D] Mesh "${mesh.name}" amp=${vs.amplitude.toFixed(2)} infl:`, Array.from(infl).map(v => v.toFixed(2)).join(', '));
         }
       }
       return;
     }
 
-    // ── PATH B: No morph targets — bone-based speaking indicator ─────────
-    // Animates the Head bone with a subtle jaw-open rotation when speaking.
-    // Crude but visible. Replace by re-downloading the GLB with OVR visemes.
+    // ── PATH B: No morph targets — bone fallback ─────────────────────────
     const bone = meshData.headBone;
     if (!bone) return;
-
-    const targetRot = amp > 0.03 ? -amp * 0.09 : 0; // subtle downward rotation = jaw open
-    bone.rotation.x = THREE.MathUtils.lerp(
-      bone.rotation.x,
-      targetRot,
-      amp > bone.rotation.x ? lerpDt * 0.55 : lerpDt * 0.20,
-    );
+    const targetRot = amp > 0.03 ? -amp * 0.12 : 0;
+    bone.rotation.x = THREE.MathUtils.lerp(bone.rotation.x, targetRot, amp > bone.rotation.x ? lerpDt * 0.55 : lerpDt * 0.20);
   });
 
   return (

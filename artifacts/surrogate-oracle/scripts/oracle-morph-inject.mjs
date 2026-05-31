@@ -31,13 +31,14 @@ const OVR_NAMES = [
   'viseme_sil', 'viseme_PP',  'viseme_FF',  'viseme_TH',  'viseme_DD',
   'viseme_kk',  'viseme_CH',  'viseme_SS',  'viseme_nn',  'viseme_RR',
   'viseme_aa',  'viseme_E',   'viseme_ih',  'viseme_oh',  'viseme_ou',
+  'eyeBlinkLeft', 'eyeBlinkRight',
 ];
 
 // ── Landmark control points — calibrated to hero3.glb coordinate system ──────
 //
 // Head bounds:  X(-0.0953→+0.0953)  Y(1.4322→1.7431)  Z(-0.0556→0.1480)
 // Mouth region: Y ≈ 1.45–1.53  Z > 0.08
-// Upper teeth:  Y ≈ 1.55–1.58  (Wolf3D_Teeth mesh)
+// Eyes region:  Y ≈ 1.63–1.66  X ≈ ±0.032
 //
 // Each landmark: { cx, cy, cz, sigma }
 // sigma = Gaussian influence radius in world units
@@ -49,6 +50,8 @@ const LM = {
   lc:     { cx: -0.040,  cy: 1.500, cz: 0.120, sigma: 0.018 }, // left corner
   rc:     { cx:  0.040,  cy: 1.500, cz: 0.120, sigma: 0.018 }, // right corner
   chin:   { cx: 0,       cy: 1.434, cz: 0.082, sigma: 0.032 }, // chin
+  eyeL:   { cx: -0.032,  cy: 1.642, cz: 0.090, sigma: 0.025 }, // left eye
+  eyeR:   { cx:  0.032,  cy: 1.642, cz: 0.090, sigma: 0.025 }, // right eye
 };
 
 // ── Viseme definitions ────────────────────────────────────────────────────────
@@ -58,6 +61,13 @@ const LM = {
 
 const VISEMES = {
   viseme_sil: [], // rest pose — zero displacement
+
+  eyeBlinkLeft: [
+    { lm: 'eyeL', dx: 0, dy: -0.015, dz: 0.005 }
+  ],
+  eyeBlinkRight: [
+    { lm: 'eyeR', dx: 0, dy: -0.015, dz: 0.005 }
+  ],
 
   viseme_aa: [    // open vowel "ah" — maximum jaw drop
     { lm: 'jaw',   dx: 0,      dy: -0.022, dz:  0.004 },

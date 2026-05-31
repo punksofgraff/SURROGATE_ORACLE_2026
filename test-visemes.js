@@ -25,18 +25,18 @@ const puppeteer = require('puppeteer');
   await page.waitForSelector('.oracle-knife-card');
   await page.click('.oracle-knife-card');
   console.log('Selected knife.');
-  await new Promise(r => setTimeout(r, 2000));
+  await new Promise(r => setTimeout(r, 4000));
 
-  // 3. Check for viseme data-attributes
-  const visemeData = await page.evaluate(() => {
+  // 3. Check for viseme data-attributes and all morphs
+  const debugData = await page.evaluate(() => {
     const el = document.querySelector('.oracle-avatar-smoke-hook');
-    if (!el) return 'element not found';
     return {
-      viseme: el.dataset.viseme,
-      amplitude: el.dataset.amplitude
+      viseme: el ? el.dataset.viseme : 'not found',
+      amplitude: el ? el.dataset.amplitude : 'not found',
+      allMorphs: window.__oracle_allMorphs
     };
   });
-  console.log('Viseme Data (Initial Oracle State):', JSON.stringify(visemeData));
+  console.log('Debug Data:', JSON.stringify(debugData, null, 2));
 
   // 4. Send a message to trigger Oracle response
   await page.click('.oc-signal-pad-toggle');
@@ -44,7 +44,7 @@ const puppeteer = require('puppeteer');
   await page.keyboard.press('Enter');
 
   console.log('Waiting for Oracle response...');
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 40; i++) {
     await new Promise(r => setTimeout(r, 500));
     const liveViseme = await page.evaluate(() => {
       const el = document.querySelector('.oracle-avatar-smoke-hook');

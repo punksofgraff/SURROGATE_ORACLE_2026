@@ -136,7 +136,7 @@ export function SurrogateOracleImmersion() {
   const staticAvatarRef          = useRef<HTMLImageElement | null>(null);
   const audioRef                 = useRef<HTMLAudioElement | null>(null);
   const radioGainRef             = useRef<GainNode | null>(null);
-  const targetVolRef             = useRef(0.22);
+  const [targetVol, setTargetVol] = useState(0.22);
 
   const { isReturning, hasCompletedLore, markVisited, markLoreCompleted, ipAddress } = useIpCheck();
 
@@ -211,7 +211,7 @@ export function SurrogateOracleImmersion() {
       const ctx    = getAudioContext();
       const source = ctx.createMediaElementSource(audioRef.current);
       const gain   = ctx.createGain();
-      gain.gain.value = targetVolRef.current;
+      gain.gain.value = targetVol;
       source.connect(gain);
       gain.connect(ctx.destination);
       radioGainRef.current = gain;
@@ -220,22 +220,21 @@ export function SurrogateOracleImmersion() {
     } catch (e) {
       console.warn('[Audio] Spine setup failed:', e);
     }
-  }, []);
+  }, [targetVol]);
+
+  const [isOracleSpeakingDelayed, setIsOracleSpeakingDelayed] = useState(false);
+  const speakingTimeoutRef = useRef<number | null>(null);
 
   // ── Viseme handler — writes to ref only, NO setState ────────────────────
   const handleViseme = useCallback((state: VisemeState) => {
     visemeStateRef.current = state;
 
     // ── Smoke Test Hooks ──────────────────────────────────────────────────
-    // Write viseme state to the DOM so automated pressure tests can verify
-    // the audio-viseme handshake without reading internal Three.js state.
-    // Moved to Immersion layer so tests work even if 3D load is slow/headless.
     if (typeof document !== 'undefined') {
       const el = document.querySelector('.oracle-avatar-smoke-hook') as HTMLElement;
       if (el) {
         el.dataset.viseme = state.viseme;
         el.dataset.amplitude = state.amplitude.toFixed(3);
-        // Smoke test expects opacity 0.98 or 0 when silent to confirm reset
         if (state.amplitude < 0.01) el.style.opacity = '0.98';
         else el.style.opacity = '1.0';
       }
@@ -244,6 +243,14 @@ export function SurrogateOracleImmersion() {
 
   const handleProcessingChange = useCallback((proc: boolean) => {
     setIsOracleSpeaking(proc);
+    if (proc) {
+      if (speakingTimeoutRef.current) window.clearTimeout(speakingTimeoutRef.current);
+      setIsOracleSpeakingDelayed(true);
+    } else {
+      speakingTimeoutRef.current = window.setTimeout(() => {
+        setIsOracleSpeakingDelayed(false);
+      }, 500);
+    }
   }, []);
 
   // ── Connection Hook ──────────────────────────────────────────────────────
@@ -320,15 +327,15 @@ export function SurrogateOracleImmersion() {
   // ── fadeToVolume — GainNode-based, iOS-proof ────────────────────────────
   const fadeToVolume = useCallback((target: number) => {
     const safeTarget = Math.max(0.0001, target);
-    targetVolRef.current = target;
+    setTargetVol(target);
     if (radioGainRef.current) {
       const gain = radioGainRef.current;
       const ctx  = getAudioContext();
       const now  = ctx.currentTime;
       const isDucking = target < gain.gain.value;
       gain.gain.cancelScheduledValues(now);
-      gain.gain.setValueAtTime(gain.gain.value, now);
-      gain.gain.exponentialRampToValueAtTime(safeTarget, now + (isDucking ? 0.02 : 0.40));
+      gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), now);
+      gain.gain.exponentialRampToValueAtTime(safeTarget, now + (isDucking ? 0.05 : 0.40));
     } else if (audioRef.current) {
       audioRef.current.volume = target;
     }
@@ -349,19 +356,28 @@ export function SurrogateOracleImmersion() {
   }, [scenePhase]);
 
   // ── Music ducking ────────────────────────────────────────────────────────
-  // Oracle voice = 1.0 (PCMPlayer full). Radio in oracle mode = 10% of that = 0.08.
-  // When Oracle speaks, radio drops to 1.5% so the voice is never competing.
+  // Priority: 
+  // 1. Oracle Speaking (SILENCE)
+  // 2. User Speaking / Mic Active (Ducked)
+  // 3. Oracle Mode (Background)
+  // 4. Other states (Full)
   useEffect(() => {
-    let target = 0.06; // Dormant / Terminal
-    if (scenePhase === 'awakened') target = 0.06;
-    if (scenePhase === 'oracle')   target = 0.08;  // 8% — audible alley texture
-    if (isOracleSpeaking)          target = 0.015; // 1.5% — Oracle voice dominant
-    if ((isMicActive || isUserSpeaking) && scenePhase === 'oracle') target = 0.04;
-    if (target !== targetVolRef.current) {
-      targetVolRef.current = target;
-      fadeToVolume(target);
+    let nextTarget = 0.06; // Dormant / Terminal / Awakened
+    
+    if (scenePhase === 'oracle') {
+      nextTarget = 0.08; 
+      if (isMicActive || isUserSpeaking) nextTarget = 0.035; 
     }
-  }, [scenePhase, isMicActive, isUserSpeaking, isOracleSpeaking, fadeToVolume]);
+    
+    // Explicit silence when Oracle is producing signal
+    if (isOracleSpeaking || isOracleSpeakingDelayed) {
+      nextTarget = 0.001; 
+    }
+
+    if (nextTarget !== targetVol) {
+      fadeToVolume(nextTarget);
+    }
+  }, [scenePhase, isMicActive, isUserSpeaking, isOracleSpeaking, isOracleSpeakingDelayed, targetVol, fadeToVolume]);
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -500,7 +516,7 @@ export function SurrogateOracleImmersion() {
       data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
       data-camera-active={cameraActive ? 'true' : undefined}
-      data-audio-target-vol={targetVolRef.current}
+      data-audio-target-vol={targetVol}
       data-xr-mode={isXRMode ? 'true' : undefined}
     >
       {/* ── Audio Spine — Radio Stream ── */}

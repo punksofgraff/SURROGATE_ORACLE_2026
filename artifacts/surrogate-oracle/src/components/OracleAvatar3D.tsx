@@ -13,8 +13,8 @@
  *   natural blending, not just a single active shape at a time
  * - visemeStateRef pattern — no React re-renders at 60fps
  */
-import React, { useRef, useMemo } from 'react';
-import { useGLTF } from '@react-three/drei';
+import React, { useRef, useMemo, useEffect } from 'react';
+import { useGLTF, useAnimations, Center } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { VisemeState } from '../lib/visemeDetector';
@@ -138,7 +138,9 @@ export interface OracleAvatar3DProps {
 const CAM_DEFAULT_Z = 1.8;  // portrait distance — head + upper chest visible
 const CAM_MIN_Z     = 0.4;  // maximum zoom-in (eyes fill the frame)
 const CAM_X_RANGE   = 0.30; // horizontal look-around extent (world units)
-const CAM_Y_CENTER  = -0.28; // shifted down — head in upper frame, arms/chest visible
+// <Center top> puts feet at Y=0, so head is at ~Y=1.8. Look at chest (Y≈1.2)
+// to frame head in upper portion with arms/body visible below.
+const CAM_Y_CENTER  = 1.2;
 const CAM_Y_RANGE   = 0.22; // vertical look-around extent
 const CAM_LERP      = 0.08; // responsive on phone while still smooth
 
@@ -149,11 +151,21 @@ const CAM_LERP      = 0.08; // responsive on phone while still smooth
 const AVATAR_Y_OFFSET = -1.59;
 
 export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3DProps) {
-  const { scene }  = useGLTF('/hero3.glb?v=morphs-v2');
+  const { scene }      = useGLTF('/hero3.glb?v=morphs-v2');
+  const { animations: idleClips }    = useGLTF('/oracle-idle.glb');
+  const { animations: talking1Clips } = useGLTF('/oracle-talking-1.glb');
+  const { animations: talking2Clips } = useGLTF('/oracle-talking-2.glb');
   const { camera } = useThree();
   const groupRef   = useRef<THREE.Group>(null);
   // Smooth camera target — avoids snapping on sudden gesture changes
   const camTarget = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
+
+  // Animation mixer — driven by speaking state
+  const { actions, mixer } = useAnimations(
+    [...idleClips, ...talking1Clips, ...talking2Clips],
+    groupRef,
+  );
+  const talkingActionRef = useRef<THREE.AnimationAction | null>(null);
 
   // Blinking state — speed, double-blink support, idle vs speech mode
   const blinkRef = useRef({
@@ -163,6 +175,15 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
     doublePending: false,
     doubleAt: 0,
   });
+
+  // ── Start idle animation on mount ─────────────────────────────────────────
+  useEffect(() => {
+    const idle = actions['M_Standing_Idle_001'];
+    if (idle) {
+      idle.reset().setLoop(THREE.LoopRepeat, Infinity).play();
+      idle.setEffectiveWeight(1);
+    }
+  }, [actions]);
 
   // Cache skinned meshes + gaze bones — found once on mount, zero traversal per frame.
   const meshData = useMemo(() => {
@@ -289,6 +310,41 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
     const lerpDt = Math.min(delta * 60, 1); // frame-rate independent
     const t      = state.clock.elapsedTime;
 
+    // ── Animation mixer ───────────────────────────────────────────────────
+    mixer.update(delta);
+
+    // Blend idle ↔ talking based on Oracle speaking amplitude
+    const idleAction    = actions['M_Standing_Idle_001'];
+    const talk1Action   = actions['M_Talking_Variations_003'];
+    const talk2Action   = actions['M_Talking_Variations_004'];
+
+    if (idleAction && talk1Action && talk2Action) {
+      const isSpeaking = amp > 0.04;
+
+      // Pick a talking variation if we just started speaking
+      if (isSpeaking && !talkingActionRef.current) {
+        const chosen = Math.random() < 0.5 ? talk1Action : talk2Action;
+        chosen.reset().setLoop(THREE.LoopRepeat, Infinity).play();
+        chosen.setEffectiveWeight(0);
+        talkingActionRef.current = chosen;
+      }
+      if (!isSpeaking && talkingActionRef.current) {
+        talkingActionRef.current = null;
+      }
+
+      const talkWeight = isSpeaking ? Math.min(1, amp * 3) : 0;
+      idleAction.setEffectiveWeight(1 - talkWeight * 0.6);
+      if (talkingActionRef.current) {
+        talkingActionRef.current.setEffectiveWeight(talkWeight);
+        // Fade out the other talking action
+        const other = talkingActionRef.current === talk1Action ? talk2Action : talk1Action;
+        other.setEffectiveWeight(0);
+      } else {
+        talk1Action.setEffectiveWeight(0);
+        talk2Action.setEffectiveWeight(0);
+      }
+    }
+
     // ── Camera: parallax look-around + pinch zoom ─────────────────────────
     if (cameraStateRef?.current) {
       const { x, y, zoom } = cameraStateRef.current;
@@ -385,38 +441,13 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
       meshData.neckBone.rotation.z = THREE.MathUtils.lerp(meshData.neckBone.rotation.z, neckSwayZ, neckLerpF);
     }
 
-    // ── Spine (Spine2): upper-body lean — subtle but visible ──────────────
-    if (meshData.spineBone) {
-      const spineLerpF = lerpDt * 0.025;
-      // Gentle rocking + forward lean when speaking (presence)
-      const spineRockZ = Math.sin(t * 0.62) * 0.018 + Math.cos(t * 0.41 + 0.7) * 0.010;
-      const spineForward = amp * 0.018; // leans in when speaking
-      meshData.spineBone.rotation.x = THREE.MathUtils.lerp(meshData.spineBone.rotation.x, spineForward, spineLerpF);
-      meshData.spineBone.rotation.z = THREE.MathUtils.lerp(meshData.spineBone.rotation.z, spineRockZ,  spineLerpF);
-    }
-
-    // ── Shoulders: breathing lift + speech engagement ─────────────────────
-    // breathPhase is a slow sin — shoulders rise/fall with each breath cycle
-    const breathPhase = Math.sin(t * 1.4) * 0.020;
-    if (meshData.leftShoulderBone) {
-      const shLerpF = lerpDt * 0.022;
-      // Left shoulder: breathe up + slight inward shrug on heavy speech
-      const tgtZ = breathPhase + amp * 0.015;
-      meshData.leftShoulderBone.rotation.z = THREE.MathUtils.lerp(meshData.leftShoulderBone.rotation.z, tgtZ, shLerpF);
-    }
-    if (meshData.rightShoulderBone) {
-      const shLerpF = lerpDt * 0.022;
-      // Right shoulder: opposite breathing phase for natural asymmetry
-      const tgtZ = -breathPhase - amp * 0.015;
-      meshData.rightShoulderBone.rotation.z = THREE.MathUtils.lerp(meshData.rightShoulderBone.rotation.z, tgtZ, shLerpF);
-    }
-
-    // ── Breathing — visible Y drift, quickens with speech ────────────────
+    // ── Breathing — gentle Y drift on the outer group ────────────────────
+    // <Center> handles positioning; we just add a subtle alive movement.
     if (groupRef.current) {
       const breathSpeed = 1.4 + amp * 1.5;
       groupRef.current.position.y = THREE.MathUtils.lerp(
         groupRef.current.position.y,
-        meshData.avatarYOffset + Math.sin(t * breathSpeed) * 0.013,
+        Math.sin(t * breathSpeed) * 0.012,
         lerpDt * 0.04,
       );
     }
@@ -479,7 +510,10 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
 
   return (
     <group ref={groupRef} dispose={null}>
-      <primitive object={scene} />
+      {/* <Center> auto-frames the avatar by bounding box — no manual Y offset */}
+      <Center top>
+        <primitive object={scene} />
+      </Center>
       <OracleSceneLights />
     </group>
   );
@@ -499,5 +533,8 @@ function OracleSceneLights() {
   );
 }
 
-// Eager preload so the GLB is ready before the canvas mounts
+// Eager preload so GLBs are ready before the canvas mounts
 useGLTF.preload('/hero3.glb?v=morphs-v2');
+useGLTF.preload('/oracle-idle.glb');
+useGLTF.preload('/oracle-talking-1.glb');
+useGLTF.preload('/oracle-talking-2.glb');

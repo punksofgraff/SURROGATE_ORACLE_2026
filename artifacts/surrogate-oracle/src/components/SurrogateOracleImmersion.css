@@ -423,9 +423,9 @@
   font-weight: 900;
   letter-spacing: 0.10em;
   
-  /* Sacred Green → Profane Cyan gradient */
+  /* Sacred Green → Cyan brand gradient (#00ff88 → #00ffcc) */
   display: inline-block;
-  background: linear-gradient(135deg, #0066ff 0%, #00ff88 100%) !important;
+  background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%) !important;
   background-clip: text !important;
   -webkit-background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
@@ -456,7 +456,7 @@
   
   /* Matching title gradient */
   display: inline-block;
-  background: linear-gradient(135deg, #0066ff 0%, #00ff88 100%) !important;
+  background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%) !important;
   background-clip: text !important;
   -webkit-background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
@@ -3279,16 +3279,16 @@
 }
 
 .oracle-artifact-title {
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
-  font-size: clamp(1.4rem, 4.5vw, 1.8rem);
-  letter-spacing: 0.15em;
-  /* Brand gradient */
-  display: inline-block;
-  background: linear-gradient(135deg, #0066ff 0%, #00ff88 100%) !important;
-  background-clip: text !important;
-  -webkit-background-clip: text !important;
-  -webkit-text-fill-color: transparent !important;
-  color: transparent !important;
+   font-family: 'aAnotherTag', 'Orbitron', monospace;
+   font-size: clamp(1.4rem, 4.5vw, 1.8rem);
+   letter-spacing: 0.15em;
+   /* Brand gradient */
+   display: inline-block;
+   background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%) !important;
+   background-clip: text !important;
+   -webkit-background-clip: text !important;
+   -webkit-text-fill-color: transparent !important;
+   color: transparent !important;
   text-align: center;
   margin-bottom: 24px;
   line-height: 1.2;

@@ -169,7 +169,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
             fontFamily: "'aAnotherTag', 'Orbitron', monospace",
             letterSpacing: '0.15em', 
             marginBottom: 8, 
-            background: 'linear-gradient(135deg, #0066ff 0%, #00ff88 100%)',
+            background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
             backgroundClip: 'text',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',

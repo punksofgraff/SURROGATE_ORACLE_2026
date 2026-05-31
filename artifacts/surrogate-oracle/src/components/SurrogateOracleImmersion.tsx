@@ -255,6 +255,9 @@ export function SurrogateOracleImmersion() {
 
   const [isOracleSpeakingDelayed, setIsOracleSpeakingDelayed] = useState(false);
   const speakingTimeoutRef = useRef<number | null>(null);
+  // Once Oracle first speaks in a session, radio stays at spatial ambience
+  // for the rest of the session — no popping back to 0.08 between turns.
+  const oracleHasSpokenRef = useRef(false);
   const [isUserSpeakingDelayed, setIsUserSpeakingDelayed]     = useState(false);
   const userSpeakingTimeoutRef = useRef<number | null>(null);
 
@@ -428,22 +431,33 @@ export function SurrogateOracleImmersion() {
   }, [scenePhase]);
 
   // ── Music ducking ────────────────────────────────────────────────────────
-  // Priority: 
-  // 1. Oracle Speaking (SILENCE)
-  // 2. User Speaking / Mic Active (Ducked)
-  // 3. Oracle Mode (Background)
-  // 4. Other states (Full)
+  // Priority:
+  // 1. Oracle speaking       → near silence (0.001)
+  // 2. Post-first-speech     → stays at spatial ambience (0.018) for the
+  //    rest of the session — no popping back up between turns
+  // 3. User speaking / mic   → ducked (0.030)
+  // 4. Oracle mode pre-first → gentle background (0.06)
+  // 5. Other phases          → full ambient (0.06)
   useEffect(() => {
-    let nextTarget = 0.06; // Dormant / Terminal / Awakened
-    
-    if (scenePhase === 'oracle') {
-      nextTarget = 0.08; 
-      if (isMicActive || isUserSpeaking || isUserSpeakingDelayed) nextTarget = 0.035; 
+    if (scenePhase !== 'oracle') {
+      oracleHasSpokenRef.current = false; // reset when leaving oracle
     }
-    
-    // Explicit silence when Oracle is producing signal
-    if (isOracleSpeaking || isOracleSpeakingDelayed) {
-      nextTarget = 0.001; 
+
+    let nextTarget = 0.06;
+
+    if (scenePhase === 'oracle') {
+      if (isOracleSpeaking || isOracleSpeakingDelayed) {
+        oracleHasSpokenRef.current = true;
+        nextTarget = 0.001;
+      } else if (oracleHasSpokenRef.current) {
+        // Oracle has spoken — stay at spatial ambience for the session
+        nextTarget = 0.018;
+        if (isMicActive || isUserSpeaking || isUserSpeakingDelayed) nextTarget = 0.030;
+      } else {
+        // Pre-first Oracle speech — gentle background
+        nextTarget = 0.06;
+        if (isMicActive || isUserSpeaking || isUserSpeakingDelayed) nextTarget = 0.035;
+      }
     }
 
     if (nextTarget !== targetVol) {

@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion';
 import { BookOpen, Link2, Cpu, Globe, Factory } from 'lucide-react';
-import { ScrambleFragment } from './ScrambleFragment';
 
 export interface KnifeQuestion {
   territory: string;
@@ -10,9 +9,6 @@ export interface KnifeQuestion {
   color: string;
 }
 
-// Five frequencies, five territories.
-// The knife tears armor but doesn't pierce flesh — it makes you legible.
-// User picks the one already true — that choice seeds the entire descent.
 export const KNIFE_QUESTIONS: KnifeQuestion[] = [
   {
     territory: 'THE LIBRARY OF ME',
@@ -60,65 +56,45 @@ interface KnifeSelectionProps {
 export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect }: KnifeSelectionProps) {
   return (
     <>
-      {/* Oracle's bridge line — fades out as territories appear */}
-      <motion.div
-        key="scramble-bridge"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: [0, 1, 0] }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 2.0, times: [0, 0.3, 1] }}
-        style={{
-          position: 'absolute',
-          bottom: '52%',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 100,
-          width: '100%',
-          textAlign: 'center',
-          pointerEvents: 'none',
-        }}
-      >
-        <ScrambleFragment
-          texts={['THE ARCHIVE IS OPEN']}
-          className="oracle-sf--cta"
-          holdMs={800}
-          revealMs={40}
-        />
-      </motion.div>
-
-      {/* Territory list — rises as the Oracle names each path */}
       <motion.div
         key="knife-section"
         className="oracle-knife-section"
         initial={{ opacity: 0, y: 50 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 30, transition: { duration: 0.4 } }}
-        transition={{ duration: 1.0, ease: [0.16, 1, 0.3, 1], delay: 0.5 }}
+        transition={{ duration: 1.0, ease: [0.16, 1, 0.3, 1], delay: 0.3 }}
       >
+        <div className="oracle-knife-header">◈ CHOOSE YOUR FREQUENCY</div>
         {!isGeminiConnected && (
           <div className="oracle-knife-channel-status">◈ OPENING CHANNEL...</div>
         )}
+        <div className="oracle-knife-subheader">
+          THE ONE ALREADY TRUE. THE EXCAVATION BEGINS THERE.
+        </div>
 
-        <div className="oracle-knife-list">
-          {KNIFE_QUESTIONS.map((kq, idx) => (
-            <motion.button
-              key={idx}
-              className={`oracle-knife-row${selectedKnifeIndex === idx ? ' oracle-knife-row--selected' : ''}`}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.7 + 0.07 * idx, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              whileHover={{ x: 6, transition: { duration: 0.15 } }}
-              whileTap={{ scale: 0.99 }}
-              onClick={() => onSelect(kq.question, idx)}
-              style={{ '--accent-color': kq.color } as React.CSSProperties}
-            >
-              <div className="oracle-knife-row-header">
-                <kq.icon size={11} style={{ color: kq.color, flexShrink: 0 }} />
-                <span className="oracle-knife-territory">{kq.territory}</span>
-              </div>
-              <div className="oracle-knife-row-question">{kq.question}</div>
-            </motion.button>
-          ))}
+        <div className="oracle-knife-scroll-container">
+          <div className="oracle-knife-cards">
+            {KNIFE_QUESTIONS.map((kq, idx) => (
+              <motion.div
+                key={idx}
+                className={`oracle-knife-card${selectedKnifeIndex === idx ? ' oracle-knife-card--selected' : ''}`}
+                initial={{ opacity: 0, x: 60, filter: 'blur(8px) brightness(1.8)' }}
+                animate={{ opacity: 1, x: 0, filter: 'blur(0px) brightness(1)' }}
+                transition={{ delay: 0.5 + 0.08 * idx, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+                whileHover={{ scale: 1.03, y: -8, transition: { duration: 0.2 } }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => onSelect(kq.question, idx)}
+                style={{ '--accent-color': kq.color } as React.CSSProperties}
+              >
+                <div className="oracle-knife-card-top">
+                  <kq.icon size={18} style={{ color: kq.color, filter: `drop-shadow(0 0 8px ${kq.color})`, flexShrink: 0 }} />
+                  <span className="oracle-knife-territory">{kq.territory}</span>
+                </div>
+                <div className="oracle-knife-card-question">{kq.question}</div>
+                <div className="oracle-knife-card-accent" style={{ background: `linear-gradient(to right, ${kq.color}, transparent)` }} />
+              </motion.div>
+            ))}
+          </div>
         </div>
       </motion.div>
     </>

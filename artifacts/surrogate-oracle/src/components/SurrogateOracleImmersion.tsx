@@ -53,12 +53,13 @@ import { COST_NAMES } from '../data/archetypes';
 // Libs/Utils
 import { getAudioContext } from '../lib/oracleSfx';
 import type { VisemeState } from '../lib/visemeDetector';
+import { defaultAudioTracks } from '../config/audioTracks';
 import './SurrogateOracleImmersion.css';
 
 const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
 const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = 'https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png';
-const AUDIO_STREAM_URL   = 'https://stream.radiojar.com/2qm1fc5kb';
+const AUDIO_STREAM_URL   = defaultAudioTracks[0].url; // Graff Punks — always the launch station
 const ORACLE_PLAYBACK_RATE = 1.0;
 
 const SILENCE_VISEME_STATE: VisemeState = { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
@@ -152,6 +153,43 @@ export function SurrogateOracleImmersion() {
   const audioRef                 = useRef<HTMLAudioElement | null>(null);
   const radioGainRef             = useRef<GainNode | null>(null);
   const [targetVol, setTargetVol] = useState(0.22);
+
+  // ── Radio stations ───────────────────────────────────────────────────────────
+  const [currentStation, setCurrentStation] = useState(0);
+  const switchStation = useCallback((idx: number) => {
+    if (!audioRef.current || idx === currentStation) return;
+    const wasPlaying = !audioRef.current.paused;
+    audioRef.current.src = defaultAudioTracks[idx].url;
+    audioRef.current.load();
+    if (wasPlaying) audioRef.current.play().catch(() => {});
+    setCurrentStation(idx);
+  }, [currentStation]);
+
+  // ── Hold-tooltip for bottom bar buttons ─────────────────────────────────────
+  const [holdTooltip, setHoldTooltip] = useState<{ title: string; body: string } | null>(null);
+  const holdTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdFiredRef  = useRef(false);
+  const holdAutoRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startHold = useCallback((title: string, body: string) => {
+    holdFiredRef.current = false;
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    holdTimerRef.current = setTimeout(() => {
+      holdFiredRef.current = true;
+      setHoldTooltip({ title, body });
+      holdAutoRef.current = setTimeout(() => setHoldTooltip(null), 2600);
+    }, 400);
+  }, []);
+
+  const endHold = useCallback(() => {
+    if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+  }, []);
+
+  const consumeHold = useCallback(() => {
+    // Returns true if a hold fired — caller should skip the tap action
+    if (holdFiredRef.current) { holdFiredRef.current = false; return true; }
+    return false;
+  }, []);
 
   const { isReturning, hasCompletedLore, markVisited, markLoreCompleted, ipAddress } = useIpCheck();
 
@@ -853,21 +891,62 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
+      {/* ── Hold tooltip — appears above bottom bar on press+hold ── */}
+      <AnimatePresence>
+        {holdTooltip && (
+          <motion.div
+            key="hold-tooltip"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.18 }}
+            style={{
+              position: 'fixed',
+              bottom: 'calc(var(--bottom-bar-h, 160px) + 14px)',
+              left: '50%', transform: 'translateX(-50%)',
+              zIndex: 60,
+              background: 'rgba(0, 10, 15, 0.94)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(0,255,136,0.32)',
+              boxShadow: '0 0 28px rgba(0,255,136,0.10), inset 0 0 20px rgba(0,0,0,0.5)',
+              borderRadius: 10,
+              padding: '10px 18px',
+              maxWidth: 260,
+              textAlign: 'center',
+              pointerEvents: 'none',
+            }}
+          >
+            <div style={{ fontFamily: "'aAnotherTag', 'Orbitron', monospace", fontSize: '0.70rem', color: '#00ff88', letterSpacing: '0.16em', marginBottom: 4 }}>
+              {holdTooltip.title}
+            </div>
+            <div style={{ fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.66rem', color: 'rgba(255,255,255,0.68)', letterSpacing: '0.05em', lineHeight: 1.5 }}>
+              {holdTooltip.body}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Bottom Bar ── */}
       <div className="oracle-bottom-bar">
+        {/* Radio — tap to mute/unmute, dots to switch station */}
         <motion.div
           initial={{ opacity: 0.3, filter: 'brightness(0.4) saturate(0.3)' }}
           animate={{
             opacity: isAlive ? 1 : 0.3,
-            filter: isAlive
-              ? 'brightness(1.1) saturate(1.2) drop-shadow(0 0 16px rgba(0, 255, 136, 0.5))'
-              : 'brightness(0.4) saturate(0.3)',
+            filter: isAlive ? 'brightness(1.05) saturate(1.1)' : 'brightness(0.4) saturate(0.3)',
           }}
           transition={{ duration: 1.1, delay: isAlive ? 0.7 : 0 }}
         >
-          <GraffPunksRadio isPlaying={isAudioPlaying} onToggle={() => setIsAudioPlaying(!isAudioPlaying)} />
+          <GraffPunksRadio
+            isPlaying={isAudioPlaying}
+            onToggle={() => setIsAudioPlaying(!isAudioPlaying)}
+            stations={defaultAudioTracks}
+            currentStation={currentStation}
+            onStationChange={switchStation}
+          />
         </motion.div>
 
+        {/* Portraits — tap opens gallery, hold shows info */}
         <motion.div
           initial={{ opacity: 0.3, filter: 'brightness(0.4) saturate(0.3)' }}
           animate={{
@@ -875,26 +954,35 @@ export function SurrogateOracleImmersion() {
             filter: isAlive ? 'brightness(1.05) saturate(1.1)' : 'brightness(0.4) saturate(0.3)',
           }}
           transition={{ duration: 1.1, delay: isAlive ? 0.85 : 0 }}
-          onClick={() => isAlive && setShowPortraitGallery(true)}
+          onPointerDown={() => startHold('NEURAL PRINTS', 'Your Oracle portraits — every synthesis archived. Tap to view and download.')}
+          onPointerUp={endHold}
+          onPointerLeave={endHold}
+          onClick={() => { if (!consumeHold() && isAlive) setShowPortraitGallery(true); }}
           className="oracle-bottom-btn oracle-bottom-btn--active"
         >
           <img src="/portrait-btn.png" alt="Portraits" className="oracle-bottom-btn__img" />
           <span className="oracle-bottom-btn__label">PORTRAITS</span>
         </motion.div>
 
+        {/* Enculturate Crate — tap opens panel, hold shows info */}
         <motion.div
           initial={{ opacity: 0.3, filter: 'brightness(0.4) saturate(0.3)' }}
           animate={{
             opacity: isAlive ? 1 : 0.3,
-            filter: isAlive
-              ? 'brightness(1.15) saturate(1.3) drop-shadow(0 0 18px rgba(0,255,136,0.55))'
-              : 'brightness(0.4) saturate(0.3)',
+            filter: isAlive ? 'brightness(1.05) saturate(1.1)' : 'brightness(0.4) saturate(0.3)',
           }}
           transition={{ duration: 1.1, delay: isAlive ? 1.0 : 0 }}
+          onPointerDown={() => startHold('ENCULTURATE CRATE', 'Culture Coins, Neural Vault, subscription tiers, squad missions.')}
+          onPointerUp={endHold}
+          onPointerLeave={endHold}
         >
-          <EnculturateCrate onClick={() => setDebugMode(true)} isActive={isAlive} />
+          <EnculturateCrate
+            onClick={() => { if (!consumeHold()) setDebugMode(true); }}
+            isActive={isAlive}
+          />
         </motion.div>
 
+        {/* Tour — tap toggles, hold shows info */}
         <motion.div
           initial={{ opacity: 0.3, filter: 'brightness(0.4) saturate(0.3)' }}
           animate={{
@@ -902,7 +990,10 @@ export function SurrogateOracleImmersion() {
             filter: isAlive ? 'brightness(1.05) saturate(1.1)' : 'brightness(0.4) saturate(0.3)',
           }}
           transition={{ duration: 1.1, delay: isAlive ? 1.15 : 0 }}
-          onClick={() => isAlive && setIsGuidedTour(!isGuidedTour)}
+          onPointerDown={() => startHold('GUIDED TOUR', 'Contextual Oracle prompts and tips. Toggle on for your first session.')}
+          onPointerUp={endHold}
+          onPointerLeave={endHold}
+          onClick={() => { if (!consumeHold() && isAlive) setIsGuidedTour(!isGuidedTour); }}
           className={`oracle-bottom-btn${isGuidedTour ? ' oracle-bottom-btn--active oracle-bottom-btn--tour' : ''}`}
         >
           <img src="/tour-btn.png" alt="Tour Mode" className="oracle-bottom-btn__img" />

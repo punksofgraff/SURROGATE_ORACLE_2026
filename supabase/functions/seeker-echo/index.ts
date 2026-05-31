@@ -18,6 +18,7 @@ interface SeekerEchoUpsert {
   op?: 'read' | 'upsert';
   seekerKey?: string;
   name?: string | null;
+  handles?: string[] | null;
   lastArchetype?: string | null;
   totemLevel?: number | null;
   lastCost?: string | null;
@@ -130,6 +131,13 @@ Deno.serve(async (req: Request) => {
       const row: Record<string, unknown> = {
         seeker_key: seekerKey,
         name: pick(body.name, existing?.name),
+        // Handles: merge new ones with existing — never lose a previously known handle
+        handles: (() => {
+          const prev: string[] = existing?.handles ?? [];
+          const next: string[] = body.handles ?? [];
+          const merged = [...new Set([...prev, ...next])];
+          return merged.length ? merged : null;
+        })(),
         last_archetype: pick(body.lastArchetype, existing?.last_archetype),
         totem_level:
           body.totemLevel !== undefined && body.totemLevel !== null

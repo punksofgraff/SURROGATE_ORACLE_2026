@@ -229,6 +229,7 @@ export function SurrogateOracleImmersion() {
       saveEcho({
         seekerKey: key,
         name: name ?? undefined,
+        handles: handles.length ? handles : undefined,
         irlContext: result?.confident ? result.definition : undefined,
       });
     }
@@ -1075,7 +1076,25 @@ export function SurrogateOracleImmersion() {
           onUserSpeakingChange={handleUserSpeakingChange}
           onBargeIn={() => connection.pcmPlayer?.stop()}
           onPortraitRequest={() => portrait.generatePortrait(portrait.getThemes())}
-          seekerSummary={echo?.session_summary ?? null}
+          seekerSummary={(() => {
+            if (!echo) return null;
+            // Build a rich, structured memory block from all known echo fields.
+            // This is what makes the Oracle feel like Notedly AI — every field
+            // the alley recorded becomes Oracle knowledge at session open.
+            const lines: string[] = [];
+            if (echo.name) lines.push(`Name: ${echo.name}`);
+            if (echo.handles?.length) lines.push(`Known signals: ${echo.handles.join(', ')}`);
+            if (echo.last_archetype) lines.push(`Last archetype: ${echo.last_archetype}`);
+            if (echo.last_cost) lines.push(`Cost shape: ${echo.last_cost}`);
+            if (echo.alignment) lines.push(`Alignment: ${echo.alignment}`);
+            if (echo.totem_level) lines.push(`Totem level: ${echo.totem_level}`);
+            if (echo.last_session_themes?.length) lines.push(`Last session themes: ${echo.last_session_themes.join(', ')}`);
+            if (echo.irl_context) lines.push(`IRL context: ${echo.irl_context}`);
+            const visits = echo.session_count ?? echo.visit_count ?? 1;
+            lines.push(`Sessions in the alley: ${visits}`);
+            if (echo.session_summary) lines.push(`\nWhat the alley remembers:\n${echo.session_summary}`);
+            return lines.join('\n');
+          })()}
           isGuidedTour={isGuidedTour}
         />
       )}

@@ -13,6 +13,7 @@ export interface SeekerEcho {
   id: string;
   seeker_key: string;
   name: string | null;
+  handles: string[] | null;
   last_archetype: string | null;
   totem_level: number;
   last_cost: string | null;
@@ -30,6 +31,7 @@ export interface SeekerEcho {
 export interface SeekerEchoUpsert {
   seekerKey: string;
   name?: string | null;
+  handles?: string[] | null;
   lastArchetype?: string | null;
   totemLevel?: number | null;
   lastCost?: string | null;

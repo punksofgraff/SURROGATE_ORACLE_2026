@@ -200,13 +200,13 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
     if (idle) {
       idle.reset().setLoop(THREE.LoopRepeat, Infinity).play();
       idle.setEffectiveWeight(1);
-      idle.setEffectiveTimeScale(0.55);
+      idle.setEffectiveTimeScale(0.38);
     }
     // Pre-set talking action time scales too
     const t1 = actions['M_Standing_Idle_Variations_003'];
     const t2 = actions['M_Standing_Idle_Variations_007'];
-    if (t1) t1.setEffectiveTimeScale(0.55);
-    if (t2) t2.setEffectiveTimeScale(0.55);
+    if (t1) t1.setEffectiveTimeScale(0.38);
+    if (t2) t2.setEffectiveTimeScale(0.38);
   }, [actions]);
 
   // Cache skinned meshes + gaze bones — found once on mount, zero traversal per frame.
@@ -485,7 +485,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
       OVR_NAMES.forEach(n => targets.set(n, 0));
       BLINK_NAMES.forEach(b => targets.set(b, bInt));
 
-      if (amp > 0.015) {
+      if (amp > 0.005) {
         const dominant = ORACLE_TO_OVR[vs.viseme] ?? ['viseme_sil'];
         const weight   = Math.min(amp * 4.5, 1.0);
         const perShape = weight / dominant.length;

@@ -477,12 +477,15 @@ export function SurrogateOracleImmersion() {
   useEffect(() => {
     let nextTarget: number;
 
-    if (scenePhase !== 'oracle') {
-      nextTarget = 0.06;
-    } else if (isOracleSpeaking || isOracleSpeakingDelayed) {
-      nextTarget = 0.0001; // Oracle speaking → radio dead
+    // BUG FIX: scenePhase becomes 'oracle' 1600ms AFTER knife selection.
+    // Oracle's first PCM arrives inside that window (scenePhase still 'awakened').
+    // Fix: duck on isOracleSpeaking regardless of phase — don't wait for oracle phase.
+    if (isOracleSpeaking || isOracleSpeakingDelayed) {
+      nextTarget = 0.0001; // Oracle voice active → radio silent
+    } else if (scenePhase === 'oracle' || scenePhase === 'awakened') {
+      nextTarget = SESSION_AMBIENT; // post-greeting background texture
     } else {
-      nextTarget = SESSION_AMBIENT; // oracle phase but not speaking → quiet backdrop
+      nextTarget = 0.06; // dormant / terminal — full ambient
     }
 
     if (Math.abs(nextTarget - targetVol) > 0.0001) {
@@ -1132,7 +1135,12 @@ export function SurrogateOracleImmersion() {
           onOracleResponse={connection.handleOracleResponse}
           onCoinsEarned={(amt) => setSessionCoins(s => s + amt)}
           onSessionEnd={handleSessionEnd}
-          onTurnComplete={(turn, score, themes) => { if (themes.length) portrait.addThemes(themes); handleTurnComplete(turn, score); }}
+          onTurnComplete={(turn, score, themes) => {
+            if (themes.length) portrait.addThemes(themes);
+            handleTurnComplete(turn, score);
+            // Flush stale PCM buffer 80ms after turn ends — prevents fast-forward skip
+            setTimeout(() => connection.pcmPlayer?.stop(), 80);
+          }}
           onSeekerIdentified={handleSeekerIdentified}
           initialTotemLevel={echo?.totem_level ?? 0}
           onConnected={() => setIsGeminiConnected(true)}

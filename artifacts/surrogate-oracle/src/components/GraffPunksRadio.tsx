@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Volume2, VolumeX } from 'lucide-react';
 
 interface GraffPunksRadioProps {
   isPlaying: boolean;
@@ -13,6 +12,10 @@ export function GraffPunksRadio({ isPlaying, onToggle }: GraffPunksRadioProps) {
     <div
       onClick={onToggle}
       className="oracle-bottom-btn"
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px) scale(1.04)'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+      onTouchStart={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.96)'; }}
+      onTouchEnd={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
       style={{
         cursor: 'pointer',
         position: 'relative',
@@ -21,49 +24,46 @@ export function GraffPunksRadio({ isPlaying, onToggle }: GraffPunksRadioProps) {
         alignItems: 'center',
         userSelect: 'none',
         padding: '10px',
-        border: isPlaying ? '2px solid #00ff88' : '2px solid rgba(0, 255, 136, 0.3)',
+        border: isPlaying ? '2px solid #00ff88' : '2px solid rgba(0,255,136,0.25)',
         borderRadius: '16px',
-        background: 'rgba(0, 30, 15, 0.5)',
-        boxShadow: isPlaying ? '0 0 20px rgba(0, 255, 136, 0.5), inset 0 0 10px rgba(0, 255, 136, 0.2)' : 'none',
+        background: isPlaying ? 'rgba(0,30,15,0.5)' : 'rgba(0,10,5,0.4)',
+        boxShadow: isPlaying
+          ? '0 0 20px rgba(0,255,136,0.5), inset 0 0 8px rgba(0,255,136,0.15)'
+          : '0 0 6px rgba(0,255,136,0.08)',
         transition: 'all 0.3s ease',
+        minWidth: 44, minHeight: 44,
       }}
     >
       {!imageError ? (
         <img
           src="https://sintra-images.s3.eu-north-1.amazonaws.com/3fddfa4f-21d6-4499-8920-9b9b4c304d56/power-ups/remove-background/f728225c-42fc-41f9-8490-698d401e329f/image.png"
           alt="GRAFF PUNKS Boom Box"
-          style={{ width: '120px', height: '120px', objectFit: 'contain' }}
-          onError={() => {
-            console.warn('🔊 Boom box image failed to load, using fallback');
-            setImageError(true);
+          style={{
+            width: '90px', height: '90px', objectFit: 'contain',
+            opacity: isPlaying ? 1 : 0.4,
+            filter: isPlaying ? 'none' : 'grayscale(0.6)',
+            transition: 'opacity 0.3s ease, filter 0.3s ease',
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'scale(1.05)';
-            e.currentTarget.style.filter = 'brightness(1.2)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'scale(1)';
-            e.currentTarget.style.filter = 'brightness(1)';
-          }}
+          onError={() => setImageError(true)}
         />
       ) : (
-        <div style={{ fontSize: '4rem', lineHeight: 1 }}>📻</div>
+        <div style={{ fontSize: '3.5rem', lineHeight: 1, opacity: isPlaying ? 1 : 0.4 }}>📻</div>
       )}
 
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 6,
-          right: 10,
-          color: isPlaying ? '#00ff88' : '#666',
-          fontSize: '0.65rem',
-          fontFamily: 'monospace',
-          fontWeight: 'bold',
-          letterSpacing: '0.1em',
-          textShadow: isPlaying ? '0 0 5px #00ff88' : 'none',
-        }}
-      >
-        {isPlaying ? 'LIVE' : 'MUTE'}
+      <div style={{
+        position: 'absolute',
+        bottom: 5,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        color: isPlaying ? '#00ff88' : 'rgba(0,255,136,0.35)',
+        fontSize: '0.6rem',
+        fontFamily: "'PhillySans', monospace",
+        fontWeight: 'bold',
+        letterSpacing: '0.12em',
+        textShadow: isPlaying ? '0 0 5px #00ff88' : 'none',
+        whiteSpace: 'nowrap',
+      }}>
+        {isPlaying ? 'LIVE' : 'MUTED'}
       </div>
     </div>
   );

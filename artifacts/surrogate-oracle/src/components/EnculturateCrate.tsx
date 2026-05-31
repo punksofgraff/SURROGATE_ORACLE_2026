@@ -13,6 +13,10 @@ export function EnculturateCrate({ onClick, isActive = false }: EnculturateCrate
       onClick={onClick}
       data-testid="enculturate-crate"
       className="oracle-bottom-btn"
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px) scale(1.04)'; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
+      onTouchStart={(e) => { (e.currentTarget as HTMLElement).style.transform = 'scale(0.96)'; }}
+      onTouchEnd={(e) => { (e.currentTarget as HTMLElement).style.transform = ''; }}
       style={{
         cursor: 'pointer',
         position: 'relative',
@@ -24,48 +28,35 @@ export function EnculturateCrate({ onClick, isActive = false }: EnculturateCrate
         border: '2px solid #00ff88',
         borderRadius: '16px',
         background: 'rgba(0, 30, 15, 0.5)',
-        boxShadow: '0 0 20px rgba(0, 255, 136, 0.5), inset 0 0 10px rgba(0, 255, 136, 0.2)',
+        boxShadow: '0 0 20px rgba(0,255,136,0.5), inset 0 0 8px rgba(0,255,136,0.15)',
         transition: 'all 0.3s ease',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = 'translateY(-4px) scale(1.05)';
-        e.currentTarget.style.filter = 'brightness(1.2)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = 'translateY(0) scale(1)';
-        e.currentTarget.style.filter = 'brightness(1)';
+        minWidth: 44, minHeight: 44,
       }}
     >
       {!imageError ? (
         <img
           src="https://sintra-images.s3.eu-north-1.amazonaws.com/3fddfa4f-21d6-4499-8920-9b9b4c304d56/power-ups/remove-background/5658be5f-989d-42d1-a0dd-eef0f4891989/image.png"
           alt="ENCULTURATE Spray Crate"
-          style={{ width: '120px', height: '120px', objectFit: 'contain' }}
-          onError={() => {
-            console.warn('🎨 Spray crate image failed to load, using fallback');
-            setImageError(true);
-          }}
+          style={{ width: '90px', height: '90px', objectFit: 'contain' }}
+          onError={() => setImageError(true)}
         />
       ) : (
-        <div style={{ fontSize: '4rem', lineHeight: 1 }}>🎨</div>
+        <div style={{ fontSize: '3.5rem', lineHeight: 1 }}>🎨</div>
       )}
 
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 6,
-          background: 'rgba(0,255,136,0.15)',
-          border: '1px solid #00ff88',
-          borderRadius: '10px',
-          padding: '1px 8px',
-          fontSize: '0.65rem',
-          color: '#ffffff',
-          letterSpacing: '0.1em',
-          fontFamily: "'aAnotherTag', 'Orbitron', monospace",
-          whiteSpace: 'nowrap',
-          textShadow: '0 0 5px #00ff88',
-        }}
-      >
+      <div style={{
+        position: 'absolute',
+        bottom: 5,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        color: '#00ff88',
+        fontSize: '0.6rem',
+        fontFamily: "'PhillySans', monospace",
+        fontWeight: 'bold',
+        letterSpacing: '0.12em',
+        textShadow: '0 0 5px #00ff88',
+        whiteSpace: 'nowrap',
+      }}>
         ENCULTURATE
       </div>
     </div>

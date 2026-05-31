@@ -849,16 +849,16 @@ export function SurrogateOracleImmersion() {
           <img
             src="/portrait-btn.png"
             alt="Portraits"
-            style={{ width: '120px', height: '120px', objectFit: 'contain', transition: 'transform 0.2s' }}
+            style={{ width: '90px', height: '90px', objectFit: 'contain', transition: 'transform 0.2s' }}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
             onTouchStart={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
             onTouchEnd={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           />
           <div style={{
-            position: 'absolute', bottom: 6, right: 10,
-            color: '#00ff88', fontSize: '0.65rem', fontWeight: 'bold', fontFamily: "'PhillySans', monospace",
-            letterSpacing: '0.08em', textShadow: '0 0 5px #00ff88'
+            position: 'absolute', bottom: 5, left: '50%', transform: 'translateX(-50%)',
+            color: '#00ff88', fontSize: '0.6rem', fontWeight: 'bold', fontFamily: "'PhillySans', monospace",
+            letterSpacing: '0.12em', textShadow: '0 0 5px #00ff88', whiteSpace: 'nowrap',
           }}>PORTRAITS</div>
         </motion.div>
 
@@ -904,18 +904,18 @@ export function SurrogateOracleImmersion() {
           <img
             src="/tour-btn.png"
             alt="Tour Mode"
-            style={{ width: '120px', height: '120px', objectFit: 'contain', transition: 'transform 0.2s' }}
+            style={{ width: '90px', height: '90px', objectFit: 'contain', transition: 'transform 0.2s' }}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
             onTouchStart={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
             onTouchEnd={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           />
           <div style={{
-            position: 'absolute', bottom: 6, right: 10,
+            position: 'absolute', bottom: 5, left: '50%', transform: 'translateX(-50%)',
             color: isGuidedTour ? '#b026ff' : '#00ff88',
-            fontSize: '0.65rem', fontWeight: 'bold', fontFamily: "'PhillySans', monospace",
-            letterSpacing: '0.08em',
-            textShadow: isGuidedTour ? '0 0 5px rgba(176,38,255,0.5)' : '0 0 5px #00ff88'
+            fontSize: '0.6rem', fontWeight: 'bold', fontFamily: "'PhillySans', monospace",
+            letterSpacing: '0.12em', whiteSpace: 'nowrap',
+            textShadow: isGuidedTour ? '0 0 5px rgba(176,38,255,0.5)' : '0 0 5px #00ff88',
           }}>{isGuidedTour ? 'TOUR ON' : 'TOUR OFF'}</div>
         </motion.div>
       </div>

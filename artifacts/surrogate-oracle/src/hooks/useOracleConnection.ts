@@ -52,7 +52,7 @@ export function useOracleConnection({
     if (isFirstChunkRef.current) {
       playOraclePresence();
       isFirstChunkRef.current = false;
-      player.setVolume(1.0, 240);
+      player.setVolume(1.4, 240);
     }
 
     let pcmData: Int16Array | null   = data instanceof Int16Array ? data : null;

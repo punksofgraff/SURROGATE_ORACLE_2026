@@ -333,8 +333,8 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
 
     // Blend idle ↔ talking based on Oracle speaking amplitude
     const idleAction    = actions['M_Standing_Idle_001'];
-    const talk1Action   = actions['M_Talking_Variations_003'];
-    const talk2Action   = actions['M_Talking_Variations_004'];
+    const talk1Action   = actions['M_Standing_Idle_Variations_003'];
+    const talk2Action   = actions['M_Standing_Idle_Variations_007'];
 
     if (idleAction && talk1Action && talk2Action) {
       const isSpeaking = amp > 0.04;

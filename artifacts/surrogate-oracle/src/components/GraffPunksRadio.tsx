@@ -53,14 +53,14 @@ export function GraffPunksRadio({
               key={i}
               onClick={(e) => { e.stopPropagation(); onStationChange(i); }}
               style={{
-                width: 6,
-                height: 6,
+                width: 18,
+                height: 18,
                 borderRadius: '50%',
                 border: 'none',
                 padding: 0,
                 cursor: 'pointer',
                 background: i === currentStation ? s.color : 'rgba(255,255,255,0.18)',
-                boxShadow: i === currentStation ? `0 0 6px ${s.color}` : 'none',
+                boxShadow: i === currentStation ? `0 0 8px ${s.color}` : 'none',
                 transition: 'background 0.2s, box-shadow 0.2s',
                 flexShrink: 0,
               }}

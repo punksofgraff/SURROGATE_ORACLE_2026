@@ -36,7 +36,7 @@ export const KNIFE_QUESTIONS: KnifeQuestion[] = [
     question: 'The version of you that lives online — when did it start making decisions for the real one?',
     themes: ['persona', 'social-construct', 'online-identity', 'mask'],
     icon: Globe,
-    color: '#cc00ff',
+    color: '#b026ff',
   },
   {
     territory: 'THE INDUSTRIAL QUESTION',

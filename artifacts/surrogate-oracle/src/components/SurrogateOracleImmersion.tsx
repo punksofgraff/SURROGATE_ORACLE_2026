@@ -461,46 +461,34 @@ export function SurrogateOracleImmersion() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [scenePhase]);
 
-  // ── Music ducking ────────────────────────────────────────────────────────
+  // ── Music ducking — two dimensions, no ping-pong ─────────────────────────
   //
-  // SESSION_AMBIENT: once Oracle first speaks, radio locks to this level for
-  // the entire oracle session — no micro-bumps for listening/user-speaking
-  // windows, no creeping back up between turns. Pure atmospheric backdrop.
+  // Oracle and radio are separate signal chains. Radio DEFERS to Oracle.
+  // Three states only — no intermediate levels, no rising between turns:
   //
-  // Two-state post-first-speech:
-  //   Oracle producing audio → 0.001 (near-silence, 80ms cut)
-  //   Everything else        → SESSION_AMBIENT (1500ms slow rise, imperceptible)
+  //   Not oracle phase    → 0.06  (full ambient)
+  //   Oracle phase        → 0.004 (background texture only — locked on entry)
+  //   Oracle speaking     → 0.0001 (instant silence, 50ms cut)
   //
-  // Pre-first-speech oracle: gentle presence (0.055), user speaking ducks (0.025).
-  // Non-oracle phases: full ambient (0.06).
-  const SESSION_AMBIENT = 0.008;
+  // Once oracle phase begins the radio never rises above 0.004 again.
+  // When Oracle finishes a turn radio stays at 0.004, not creeping back up.
+  const SESSION_AMBIENT = 0.004;
 
   useEffect(() => {
+    let nextTarget: number;
+
     if (scenePhase !== 'oracle') {
-      oracleHasSpokenRef.current = false;
+      nextTarget = 0.06;
+    } else if (isOracleSpeaking || isOracleSpeakingDelayed) {
+      nextTarget = 0.0001; // Oracle speaking → radio dead
+    } else {
+      nextTarget = SESSION_AMBIENT; // oracle phase but not speaking → quiet backdrop
     }
 
-    let nextTarget = 0.06;
-
-    if (scenePhase === 'oracle') {
-      if (isOracleSpeaking || isOracleSpeakingDelayed) {
-        oracleHasSpokenRef.current = true;
-        nextTarget = 0.001; // near-silence while Oracle voice is present
-      } else if (oracleHasSpokenRef.current) {
-        nextTarget = SESSION_AMBIENT; // stays here for the whole session
-      } else {
-        // Pre-first Oracle turn — radio still present, user speech ducks it
-        nextTarget = isMicActive || isUserSpeaking || isUserSpeakingDelayed ? 0.025 : 0.055;
-      }
+    if (Math.abs(nextTarget - targetVol) > 0.0001) {
+      fadeToVolume(nextTarget);
     }
-
-    if (nextTarget !== targetVol) {
-      // Rising back from near-silence: use slow 1500ms ramp (imperceptible).
-      // Ducking down: fast (default 80ms).
-      const isRising = nextTarget > targetVol;
-      fadeToVolume(nextTarget, isRising ? 1500 : undefined);
-    }
-  }, [scenePhase, isMicActive, isUserSpeaking, isUserSpeakingDelayed, isOracleSpeaking, isOracleSpeakingDelayed, targetVol, fadeToVolume]);
+  }, [scenePhase, isOracleSpeaking, isOracleSpeakingDelayed, targetVol, fadeToVolume]);
 
   useEffect(() => {
     if (!audioRef.current) return;

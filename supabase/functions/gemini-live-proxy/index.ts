@@ -78,10 +78,11 @@ Deno.serve(async (req: Request) => {
         };
         if (msg.systemInstruction) setup.systemInstruction = msg.systemInstruction;
         if (msg.generationConfig)  setup.generationConfig  = msg.generationConfig;
-        // Step 1 — explicitly disable tool use (top-level setup field, NOT generationConfig).
-        // The Oracle has no tools; passing an empty list prevents the tool-call error loop
-        // documented in CLAUDE.md ("Oracle crashes on web tool use").
+        // Disable all tool use. tools:[] alone doesn't suppress built-in Gemini tools
+        // (grounding, code execution). toolConfig.functionCallingConfig.mode=NONE is the
+        // canonical BidiGenerateContent suppressor — forward both from the client config.
         if (msg.tools !== undefined) setup.tools = msg.tools;
+        if (msg.toolConfig !== undefined) setup.toolConfig = msg.toolConfig;
         // Step 3 — native context-window compression. The server-side sliding window truncates
         // the oldest turns instead of hard-closing the session (~turn 10). System instruction and
         // prefix are guaranteed to survive the window, so the Oracle never forgets the persona.

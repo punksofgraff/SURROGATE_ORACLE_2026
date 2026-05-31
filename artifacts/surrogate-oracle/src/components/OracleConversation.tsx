@@ -243,6 +243,11 @@ const OracleConversation = forwardRef(
     const pendingBootRef = useRef(false);
     // Tracks user-initiated closes so onclose can distinguish from Gemini-side drops
     const userInitiatedCloseRef = useRef(false);
+    // Set true when onclose/goaway triggers a reconnect; read in session.created to
+    // distinguish continuation from cold start. Reset after use. This decouples
+    // reconnect detection from reconnectAttemptsRef, which ws.onopen resets to 0
+    // before session.created ever fires (previously caused re-greeting on reconnect).
+    const isSessionReconnectRef = useRef(false);
     // Mirror of `turns` state — closure-safe ref for reconnect context injection
     const turnsRef = useRef<Turn[]>([]);
     // Timer handle for the contemplative filler injection — cancelled if Oracle
@@ -378,9 +383,11 @@ const OracleConversation = forwardRef(
         type: 'session.config',
         model: GEMINI_MODEL,
         systemInstruction: { parts: [{ text: systemText }] },
-        // Step 1 — no tools. Matches the Oracle's directive (no uplink, no grid, no tools);
-        // the proxy forwards this as a top-level setup field to stop tool-call error loops.
+        // Definitively disable all tool use — tools: [] alone doesn't suppress
+        // built-in Gemini tools (grounding, code execution). toolConfig with mode
+        // NONE is the canonical suppressor for the BidiGenerateContent setup.
         tools: [],
+        toolConfig: { functionCallingConfig: { mode: 'NONE' } },
         // Step 4 — enable native session resumption. Empty object on a fresh connect asks the
         // server to emit resumption handles; on reconnect we pass the stored handle so Gemini
         // restores the conversation context server-side (no blind summary re-injection).
@@ -422,11 +429,13 @@ const OracleConversation = forwardRef(
           if ((autoStart || pendingBootRef.current) && !sessionBootedRef.current) {
             sessionBootedRef.current = true;
             pendingBootRef.current = false;
-            if (reconnectAttemptsRef.current > 0 && resumeHandleRef.current) {
-              // Step 4 — native session resumption already restored the full context server-side.
-              // No greeting, no blind summary — the Oracle simply continues mid-thought.
+            const wasReconnect = isSessionReconnectRef.current;
+            isSessionReconnectRef.current = false; // consumed — reset immediately
+            if (wasReconnect && resumeHandleRef.current) {
+              // Native session resumption: Gemini restored full context server-side.
+              // No greeting, no blind summary — Oracle continues mid-thought.
               logStep('SESSION RESUMED (native handle)', 'ok');
-            } else if (reconnectAttemptsRef.current > 0 && turnsRef.current.length > 0) {
+            } else if (wasReconnect && turnsRef.current.length > 0) {
               // Fallback (no handle yet) — inject a blind summary of the last turns.
               const lastTurns = turnsRef.current.slice(-6)
                 .map(t => `${t.role === 'user' ? 'Seeker' : 'Oracle'}: ${t.content.slice(0, 200)}`)
@@ -580,6 +589,7 @@ const OracleConversation = forwardRef(
             logStep(`GEMINI GOAWAY (${msg.timeLeft}) — pre-emptive reconnect`, 'warn');
             if (!userInitiatedCloseRef.current && sessionBootedRef.current && reconnectAttemptsRef.current < 3) {
               reconnectAttemptsRef.current++;
+              isSessionReconnectRef.current = true;
               sessionBootedRef.current = false;
               userInitiatedCloseRef.current = true; // suppress the onclose reconnect path
               logStep(`SESSION REFRESH via GOAWAY (attempt ${reconnectAttemptsRef.current}/3)`, 'warn');
@@ -611,6 +621,7 @@ const OracleConversation = forwardRef(
         const wasActive = sessionBootedRef.current;
         if (!userInitiatedCloseRef.current && wasActive && reconnectAttemptsRef.current < 3) {
           reconnectAttemptsRef.current++;
+          isSessionReconnectRef.current = true;
           sessionBootedRef.current = false; // allow re-boot on new session
           const delay = reconnectAttemptsRef.current * 1500;
           logStep(`SESSION REFRESH (attempt ${reconnectAttemptsRef.current}/3)`, 'warn');

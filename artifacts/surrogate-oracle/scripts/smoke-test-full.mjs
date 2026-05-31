@@ -450,6 +450,52 @@ async function runSmoke() {
   }
 
   // ══════════════════════════════════════════════════════════
+  // §11b BOTTOM BAR INTERACTIONS
+  // ══════════════════════════════════════════════════════════
+  header('§11b Bottom Bar — Interaction Toggles');
+
+  const bottomBar = await page.$('.oracle-bottom-bar');
+  record('ui', 'Bottom bar present', bottomBar ? 'pass' : 'fail');
+
+  const bottomButtons = await page.$$('.oracle-bottom-bar > div');
+  record('ui', '4 buttons present in bottom bar', bottomButtons.length === 4 ? 'pass' : 'fail', `found ${bottomButtons.length}`);
+
+  // Test Portrait Button (2nd button)
+  const portraitBtn = bottomButtons[1];
+  if (portraitBtn) {
+    await portraitBtn.click({ force: true });
+    await sleep(1200);
+    const gallery = await page.$('.portrait-gallery-overlay');
+    record('ui', 'Portrait gallery opens via button', gallery ? 'pass' : 'fail');
+
+    // Close gallery
+    const closeBtn = await page.$('.portrait-gallery-close').catch(() => null);
+    if (closeBtn) {
+       await closeBtn.click({ force: true });
+       await sleep(1000);
+       const galleryAfter = await page.$('.portrait-gallery-overlay');
+       record('ui', 'Portrait gallery closes correctly', !galleryAfter ? 'pass' : 'warn');
+    }
+  }
+
+  // Ensure gallery is closed before continuing
+  await page.evaluate(() => {
+    const gallery = document.querySelector('.portrait-gallery-overlay');
+    if (gallery) gallery.remove(); // Force remove if still there to avoid blocking tests
+  });
+  await sleep(500);
+
+  // Test Tour Button (4th button)
+  const tourBtn = bottomButtons[3];
+  if (tourBtn) {
+    const isTour = await page.evaluate(() => document.querySelector('.oracle-stage').dataset.guidedTour === 'true');
+    await tourBtn.click({ force: true });
+    await sleep(500);
+    const isTourAfter = await page.evaluate(() => document.querySelector('.oracle-stage').dataset.guidedTour === 'true');
+    record('ui', 'Tour mode toggles via button', isTour !== isTourAfter ? 'pass' : 'fail', `init=${isTour} after=${isTourAfter}`);
+  }
+
+  // ══════════════════════════════════════════════════════════
   // §12  EXIT & SCENE RESET
   // ══════════════════════════════════════════════════════════
   header('§12 Exit — Scene Reset to Dormant');

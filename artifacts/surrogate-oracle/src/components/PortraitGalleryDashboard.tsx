@@ -24,6 +24,7 @@ interface PortraitGalleryProps {
   sessionId?: string;
   maxPortraits?: number;
   isBackendCabinetTab?: boolean;
+  onClose?: () => void;
 }
 
 export function PortraitGalleryDashboard({
@@ -32,6 +33,7 @@ export function PortraitGalleryDashboard({
   sessionId,
   maxPortraits = 20,
   isBackendCabinetTab = false,
+  onClose,
 }: PortraitGalleryProps) {
   const [portraits, setPortraits] = useState<Portrait[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -155,7 +157,32 @@ export function PortraitGalleryDashboard({
   }
 
   return (
-    <div style={containerStyle}>
+    <div style={{ ...containerStyle, position: 'relative' }}>
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="portrait-gallery-close"
+          style={{
+            position: 'absolute', top: 12, right: 12,
+            background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
+            color: 'white', borderRadius: '50%', width: 32, height: 32,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', zIndex: 10,
+          }}
+        >
+          <XCircle size={20} />
+        </button>
+      )}
+      {!isBackendCabinetTab && (
+        <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
+          <h2 style={{ fontSize: '1.5rem', letterSpacing: '0.2em', color: '#00ff88', marginBottom: '0.5rem' }}>
+            PORTRAIT ARCHIVE
+          </h2>
+          <p style={{ fontSize: '0.7rem', color: '#00ccff', opacity: 0.8 }}>
+            › RECOVERED NEURAL SYNTHESIS
+          </p>
+        </div>
+      )}
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
         {[

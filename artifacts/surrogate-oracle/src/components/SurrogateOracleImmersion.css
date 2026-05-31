@@ -4,8 +4,8 @@
   --z-atmosphere: 5;
   --z-branding: 10;
   --z-cabinet: 15;
-  --z-bottom: 20;
   --z-oracle: 30;
+  --z-bottom: 40;
   --z-system: 100;
   --z-auth: 150;
   --z-error: 200;
@@ -1124,10 +1124,16 @@
   transform: translateX(-50%);
   z-index: var(--z-bottom);
   display: flex;
-  align-items: flex-end;
-  gap: clamp(40px, 10vw, 120px);
+  align-items: center;
+  justify-content: center;
+  gap: clamp(20px, 6vw, 80px);
   filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
   transition: opacity 1.2s var(--ease-cinematic);
+  pointer-events: none;
+}
+
+.oracle-bottom-bar > * {
+  pointer-events: auto;
 }
 
 /* DORMANT — bottom bar invisible.

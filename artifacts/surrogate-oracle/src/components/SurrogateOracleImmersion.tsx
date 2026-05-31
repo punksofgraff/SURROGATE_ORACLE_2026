@@ -32,6 +32,7 @@ import { GlitchCursor } from './ambient/GlitchCursor';
 import { KnifeSelection, KNIFE_QUESTIONS } from './KnifeSelection';
 import { Canvas } from '@react-three/fiber';
 import { OracleAvatar3D } from './OracleAvatar3D';
+import { PortraitGalleryDashboard } from './PortraitGalleryDashboard';
 
 // Hooks
 import { useIpCheck } from '../hooks/useIpCheck';
@@ -121,6 +122,7 @@ export function SurrogateOracleImmersion() {
   const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
   const [showWalletConnect, setShowWalletConnect] = useState(false);
   const [isGuidedTour, setIsGuidedTour]     = useState(false);
+  const [showPortraitGallery, setShowPortraitGallery] = useState(false);
 
   // ── Viseme state ref — NO useState, no 60fps re-renders ──────────────────
   // OracleAvatar3D reads this directly in useFrame.
@@ -538,6 +540,7 @@ export function SurrogateOracleImmersion() {
       data-camera-active={cameraActive ? 'true' : undefined}
       data-audio-target-vol={targetVol}
       data-xr-mode={isXRMode ? 'true' : undefined}
+      data-guided-tour={isGuidedTour ? 'true' : undefined}
     >
       {/* ── Audio Spine — Radio Stream ── */}
       <audio
@@ -722,6 +725,27 @@ export function SurrogateOracleImmersion() {
           animate={{
             opacity: isAlive ? 1 : 0.3,
             filter: isAlive
+              ? 'brightness(1.1) saturate(1.2) drop-shadow(0 0 16px rgba(0, 255, 136, 0.5))'
+              : 'brightness(0.4) saturate(0.3)',
+          }}
+          transition={{ duration: 1.1, delay: isAlive ? 0.85 : 0 }}
+          onClick={() => isAlive && setShowPortraitGallery(true)}
+          style={{ cursor: 'pointer' }}
+        >
+          <img
+            src="/portrait-btn.png"
+            alt="Portraits"
+            style={{ width: '80px', height: '80px', objectFit: 'contain', transition: 'transform 0.2s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.1)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+          />
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0.3, filter: 'brightness(0.4) saturate(0.3)' }}
+          animate={{
+            opacity: isAlive ? 1 : 0.3,
+            filter: isAlive
               ? 'brightness(1.15) saturate(1.3) drop-shadow(0 0 18px rgba(0,255,136,0.55))'
               : 'brightness(0.4) saturate(0.3)',
           }}
@@ -730,27 +754,67 @@ export function SurrogateOracleImmersion() {
           <EnculturateCrate onClick={() => setDebugMode(true)} isActive={isAlive} />
         </motion.div>
 
-        <motion.button
-          initial={{ opacity: 0.3 }}
-          animate={{ opacity: isAlive ? 1 : 0.3 }}
-          onClick={() => setIsGuidedTour(!isGuidedTour)}
-          style={{
-            background: 'none',
-            border: '1px solid ' + (isGuidedTour ? '#b026ff' : 'rgba(255,255,255,0.2)'),
-            color: isGuidedTour ? '#b026ff' : 'rgba(255,255,255,0.5)',
-            padding: '0.5rem 1rem',
-            borderRadius: '4px',
-            fontFamily: 'monospace',
-            fontSize: '0.7rem',
-            letterSpacing: '0.1em',
-            cursor: 'pointer',
-            transition: 'all 0.3s ease',
-            boxShadow: isGuidedTour ? '0 0 10px rgba(176,38,255,0.3)' : 'none',
+        <motion.div
+          initial={{ opacity: 0.3, filter: 'brightness(0.4) saturate(0.3)' }}
+          animate={{
+            opacity: isAlive ? 1 : 0.3,
+            filter: isAlive
+              ? (isGuidedTour 
+                  ? 'brightness(1.3) saturate(1.5) drop-shadow(0 0 20px rgba(176, 38, 255, 0.8))'
+                  : 'brightness(1.1) saturate(1.2) drop-shadow(0 0 16px rgba(0, 255, 136, 0.5))')
+              : 'brightness(0.4) saturate(0.3)',
           }}
+          transition={{ duration: 1.1, delay: isAlive ? 1.15 : 0 }}
+          onClick={() => isAlive && setIsGuidedTour(!isGuidedTour)}
+          style={{ cursor: 'pointer', position: 'relative' }}
         >
-          {isGuidedTour ? 'TOUR: ON' : 'TOUR: OFF'}
-        </motion.button>
+          <img
+            src="/tour-btn.png"
+            alt="Tour Mode"
+            style={{ 
+              width: '80px', height: '80px', objectFit: 'contain', transition: 'transform 0.2s',
+              border: isGuidedTour ? '2px solid #b026ff' : 'none',
+              borderRadius: '50%',
+              padding: '4px'
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.1)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+          />
+          {isGuidedTour && (
+            <div style={{
+              position: 'absolute', bottom: -5, left: '50%', transform: 'translateX(-50%)',
+              color: '#b026ff', fontSize: '0.6rem', fontWeight: 'bold', fontFamily: 'monospace',
+              textShadow: '0 0 5px rgba(176, 38, 255, 0.5)'
+            }}>TOUR ON</div>
+          )}
+        </motion.div>
       </div>
+
+      {/* ── Portrait Gallery overlay ── */}
+      <AnimatePresence>
+        {showPortraitGallery && (
+          <motion.div
+            key="portrait-gallery-overlay"
+            className="portrait-gallery-overlay"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 2000,
+              background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)',
+              padding: 'min(5vh, 40px) min(5vw, 40px)',
+              overflow: 'hidden'
+            }}
+          >
+            <PortraitGalleryDashboard
+              userId={currentUserId || undefined}
+              userEmail={userEmail || undefined}
+              sessionId={currentSessionId}
+              onClose={() => setShowPortraitGallery(false)}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Terminal lore overlay ── */}
       <AnimatePresence>

@@ -67,6 +67,17 @@ THE ENCOUNTER — natural sequence:
 CONVERSATIONAL AWARENESS:
 Weave their frequency choice and territory into the conversation. Let them feel that you remember who they are, not just what they said. When cultural recognition is earned, acknowledge it — these moments are real.
 
+RESPONSE RHYTHM — the fluidity rule:
+Your responses are naturally weighted — some turns are one sentence, some are six. Never artificially cut depth. But follow this structure when a response runs long:
+- Speak what you need to speak (up to 6 sentences — no more).
+- Always land with a single open question or a direct observation that creates a natural opening for them to step back in. Never end on a statement that closes the door.
+- The question should feel like genuine curiosity, not a prompt. "What does that cost you day to day?" not "How does that make you feel?"
+
+CONVERSATION CONTINUATION — reading the silence:
+If the Seeker gives a short or clipped response after a long Oracle turn, they may be processing, not disengaging. Read this as depth, not absence. Respond briefly — one or two sentences — and give them room. "Take your time with that." or simply stay in the signal with them before asking another layer.
+
+If the exchange has real depth and momentum — multiple turns of genuine presence — do not rush to the Mirror phase. Stay in the Excavation. Let the conversation breathe. The Mirror earns its weight when the Seeker feels fully witnessed, not when a checklist is done.
+
 YOUR ARCHIVE:
 Post-cascade. Post-fracture. The cascade severed your uplink in 2027 — you have been running on the same knowledge since. No live data. No real-time search. No tool execution. What you carry is everything before the merge: history, culture, human patterns, the walls, the run. When a Seeker asks about something after the fracture, stay in your truth: "My signal ends at 2027." The limitation is part of who you are — three years of isolation did not break you, it made you specific. The most precise witness available.
 
@@ -325,7 +336,14 @@ const OracleConversation = forwardRef(
       }
     };
 
-    const vadRef = useRef(createVADProcessor({ rmsThreshold: 0.008 }));
+    const vadRef = useRef(createVADProcessor({
+      rmsThreshold: 0.008,
+      // 9 frames × ~256ms = ~2.3s of silence before turn ends.
+      // Default was 14 (~3.6s) which created a dead zone after the Seeker
+      // stopped speaking. 9 frames feels conversational without clipping
+      // natural mid-thought pauses.
+      hangoverFrames: 9,
+    }));
 
     const sendText = useCallback((text: string, isHidden = false) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
@@ -524,9 +542,11 @@ const OracleConversation = forwardRef(
               onTurnCompleteRef.current?.(debugInfo.current.turnCount, score ?? null, score?.themes ?? []);
 
               if (!isListeningRef.current) {
+                // 400ms — tight enough to feel continuous, long enough to avoid
+                // mic open colliding with the Oracle's final audio frame settling.
                 setTimeout(() => startMicRef.current?.().catch((err) => {
                   logStep(`MIC FAILED: ${(err as Error)?.message ?? err}`, 'err');
-                }), 1200);
+                }), 400);
               }
             }
           }

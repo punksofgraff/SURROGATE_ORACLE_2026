@@ -2,7 +2,34 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import fs from "fs";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+
+const LOG_FILE = path.resolve(import.meta.dirname, ".oracle-dev-log.jsonl");
+
+function oracleLogRelayPlugin() {
+  return {
+    name: 'oracle-log-relay',
+    configureServer(server: any) {
+      server.middlewares.use('/api/oracle-log', (req: any, res: any) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+        if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+        let body = '';
+        req.on('data', (chunk: any) => { body += chunk; });
+        req.on('end', () => {
+          try {
+            const line = JSON.stringify({ ...JSON.parse(body), _t: Date.now() });
+            fs.appendFileSync(LOG_FILE, line + '\n');
+          } catch {}
+          res.writeHead(204); res.end();
+        });
+      });
+    },
+  };
+}
 
 const rawPort = process.env.PORT || "5173";
 
@@ -28,6 +55,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
+    oracleLogRelayPlugin(),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [

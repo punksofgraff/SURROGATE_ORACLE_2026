@@ -48,8 +48,6 @@ const DEBUG_ENABLED =
   localStorage.getItem('oracle_step_log') === '1';
 
 export function logStep(label: string, status: StepStatus = 'ok') {
-  // Only log to console when debug mode is explicitly on — never expose
-  // internal state machine details to a casual DevTools user.
   if (DEBUG_ENABLED) {
     const icon  = STEP_ICONS[status];
     const style = status === 'ok'      ? 'color:#00ff88;font-weight:bold'
@@ -62,6 +60,16 @@ export function logStep(label: string, status: StepStatus = 'ok') {
   window.dispatchEvent(
     new CustomEvent('oracle:step', { detail: { label, status } })
   );
+
+  // Dev relay — streams every logStep to .oracle-dev-log.jsonl on the server
+  // so external observers (Claude Code) can tail the live session.
+  if (import.meta.env.DEV) {
+    fetch('/api/oracle-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label, status }),
+    }).catch(() => {});
+  }
 }
 
 export function CodeAuditor() {

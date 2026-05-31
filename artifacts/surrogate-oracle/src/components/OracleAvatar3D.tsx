@@ -135,7 +135,7 @@ const CAM_MIN_Z     = 0.4;  // maximum zoom-in (eyes fill the frame)
 const CAM_X_RANGE   = 0.30; // horizontal look-around extent (world units)
 const CAM_Y_CENTER  = 0.0;  // face center (group is offset so face is at Y=0)
 const CAM_Y_RANGE   = 0.22; // vertical look-around extent
-const CAM_LERP      = 0.05; // cinematic smooth-follow
+const CAM_LERP      = 0.08; // responsive on phone while still smooth
 
 // Fallback group offset if the head bone can't be located. The real offset is
 // computed per-model from the actual Head bone (see meshData.avatarYOffset) so a
@@ -150,8 +150,14 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
   // Smooth camera target — avoids snapping on sudden gesture changes
   const camTarget = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
 
-  // Blinking logic
-  const blinkRef = useRef({ intensity: 0, lastBlink: 0 });
+  // Blinking state — speed, double-blink support, idle vs speech mode
+  const blinkRef = useRef({
+    intensity: 0,
+    lastBlink: 0,
+    speed: 12,
+    doublePending: false,
+    doubleAt: 0,
+  });
 
   // Cache skinned meshes + gaze bones — found once on mount, zero traversal per frame.
   const meshData = useMemo(() => {
@@ -258,90 +264,109 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
     const vs     = visemeStateRef.current;
     const amp    = vs?.amplitude ?? 0;
     const lerpDt = Math.min(delta * 60, 1); // frame-rate independent
+    const t      = state.clock.elapsedTime;
 
-    // ── Camera: parallax look-around + pinch zoom ──────────────────────────
+    // ── Camera: parallax look-around + pinch zoom ─────────────────────────
     if (cameraStateRef?.current) {
       const { x, y, zoom } = cameraStateRef.current;
       const targetZ = Math.min(CAM_DEFAULT_Z, Math.max(CAM_MIN_Z, CAM_DEFAULT_Z / Math.max(zoom, 1)));
       camTarget.current.set(x * CAM_X_RANGE, CAM_Y_CENTER - y * CAM_Y_RANGE, targetZ);
     }
-    const cf = CAM_LERP * lerpDt;
-    camera.position.lerp(camTarget.current, cf);
+    camera.position.lerp(camTarget.current, CAM_LERP * lerpDt);
     camera.lookAt(0, CAM_Y_CENTER, 0);
 
     // ── Blinking ──────────────────────────────────────────────────────────
-    const now = state.clock.elapsedTime;
-    if (now - blinkRef.current.lastBlink > 3.0 + Math.random() * 4) {
-      blinkRef.current.lastBlink = now;
-      blinkRef.current.intensity = 1.0;
-    }
-    if (blinkRef.current.intensity > 0) {
-      blinkRef.current.intensity = Math.max(0, blinkRef.current.intensity - delta * 11);
-    }
-    // S-curve for more natural motion
-    const bInt = Math.sin(blinkRef.current.intensity * Math.PI);
+    const blink = blinkRef.current;
+    const now   = t;
 
-    // ── Gaze tracking — Oracle watches the viewer ─────────────────────────
-    if (cameraStateRef?.current) {
-      const gx = Math.max(-1, Math.min(1,  cameraStateRef.current.x));
-      const gy = Math.max(-1, Math.min(1, -cameraStateRef.current.y));
-
-      const eyeLerpF = lerpDt * 0.16;
-      const eyeMaxH  =  0.42; // ~24° horizontal
-      const eyeMaxV  =  0.25; // ~14° vertical
-      if (meshData.leftEyeBone) {
-        meshData.leftEyeBone.rotation.y  = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.y,  gx * eyeMaxH, eyeLerpF);
-        meshData.leftEyeBone.rotation.x  = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.x,  gy * eyeMaxV, eyeLerpF);
-        // Bone-based blink fallback (squish eye)
-        meshData.leftEyeBone.scale.y = 1.0 - (bInt * 0.92);
+    if (blink.intensity <= 0) {
+      // Trigger a new blink?
+      const timeSince = now - blink.lastBlink;
+      const interval  = 3.2 + Math.random() * 3.8; // 3.2–7s, human range
+      if (timeSince > interval && amp < 0.40) {      // suppress mid-heavy-speech
+        blink.lastBlink   = now;
+        blink.intensity   = 1.0;
+        // Slow contemplative blink at rest, fast blink during speech
+        blink.speed       = amp < 0.04 ? 6 : 13;
+        blink.doublePending = Math.random() < 0.20; // 20% chance of double
+        blink.doubleAt    = now + 0.22 + Math.random() * 0.08;
       }
-      if (meshData.rightEyeBone) {
-        meshData.rightEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.y, gx * eyeMaxH, eyeLerpF);
-        meshData.rightEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.x, gy * eyeMaxV, eyeLerpF);
-        meshData.rightEyeBone.scale.y = 1.0 - (bInt * 0.92);
-      }
-
-      // ── Procedural Conversational Gestures ──
-      // Emphatic head movement driven by speech amplitude
-      const t = state.clock.elapsedTime;
-      const speakIntensity = amp * 1.2;
-      
-      if (meshData.headBone) {
-        const headLerpF = lerpDt * 0.06;
-        
-        // Base gaze tracking
-        let tx = gx * 0.18;
-        let ty = gy * 0.12;
-        let tz = 0;
-
-        // Add conversational "nod" and "tilt" when speaking
-        if (amp > 0.05) {
-          tx += Math.sin(t * 8) * 0.03 * speakIntensity; // emphasis shake
-          ty -= Math.cos(t * 5) * 0.05 * speakIntensity; // emphasis nod
-          tz += Math.sin(t * 4) * 0.06 * speakIntensity; // conversational tilt
-        }
-
-        meshData.headBone.rotation.y = THREE.MathUtils.lerp(meshData.headBone.rotation.y, tx, headLerpF);
-        meshData.headBone.rotation.x = THREE.MathUtils.lerp(meshData.headBone.rotation.x, ty, headLerpF);
-        meshData.headBone.rotation.z = THREE.MathUtils.lerp(meshData.headBone.rotation.z, tz, headLerpF);
-      }
-
-      // Neck/Shoulder subtle conversational sway
-      if (meshData.neckBone) {
-        const neckLerpF = lerpDt * 0.03;
-        const swayX = Math.sin(t * 0.8) * 0.02 + (Math.sin(t * 6) * 0.015 * speakIntensity);
-        const swayZ = Math.cos(t * 0.5) * 0.015;
-        meshData.neckBone.rotation.x = THREE.MathUtils.lerp(meshData.neckBone.rotation.x, gy * 0.04 + swayX, neckLerpF);
-        meshData.neckBone.rotation.z = THREE.MathUtils.lerp(meshData.neckBone.rotation.z, swayZ, neckLerpF);
+    } else {
+      blink.intensity = Math.max(0, blink.intensity - delta * blink.speed);
+      // Fire the second blink of a double
+      if (blink.doublePending && now >= blink.doubleAt && blink.intensity <= 0) {
+        blink.intensity     = 0.75;
+        blink.doublePending = false;
+        blink.speed         = 14;
       }
     }
+    // S-curve: smooth eyelid arc (not a triangle wave)
+    const bInt = Math.sin(blink.intensity * Math.PI);
 
-    // ── Idle breathing — subtle Y drift ──
+    // ── Gaze & bone animation ─────────────────────────────────────────────
+    const gx = cameraStateRef?.current
+      ? Math.max(-1, Math.min(1,  cameraStateRef.current.x)) : 0;
+    const gy = cameraStateRef?.current
+      ? Math.max(-1, Math.min(1, -cameraStateRef.current.y)) : 0;
+
+    // Eye gaze follows viewer
+    const eyeLerpF = lerpDt * 0.16;
+    if (meshData.leftEyeBone) {
+      meshData.leftEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.y, gx * 0.42, eyeLerpF);
+      meshData.leftEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.x, gy * 0.25, eyeLerpF);
+      meshData.leftEyeBone.scale.y    = 1.0 - bInt * 0.92;
+    }
+    if (meshData.rightEyeBone) {
+      meshData.rightEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.y, gx * 0.42, eyeLerpF);
+      meshData.rightEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.x, gy * 0.25, eyeLerpF);
+      meshData.rightEyeBone.scale.y    = 1.0 - bInt * 0.92;
+    }
+
+    // ── Head: organic conversational movement ─────────────────────────────
+    // Organic drift uses incommensurate frequencies — never fully repeats.
+    // Speech adds slower (0.37–0.62 Hz) nod/tilt, not a fast shake.
+    if (meshData.headBone) {
+      const headLerpF    = lerpDt * 0.07;
+      const speakAmt     = amp * 1.1;
+
+      // Base parallax gaze
+      let tx = gx * 0.18;
+      let ty = gy * 0.12;
+      let tz = 0;
+
+      // Alive idle micro-drift — two incommensurate freqs, imperceptible at rest
+      tx += Math.sin(t * 0.71 + 0.4)  * 0.006 + Math.sin(t * 1.13 + 1.7) * 0.004;
+      tz += Math.cos(t * 0.57 + 0.9)  * 0.005;
+
+      if (amp > 0.05) {
+        // Organic conversational nod: 0.62 Hz (thoughtful, not robotic)
+        ty -= Math.sin(t * 3.90) * 0.038 * speakAmt;
+        // Gentle conversational tilt: 0.37 Hz (offset phase = feels independent)
+        tz += Math.sin(t * 2.30 + 1.2) * 0.040 * speakAmt;
+        // Very subtle forward lean on amplitude peaks (presence, not shake)
+        ty -= amp * 0.015;
+      }
+
+      meshData.headBone.rotation.y = THREE.MathUtils.lerp(meshData.headBone.rotation.y, tx, headLerpF);
+      meshData.headBone.rotation.x = THREE.MathUtils.lerp(meshData.headBone.rotation.x, ty, headLerpF);
+      meshData.headBone.rotation.z = THREE.MathUtils.lerp(meshData.headBone.rotation.z, tz, headLerpF);
+    }
+
+    // ── Neck: slow organic sway, low-freq only ────────────────────────────
+    if (meshData.neckBone) {
+      const neckLerpF = lerpDt * 0.03;
+      const neckSwayX = Math.sin(t * 0.80) * 0.018 + Math.sin(t * 1.90 + 0.6) * 0.008 * amp;
+      const neckSwayZ = Math.cos(t * 0.52 + 1.1) * 0.012;
+      meshData.neckBone.rotation.x = THREE.MathUtils.lerp(meshData.neckBone.rotation.x, gy * 0.04 + neckSwayX, neckLerpF);
+      meshData.neckBone.rotation.z = THREE.MathUtils.lerp(meshData.neckBone.rotation.z, neckSwayZ, neckLerpF);
+    }
+
+    // ── Breathing — visible Y drift, quickens with speech ────────────────
     if (groupRef.current) {
-      const breathSpeed = 1.4 + (amp * 1.5); // breathing quickens with speech
+      const breathSpeed = 1.4 + amp * 1.5;
       groupRef.current.position.y = THREE.MathUtils.lerp(
         groupRef.current.position.y,
-        meshData.avatarYOffset + Math.sin(state.clock.elapsedTime * breathSpeed) * 0.008,
+        meshData.avatarYOffset + Math.sin(t * breathSpeed) * 0.013,
         lerpDt * 0.04,
       );
     }
@@ -352,13 +377,12 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
     if (meshData.hasMorphs) {
       const targets = new Map<string, number>();
       OVR_NAMES.forEach(n => targets.set(n, 0));
-      
-      // Add blinking to targets
       BLINK_NAMES.forEach(b => targets.set(b, bInt));
 
-      if (amp > 0.01) {
+      if (amp > 0.015) {
         const dominant = ORACLE_TO_OVR[vs.viseme] ?? ['viseme_sil'];
-        const weight   = Math.min(amp * 1.8, 1.0);
+        // Boost weight so full morph influence is reached at moderate amplitude
+        const weight   = Math.min(amp * 2.5, 1.0);
         const perShape = weight / dominant.length;
         for (const name of dominant) {
           targets.set(name, (targets.get(name) ?? 0) + perShape);
@@ -366,14 +390,14 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
         for (const ca of CO_ARTIC) {
           if (dominant.includes(ca.viseme)) continue;
           const contrib = (vs[ca.dimension as keyof VisemeState] as number ?? 0) * ca.scale * amp;
-          if (contrib > 0.01) {
+          if (contrib > 0.008) {
             targets.set(ca.viseme, Math.min(1, (targets.get(ca.viseme) ?? 0) + contrib));
           }
         }
       }
 
-      const attackLerp = lerpDt * 0.55;
-      const decayLerp  = lerpDt * 0.22;
+      const attackLerp = lerpDt * 0.58; // fast onset — crisp consonant attack
+      const decayLerp  = lerpDt * 0.32; // faster decay than before — less smear
 
       for (const { mesh, indexMap } of meshData.meshes) {
         const infl = mesh.morphTargetInfluences!;
@@ -383,20 +407,15 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
           const current = infl[idx];
           infl[idx] = THREE.MathUtils.lerp(current, value, value > current ? attackLerp : decayLerp);
         }
-        
-        // Occasional debug log
-        if (vs.amplitude > 0.3 && Math.random() < 0.005) {
-          console.log(`[OracleAvatar3D] Mesh "${mesh.name}" amp=${vs.amplitude.toFixed(2)} infl:`, Array.from(infl).map(v => v.toFixed(2)).join(', '));
-        }
       }
       return;
     }
 
-    // ── PATH B: No morph targets — bone fallback ─────────────────────────
+    // ── PATH B: No morph targets — bone jaw fallback ──────────────────────
     const bone = meshData.headBone;
     if (!bone) return;
     const targetRot = amp > 0.03 ? -amp * 0.12 : 0;
-    bone.rotation.x = THREE.MathUtils.lerp(bone.rotation.x, targetRot, amp > bone.rotation.x ? lerpDt * 0.55 : lerpDt * 0.20);
+    bone.rotation.x = THREE.MathUtils.lerp(bone.rotation.x, targetRot, amp > bone.rotation.x ? lerpDt * 0.55 : lerpDt * 0.28);
   });
 
   return (

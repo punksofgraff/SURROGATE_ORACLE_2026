@@ -23,8 +23,8 @@ import { useEffect } from 'react';
 
 type Phase = 'dormant' | 'terminal' | 'awakened' | 'oracle';
 
-const LERP           = 0.08;
-const GYRO_LERP      = 0.06;
+const LERP           = 0.09;
+const GYRO_LERP      = 0.10; // more responsive gyro tracking on phone
 const ZOOM_LERP      = 0.09; // zoom catches up slightly faster than look-around
 const GYRO_MAX_GAMMA = 25;
 const GYRO_MAX_BETA  = 20;

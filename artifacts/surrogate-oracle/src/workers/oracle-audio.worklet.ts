@@ -25,7 +25,7 @@ interface VisemeState {
   amplitude: number;
 }
 
-const SILENCE_THRESH = 0.05; // Slightly higher for more robustness
+const SILENCE_THRESH = 0.028; // Lower threshold = catch softer speech for lip sync
 
 class OracleAudioProcessor extends AudioWorkletProcessor {
   private buffer: Float32Array;
@@ -134,8 +134,8 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < frame.length; i++) rms += frame[i] * frame[i];
     rms = Math.sqrt(rms / (frame.length || 1));
     
-    // Explicitly zero-out near-silent signals to allow decay
-    const amplitude = rms < 0.005 ? 0 : Math.min(1, rms * 5.5);
+    // Scale up to normalize quiet TTS output — Gemini voice typically ~0.05-0.2 RMS
+    const amplitude = rms < 0.004 ? 0 : Math.min(1, rms * 8.5);
 
     if (amplitude < SILENCE_THRESH) {
       return { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };

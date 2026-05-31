@@ -71,21 +71,28 @@ export function useOracleJourney({
     logStep('EXIT INITIATED', 'ok');
     setIsExiting(true);
     playExitTone();
+    if (typeof navigator !== 'undefined') navigator.vibrate?.([80, 60, 80]);
 
-    // 2.5s exit ceremony
+    // Phase 1 (0–1.2s): avatar visually retracts (CSS driven by isExiting flag)
+    // Phase 2 (1.2s): text ceremony starts via ScrambleFragment
+    // Phase 3 (2.8s): scene resets to dormant
     setTimeout(() => {
       setScenePhase('dormant');
       setLoreComplete(false);
       setSelectedKnifeQuestion(null);
       setSelectedKnifeIndex(null);
-      setIsExiting(false);
-      
+
       alleyAmbienceStopRef.current?.();
       alleyAmbienceStopRef.current = null;
-      
+
       onCleanup();
       logStep('DORMANT RESTORED', 'ok');
-    }, 2500);
+    }, 2800);
+
+    // Exiting flag clears slightly after scene resets so ceremony can finish animating out
+    setTimeout(() => {
+      setIsExiting(false);
+    }, 3200);
   }, [onCleanup]);
 
   return useMemo(() => ({

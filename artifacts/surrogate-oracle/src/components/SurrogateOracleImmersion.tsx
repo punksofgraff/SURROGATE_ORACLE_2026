@@ -82,7 +82,11 @@ class OracleErrorBoundary extends React.Component<{children: React.ReactNode}, {
   constructor(props: any) { super(props); this.state = { hasError: false }; }
   static getDerivedStateFromError() { return { hasError: true }; }
   componentDidCatch(err: any) { console.error('[3D ERROR]', err); }
-  render() { return this.state.hasError ? <div style={{color:'red'}}>3D LOAD ERROR</div> : this.props.children; }
+  render() { return this.state.hasError ? (
+    <div style={{ color: '#cc00ff', fontFamily: "'PhillySans', monospace", fontSize: '0.72rem', letterSpacing: '0.12em', textAlign: 'center', padding: 16, textShadow: '0 0 10px rgba(176,38,255,0.6)' }}>
+      SIGNAL FRAGMENTATION<br/><span style={{ color: '#b026ff', fontSize: '0.6rem' }}>ARCHIVAL RECONSTRUCTION IN PROGRESS</span>
+    </div>
+  ) : this.props.children; }
 }
 
 // Fallback shown while hero3.glb is loading (static oracle portrait at same position)
@@ -180,6 +184,21 @@ export function SurrogateOracleImmersion() {
         totemLevel,
         alignment,
       });
+      // Fire-and-forget: distill session into narrative memory for next encounter
+      const turns = oracleConversationRef.current?.getSessionTurns() ?? [];
+      if (turns.length >= 2) {
+        import('../lib/supabase').then(({ supabase }) => {
+          supabase.functions.invoke('oracle-memory-distill', {
+            body: {
+              seekerKey: key,
+              turns,
+              archetype: echoTrackRef.current.archetype,
+              alignment,
+              totemLevel,
+            },
+          }).catch((err: unknown) => console.warn('[memory-distill] fire-and-forget failed:', err));
+        });
+      }
     }
     exitOracleMode();
   }, [saveEcho]);
@@ -473,6 +492,12 @@ export function SurrogateOracleImmersion() {
     onPortraitGenerated: handlePortraitGenerated,
   });
 
+  useEffect(() => {
+    if (!portrait.portraitError) return;
+    const t = setTimeout(portrait.clearPortraitError, 4000);
+    return () => clearTimeout(t);
+  }, [portrait.portraitError, portrait.clearPortraitError]);
+
   // ── Mount: env check + event wiring ──────────────────────────────────────
   useEffect(() => {
     logStep('OracleConversation MOUNTED', 'ok');
@@ -550,6 +575,7 @@ export function SurrogateOracleImmersion() {
     <div
       className="oracle-stage"
       data-oracle-state={scenePhase}
+      data-exiting={journey.isExiting ? 'true' : undefined}
       data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
       data-camera-active={cameraActive ? 'true' : undefined}
@@ -658,7 +684,40 @@ export function SurrogateOracleImmersion() {
             />
 
             <AnimatePresence mode="wait">
-              {portraitViewerUrl ? (
+              {portrait.portraitError ? (
+                <motion.div
+                  key="portrait-error"
+                  className="oracle-avatar-container"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  style={{ zIndex: 12, position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}
+                >
+                  <div style={{ color: '#cc00ff', fontFamily: "'PhillySans', monospace", fontSize: '0.75rem', letterSpacing: '0.1em', textAlign: 'center', padding: '0 16px', textShadow: '0 0 10px rgba(176,38,255,0.6)' }}>
+                    {portrait.portraitError}
+                  </div>
+                </motion.div>
+              ) : portrait.isGenerating ? (
+                <motion.div
+                  key="portrait-generating"
+                  className="oracle-avatar-container"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  style={{ zIndex: 12, position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}
+                >
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                    style={{ fontSize: '2.5rem' }}
+                  >
+                    ⚗
+                  </motion.div>
+                  <div style={{ color: '#00ff88', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', textShadow: '0 0 10px rgba(0,255,136,0.6)' }}>
+                    SYNTHESIZING YOUR SIGNAL…
+                  </div>
+                </motion.div>
+              ) : portraitViewerUrl ? (
                 <motion.div
                   key="portrait-face"
                   className="oracle-avatar-container"
@@ -670,7 +729,11 @@ export function SurrogateOracleImmersion() {
                   <img src={portraitViewerUrl} alt="Minted Portrait" className="oracle-avatar-canvas" style={{ objectFit: 'cover' }} />
                   <div className="oracle-synthesis-success">
                     <div className="oracle-synthesis-success-badge">SYNTHESIS COMPLETE</div>
-                    <button className="oracle-synthesis-close" onClick={() => setPortraitViewerUrl(null)}>
+                    <button
+                      className="oracle-synthesis-close"
+                      style={{ border: '1px solid rgba(0,255,136,0.5)', boxShadow: '0 0 14px rgba(0,255,136,0.35)', transition: 'box-shadow 0.2s ease' }}
+                      onClick={() => { navigator.vibrate?.([60, 30, 60]); setPortraitViewerUrl(null); }}
+                    >
                       <X size={14} /> RETURN TO SIGNAL
                     </button>
                   </div>
@@ -720,6 +783,33 @@ export function SurrogateOracleImmersion() {
         </motion.div>
       </div>
 
+      {/* ── Tour Mode phase pill — floats above bottom bar ── */}
+      <AnimatePresence>
+        {isGuidedTour && scenePhase !== 'oracle' && (
+          <motion.div
+            key={`tour-pill-${scenePhase}`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.4 }}
+            style={{
+              position: 'fixed', bottom: 'calc(var(--bottom-bar-h, 160px) + 12px)', left: '50%',
+              transform: 'translateX(-50%)', zIndex: 90, pointerEvents: 'none',
+              background: 'rgba(176,38,255,0.12)', border: '1px solid rgba(176,38,255,0.5)',
+              borderRadius: 20, padding: '6px 18px',
+              fontFamily: "'PhillySans', monospace", fontSize: '0.7rem',
+              letterSpacing: '0.12em', color: '#b026ff',
+              textShadow: '0 0 8px rgba(176,38,255,0.6)',
+              backdropFilter: 'blur(6px)',
+            }}
+          >
+            {scenePhase === 'dormant' && '› Tap the cabinet to begin.'}
+            {scenePhase === 'terminal' && '› Watch. The Oracle is finding you.'}
+            {scenePhase === 'awakened' && '› Choose your archetype. There is no wrong answer.'}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Bottom Bar ── */}
       <div className="oracle-bottom-bar">
         <motion.div
@@ -746,14 +836,14 @@ export function SurrogateOracleImmersion() {
           transition={{ duration: 1.1, delay: isAlive ? 0.85 : 0 }}
           onClick={() => isAlive && setShowPortraitGallery(true)}
           className="oracle-bottom-btn"
-          style={{ 
-            cursor: 'pointer', 
+          style={{
+            cursor: 'pointer',
             padding: '10px',
             border: '2px solid #00ff88',
             borderRadius: '16px',
             background: 'rgba(0, 30, 15, 0.5)',
-            boxShadow: '0 0 20px rgba(0, 255, 136, 0.5), inset 0 0 10px rgba(0, 255, 136, 0.2)',
-            position: 'relative'
+            boxShadow: '0 0 20px rgba(0,255,136,0.5), inset 0 0 8px rgba(0,255,136,0.15)',
+            position: 'relative', minWidth: 44, minHeight: 44,
           }}
         >
           <img
@@ -762,11 +852,13 @@ export function SurrogateOracleImmersion() {
             style={{ width: '120px', height: '120px', objectFit: 'contain', transition: 'transform 0.2s' }}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+            onTouchStart={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
+            onTouchEnd={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           />
           <div style={{
             position: 'absolute', bottom: 6, right: 10,
-            color: '#00ff88', fontSize: '0.65rem', fontWeight: 'bold', fontFamily: 'monospace',
-            letterSpacing: '0.05em', textShadow: '0 0 5px #00ff88'
+            color: '#00ff88', fontSize: '0.65rem', fontWeight: 'bold', fontFamily: "'PhillySans', monospace",
+            letterSpacing: '0.08em', textShadow: '0 0 5px #00ff88'
           }}>PORTRAITS</div>
         </motion.div>
 
@@ -796,30 +888,34 @@ export function SurrogateOracleImmersion() {
           transition={{ duration: 1.1, delay: isAlive ? 1.15 : 0 }}
           onClick={() => isAlive && setIsGuidedTour(!isGuidedTour)}
           className="oracle-bottom-btn"
-          style={{ 
-            cursor: 'pointer', 
+          style={{
+            cursor: 'pointer',
             position: 'relative',
             padding: '10px',
             border: isGuidedTour ? '2px solid #b026ff' : '2px solid #00ff88',
             borderRadius: '16px',
             background: 'rgba(0, 30, 15, 0.5)',
-            boxShadow: isGuidedTour ? '0 0 25px rgba(176, 38, 255, 0.6)' : '0 0 20px rgba(0, 255, 136, 0.5)',
+            boxShadow: isGuidedTour
+              ? '0 0 20px rgba(176,38,255,0.5), inset 0 0 8px rgba(176,38,255,0.15)'
+              : '0 0 20px rgba(0,255,136,0.5), inset 0 0 8px rgba(0,255,136,0.15)',
+            minWidth: 44, minHeight: 44,
           }}
         >
           <img
             src="/tour-btn.png"
             alt="Tour Mode"
-            style={{ 
-              width: '120px', height: '120px', objectFit: 'contain', transition: 'transform 0.2s',
-            }}
+            style={{ width: '120px', height: '120px', objectFit: 'contain', transition: 'transform 0.2s' }}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+            onTouchStart={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
+            onTouchEnd={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           />
           <div style={{
             position: 'absolute', bottom: 6, right: 10,
-            color: isGuidedTour ? '#b026ff' : '#00ff88', 
-            fontSize: '0.65rem', fontWeight: 'bold', fontFamily: 'monospace',
-            textShadow: isGuidedTour ? '0 0 5px rgba(176, 38, 255, 0.5)' : '0 0 5px #00ff88'
+            color: isGuidedTour ? '#b026ff' : '#00ff88',
+            fontSize: '0.65rem', fontWeight: 'bold', fontFamily: "'PhillySans', monospace",
+            letterSpacing: '0.08em',
+            textShadow: isGuidedTour ? '0 0 5px rgba(176,38,255,0.5)' : '0 0 5px #00ff88'
           }}>{isGuidedTour ? 'TOUR ON' : 'TOUR OFF'}</div>
         </motion.div>
       </div>
@@ -898,12 +994,43 @@ export function SurrogateOracleImmersion() {
           </motion.div>
         )}
 
+        {scenePhase === 'awakened' && journey.selectedKnifeQuestion && (
+          <motion.div
+            key="descent-layer"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'absolute', inset: 0, zIndex: 105, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}
+          >
+            <ScrambleFragment
+              texts={['EXCAVATION BEGINS', 'SIGNAL LOCKED', 'DESCENDING...']}
+              className="oracle-sf--cta"
+              holdMs={480}
+              revealMs={25}
+            />
+          </motion.div>
+        )}
+
         {scenePhase === 'awakened' && !journey.selectedKnifeQuestion && (
           <motion.div
             key="awakened-layer"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             style={{ position: 'absolute', inset: 0, zIndex: 100 }}
           >
+            {isGuidedTour && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: [0, 1, 0.7, 1], y: 0 }}
+                transition={{ duration: 1.2, times: [0, 0.3, 0.6, 1] }}
+                style={{
+                  position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)',
+                  zIndex: 101, fontFamily: "'PhillySans', monospace",
+                  fontSize: '0.65rem', letterSpacing: '0.2em',
+                  color: '#00ff88', textShadow: '0 0 8px rgba(0,255,136,0.5)',
+                  pointerEvents: 'none',
+                }}
+              >
+                CHOOSE YOUR ARCHETYPE
+              </motion.div>
+            )}
             <KnifeSelection
               isGeminiConnected={isGeminiConnected}
               selectedKnifeIndex={journey.selectedKnifeIndex}
@@ -922,7 +1049,7 @@ export function SurrogateOracleImmersion() {
           onOracleResponse={connection.handleOracleResponse}
           onCoinsEarned={(amt) => setSessionCoins(s => s + amt)}
           onSessionEnd={handleSessionEnd}
-          onTurnComplete={handleTurnComplete}
+          onTurnComplete={(turn, score, themes) => { if (themes.length) portrait.addThemes(themes); handleTurnComplete(turn, score); }}
           onSeekerIdentified={handleSeekerIdentified}
           initialTotemLevel={echo?.totem_level ?? 0}
           onConnected={() => setIsGeminiConnected(true)}
@@ -933,20 +1060,29 @@ export function SurrogateOracleImmersion() {
           onUserSpeakingChange={handleUserSpeakingChange}
           onBargeIn={() => connection.pcmPlayer?.stop()}
           onPortraitRequest={() => portrait.generatePortrait(portrait.getThemes())}
+          seekerSummary={echo?.session_summary ?? null}
           isGuidedTour={isGuidedTour}
         />
       )}
 
       {isOracleMode && (
-        <button className="oracle-exit-btn" onClick={exitOracleMode}><X size={20} /><span>EXIT</span></button>
+        <button className="oracle-exit-btn" onClick={() => { navigator.vibrate?.([80, 60, 80]); exitOracleMode(); }}><X size={20} /><span>EXIT</span></button>
       )}
 
-      {/* ── Exit ceremony ── */}
+      {/* ── Exit ceremony — alignment-aware farewell ── */}
       <AnimatePresence>
         {journey.isExiting && (
           <motion.div key="exit-ceremony" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="oracle-exit-ceremony">
             <ScrambleFragment
-              texts={['THE ARCHIVE SEALS', 'CHANNEL CLOSING...', 'FAREWELL, SEEKER']}
+              texts={[
+                'THE ARCHIVE SEALS',
+                'CHANNEL CLOSING...',
+                echoTrackRef.current.alignment === 'sacred'
+                  ? 'FAREWELL, KEEPER OF SIGNAL'
+                  : echoTrackRef.current.alignment === 'profane'
+                  ? 'FAREWELL, WAYWARD'
+                  : 'FAREWELL, SEEKER',
+              ]}
               className="oracle-exit-ceremony__text" holdMs={600}
             />
           </motion.div>
@@ -1001,22 +1137,37 @@ export function SurrogateOracleImmersion() {
               position: 'fixed', inset: 0, zIndex: 90,
               display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center',
-              background: 'rgba(0,0,0,0.75)',
-              backdropFilter: 'blur(6px)',
-              fontFamily: 'monospace',
+              background: 'rgba(0,0,0,0.8)',
+              backdropFilter: 'blur(8px)',
+              fontFamily: "'PhillySans', 'Orbitron', monospace",
             }}
           >
-            <div style={{ color: '#00ff88', letterSpacing: '0.2em', fontSize: '0.85rem', marginBottom: '1rem' }}>
+            <motion.div
+              animate={{ opacity: [1, 0.4, 1] }}
+              transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+              style={{ color: '#00ff88', letterSpacing: '0.22em', fontSize: '0.85rem', marginBottom: '0.6rem', textShadow: '0 0 12px rgba(0,255,136,0.5)' }}
+            >
               NEURAL SYNTHESIS
+            </motion.div>
+            <div style={{ width: '200px', height: '1px', background: 'rgba(0,255,136,0.12)', borderRadius: '1px', overflow: 'hidden', marginBottom: '0.5rem' }}>
+              <motion.div
+                style={{ height: '100%', background: 'linear-gradient(90deg, transparent, #00ff88, transparent)', borderRadius: '1px' }}
+                initial={{ x: '-100%' }} animate={{ x: '200%' }}
+                transition={{ duration: 1.8, ease: 'linear', repeat: Infinity }}
+              />
             </div>
-            <div style={{ color: 'rgba(0,255,136,0.55)', letterSpacing: '0.12em', fontSize: '0.7rem', marginBottom: '1.5rem' }}>
-              SCANNING FREQUENCY...
-            </div>
-            <div style={{ width: '200px', height: '2px', background: 'rgba(0,255,136,0.15)', borderRadius: '1px', overflow: 'hidden' }}>
+            <motion.div
+              animate={{ opacity: [0.4, 0.8, 0.4] }}
+              transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut', delay: 0.8 }}
+              style={{ color: 'rgba(0,255,136,0.5)', letterSpacing: '0.14em', fontSize: '0.62rem', marginBottom: '2rem' }}
+            >
+              COMPOSING YOUR SIGNAL…
+            </motion.div>
+            <div style={{ width: '200px', height: '2px', background: 'rgba(0,255,136,0.1)', borderRadius: '1px', overflow: 'hidden' }}>
               <motion.div
                 style={{ height: '100%', background: '#00ff88', borderRadius: '1px' }}
                 initial={{ width: '0%' }} animate={{ width: '100%' }}
-                transition={{ duration: 4, ease: 'linear', repeat: Infinity }}
+                transition={{ duration: 5, ease: 'linear', repeat: Infinity }}
               />
             </div>
           </motion.div>

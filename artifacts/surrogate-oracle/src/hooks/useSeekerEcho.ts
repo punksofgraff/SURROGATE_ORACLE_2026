@@ -18,6 +18,9 @@ export interface SeekerEcho {
   last_cost: string | null;
   alignment: string | null;
   irl_context: string | null;
+  session_summary: string | null;
+  last_session_themes: string[] | null;
+  session_count: number;
   visit_count: number;
   last_seen_at: string;
   created_at: string;

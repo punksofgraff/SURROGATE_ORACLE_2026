@@ -3440,14 +3440,17 @@
   flex: 1;
   width: 100%;
   max-width: 600px;
-  overflow: hidden;
+  overflow-y: auto;
+  max-height: 260px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 10px;
   padding: 10px;
-  mask-image: linear-gradient(to bottom, transparent 0%, black 20%);
+  scrollbar-width: none;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 18%, black 100%);
 }
+.oc-log::-webkit-scrollbar { display: none; }
 
 .oc-turn {
   font-family: 'Share Tech Mono', monospace;
@@ -4071,6 +4074,11 @@
   background: rgba(0,255,136, 0.18);
   border-color: rgba(0,255,136, 0.65);
   color: #00ffcc;
+}
+
+@keyframes oracle-pulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(0,255,136,0.4), 0 0 20px rgba(0,255,136,0.15); }
+  50%       { box-shadow: 0 0 22px rgba(0,255,136,0.75), 0 0 44px rgba(0,255,136,0.35); }
 }
 
 /* ── Neural Synthesis Overlay ────────────────────────────────────────────── */

@@ -23,6 +23,8 @@ interface SeekerEchoUpsert {
   lastCost?: string | null;
   alignment?: string | null;
   irlContext?: string | null;
+  sessionSummary?: string | null;
+  lastSessionThemes?: string[] | null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -125,7 +127,7 @@ Deno.serve(async (req: Request) => {
       const pick = <T>(next: T | null | undefined, prev: T | null | undefined): T | null =>
         next !== undefined && next !== null ? next : (prev ?? null);
 
-      const row = {
+      const row: Record<string, unknown> = {
         seeker_key: seekerKey,
         name: pick(body.name, existing?.name),
         last_archetype: pick(body.lastArchetype, existing?.last_archetype),
@@ -137,9 +139,12 @@ Deno.serve(async (req: Request) => {
         alignment: pick(body.alignment, existing?.alignment),
         irl_context: pick(body.irlContext, existing?.irl_context),
         visit_count: existing ? (existing.visit_count ?? 1) + 1 : 1,
+        session_count: existing ? (existing.session_count ?? 0) + 1 : 1,
         last_seen_at: nowIso,
         created_at: existing?.created_at ?? nowIso,
       };
+      if (body.sessionSummary !== undefined) row.session_summary = body.sessionSummary;
+      if (body.lastSessionThemes !== undefined) row.last_session_themes = body.lastSessionThemes;
 
       const { data: upserted, error: upsertError } = await supabase
         .from('seeker_echo')

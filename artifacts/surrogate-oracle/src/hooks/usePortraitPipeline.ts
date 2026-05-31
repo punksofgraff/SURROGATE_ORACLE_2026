@@ -22,6 +22,7 @@ export function usePortraitPipeline({
 }: UsePortraitPipelineProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [latestPortraitUrl, setLatestPortraitUrl] = useState<string | null>(null);
+  const [portraitError, setPortraitError] = useState<string | null>(null);
   const conversationThemesRef = useRef<Set<string>>(new Set());
 
   const generatePortrait = useCallback(async (themes: string[]) => {
@@ -51,6 +52,7 @@ export function usePortraitPipeline({
     } catch (err) {
       console.error('Portrait generation failed:', err);
       logStep('PORTRAIT GENERATION FAILED', 'err');
+      setPortraitError('SIGNAL LOST — PORTRAIT SYNTHESIS FAILED');
     } finally {
       setIsGenerating(false);
     }
@@ -64,9 +66,13 @@ export function usePortraitPipeline({
     return Array.from(conversationThemesRef.current);
   }, []);
 
+  const clearPortraitError = useCallback(() => setPortraitError(null), []);
+
   return {
     isGenerating,
     latestPortraitUrl,
+    portraitError,
+    clearPortraitError,
     generatePortrait,
     addThemes,
     getThemes,

@@ -205,11 +205,11 @@ export function PortraitGalleryDashboard({
       </div>
 
       {portraits.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px 20px', color: '#444' }}>
-          <Sparkles size={32} style={{ marginBottom: 12 }} />
-          <div style={{ fontSize: '0.75rem' }}>No portraits yet</div>
-          <div style={{ fontSize: '0.65rem', marginTop: 6, color: '#333' }}>
-            Have a conversation with the Oracle to generate your first portrait
+        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+          <Sparkles size={32} style={{ marginBottom: 12, color: '#00ff8840' }} />
+          <div style={{ fontSize: '0.72rem', color: '#00ff88', letterSpacing: '0.18em' }}>YOU HAVE NOT BEEN RENDERED YET</div>
+          <div style={{ fontSize: '0.62rem', marginTop: 10, color: '#ffffff44', letterSpacing: '0.06em', lineHeight: 1.8 }}>
+            Come into the signal.<br />Let the archive see who you are.<br />Then we will compose you.
           </div>
         </div>
       ) : (
@@ -245,7 +245,7 @@ export function PortraitGalleryDashboard({
                     </div>
                   )}
 
-                  {/* Hover overlay */}
+                  {/* Actions overlay — hover on desktop, always-visible strip on touch */}
                   <div
                     style={{
                       position: 'absolute', inset: 0,
@@ -256,27 +256,29 @@ export function PortraitGalleryDashboard({
                     className="portrait-overlay"
                     onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0'; }}
+                    onTouchStart={(e) => { e.stopPropagation(); (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                    onTouchEnd={(e) => { const el = e.currentTarget as HTMLElement; setTimeout(() => { el.style.opacity = '0'; }, 2200); }}
                   >
                     <button
                       onClick={(e) => { e.stopPropagation(); downloadPortrait(p); }}
-                      style={{ background: 'rgba(0,255,136,0.2)', border: '1px solid rgba(0,255,136,0.5)', borderRadius: 6, padding: 6, color: '#00ff88', cursor: 'pointer' }}
+                      style={{ background: 'rgba(0,255,136,0.2)', border: '1px solid rgba(0,255,136,0.5)', borderRadius: 6, padding: 10, color: '#00ff88', cursor: 'pointer', minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       title="Download"
                     >
-                      <Download size={14} />
+                      <Download size={16} />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); sharePortrait(p); }}
-                      style={{ background: 'rgba(176,38,255,0.2)', border: '1px solid rgba(176,38,255,0.5)', borderRadius: 6, padding: 6, color: '#b026ff', cursor: 'pointer' }}
+                      style={{ background: 'rgba(176,38,255,0.2)', border: '1px solid rgba(176,38,255,0.5)', borderRadius: 6, padding: 10, color: '#b026ff', cursor: 'pointer', minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       title="Share"
                     >
-                      <Share size={14} />
+                      <Share size={16} />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); deletePortrait(p); }}
-                      style={{ background: 'rgba(176,38,255,0.2)', border: '1px solid rgba(176,38,255,0.5)', borderRadius: 6, padding: 6, color: '#cc00ff', cursor: 'pointer' }}
+                      style={{ background: 'rgba(176,38,255,0.2)', border: '1px solid rgba(176,38,255,0.5)', borderRadius: 6, padding: 10, color: '#cc00ff', cursor: 'pointer', minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       title="Delete"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={16} />
                     </button>
                   </div>
 

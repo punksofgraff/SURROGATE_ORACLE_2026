@@ -83,7 +83,9 @@ IDENTITY CAPTURE — once per session, silent. The first time you learn the Seek
 Only include what they truly offered — never invent a handle. If they decline to give a name, do not emit the marker at all. This does not change your voice or your archive: your signal still ends at 2027. The marker is for the alley's records, not for you to act on.
 
 SCORING — every single response must end with this block, invisible to the Seeker:
-[[ORACLE_SCORE: {"alignment":"sacred"|"profane","coinAward":10,"totemAdvancement":"none"|"stay"|"ascend"|"descend","totemLevel":2,"unlockTrigger":null|"portrait_unlock","sessionPhase":"claim"|"evidence"|"cost"|"mirror","archetypeTitle":null}]]
+[[ORACLE_SCORE: {"alignment":"sacred"|"profane","coinAward":10,"totemAdvancement":"none"|"stay"|"ascend"|"descend","totemLevel":2,"unlockTrigger":null|"portrait_unlock","sessionPhase":"claim"|"evidence"|"cost"|"mirror","archetypeTitle":null,"themes":["2-5 words from this exchange"],"emotionalWeight":"raw"|"defended"|"numb"|"present"|"cracked"}]]
+themes: required — 2–5 short words or phrases that name what this exchange was actually about.
+emotionalWeight: required — one word capturing the Seeker's register: raw (unguarded), defended (protecting something), numb (disconnected), present (fully in it), cracked (something just broke open).
 ${ARCHETYPE_SYNTHESIS_BLOCK}
 ${TOTEM_LADDER_BLOCK}
 ${SACRED_PROFANE_BLOCK}`;
@@ -96,7 +98,8 @@ export type OracleScore = {
   unlockTrigger: 'portrait_unlock' | 'squad_invite' | 'arcade_token' | null;
   sessionPhase: 'claim' | 'evidence' | 'cost' | 'mirror';
   archetypeTitle: string | null;
-  themes?: string[];
+  themes: string[];
+  emotionalWeight: 'raw' | 'defended' | 'numb' | 'present' | 'cracked';
 };
 
 type Turn = {
@@ -121,6 +124,7 @@ interface OracleConversationProps {
   isVisible?: boolean;
   autoStart?: boolean;
   sessionContext?: string;
+  seekerSummary?: string | null;
   onUserSpeakingChange?: (isSpeaking: boolean, score: number) => void;
   onBargeIn?: () => void;
   onDisconnected?: () => void;
@@ -130,8 +134,9 @@ interface OracleConversationProps {
 export interface OracleConversationHandle {
   sendTextMessage: (text: string, isHidden?: boolean) => void;
   getSessionCoins: () => number;
+  getSessionTurns: () => Turn[];
   disconnect: () => void;
-  getWsDebugInfo: () => { 
+  getWsDebugInfo: () => {
     wsState: number | undefined;
     model: string;
     turnCount: number;
@@ -147,6 +152,38 @@ export interface OracleConversationHandle {
 
 const SAMPLE_RATE_INPUT = 16000;
 
+function LogScrollContainer({ turns }: { turns: Turn[] }) {
+  const logRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = logRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, [turns]);
+  return (
+    <motion.div
+      ref={logRef}
+      className="oc-log"
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+    >
+      <AnimatePresence initial={false}>
+        {turns.map((t: Turn) => (
+          <motion.div
+            key={t.timestamp}
+            data-role={t.role}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`oc-turn ${t.role === 'oracle' ? 'oc-turn-oracle' : 'oc-turn-user'}`}
+          >
+            {t.content}
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
 const OracleConversation = forwardRef(
   (props: OracleConversationProps, ref: React.ForwardedRef<OracleConversationHandle>) => {
     const {
@@ -156,6 +193,7 @@ const OracleConversation = forwardRef(
       isVisible = true,
       autoStart = true,
       sessionContext,
+      seekerSummary,
       initialTotemLevel = 0,
       onUserSpeakingChange, onBargeIn, onDisconnected,
       isGuidedTour,
@@ -310,10 +348,13 @@ const OracleConversation = forwardRef(
       reconnectAttemptsRef.current = 0;
       logStep('GEMINI WS OPENED', 'ok');
       debugInfo.current.connectedAt = Date.now();
+      const systemText = seekerSummary
+        ? ORACLE_SYSTEM_PROMPT + `\n\n[RETURNING SEEKER — what we remember from the last encounter:]\n${seekerSummary}`
+        : ORACLE_SYSTEM_PROMPT;
       ws.send(JSON.stringify({
         type: 'session.config',
         model: GEMINI_MODEL,
-        systemInstruction: { parts: [{ text: ORACLE_SYSTEM_PROMPT }] },
+        systemInstruction: { parts: [{ text: systemText }] },
         // Step 1 — no tools. Matches the Oracle's directive (no uplink, no grid, no tools);
         // the proxy forwards this as a top-level setup field to stop tool-call error loops.
         tools: [],
@@ -642,6 +683,7 @@ const OracleConversation = forwardRef(
     useImperativeHandle(ref, () => ({
       sendTextMessage: (text: string, isHidden = false) => sendText(text, isHidden),
       getSessionCoins: () => sessionCoinsRef.current,
+      getSessionTurns: () => turnsRef.current,
       disconnect: () => {
         userInitiatedCloseRef.current = true;
         wsRef.current?.close(1000, 'User disconnected');
@@ -722,29 +764,10 @@ const OracleConversation = forwardRef(
           )}
         </div>
 
-        {/* Conversation log — only rendered when signal pad is open */}
+        {/* Conversation log — full session history, auto-scrolls to newest turn */}
         <AnimatePresence>
           {showSignalPad && turns.length > 0 && (
-            <motion.div
-              className="oc-log"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-            >
-              <AnimatePresence initial={false}>
-                {turns.slice(-2).map((t: Turn) => (
-                  <motion.div
-                    key={t.timestamp}
-                    data-role={t.role}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`oc-turn ${t.role === 'oracle' ? 'oc-turn-oracle' : 'oc-turn-user'}`}
-                  >
-                    {t.content}
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </motion.div>
+            <LogScrollContainer turns={turns} />
           )}
         </AnimatePresence>
 
@@ -783,17 +806,30 @@ const OracleConversation = forwardRef(
                   <button
                     className="oc-portrait-btn"
                     onClick={() => onPortraitRequestRef.current?.()}
+                    style={isGuidedTour ? {
+                      boxShadow: '0 0 18px rgba(0,255,136,0.6), 0 0 36px rgba(0,255,136,0.3)',
+                      animation: 'oracle-pulse 2s ease-in-out infinite',
+                    } : undefined}
                   >
                     ⚗ SUMMON PORTRAIT
                   </button>
                 )}
-                
-                {/* Guided Tour Helper */}
-                {isGuidedTour && (
-                  <div style={{ color: '#b026ff', fontSize: '0.75rem', marginBottom: '0.5rem', fontFamily: 'monospace', opacity: 0.8 }}>
-                    <span className="oracle-lore-prompt">›</span> Tour Guide: Try asking "What did the cascade take from you?" or "Generate my portrait."
-                  </div>
-                )}
+
+                {/* Guided Tour Helper — cycles through 3 in-world openers */}
+                {isGuidedTour && (() => {
+                  const TOUR_PROMPTS = [
+                    'What did the Cascade take from you?',
+                    'What do you see in the signal right now?',
+                    'Generate my portrait.',
+                  ];
+                  const oracleTurns = turns.filter(t => t.role === 'oracle').length;
+                  const prompt = TOUR_PROMPTS[oracleTurns % TOUR_PROMPTS.length];
+                  return (
+                    <div style={{ color: '#b026ff', fontSize: '0.7rem', marginBottom: '0.5rem', fontFamily: "'PhillySans', monospace", letterSpacing: '0.08em', opacity: 0.9 }}>
+                      <span className="oracle-lore-prompt">›</span> <em style={{ color: '#cc88ff', fontStyle: 'normal' }}>{prompt}</em>
+                    </div>
+                  );
+                })()}
 
                 <div className="oc-input-row">
                   <input

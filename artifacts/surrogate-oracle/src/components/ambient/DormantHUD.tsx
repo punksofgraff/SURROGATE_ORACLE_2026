@@ -30,6 +30,10 @@ export function DormantHUD({ active }: { active: boolean }) {
 
   useEffect(() => {
     if (!active) return;
+    // Spike glitch on HUD activation — signals the Oracle waking to the Seeker's presence
+    setGlitch(true);
+    const spike = setTimeout(() => setGlitch(false), 180);
+
     const coordT  = setInterval(() => setCoord(c => (c + 1) % HUD_COORDS.length), 4200);
     const freqT   = setInterval(() => setFreq(f  => (f + 1) % HUD_FREQS.length),  3100);
     const statT   = setInterval(() => setStat(s  => (s + 1) % HUD_STATUS.length), 5700);
@@ -41,6 +45,7 @@ export function DormantHUD({ active }: { active: boolean }) {
       }
     }, 1800);
     return () => {
+      clearTimeout(spike);
       clearInterval(coordT); clearInterval(freqT); clearInterval(statT);
       clearInterval(scanT);  clearInterval(glitchT);
     };

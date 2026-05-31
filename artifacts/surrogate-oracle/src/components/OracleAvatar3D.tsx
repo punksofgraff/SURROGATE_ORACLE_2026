@@ -63,12 +63,17 @@ const ORACLE_TO_OVR: Record<string, OVRName[]> = {
   H: ['viseme_oh', 'viseme_ou'],
 };
 
-// Secondary viseme contributions driven by the VisemeState shape parameters.
-// These simulate co-articulation — lips never move to just one extreme shape.
+// Secondary viseme contributions driven by VisemeState shape parameters.
+// Broadened to cover all lip axes — openness, rounding, spread, and closure.
+// These fire regardless of the primary viseme so lips move even when the
+// worklet classifies the frame as a generic vowel (A or C).
 const CO_ARTIC: Array<{ viseme: OVRName; dimension: 'openness' | 'rounded' | 'spread'; scale: number }> = [
-  { viseme: 'viseme_aa', dimension: 'openness', scale: 1.1 },
-  { viseme: 'viseme_oh', dimension: 'rounded',  scale: 0.7 },
-  { viseme: 'viseme_SS', dimension: 'spread',   scale: 0.6 },
+  { viseme: 'viseme_aa', dimension: 'openness', scale: 1.2 }, // jaw opens with openness
+  { viseme: 'viseme_oh', dimension: 'rounded',  scale: 0.9 }, // lips round for O
+  { viseme: 'viseme_ou', dimension: 'rounded',  scale: 0.6 }, // more rounding for U
+  { viseme: 'viseme_E',  dimension: 'spread',   scale: 0.9 }, // lips spread for E/I
+  { viseme: 'viseme_ih', dimension: 'spread',   scale: 0.5 }, // secondary spread
+  { viseme: 'viseme_SS', dimension: 'spread',   scale: 0.5 }, // sibilant spread
 ];
 
 // ── Morph target index resolution ────────────────────────────────────────────
@@ -165,10 +170,13 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
       mesh:     THREE.SkinnedMesh;
       indexMap: Map<string, number>;
     }> = [];
-    let headBone:     THREE.Object3D | null = null as THREE.Object3D | null;
-    let neckBone:     THREE.Object3D | null = null as THREE.Object3D | null;
-    let leftEyeBone:  THREE.Object3D | null = null as THREE.Object3D | null;
-    let rightEyeBone: THREE.Object3D | null = null as THREE.Object3D | null;
+    let headBone:          THREE.Object3D | null = null;
+    let neckBone:          THREE.Object3D | null = null;
+    let leftEyeBone:       THREE.Object3D | null = null;
+    let rightEyeBone:      THREE.Object3D | null = null;
+    let spineBone:         THREE.Object3D | null = null; // Spine2 — upper chest
+    let leftShoulderBone:  THREE.Object3D | null = null;
+    let rightShoulderBone: THREE.Object3D | null = null;
 
     scene.traverse((child) => {
       // Mesh logging for debugging
@@ -194,9 +202,14 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
 
       const n = child.name.toLowerCase();
       if (n === 'head' && !headBone) headBone = child;
-      if (n.includes('neck') && !neckBone) neckBone = child;
-      if (n.includes('eye') && n.includes('left') && !leftEyeBone) leftEyeBone = child;
+      if (n === 'neck' && !neckBone) neckBone = child;
+      if (n.includes('eye') && n.includes('left')  && !leftEyeBone)  leftEyeBone  = child;
       if (n.includes('eye') && n.includes('right') && !rightEyeBone) rightEyeBone = child;
+      // Upper chest: Spine2 gives visible upper-body lean — prefer it over Spine/Spine1
+      if (n === 'spine2' && !spineBone) spineBone = child;
+      if (!spineBone && n === 'spine1') spineBone = child;
+      if (n === 'leftshoulder'  && !leftShoulderBone)  leftShoulderBone  = child;
+      if (n === 'rightshoulder' && !rightShoulderBone) rightShoulderBone = child;
 
       const sm = child as THREE.SkinnedMesh;
       if (!sm.isSkinnedMesh || !sm.morphTargetDictionary || !sm.morphTargetInfluences) return;
@@ -216,8 +229,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
       console.log('[OracleAvatar3D] Bones found:', {
         head: !!headBone, neck: !!neckBone, leftEye: !!leftEyeBone, rightEye: !!rightEyeBone
       });
-      if (leftEyeBone) console.log('[OracleAvatar3D] Left Eye Bone name:', leftEyeBone.name);
-      if (rightEyeBone) console.log('[OracleAvatar3D] Right Eye Bone name:', rightEyeBone.name);
+      console.log('[OracleAvatar3D] Eye bones found — L:', !!leftEyeBone, 'R:', !!rightEyeBone);
     }
 
     const hasMorphs = result.length > 0;
@@ -257,7 +269,18 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
       }
     }
 
-    return { meshes: result, headBone, neckBone, leftEyeBone, rightEyeBone, hasMorphs, avatarYOffset };
+    return {
+      meshes:             result,
+      headBone:           headBone          as THREE.Object3D | null,
+      neckBone:           neckBone          as THREE.Object3D | null,
+      leftEyeBone:        leftEyeBone       as THREE.Object3D | null,
+      rightEyeBone:       rightEyeBone      as THREE.Object3D | null,
+      spineBone:          spineBone         as THREE.Object3D | null,
+      leftShoulderBone:   leftShoulderBone  as THREE.Object3D | null,
+      rightShoulderBone:  rightShoulderBone as THREE.Object3D | null,
+      hasMorphs,
+      avatarYOffset,
+    };
   }, [scene]);
 
   useFrame((state, delta) => {
@@ -323,28 +346,29 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
     }
 
     // ── Head: organic conversational movement ─────────────────────────────
-    // Organic drift uses incommensurate frequencies — never fully repeats.
-    // Speech adds slower (0.37–0.62 Hz) nod/tilt, not a fast shake.
+    // Amplitudes are in radians. Previous values (0.006, 0.038) were
+    // sub-degree and invisible. Scaled up to clearly visible range.
     if (meshData.headBone) {
-      const headLerpF    = lerpDt * 0.07;
-      const speakAmt     = amp * 1.1;
+      const headLerpF = lerpDt * 0.09;
+      const speakAmt  = amp * 1.1;
 
-      // Base parallax gaze
-      let tx = gx * 0.18;
-      let ty = gy * 0.12;
+      // Base parallax gaze from phone tilt / mouse
+      let tx = gx * 0.22;
+      let ty = gy * 0.16;
       let tz = 0;
 
-      // Alive idle micro-drift — two incommensurate freqs, imperceptible at rest
-      tx += Math.sin(t * 0.71 + 0.4)  * 0.006 + Math.sin(t * 1.13 + 1.7) * 0.004;
-      tz += Math.cos(t * 0.57 + 0.9)  * 0.005;
+      // Alive idle drift — two incommensurate freqs (~0.11Hz + ~0.18Hz)
+      // ±0.025 rad = ±1.4° — visible, feels like weight and presence
+      tx += Math.sin(t * 0.71 + 0.4) * 0.025 + Math.sin(t * 1.13 + 1.7) * 0.016;
+      tz += Math.cos(t * 0.57 + 0.9) * 0.020;
 
-      if (amp > 0.05) {
-        // Organic conversational nod: 0.62 Hz (thoughtful, not robotic)
-        ty -= Math.sin(t * 3.90) * 0.038 * speakAmt;
-        // Gentle conversational tilt: 0.37 Hz (offset phase = feels independent)
-        tz += Math.sin(t * 2.30 + 1.2) * 0.040 * speakAmt;
-        // Very subtle forward lean on amplitude peaks (presence, not shake)
-        ty -= amp * 0.015;
+      if (amp > 0.04) {
+        // Conversational nod at 0.62 Hz — ±0.12 rad = ±6.9° at full amp
+        ty -= Math.sin(t * 3.90) * 0.12 * speakAmt;
+        // Conversational tilt at 0.37 Hz — ±0.12 rad = ±6.9° at full amp
+        tz += Math.sin(t * 2.30 + 1.2) * 0.12 * speakAmt;
+        // Forward lean into the moment — up to 0.04 rad = 2.3°
+        ty -= amp * 0.04;
       }
 
       meshData.headBone.rotation.y = THREE.MathUtils.lerp(meshData.headBone.rotation.y, tx, headLerpF);
@@ -352,13 +376,39 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
       meshData.headBone.rotation.z = THREE.MathUtils.lerp(meshData.headBone.rotation.z, tz, headLerpF);
     }
 
-    // ── Neck: slow organic sway, low-freq only ────────────────────────────
+    // ── Neck: gentle follow ───────────────────────────────────────────────
     if (meshData.neckBone) {
-      const neckLerpF = lerpDt * 0.03;
-      const neckSwayX = Math.sin(t * 0.80) * 0.018 + Math.sin(t * 1.90 + 0.6) * 0.008 * amp;
-      const neckSwayZ = Math.cos(t * 0.52 + 1.1) * 0.012;
-      meshData.neckBone.rotation.x = THREE.MathUtils.lerp(meshData.neckBone.rotation.x, gy * 0.04 + neckSwayX, neckLerpF);
+      const neckLerpF = lerpDt * 0.04;
+      const neckSwayX = Math.sin(t * 0.80) * 0.025 + Math.sin(t * 1.90 + 0.6) * 0.012 * amp;
+      const neckSwayZ = Math.cos(t * 0.52 + 1.1) * 0.018;
+      meshData.neckBone.rotation.x = THREE.MathUtils.lerp(meshData.neckBone.rotation.x, gy * 0.05 + neckSwayX, neckLerpF);
       meshData.neckBone.rotation.z = THREE.MathUtils.lerp(meshData.neckBone.rotation.z, neckSwayZ, neckLerpF);
+    }
+
+    // ── Spine (Spine2): upper-body lean — subtle but visible ──────────────
+    if (meshData.spineBone) {
+      const spineLerpF = lerpDt * 0.025;
+      // Gentle rocking + forward lean when speaking (presence)
+      const spineRockZ = Math.sin(t * 0.62) * 0.018 + Math.cos(t * 0.41 + 0.7) * 0.010;
+      const spineForward = amp * 0.018; // leans in when speaking
+      meshData.spineBone.rotation.x = THREE.MathUtils.lerp(meshData.spineBone.rotation.x, spineForward, spineLerpF);
+      meshData.spineBone.rotation.z = THREE.MathUtils.lerp(meshData.spineBone.rotation.z, spineRockZ,  spineLerpF);
+    }
+
+    // ── Shoulders: breathing lift + speech engagement ─────────────────────
+    // breathPhase is a slow sin — shoulders rise/fall with each breath cycle
+    const breathPhase = Math.sin(t * 1.4) * 0.020;
+    if (meshData.leftShoulderBone) {
+      const shLerpF = lerpDt * 0.022;
+      // Left shoulder: breathe up + slight inward shrug on heavy speech
+      const tgtZ = breathPhase + amp * 0.015;
+      meshData.leftShoulderBone.rotation.z = THREE.MathUtils.lerp(meshData.leftShoulderBone.rotation.z, tgtZ, shLerpF);
+    }
+    if (meshData.rightShoulderBone) {
+      const shLerpF = lerpDt * 0.022;
+      // Right shoulder: opposite breathing phase for natural asymmetry
+      const tgtZ = -breathPhase - amp * 0.015;
+      meshData.rightShoulderBone.rotation.z = THREE.MathUtils.lerp(meshData.rightShoulderBone.rotation.z, tgtZ, shLerpF);
     }
 
     // ── Breathing — visible Y drift, quickens with speech ────────────────
@@ -381,18 +431,27 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
 
       if (amp > 0.015) {
         const dominant = ORACLE_TO_OVR[vs.viseme] ?? ['viseme_sil'];
-        // Boost weight so full morph influence is reached at moderate amplitude
         const weight   = Math.min(amp * 2.5, 1.0);
         const perShape = weight / dominant.length;
         for (const name of dominant) {
           targets.set(name, (targets.get(name) ?? 0) + perShape);
         }
+
+        // CO_ARTIC: shape-driven secondary contributions (openness, rounded, spread)
         for (const ca of CO_ARTIC) {
           if (dominant.includes(ca.viseme)) continue;
           const contrib = (vs[ca.dimension as keyof VisemeState] as number ?? 0) * ca.scale * amp;
           if (contrib > 0.008) {
             targets.set(ca.viseme, Math.min(1, (targets.get(ca.viseme) ?? 0) + contrib));
           }
+        }
+
+        // Lip closedness driver: when mouth is not wide open, drive viseme_PP
+        // (lip closure). This fires even when the primary viseme is A or C,
+        // ensuring lips don't just hang open — they close between words.
+        const closedness = Math.max(0, 0.55 - vs.openness);
+        if (closedness > 0.08) {
+          targets.set('viseme_PP', Math.min(1, (targets.get('viseme_PP') ?? 0) + closedness * amp * 1.2));
         }
       }
 

@@ -34,7 +34,7 @@ export class PCMPlayer {
     this.analyser = this.context.createAnalyser();
     this.analyser.fftSize = 1024;
 
-    // ── Master Gain — used for "ducking up" (fading in) and "ducking down"
+    // ── Master Gain — volume control for the Oracle voice
     try {
       const gain = this.context.createGain();
       gain.gain.setValueAtTime(0, this.context.currentTime); // Start silent
@@ -44,18 +44,18 @@ export class PCMPlayer {
       this.masterGain = null;
     }
 
-    // ── Spatial panner — Oracle voice follows movement
+    // ── Spatial panner — Oracle voice follows head-tracking movement
     try {
       const panner = this.context.createPanner();
       panner.panningModel  = 'HRTF';
       panner.distanceModel = 'inverse';
       panner.refDistance   = 1;
       panner.maxDistance   = 10000;
-      panner.rolloffFactor = 0.6; 
-      panner.positionX.setValueAtTime(0,    this.context.currentTime); 
-      panner.positionY.setValueAtTime(0.3,  this.context.currentTime); 
-      panner.positionZ.setValueAtTime(-0.8, this.context.currentTime); 
-      
+      panner.rolloffFactor = 0.6;
+      panner.positionX.setValueAtTime(0,    this.context.currentTime);
+      panner.positionY.setValueAtTime(0.3,  this.context.currentTime);
+      panner.positionZ.setValueAtTime(-0.8, this.context.currentTime);
+
       if (this.masterGain) {
         panner.connect(this.masterGain);
       } else {
@@ -80,12 +80,33 @@ export class PCMPlayer {
           this.onProcessingChange?.(false);
         }
       };
-      
+
       this.workletNode.onprocessorerror = (err) => {
         console.error('[PCMPlayer] AudioWorklet Processor Error:', err);
       };
 
-      this.workletNode.connect(this.analyser);
+      // ── DynamicsCompressor — normalizes Oracle voice level regardless of
+      // Gemini PCM output amplitude. Prevents the voice from being quiet
+      // when Gemini sends low-amplitude audio.
+      let compressor: DynamicsCompressorNode | null = null;
+      try {
+        compressor = this.context.createDynamicsCompressor();
+        compressor.threshold.value = -22; // start compressing at -22 dBFS
+        compressor.knee.value      = 30;  // soft knee — natural transition
+        compressor.ratio.value     = 10;  // aggressive: keeps voice consistently loud
+        compressor.attack.value    = 0.003;
+        compressor.release.value   = 0.20;
+      } catch {
+        compressor = null;
+      }
+
+      // Chain: worklet → [compressor →] analyser → panner/masterGain
+      if (compressor) {
+        this.workletNode.connect(compressor);
+        compressor.connect(this.analyser);
+      } else {
+        this.workletNode.connect(this.analyser);
+      }
 
       if (this.panner) {
         this.analyser.connect(this.panner);

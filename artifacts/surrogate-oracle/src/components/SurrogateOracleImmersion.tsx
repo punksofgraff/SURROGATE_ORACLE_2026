@@ -379,41 +379,34 @@ export function SurrogateOracleImmersion() {
     };
   }, [scenePhase]);
 
-  // ── fadeToVolume — Assertive ducking/muting ───────────────────────────
-  const fadeToVolume = useCallback((target: number) => {
+  // ── fadeToVolume — GainNode-first volume control, no element mute clicks ─
+  // rampMs: optional override. Defaults: 80ms duck, 1500ms rise (imperceptible).
+  const fadeToVolume = useCallback((target: number, rampMs?: number) => {
     setTargetVol(target);
     const safeTarget = Math.max(0.0001, target);
-    
-    // 1. GainNode path (High performance / Cross-fade)
+
     if (radioGainRef.current) {
       const gain = radioGainRef.current;
       const ctx  = getAudioContext();
       const now  = ctx.currentTime;
-      const isDucking = target < gain.gain.value;
-      
+      const isDucking = target < (gain.gain.value ?? 0);
+
       gain.gain.cancelScheduledValues(now);
       gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), now);
-      
+
       if (target < 0.002) {
-        // Deep cut: linear ramp to absolute silence
-        gain.gain.linearRampToValueAtTime(0, now + 0.08);
+        // Oracle speaking — hard cut to silence, 80ms linear
+        gain.gain.linearRampToValueAtTime(0.0001, now + 0.08);
       } else {
-        gain.gain.exponentialRampToValueAtTime(safeTarget, now + (isDucking ? 0.10 : 0.40));
+        const ms = rampMs ?? (isDucking ? 80 : 1500);
+        gain.gain.exponentialRampToValueAtTime(safeTarget, now + ms / 1000);
       }
+    } else if (audioRef.current) {
+      // Fallback: no GainNode yet — use element volume directly
+      audioRef.current.volume = Math.min(1, target);
     }
-    
-    // 2. Element path (Fallback or redundant safety)
-    if (audioRef.current) {
-      // Hard mute for deep cuts (target < 0.01)
-      const shouldMute = target < 0.01;
-      if (audioRef.current.muted !== shouldMute) {
-        audioRef.current.muted = shouldMute;
-      }
-      // Also update volume property for UI/safety
-      if (!radioGainRef.current) {
-        audioRef.current.volume = target;
-      }
-    }
+    // Never toggle .muted via this path — toggling causes an audible click
+    // when the element reconnects to the GainNode. GainNode handles silence.
   }, []);
 
   // ── Tab visibility protection ────────────────────────────────────────────
@@ -431,16 +424,22 @@ export function SurrogateOracleImmersion() {
   }, [scenePhase]);
 
   // ── Music ducking ────────────────────────────────────────────────────────
-  // Priority:
-  // 1. Oracle speaking       → near silence (0.001)
-  // 2. Post-first-speech     → stays at spatial ambience (0.018) for the
-  //    rest of the session — no popping back up between turns
-  // 3. User speaking / mic   → ducked (0.030)
-  // 4. Oracle mode pre-first → gentle background (0.06)
-  // 5. Other phases          → full ambient (0.06)
+  //
+  // SESSION_AMBIENT: once Oracle first speaks, radio locks to this level for
+  // the entire oracle session — no micro-bumps for listening/user-speaking
+  // windows, no creeping back up between turns. Pure atmospheric backdrop.
+  //
+  // Two-state post-first-speech:
+  //   Oracle producing audio → 0.001 (near-silence, 80ms cut)
+  //   Everything else        → SESSION_AMBIENT (1500ms slow rise, imperceptible)
+  //
+  // Pre-first-speech oracle: gentle presence (0.055), user speaking ducks (0.025).
+  // Non-oracle phases: full ambient (0.06).
+  const SESSION_AMBIENT = 0.008;
+
   useEffect(() => {
     if (scenePhase !== 'oracle') {
-      oracleHasSpokenRef.current = false; // reset when leaving oracle
+      oracleHasSpokenRef.current = false;
     }
 
     let nextTarget = 0.06;
@@ -448,20 +447,20 @@ export function SurrogateOracleImmersion() {
     if (scenePhase === 'oracle') {
       if (isOracleSpeaking || isOracleSpeakingDelayed) {
         oracleHasSpokenRef.current = true;
-        nextTarget = 0.001;
+        nextTarget = 0.001; // near-silence while Oracle voice is present
       } else if (oracleHasSpokenRef.current) {
-        // Oracle has spoken — stay at spatial ambience for the session
-        nextTarget = 0.018;
-        if (isMicActive || isUserSpeaking || isUserSpeakingDelayed) nextTarget = 0.030;
+        nextTarget = SESSION_AMBIENT; // stays here for the whole session
       } else {
-        // Pre-first Oracle speech — gentle background
-        nextTarget = 0.06;
-        if (isMicActive || isUserSpeaking || isUserSpeakingDelayed) nextTarget = 0.035;
+        // Pre-first Oracle turn — radio still present, user speech ducks it
+        nextTarget = isMicActive || isUserSpeaking || isUserSpeakingDelayed ? 0.025 : 0.055;
       }
     }
 
     if (nextTarget !== targetVol) {
-      fadeToVolume(nextTarget);
+      // Rising back from near-silence: use slow 1500ms ramp (imperceptible).
+      // Ducking down: fast (default 80ms).
+      const isRising = nextTarget > targetVol;
+      fadeToVolume(nextTarget, isRising ? 1500 : undefined);
     }
   }, [scenePhase, isMicActive, isUserSpeaking, isUserSpeakingDelayed, isOracleSpeaking, isOracleSpeakingDelayed, targetVol, fadeToVolume]);
 

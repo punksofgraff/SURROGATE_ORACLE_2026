@@ -52,7 +52,10 @@ export function useOracleConnection({
     if (isFirstChunkRef.current) {
       playOraclePresence();
       isFirstChunkRef.current = false;
-      player.setVolume(1.0, 240);
+      // 1.8 gives the Oracle clear presence over any residual radio ambience.
+      // The DynamicsCompressor upstream already normalizes Gemini PCM amplitude,
+      // so this is a fixed presence boost, not compensation for variable input.
+      player.setVolume(1.8, 240);
     }
 
     let pcmData: Int16Array | null   = data instanceof Int16Array ? data : null;

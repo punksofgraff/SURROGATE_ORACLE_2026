@@ -132,7 +132,7 @@ export function CultureCoinDisplay({ userId, onLevelUp, onMetricsFetched }: Cult
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
         {[
           { label: 'CULTURE COINS', value: metrics.availableCoins.toLocaleString(), icon: <Zap size={16} />, color: '#fbbf24' },
-          { label: 'MULTIPLIER', value: `${metrics.multiplier}x`, icon: <TrendingUp size={16} />, color: '#00ffff' },
+          { label: 'MULTIPLIER', value: `${metrics.multiplier}x`, icon: <TrendingUp size={16} />, color: '#00ffcc' },
           { label: 'SACRED', value: metrics.sacredInteractions, icon: <Star size={16} />, color: '#a78bfa' },
           { label: 'TOTAL EARNED', value: metrics.totalCultureCoins.toLocaleString(), icon: <Sparkles size={16} />, color: '#00ff62' },
         ].map(({ label, value, icon, color }) => (
@@ -151,7 +151,7 @@ export function CultureCoinDisplay({ userId, onLevelUp, onMetricsFetched }: Cult
               style={{
                 height: '100%',
                 width: `${Math.min(100, ((metrics.monthlyFreeInteractions || 0) / metrics.monthlyFreeLimit) * 100)}%`,
-                background: 'linear-gradient(90deg, #00ffff, #ff00ff)',
+                background: 'linear-gradient(90deg, #00ff88, #b026ff)',
                 borderRadius: 4,
                 transition: 'width 0.5s ease',
               }}

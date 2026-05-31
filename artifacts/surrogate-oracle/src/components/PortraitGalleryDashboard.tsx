@@ -151,7 +151,7 @@ export function PortraitGalleryDashboard({
   if (isLoading) {
     return (
       <div style={{ ...containerStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200 }}>
-        <Loader2 size={24} style={{ color: '#00ffff', animation: 'spin 1s linear infinite' }} />
+        <Loader2 size={24} style={{ color: '#00ffcc', animation: 'spin 1s linear infinite' }} />
       </div>
     );
   }
@@ -186,7 +186,7 @@ export function PortraitGalleryDashboard({
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
         {[
-          { label: 'TOTAL', value: stats.total, color: '#00ffff' },
+          { label: 'TOTAL', value: stats.total, color: '#00ffcc' },
           { label: 'THIS WEEK', value: stats.thisWeek, color: '#00ff62' },
           { label: 'AI GEN', value: stats.aiGenerated, color: '#a78bfa' },
         ].map(({ label, value, color }) => (

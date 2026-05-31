@@ -157,14 +157,14 @@ export const Learn2EarnInterface = ({ userId, navigateToDebug }: Learn2EarnInter
         return (
           <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '16px 20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <Code size={16} style={{ color: '#00ffff' }} />
-              <span style={{ color: '#00ffff', fontSize: '0.8rem', fontWeight: 700 }}>TECHNICAL README</span>
+              <Code size={16} style={{ color: '#00ffcc' }} />
+              <span style={{ color: '#00ffcc', fontSize: '0.8rem', fontWeight: 700 }}>TECHNICAL README</span>
             </div>
             <div style={{ fontSize: '0.72rem', color: '#aaa', lineHeight: 1.8 }}>
-              <p><strong style={{ color: '#fff' }}>SURROGATE Oracle</strong> — An anthropological AI experience built on:</p>
+              <p><strong style={{ color: '#00ff88' }}>SURROGATE:ORACLE</strong> — An anthropological AI experience built on:</p>
               <ul style={{ paddingLeft: 16, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <li>Decart LipSync Live — Real-time talking avatar</li>
-                <li>Gemini Live — Neural voice synthesis (Charon voice)</li>
+                <li>OracleAvatar3D — Three.js / React Three Fiber 3D avatar with OVR lip sync</li>
+                <li>Gemini 2.5 Flash Live — Neural voice synthesis (Charon voice)</li>
                 <li>Google AI Studio — Portrait generation</li>
                 <li>Supabase — Backend &amp; authentication</li>
                 <li>Culture Coins — Gamification layer</li>

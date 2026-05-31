@@ -81,16 +81,18 @@ export function InlineSubscriptionModal({
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
             style={{
-              background: 'linear-gradient(135deg, rgba(10,0,30,0.98), rgba(0,0,20,0.98))',
-              border: '1px solid rgba(255,0,255,0.3)',
-              borderRadius: 20,
+              background: 'rgba(0,5,20,0.96)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              border: '1px solid rgba(176,38,255,0.35)',
+              borderRadius: 16,
               padding: '32px',
               maxWidth: 520,
               width: '90%',
               maxHeight: '85vh',
               overflowY: 'auto',
               position: 'relative',
-              boxShadow: '0 0 60px rgba(255,0,255,0.2)',
+              boxShadow: '0 0 50px rgba(176,38,255,0.18), 0 0 120px rgba(0,255,136,0.06), inset 0 0 30px rgba(0,0,0,0.5)',
               fontFamily: "'PhillySans', 'Orbitron', monospace",
             }}
           >
@@ -111,7 +113,17 @@ export function InlineSubscriptionModal({
               <>
                 <div style={{ textAlign: 'center', marginBottom: 24 }}>
                   <Crown size={32} style={{ color: '#00ccff', marginBottom: 12 }} />
-                  <h2 style={{ fontSize: '1.1rem', color: '#ffffff', letterSpacing: '0.1em', marginBottom: 6 }}>{ctx?.title}</h2>
+                  <h2 style={{
+                    fontSize: '1.1rem',
+                    fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+                    letterSpacing: '0.14em',
+                    marginBottom: 6,
+                    display: 'inline-block',
+                    background: 'linear-gradient(135deg, #00ff88, #00ffcc)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                  }}>{ctx?.title}</h2>
                   <p style={{ fontSize: '0.75rem', color: '#ffffff', opacity: 0.8, marginBottom: 8 }}>{ctx?.subtitle}</p>
                   <div style={{ fontSize: '0.7rem', color: '#00ccff', background: 'rgba(0,204,255,0.1)', border: '1px solid rgba(0,204,255,0.3)', borderRadius: 20, padding: '4px 12px', display: 'inline-block' }}>
                     {ctx?.urgency}

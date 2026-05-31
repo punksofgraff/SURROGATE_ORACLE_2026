@@ -203,6 +203,8 @@ const OracleConversation = forwardRef(
     const [isConnected, setIsConnected] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
+    // true between Seeker turn-end and first Oracle audio chunk (the "contemplative" gap)
+    const [isOracleThinking, setIsOracleThinking] = useState(false);
     const [turns, setTurns] = useState<Turn[]>(() => {
       try {
         const saved = localStorage.getItem(`oracle_turns_${sessionId}`);
@@ -423,6 +425,7 @@ const OracleConversation = forwardRef(
             if (msg.serverContent?.interrupted) {
               logStep('ORACLE INTERRUPTED (barge-in)', 'warn');
               setIsOracleSpeaking(false);
+              setIsOracleThinking(false);
               onBargeInRef.current?.();
             }
 
@@ -430,7 +433,10 @@ const OracleConversation = forwardRef(
             for (const part of parts) {
               if (part.text) currentResponseText.current += part.text;
               if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
-                if (debugInfo.current.audioChunksReceived === 0) logStep('ORACLE AUDIO START', 'ok');
+                if (debugInfo.current.audioChunksReceived === 0) {
+                  logStep('ORACLE AUDIO START', 'ok');
+                  setIsOracleThinking(false); // Oracle has started speaking — end contemplative gap
+                }
                 debugInfo.current.audioChunksReceived++;
                 
                 // Efficient Base64 to Int16Array conversion
@@ -448,6 +454,7 @@ const OracleConversation = forwardRef(
 
             if (msg.serverContent?.turnComplete) {
               logStep('ORACLE TURN COMPLETE', 'ok');
+              setIsOracleThinking(false); // ensure cleared even on text-only turns
               debugInfo.current.turnCount++;
               debugInfo.current.audioChunksReceived = 0; // reset for next turn
               const scored = parseScore(currentResponseText.current);
@@ -515,6 +522,13 @@ const OracleConversation = forwardRef(
             }
           }
           
+          if (msg.type === 'tool.call.rejected') {
+            // The proxy intercepted a Gemini tool call and responded with an error.
+            // The Oracle has no tools — this is expected in edge cases. The session
+            // continues normally; no UI change required beyond logging.
+            logStep(`TOOL CALL BLOCKED: ${(msg.toolNames ?? []).join(', ')}`, 'warn');
+          }
+
           if (msg.type === 'error') {
             logStep('GEMINI WS ERROR', 'err');
             debugInfo.current.lastError = msg.message;
@@ -530,9 +544,21 @@ const OracleConversation = forwardRef(
             if (msg.resumable && msg.handle) resumeHandleRef.current = msg.handle;
           }
           if (msg.type === 'goaway') {
-            // Early warning: socket closes in `timeLeft` (a duration string like "9.5s"). The
-            // natural onclose reconnect now carries the resume handle, so context survives.
-            logStep(`GEMINI GOAWAY (${msg.timeLeft})`, 'warn');
+            // Early warning: socket closes in `timeLeft` (e.g. "9.5s").
+            // Pre-emptively reconnect now so the session handshake completes
+            // before Gemini actually drops the wire — eliminates the cold-gap
+            // the user would feel if we waited for onclose to trigger reconnect.
+            logStep(`GEMINI GOAWAY (${msg.timeLeft}) — pre-emptive reconnect`, 'warn');
+            if (!userInitiatedCloseRef.current && sessionBootedRef.current && reconnectAttemptsRef.current < 3) {
+              reconnectAttemptsRef.current++;
+              sessionBootedRef.current = false;
+              userInitiatedCloseRef.current = true; // suppress the onclose reconnect path
+              logStep(`SESSION REFRESH via GOAWAY (attempt ${reconnectAttemptsRef.current}/3)`, 'warn');
+              setTimeout(() => {
+                userInitiatedCloseRef.current = false; // re-arm for future drops
+                connectToGeminiRef.current();
+              }, 200);
+            }
           }
         } catch (e) {
           console.error('[Oracle] Message parse failed:', e);
@@ -603,6 +629,12 @@ const OracleConversation = forwardRef(
 
           const result = vadRef.current.processFrame(resampled, chunk);
           onUserSpeakingChangeRef.current?.(result.isSpeaking, result.vadScore);
+
+          // Contemplative filler: when Seeker's turn ends, show "thinking" state
+          // until the Oracle's first audio chunk arrives (cleared in ws.onmessage).
+          if (result.isTurnEnd) {
+            setIsOracleThinking(true);
+          }
 
           if (wsRef.current?.readyState !== WebSocket.OPEN) return;
 
@@ -762,6 +794,29 @@ const OracleConversation = forwardRef(
               <span>ORACLE IS TRANSMITTING</span>
             </motion.div>
           )}
+
+          {/* Contemplative filler — shown during the gap between Seeker turn-end and Oracle audio */}
+          <AnimatePresence>
+            {isOracleThinking && !isOracleSpeaking && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: [0.4, 1, 0.4], y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ opacity: { repeat: Infinity, duration: 1.6, ease: 'easeInOut' }, y: { duration: 0.2 } }}
+                className="oc-status-pill"
+                style={{ color: 'rgba(0,255,136,0.6)', borderColor: 'rgba(0,255,136,0.2)' }}
+              >
+                <motion.span
+                  animate={{ opacity: [1, 0.3, 1] }}
+                  transition={{ repeat: Infinity, duration: 0.9, ease: 'easeInOut' }}
+                  style={{ fontSize: '0.6rem', letterSpacing: '0.2em' }}
+                >
+                  ···
+                </motion.span>
+                <span>READING THE SIGNAL</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Conversation log — full session history, auto-scrolls to newest turn */}

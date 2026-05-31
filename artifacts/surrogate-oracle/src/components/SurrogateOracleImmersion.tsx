@@ -110,7 +110,16 @@ function OracleAvatarFallback() {
 export function SurrogateOracleImmersion() {
   const [oracleAvatarDataUrl] = useState<string>(ORACLE_AVATAR_URL);
   const [currentUserId, setCurrentUserId]   = useState<string | null>(null);
-  const [currentSessionId]                  = useState(() => crypto.randomUUID());
+  // Stable session ID — survives page reloads so localStorage turns persist across
+  // reconnects. A new UUID is written to localStorage on session exit (handleCleanup)
+  // so the *next* encounter always starts fresh.
+  const [currentSessionId, setCurrentSessionId] = useState(() => {
+    const stored = localStorage.getItem('oracle_active_session_id');
+    if (stored) return stored;
+    const fresh = crypto.randomUUID();
+    localStorage.setItem('oracle_active_session_id', fresh);
+    return fresh;
+  });
   const [userEmail, setUserEmail]           = useState<string | null>(null);
   const [sessionCoins, setSessionCoins]     = useState(0);
   const [showArtifactCard, setShowArtifactCard] = useState(false);
@@ -305,6 +314,12 @@ export function SurrogateOracleImmersion() {
     connection.cleanup();
     // Reset viseme ref to silence on exit
     visemeStateRef.current = SILENCE_VISEME_STATE;
+    // Rotate session ID so the next encounter starts with a clean turn log.
+    // The old turns remain in localStorage under the old key (available for
+    // memory distillation) but the new session won't load them.
+    const nextId = crypto.randomUUID();
+    localStorage.setItem('oracle_active_session_id', nextId);
+    setCurrentSessionId(nextId);
   }, [connection.cleanup]);
 
   const handleAuthSuccess = useCallback((user: { id: string; email: string }) => {

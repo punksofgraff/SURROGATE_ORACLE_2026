@@ -234,6 +234,9 @@ const OracleConversation = forwardRef(
     const userInitiatedCloseRef = useRef(false);
     // Mirror of `turns` state — closure-safe ref for reconnect context injection
     const turnsRef = useRef<Turn[]>([]);
+    // Timer handle for the contemplative filler injection — cancelled if Oracle
+    // audio arrives before the delay elapses (so we never double-speak).
+    const fillerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Debug tracking for BackendControlPanel
     const debugInfo = useRef({
@@ -426,6 +429,7 @@ const OracleConversation = forwardRef(
               logStep('ORACLE INTERRUPTED (barge-in)', 'warn');
               setIsOracleSpeaking(false);
               setIsOracleThinking(false);
+              if (fillerTimerRef.current) { clearTimeout(fillerTimerRef.current); fillerTimerRef.current = null; }
               onBargeInRef.current?.();
             }
 
@@ -436,6 +440,11 @@ const OracleConversation = forwardRef(
                 if (debugInfo.current.audioChunksReceived === 0) {
                   logStep('ORACLE AUDIO START', 'ok');
                   setIsOracleThinking(false); // Oracle has started speaking — end contemplative gap
+                  // Cancel pending filler injection — Oracle responded before the timer fired
+                  if (fillerTimerRef.current) {
+                    clearTimeout(fillerTimerRef.current);
+                    fillerTimerRef.current = null;
+                  }
                 }
                 debugInfo.current.audioChunksReceived++;
                 
@@ -631,9 +640,25 @@ const OracleConversation = forwardRef(
           onUserSpeakingChangeRef.current?.(result.isSpeaking, result.vadScore);
 
           // Contemplative filler: when Seeker's turn ends, show "thinking" state
-          // until the Oracle's first audio chunk arrives (cleared in ws.onmessage).
+          // and — after a short guard delay — inject a hidden filler prompt so the
+          // Oracle speaks a brief verbal bridge while processing the full response.
+          // The timer is cancelled if Oracle audio arrives first.
           if (result.isTurnEnd) {
             setIsOracleThinking(true);
+            if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
+            fillerTimerRef.current = setTimeout(() => {
+              fillerTimerRef.current = null;
+              // Only inject if Oracle hasn't already started responding
+              if (debugInfo.current.audioChunksReceived === 0 && wsRef.current?.readyState === WebSocket.OPEN) {
+                const FILLERS = [
+                  '[The Seeker just finished speaking. Before your full response, speak one short contemplative line in Oracle voice — something you genuinely feel as you sit with what they just said. One line only, then continue.]',
+                  '[Hold the signal for a beat. Speak one line — pure presence, no answer yet. Then respond fully.]',
+                  '[The Seeker has gone quiet. Acknowledge what you just received in one Oracle line before you answer.]',
+                ];
+                const filler = FILLERS[Math.floor(Math.random() * FILLERS.length)];
+                wsRef.current.send(JSON.stringify({ type: 'client.realtimeInput', realtimeInput: { text: filler } }));
+              }
+            }, 650); // 650ms — enough for Gemini to have started if it's going to; short enough to feel live
           }
 
           if (wsRef.current?.readyState !== WebSocket.OPEN) return;
@@ -695,6 +720,7 @@ const OracleConversation = forwardRef(
     useEffect(() => {
       connectToGemini();
       return () => {
+        if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
         if (wsRef.current) {
           userInitiatedCloseRef.current = true;
           wsRef.current.close(1000, 'Component unmounted');

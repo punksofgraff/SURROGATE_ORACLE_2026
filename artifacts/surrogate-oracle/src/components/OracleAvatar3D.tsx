@@ -144,7 +144,7 @@ const CAM_LERP      = 0.05; // cinematic smooth-follow
 const AVATAR_Y_OFFSET = -1.59;
 
 export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3DProps) {
-  const { scene }  = useGLTF('/hero3.glb');
+  const { scene }  = useGLTF('/hero3.glb?v=morphs-v2');
   const { camera } = useThree();
   const groupRef   = useRef<THREE.Group>(null);
   // Smooth camera target — avoids snapping on sudden gesture changes
@@ -379,4 +379,4 @@ function OracleSceneLights() {
 }
 
 // Eager preload so the GLB is ready before the canvas mounts
-useGLTF.preload('/hero3.glb');
+useGLTF.preload('/hero3.glb?v=morphs-v2');

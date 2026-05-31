@@ -324,20 +324,40 @@ export function SurrogateOracleImmersion() {
     };
   }, [scenePhase]);
 
-  // ── fadeToVolume — GainNode-based, iOS-proof ────────────────────────────
+  // ── fadeToVolume — Assertive ducking/muting ───────────────────────────
   const fadeToVolume = useCallback((target: number) => {
-    const safeTarget = Math.max(0.0001, target);
     setTargetVol(target);
+    const safeTarget = Math.max(0.0001, target);
+    
+    // 1. GainNode path (High performance / Cross-fade)
     if (radioGainRef.current) {
       const gain = radioGainRef.current;
       const ctx  = getAudioContext();
       const now  = ctx.currentTime;
       const isDucking = target < gain.gain.value;
+      
       gain.gain.cancelScheduledValues(now);
       gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), now);
-      gain.gain.exponentialRampToValueAtTime(safeTarget, now + (isDucking ? 0.05 : 0.40));
-    } else if (audioRef.current) {
-      audioRef.current.volume = target;
+      
+      if (target < 0.002) {
+        // Deep cut: linear ramp to absolute silence
+        gain.gain.linearRampToValueAtTime(0, now + 0.08);
+      } else {
+        gain.gain.exponentialRampToValueAtTime(safeTarget, now + (isDucking ? 0.10 : 0.40));
+      }
+    }
+    
+    // 2. Element path (Fallback or redundant safety)
+    if (audioRef.current) {
+      // Hard mute for deep cuts (target < 0.01)
+      const shouldMute = target < 0.01;
+      if (audioRef.current.muted !== shouldMute) {
+        audioRef.current.muted = shouldMute;
+      }
+      // Also update volume property for UI/safety
+      if (!radioGainRef.current) {
+        audioRef.current.volume = target;
+      }
     }
   }, []);
 

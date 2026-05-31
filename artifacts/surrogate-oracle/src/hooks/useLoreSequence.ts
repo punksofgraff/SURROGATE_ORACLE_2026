@@ -30,40 +30,39 @@ const BEAT_DELAYS = [
 export function useLoreSequence(active: boolean, onComplete: () => void) {
   const [completedLines, setCompletedLines] = useState<string[]>([]);
   const [currentLine, setCurrentLine]       = useState('');
-  const wasActive     = useRef(false);
   const onCompleteRef = useRef(onComplete);
+  const cancelRef     = useRef(false);
   useEffect(() => { onCompleteRef.current = onComplete; });
 
   useEffect(() => {
     if (!active) {
-      if (wasActive.current) {
-        setCompletedLines(LORE_SEQUENCE);
-        setCurrentLine('');
-      }
-      wasActive.current = false;
+      setCompletedLines(prev => prev.length ? LORE_SEQUENCE : prev);
+      setCurrentLine('');
       return;
     }
-    wasActive.current = true;
+
+    cancelRef.current = false;
     setCompletedLines([]);
     setCurrentLine('');
 
     let rafId: number;
-    let lineIdx   = 0;
-    let charIdx   = 0;
-    let inBeat    = false;
-    let beatUntil = 0;
+    let lineIdx    = 0;
+    let charIdx    = 0;
+    let inBeat     = false;
+    let beatUntil  = 0;
     let nextCharAt = performance.now() + 200;
 
     const tick = (now: number) => {
+      if (cancelRef.current) return; // loop was cancelled — do not reschedule
+
       if (inBeat) {
         if (now >= beatUntil) {
           inBeat = false;
           lineIdx++;
           charIdx = 0;
           if (lineIdx >= LORE_SEQUENCE.length) {
-            // Guard against multiple calls if tick keeps running for a frame
-            if (active) onCompleteRef.current();
-            return;
+            onCompleteRef.current();
+            return; // sequence done — do not reschedule
           }
           nextCharAt = now;
         }
@@ -80,11 +79,13 @@ export function useLoreSequence(active: boolean, onComplete: () => void) {
           beatUntil = now + (BEAT_DELAYS[lineIdx] ?? 2500);
         }
       }
+
       rafId = requestAnimationFrame(tick);
     };
 
     rafId = requestAnimationFrame(tick);
     return () => {
+      cancelRef.current = true;
       cancelAnimationFrame(rafId);
     };
   }, [active]);

@@ -758,12 +758,26 @@ export function SurrogateOracleImmersion() {
                 <motion.div
                   key="live-face"
                   className="oracle-avatar-container"
-                  initial={{ opacity: 0, y: -40, scale: 0.9, filter: 'blur(12px) brightness(3) saturate(0)' }}
-                  animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px) brightness(1) saturate(1)' }}
-                  transition={{ 
-                    duration: 1.2, 
-                    ease: [0.22, 1, 0.36, 1],
-                    y: { type: 'spring', damping: 12, stiffness: 80 }
+                  // Static Dissolve: emerge from the same position as the 2D portrait —
+                  // no y-drop. Start desaturated + green-tinted to match the static's
+                  // surge color. Delayed 0.25s so the static spike leads and the 3D
+                  // face appears to grow out of that flare rather than arrive from outside.
+                  initial={{ opacity: 0, scale: 1.02, filter: 'blur(5px) brightness(2.8) saturate(0) hue-rotate(40deg)' }}
+                  animate={{
+                    opacity:    [0, 0,    0.25, 0.75,  1],
+                    scale:      [1.02, 1.02, 1.01, 1.0,  1],
+                    filter: [
+                      'blur(5px)   brightness(2.8) saturate(0)   hue-rotate(40deg)',
+                      'blur(5px)   brightness(2.8) saturate(0)   hue-rotate(40deg)',
+                      'blur(2px)   brightness(2.0) saturate(0.4) hue-rotate(20deg)',
+                      'blur(0.5px) brightness(1.3) saturate(0.9) hue-rotate(5deg)',
+                      'blur(0px)   brightness(1.0) saturate(1.0) hue-rotate(0deg)',
+                    ],
+                  }}
+                  transition={{
+                    duration: 2.0,
+                    ease: 'easeOut',
+                    times: [0, 0.14, 0.40, 0.72, 1],
                   }}
                   style={{ zIndex: 3, position: 'absolute', inset: 0, width: '100%', height: '100%' }}
                 >

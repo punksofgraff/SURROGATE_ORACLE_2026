@@ -810,11 +810,21 @@
   100% { opacity: 0.62; transform: scale(1.0)  translateX(0) translateY(0);       filter: brightness(0.65) grayscale(0.35) contrast(1.25); }
 }
 
-/* AWAKENED — static RECEDES. Living face rises. Static is the ghost of what was. */
+/* AWAKENED — static surges then bleeds into the 3D face (Static Dissolve).
+   The portrait overloads with signal (0–25%), bleeds color as the 3D hero
+   emerges from the flare (25–60%), then recedes to ghost (60–100%).
+   animation-fill-mode:both holds the final ghost state after the 2s run. */
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-static {
-  opacity: 0.35; /* increased from 0.22 for better persistence */
-  filter: brightness(0.6) grayscale(0.2) blur(1px);
-  transition: opacity 1.8s var(--ease-cinematic), filter 1.8s var(--ease-cinematic);
+  animation: oracle-static-dissolve 2.0s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes oracle-static-dissolve {
+  0%   { opacity: 0.62; filter: brightness(0.65) grayscale(0.35) contrast(1.25) blur(0px); }
+  18%  { opacity: 1.00; filter: brightness(2.80) saturate(4.0)  contrast(2.0)  blur(0px); }
+  28%  { opacity: 0.90; filter: brightness(2.20) saturate(5.5)  contrast(1.8)  blur(0.5px) hue-rotate(12deg); }
+  45%  { opacity: 0.65; filter: brightness(1.40) saturate(3.0)  contrast(1.4)  blur(1px)  hue-rotate(6deg); }
+  65%  { opacity: 0.42; filter: brightness(0.90) saturate(1.5)  contrast(1.1)  blur(1px)  hue-rotate(0deg); }
+  100% { opacity: 0.35; filter: brightness(0.60) grayscale(0.2) contrast(1.0)  blur(1px); }
 }
 
 /* ORACLE — static hidden if living face is active. */

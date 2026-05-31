@@ -754,8 +754,10 @@ const OracleConversation = forwardRef(
     useEffect(() => { connectToGeminiRef.current = connectToGemini; }, [connectToGemini]);
 
     useEffect(() => {
+      logStep('ORACLE_CONV TRUE MOUNT', 'ok');
       connectToGemini();
       return () => {
+        logStep('ORACLE_CONV UNMOUNT', 'warn');
         if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
         if (wsRef.current) {
           userInitiatedCloseRef.current = true;

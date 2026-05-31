@@ -226,6 +226,21 @@ export function SurrogateOracleImmersion() {
 
   const [isOracleSpeakingDelayed, setIsOracleSpeakingDelayed] = useState(false);
   const speakingTimeoutRef = useRef<number | null>(null);
+  const [isUserSpeakingDelayed, setIsUserSpeakingDelayed]     = useState(false);
+  const userSpeakingTimeoutRef = useRef<number | null>(null);
+
+  // ── User speaking handler — with "hold" to prevent radio flicker ────────
+  const handleUserSpeakingChange = useCallback((speaking: boolean) => {
+    setIsUserSpeaking(speaking);
+    if (speaking) {
+      if (userSpeakingTimeoutRef.current) window.clearTimeout(userSpeakingTimeoutRef.current);
+      setIsUserSpeakingDelayed(true);
+    } else {
+      userSpeakingTimeoutRef.current = window.setTimeout(() => {
+        setIsUserSpeakingDelayed(false);
+      }, 600); // 600ms hold after user stops
+    }
+  }, []);
 
   // ── Viseme handler — writes to ref only, NO setState ────────────────────
   const handleViseme = useCallback((state: VisemeState) => {
@@ -388,7 +403,7 @@ export function SurrogateOracleImmersion() {
     
     if (scenePhase === 'oracle') {
       nextTarget = 0.08; 
-      if (isMicActive || isUserSpeaking) nextTarget = 0.035; 
+      if (isMicActive || isUserSpeaking || isUserSpeakingDelayed) nextTarget = 0.035; 
     }
     
     // Explicit silence when Oracle is producing signal
@@ -399,7 +414,7 @@ export function SurrogateOracleImmersion() {
     if (nextTarget !== targetVol) {
       fadeToVolume(nextTarget);
     }
-  }, [scenePhase, isMicActive, isUserSpeaking, isOracleSpeaking, isOracleSpeakingDelayed, targetVol, fadeToVolume]);
+  }, [scenePhase, isMicActive, isUserSpeaking, isUserSpeakingDelayed, isOracleSpeaking, isOracleSpeakingDelayed, targetVol, fadeToVolume]);
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -730,15 +745,29 @@ export function SurrogateOracleImmersion() {
           }}
           transition={{ duration: 1.1, delay: isAlive ? 0.85 : 0 }}
           onClick={() => isAlive && setShowPortraitGallery(true)}
-          style={{ cursor: 'pointer' }}
+          className="oracle-bottom-btn"
+          style={{ 
+            cursor: 'pointer', 
+            padding: '10px',
+            border: '2px solid #00ff88',
+            borderRadius: '16px',
+            background: 'rgba(0, 30, 15, 0.5)',
+            boxShadow: '0 0 20px rgba(0, 255, 136, 0.5), inset 0 0 10px rgba(0, 255, 136, 0.2)',
+            position: 'relative'
+          }}
         >
           <img
             src="/portrait-btn.png"
             alt="Portraits"
-            style={{ width: '80px', height: '80px', objectFit: 'contain', transition: 'transform 0.2s' }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.1)'; }}
+            style={{ width: '120px', height: '120px', objectFit: 'contain', transition: 'transform 0.2s' }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           />
+          <div style={{
+            position: 'absolute', bottom: 6, right: 10,
+            color: '#00ff88', fontSize: '0.65rem', fontWeight: 'bold', fontFamily: 'monospace',
+            letterSpacing: '0.05em', textShadow: '0 0 5px #00ff88'
+          }}>PORTRAITS</div>
         </motion.div>
 
         <motion.div
@@ -766,27 +795,32 @@ export function SurrogateOracleImmersion() {
           }}
           transition={{ duration: 1.1, delay: isAlive ? 1.15 : 0 }}
           onClick={() => isAlive && setIsGuidedTour(!isGuidedTour)}
-          style={{ cursor: 'pointer', position: 'relative' }}
+          className="oracle-bottom-btn"
+          style={{ 
+            cursor: 'pointer', 
+            position: 'relative',
+            padding: '10px',
+            border: isGuidedTour ? '2px solid #b026ff' : '2px solid #00ff88',
+            borderRadius: '16px',
+            background: 'rgba(0, 30, 15, 0.5)',
+            boxShadow: isGuidedTour ? '0 0 25px rgba(176, 38, 255, 0.6)' : '0 0 20px rgba(0, 255, 136, 0.5)',
+          }}
         >
           <img
             src="/tour-btn.png"
             alt="Tour Mode"
             style={{ 
-              width: '80px', height: '80px', objectFit: 'contain', transition: 'transform 0.2s',
-              border: isGuidedTour ? '2px solid #b026ff' : 'none',
-              borderRadius: '50%',
-              padding: '4px'
+              width: '120px', height: '120px', objectFit: 'contain', transition: 'transform 0.2s',
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.1)'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           />
-          {isGuidedTour && (
-            <div style={{
-              position: 'absolute', bottom: -5, left: '50%', transform: 'translateX(-50%)',
-              color: '#b026ff', fontSize: '0.6rem', fontWeight: 'bold', fontFamily: 'monospace',
-              textShadow: '0 0 5px rgba(176, 38, 255, 0.5)'
-            }}>TOUR ON</div>
-          )}
+          <div style={{
+            position: 'absolute', bottom: 6, right: 10,
+            color: isGuidedTour ? '#b026ff' : '#00ff88', 
+            fontSize: '0.65rem', fontWeight: 'bold', fontFamily: 'monospace',
+            textShadow: isGuidedTour ? '0 0 5px rgba(176, 38, 255, 0.5)' : '0 0 5px #00ff88'
+          }}>{isGuidedTour ? 'TOUR ON' : 'TOUR OFF'}</div>
         </motion.div>
       </div>
 
@@ -896,7 +930,7 @@ export function SurrogateOracleImmersion() {
           onListeningChange={setIsMicActive}
           isVisible={isOracleMode}
           autoStart={false}
-          onUserSpeakingChange={setIsUserSpeaking}
+          onUserSpeakingChange={handleUserSpeakingChange}
           onBargeIn={() => connection.pcmPlayer?.stop()}
           onPortraitRequest={() => portrait.generatePortrait(portrait.getThemes())}
           isGuidedTour={isGuidedTour}

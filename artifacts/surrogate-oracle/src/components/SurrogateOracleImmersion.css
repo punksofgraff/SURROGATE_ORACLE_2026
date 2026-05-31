@@ -4,8 +4,8 @@
   --z-atmosphere: 5;
   --z-branding: 10;
   --z-cabinet: 15;
+  --z-bottom: 20;
   --z-oracle: 30;
-  --z-bottom: 40;
   --z-system: 100;
   --z-auth: 150;
   --z-error: 200;
@@ -1136,8 +1136,32 @@
   pointer-events: auto;
 }
 
-/* DORMANT — bottom bar invisible.
-   Nothing announces itself before the seeker has chosen to enter. */
+.oracle-bottom-btn {
+  transition: all 0.3s var(--ease-cinematic);
+  position: relative;
+  overflow: hidden;
+}
+
+.oracle-bottom-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  pointer-events: none;
+  box-shadow: inset 0 0 10px rgba(0, 255, 136, 0.1);
+}
+
+.oracle-bottom-btn:hover {
+  transform: translateY(-5px) scale(1.02);
+  border-color: #00ff88 !important;
+  box-shadow: 0 0 25px rgba(0, 255, 136, 0.6) !important;
+}
+
+.oracle-bottom-btn:hover::after {
+  border-color: #00ff88;
+  box-shadow: inset 0 0 15px rgba(0, 255, 136, 0.2);
+}
 .oracle-stage[data-oracle-state="dormant"] .oracle-bottom-bar {
   opacity: 0;
   pointer-events: none;

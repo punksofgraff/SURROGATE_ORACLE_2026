@@ -49,26 +49,26 @@ type OVRName = typeof OVR_NAMES[number];
 // Re-run: npm run calibrate after changing hero3.glb.
 // Arrays = co-articulation blend (multiple shapes activated together).
 const ORACLE_TO_OVR: Record<string, OVRName[]> = {
-  X: ['viseme_sil'], // silence
-  A: ['viseme_aa'], // "ah"
-  E: ['viseme_E'], // "eh"
-  I: ['viseme_ih'], // "ih"
-  O: ['viseme_oh'], // "oh"
-  U: ['viseme_ou'], // "oo"
-  B: ['viseme_PP'], // p/b/m
-  C: ['viseme_sil'], // neutral
-  D: ['viseme_DD'], // d/t/n
-  F: ['viseme_FF'], // f/v
-  G: ['viseme_kk'], // k/g
-  H: ['viseme_ou', 'viseme_oh'], // rounded
+  X: ['viseme_sil'],
+  A: ['viseme_aa'],
+  E: ['viseme_E', 'viseme_ih'],
+  I: ['viseme_ih'],
+  O: ['viseme_oh', 'viseme_ou'],
+  U: ['viseme_ou'],
+  B: ['viseme_PP'],
+  C: ['viseme_SS', 'viseme_CH'],
+  D: ['viseme_DD', 'viseme_TH'],
+  F: ['viseme_FF'],
+  G: ['viseme_kk'],
+  H: ['viseme_oh', 'viseme_ou'],
 };
 
 // Secondary viseme contributions driven by the VisemeState shape parameters.
 // These simulate co-articulation — lips never move to just one extreme shape.
 const CO_ARTIC: Array<{ viseme: OVRName; dimension: 'openness' | 'rounded' | 'spread'; scale: number }> = [
-  { viseme: 'viseme_aa', dimension: 'openness', scale: 0.6 },   // jaw open → aa shape
-  { viseme: 'viseme_ou', dimension: 'rounded',  scale: 0.5 },   // lip rounding → ou
-  { viseme: 'viseme_E',  dimension: 'spread',   scale: 0.4 },   // lip spread → E
+  { viseme: 'viseme_aa', dimension: 'openness', scale: 1.1 },
+  { viseme: 'viseme_oh', dimension: 'rounded',  scale: 0.7 },
+  { viseme: 'viseme_SS', dimension: 'spread',   scale: 0.6 },
 ];
 
 // ── Morph target index resolution ────────────────────────────────────────────
@@ -186,10 +186,11 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
         }
       }
 
-      if (child.name === 'Head'     && !headBone)     headBone     = child;
-      if (child.name.toLowerCase().includes('neck') && !neckBone)   neckBone     = child;
-      if (child.name.toLowerCase().includes('eyeleft')  && !leftEyeBone)  leftEyeBone  = child;
-      if (child.name.toLowerCase().includes('eyeright') && !rightEyeBone) rightEyeBone = child;
+      const n = child.name.toLowerCase();
+      if (n === 'head' && !headBone) headBone = child;
+      if (n.includes('neck') && !neckBone) neckBone = child;
+      if (n.includes('eye') && n.includes('left') && !leftEyeBone) leftEyeBone = child;
+      if (n.includes('eye') && n.includes('right') && !rightEyeBone) rightEyeBone = child;
 
       const sm = child as THREE.SkinnedMesh;
       if (!sm.isSkinnedMesh || !sm.morphTargetDictionary || !sm.morphTargetInfluences) return;
@@ -204,6 +205,14 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
 
       result.push({ mesh: sm, indexMap });
     });
+
+    if (import.meta.env.DEV) {
+      console.log('[OracleAvatar3D] Bones found:', {
+        head: !!headBone, neck: !!neckBone, leftEye: !!leftEyeBone, rightEye: !!rightEyeBone
+      });
+      if (leftEyeBone) console.log('[OracleAvatar3D] Left Eye Bone name:', leftEyeBone.name);
+      if (rightEyeBone) console.log('[OracleAvatar3D] Right Eye Bone name:', rightEyeBone.name);
+    }
 
     const hasMorphs = result.length > 0;
 
@@ -262,42 +271,77 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
 
     // ── Blinking ──────────────────────────────────────────────────────────
     const now = state.clock.elapsedTime;
-    if (now - blinkRef.current.lastBlink > 3.5 + Math.random() * 4) {
+    if (now - blinkRef.current.lastBlink > 3.0 + Math.random() * 4) {
       blinkRef.current.lastBlink = now;
       blinkRef.current.intensity = 1.0;
     }
     if (blinkRef.current.intensity > 0) {
-      blinkRef.current.intensity = Math.max(0, blinkRef.current.intensity - delta * 12);
+      blinkRef.current.intensity = Math.max(0, blinkRef.current.intensity - delta * 11);
     }
+    // S-curve for more natural motion
+    const bInt = Math.sin(blinkRef.current.intensity * Math.PI);
 
     // ── Gaze tracking — Oracle watches the viewer ─────────────────────────
     if (cameraStateRef?.current) {
       const gx = Math.max(-1, Math.min(1,  cameraStateRef.current.x));
       const gy = Math.max(-1, Math.min(1, -cameraStateRef.current.y));
 
-      const eyeLerpF = lerpDt * 0.14;
-      const eyeMaxH  =  0.30;
-      const eyeMaxV  =  0.18;
+      const eyeLerpF = lerpDt * 0.16;
+      const eyeMaxH  =  0.42; // ~24° horizontal
+      const eyeMaxV  =  0.25; // ~14° vertical
       if (meshData.leftEyeBone) {
         meshData.leftEyeBone.rotation.y  = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.y,  gx * eyeMaxH, eyeLerpF);
         meshData.leftEyeBone.rotation.x  = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.x,  gy * eyeMaxV, eyeLerpF);
+        // Bone-based blink fallback (squish eye)
+        meshData.leftEyeBone.scale.y = 1.0 - (bInt * 0.92);
       }
       if (meshData.rightEyeBone) {
         meshData.rightEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.y, gx * eyeMaxH, eyeLerpF);
         meshData.rightEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.x, gy * eyeMaxV, eyeLerpF);
+        meshData.rightEyeBone.scale.y = 1.0 - (bInt * 0.92);
       }
+
+      // ── Procedural Conversational Gestures ──
+      // Emphatic head movement driven by speech amplitude
+      const t = state.clock.elapsedTime;
+      const speakIntensity = amp * 1.2;
+      
       if (meshData.headBone) {
-        const headLerpF = lerpDt * 0.04;
-        meshData.headBone.rotation.y = THREE.MathUtils.lerp(meshData.headBone.rotation.y, gx * 0.10, headLerpF);
-        meshData.headBone.rotation.x = THREE.MathUtils.lerp(meshData.headBone.rotation.x, gy * 0.06, headLerpF);
+        const headLerpF = lerpDt * 0.06;
+        
+        // Base gaze tracking
+        let tx = gx * 0.18;
+        let ty = gy * 0.12;
+        let tz = 0;
+
+        // Add conversational "nod" and "tilt" when speaking
+        if (amp > 0.05) {
+          tx += Math.sin(t * 8) * 0.03 * speakIntensity; // emphasis shake
+          ty -= Math.cos(t * 5) * 0.05 * speakIntensity; // emphasis nod
+          tz += Math.sin(t * 4) * 0.06 * speakIntensity; // conversational tilt
+        }
+
+        meshData.headBone.rotation.y = THREE.MathUtils.lerp(meshData.headBone.rotation.y, tx, headLerpF);
+        meshData.headBone.rotation.x = THREE.MathUtils.lerp(meshData.headBone.rotation.x, ty, headLerpF);
+        meshData.headBone.rotation.z = THREE.MathUtils.lerp(meshData.headBone.rotation.z, tz, headLerpF);
+      }
+
+      // Neck/Shoulder subtle conversational sway
+      if (meshData.neckBone) {
+        const neckLerpF = lerpDt * 0.03;
+        const swayX = Math.sin(t * 0.8) * 0.02 + (Math.sin(t * 6) * 0.015 * speakIntensity);
+        const swayZ = Math.cos(t * 0.5) * 0.015;
+        meshData.neckBone.rotation.x = THREE.MathUtils.lerp(meshData.neckBone.rotation.x, gy * 0.04 + swayX, neckLerpF);
+        meshData.neckBone.rotation.z = THREE.MathUtils.lerp(meshData.neckBone.rotation.z, swayZ, neckLerpF);
       }
     }
 
-    // ── Idle breathing ────────────────────────────────────────────────────
+    // ── Idle breathing — subtle Y drift ──
     if (groupRef.current) {
+      const breathSpeed = 1.4 + (amp * 1.5); // breathing quickens with speech
       groupRef.current.position.y = THREE.MathUtils.lerp(
         groupRef.current.position.y,
-        meshData.avatarYOffset + Math.sin(state.clock.elapsedTime * 1.4) * 0.008,
+        meshData.avatarYOffset + Math.sin(state.clock.elapsedTime * breathSpeed) * 0.008,
         lerpDt * 0.04,
       );
     }
@@ -310,27 +354,26 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
       OVR_NAMES.forEach(n => targets.set(n, 0));
       
       // Add blinking to targets
-      const bInt = blinkRef.current.intensity;
       BLINK_NAMES.forEach(b => targets.set(b, bInt));
 
       if (amp > 0.01) {
         const dominant = ORACLE_TO_OVR[vs.viseme] ?? ['viseme_sil'];
-        const weight   = Math.min(amp * 1.5, 1.0);
+        const weight   = Math.min(amp * 1.8, 1.0);
         const perShape = weight / dominant.length;
         for (const name of dominant) {
           targets.set(name, (targets.get(name) ?? 0) + perShape);
         }
         for (const ca of CO_ARTIC) {
           if (dominant.includes(ca.viseme)) continue;
-          const contrib = (vs[ca.dimension] ?? 0) * ca.scale * amp;
+          const contrib = (vs[ca.dimension as keyof VisemeState] as number ?? 0) * ca.scale * amp;
           if (contrib > 0.01) {
             targets.set(ca.viseme, Math.min(1, (targets.get(ca.viseme) ?? 0) + contrib));
           }
         }
       }
 
-      const attackLerp = lerpDt * 0.50;
-      const decayLerp  = lerpDt * 0.18;
+      const attackLerp = lerpDt * 0.55;
+      const decayLerp  = lerpDt * 0.22;
 
       for (const { mesh, indexMap } of meshData.meshes) {
         const infl = mesh.morphTargetInfluences!;

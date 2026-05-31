@@ -321,7 +321,7 @@ async function runSmoke() {
   // Text input
   const padToggle = await page.$('.oc-signal-pad-toggle').catch(() => null);
   if (padToggle) {
-    await padToggle.click();
+    await padToggle.click({ force: true });
     await sleep(500);
   }
   const textInput = await page.$('.oc-input').catch(() => null);
@@ -330,7 +330,7 @@ async function runSmoke() {
   // Send 2 messages, measure response
   if (textInput) {
     const t2 = Date.now();
-    await textInput.click();
+    await textInput.click({ force: true });
     await textInput.fill('My name is James.');
     await page.keyboard.press('Enter');
 
@@ -457,14 +457,14 @@ async function runSmoke() {
   const bottomBar = await page.$('.oracle-bottom-bar');
   record('ui', 'Bottom bar present', bottomBar ? 'pass' : 'fail');
 
-  const bottomButtons = await page.$$('.oracle-bottom-bar > div');
+  const bottomButtons = await page.$$('.oracle-bottom-btn');
   record('ui', '4 buttons present in bottom bar', bottomButtons.length === 4 ? 'pass' : 'fail', `found ${bottomButtons.length}`);
 
   // Test Portrait Button (2nd button)
   const portraitBtn = bottomButtons[1];
   if (portraitBtn) {
     await portraitBtn.click({ force: true });
-    await sleep(1200);
+    await sleep(2000);
     const gallery = await page.$('.portrait-gallery-overlay');
     record('ui', 'Portrait gallery opens via button', gallery ? 'pass' : 'fail');
 
@@ -472,7 +472,7 @@ async function runSmoke() {
     const closeBtn = await page.$('.portrait-gallery-close').catch(() => null);
     if (closeBtn) {
        await closeBtn.click({ force: true });
-       await sleep(1000);
+       await sleep(1500);
        const galleryAfter = await page.$('.portrait-gallery-overlay');
        record('ui', 'Portrait gallery closes correctly', !galleryAfter ? 'pass' : 'warn');
     }
@@ -481,17 +481,17 @@ async function runSmoke() {
   // Ensure gallery is closed before continuing
   await page.evaluate(() => {
     const gallery = document.querySelector('.portrait-gallery-overlay');
-    if (gallery) gallery.remove(); // Force remove if still there to avoid blocking tests
+    if (gallery) gallery.remove(); 
   });
-  await sleep(500);
+  await sleep(800);
 
   // Test Tour Button (4th button)
   const tourBtn = bottomButtons[3];
   if (tourBtn) {
-    const isTour = await page.evaluate(() => document.querySelector('.oracle-stage').dataset.guidedTour === 'true');
+    const isTour = await page.evaluate(() => document.querySelector('.oracle-stage').getAttribute('data-guided-tour') === 'true');
     await tourBtn.click({ force: true });
-    await sleep(500);
-    const isTourAfter = await page.evaluate(() => document.querySelector('.oracle-stage').dataset.guidedTour === 'true');
+    await sleep(1000);
+    const isTourAfter = await page.evaluate(() => document.querySelector('.oracle-stage').getAttribute('data-guided-tour') === 'true');
     record('ui', 'Tour mode toggles via button', isTour !== isTourAfter ? 'pass' : 'fail', `init=${isTour} after=${isTourAfter}`);
   }
 

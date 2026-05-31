@@ -558,7 +558,13 @@ export function SurrogateOracleImmersion() {
     return () => clearTimeout(t);
   }, [portrait.portraitError, portrait.clearPortraitError]);
 
-  // ── Mount: env check + event wiring ──────────────────────────────────────
+  // ── Mount: env check + event wiring ─────────────────────────────────────
+  // CRITICAL: deps must be [] — portrait is a new object every render.
+  // Having portrait in deps caused this effect to re-run on every state change,
+  // adding duplicate event listeners and spamming log on every re-render.
+  const portraitRef = useRef(portrait);
+  useEffect(() => { portraitRef.current = portrait; }, [portrait]);
+
   useEffect(() => {
     logStep('OracleConversation MOUNTED', 'ok');
     logStep('ENV OK (Supabase vars)', 'ok');
@@ -571,7 +577,7 @@ export function SurrogateOracleImmersion() {
       const { trigger, themes } = e.detail || {};
       if (trigger === 'portrait_unlock') {
         logStep('PORTRAIT UNLOCK RECEIVED FROM LLM', 'ok');
-        portrait.generatePortrait(themes || portrait.getThemes());
+        portraitRef.current.generatePortrait(themes || portraitRef.current.getThemes());
       }
     };
     window.addEventListener('oracle:unlock', handleOracleUnlock);
@@ -580,7 +586,7 @@ export function SurrogateOracleImmersion() {
       window.removeEventListener('oracle:auth:trigger', handleAuthTrigger);
       window.removeEventListener('oracle:unlock', handleOracleUnlock);
     };
-  }, [portrait]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Atmosphere & Motion ───────────────────────────────────────────────────
   useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment);

@@ -1136,8 +1136,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(10px, 3vw, 32px);
-  padding: 0 12px;
+  gap: clamp(8px, 2.5vw, 24px);
+  padding: 0 8px;
   filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
   transition: opacity 1.2s var(--ease-cinematic);
   pointer-events: none;
@@ -1147,31 +1147,74 @@
   pointer-events: auto;
 }
 
+/* ── Bottom action buttons — phone-first compact design ──────────────────
+   52px icon + inline label. No tall columns. Border only when active.
+   Touch-optimized: tap area ≥ 44px, active:scale feedback.               */
 .oracle-bottom-btn {
-  transition: all 0.3s var(--ease-cinematic);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 10px 8px;
+  border-radius: 18px;
+  border: 1.5px solid rgba(0, 255, 136, 0.15);
+  background: rgba(0, 6, 3, 0.55);
+  cursor: pointer;
   position: relative;
   overflow: hidden;
-}
-
-.oracle-bottom-btn::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  border: 1px solid rgba(0, 255, 136, 0.4);
-  pointer-events: none;
-  box-shadow: inset 0 0 10px rgba(0, 255, 136, 0.1);
+  min-width: 56px;
+  touch-action: manipulation;
+  user-select: none;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.15s ease;
 }
 
 .oracle-bottom-btn:hover {
-  transform: translateY(-5px) scale(1.02);
-  border-color: #00ff88 !important;
-  box-shadow: 0 0 25px rgba(0, 255, 136, 0.6) !important;
+  border-color: rgba(0, 255, 136, 0.55);
+  box-shadow: 0 0 18px rgba(0, 255, 136, 0.35);
+  transform: translateY(-3px);
 }
 
-.oracle-bottom-btn:hover::after {
-  border-color: #00ff88;
-  box-shadow: inset 0 0 15px rgba(0, 255, 136, 0.2);
+.oracle-bottom-btn:active,
+.oracle-bottom-btn[data-pressed="true"] {
+  transform: scale(0.95);
+}
+
+.oracle-bottom-btn--active {
+  border-color: rgba(0, 255, 136, 0.65);
+  box-shadow: 0 0 16px rgba(0, 255, 136, 0.4), inset 0 0 8px rgba(0, 255, 136, 0.08);
+}
+
+.oracle-bottom-btn__img {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  display: block;
+}
+
+.oracle-bottom-btn__label {
+  font-family: 'PhillySans', monospace;
+  font-size: 0.52rem;
+  letter-spacing: 0.13em;
+  font-weight: 700;
+  color: rgba(0, 255, 136, 0.45);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.oracle-bottom-btn--active .oracle-bottom-btn__label {
+  color: #00ff88;
+  text-shadow: 0 0 6px rgba(0, 255, 136, 0.55);
+}
+
+/* Tour active — purple frequency */
+.oracle-bottom-btn--tour {
+  border-color: rgba(176, 38, 255, 0.65);
+  box-shadow: 0 0 16px rgba(176, 38, 255, 0.4), inset 0 0 8px rgba(176, 38, 255, 0.08);
+}
+
+.oracle-bottom-btn--tour .oracle-bottom-btn__label {
+  color: #b026ff;
+  text-shadow: 0 0 6px rgba(176, 38, 255, 0.55);
 }
 .oracle-stage[data-oracle-state="dormant"] .oracle-bottom-bar {
   opacity: 0;

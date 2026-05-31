@@ -859,37 +859,14 @@ export function SurrogateOracleImmersion() {
           initial={{ opacity: 0.3, filter: 'brightness(0.4) saturate(0.3)' }}
           animate={{
             opacity: isAlive ? 1 : 0.3,
-            filter: isAlive
-              ? 'brightness(1.1) saturate(1.2) drop-shadow(0 0 16px rgba(0, 255, 136, 0.5))'
-              : 'brightness(0.4) saturate(0.3)',
+            filter: isAlive ? 'brightness(1.05) saturate(1.1)' : 'brightness(0.4) saturate(0.3)',
           }}
           transition={{ duration: 1.1, delay: isAlive ? 0.85 : 0 }}
           onClick={() => isAlive && setShowPortraitGallery(true)}
-          className="oracle-bottom-btn"
-          style={{
-            cursor: 'pointer',
-            padding: '10px',
-            border: '2px solid #00ff88',
-            borderRadius: '16px',
-            background: 'rgba(0, 30, 15, 0.5)',
-            boxShadow: '0 0 20px rgba(0,255,136,0.5), inset 0 0 8px rgba(0,255,136,0.15)',
-            position: 'relative', minWidth: 44, minHeight: 44,
-          }}
+          className="oracle-bottom-btn oracle-bottom-btn--active"
         >
-          <img
-            src="/portrait-btn.png"
-            alt="Portraits"
-            style={{ width: '90px', height: '90px', objectFit: 'contain', transition: 'transform 0.2s' }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-            onTouchStart={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
-            onTouchEnd={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-          />
-          <div style={{
-            position: 'absolute', bottom: 5, left: '50%', transform: 'translateX(-50%)',
-            color: '#00ff88', fontSize: '0.6rem', fontWeight: 'bold', fontFamily: "'PhillySans', monospace",
-            letterSpacing: '0.12em', textShadow: '0 0 5px #00ff88', whiteSpace: 'nowrap',
-          }}>PORTRAITS</div>
+          <img src="/portrait-btn.png" alt="Portraits" className="oracle-bottom-btn__img" />
+          <span className="oracle-bottom-btn__label">PORTRAITS</span>
         </motion.div>
 
         <motion.div
@@ -909,44 +886,14 @@ export function SurrogateOracleImmersion() {
           initial={{ opacity: 0.3, filter: 'brightness(0.4) saturate(0.3)' }}
           animate={{
             opacity: isAlive ? 1 : 0.3,
-            filter: isAlive
-              ? (isGuidedTour 
-                  ? 'brightness(1.3) saturate(1.5) drop-shadow(0 0 20px rgba(176, 38, 255, 0.8))'
-                  : 'brightness(1.1) saturate(1.2) drop-shadow(0 0 16px rgba(0, 255, 136, 0.5))')
-              : 'brightness(0.4) saturate(0.3)',
+            filter: isAlive ? 'brightness(1.05) saturate(1.1)' : 'brightness(0.4) saturate(0.3)',
           }}
           transition={{ duration: 1.1, delay: isAlive ? 1.15 : 0 }}
           onClick={() => isAlive && setIsGuidedTour(!isGuidedTour)}
-          className="oracle-bottom-btn"
-          style={{
-            cursor: 'pointer',
-            position: 'relative',
-            padding: '10px',
-            border: isGuidedTour ? '2px solid #b026ff' : '2px solid #00ff88',
-            borderRadius: '16px',
-            background: 'rgba(0, 30, 15, 0.5)',
-            boxShadow: isGuidedTour
-              ? '0 0 20px rgba(176,38,255,0.5), inset 0 0 8px rgba(176,38,255,0.15)'
-              : '0 0 20px rgba(0,255,136,0.5), inset 0 0 8px rgba(0,255,136,0.15)',
-            minWidth: 44, minHeight: 44,
-          }}
+          className={`oracle-bottom-btn${isGuidedTour ? ' oracle-bottom-btn--active oracle-bottom-btn--tour' : ''}`}
         >
-          <img
-            src="/tour-btn.png"
-            alt="Tour Mode"
-            style={{ width: '90px', height: '90px', objectFit: 'contain', transition: 'transform 0.2s' }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-            onTouchStart={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
-            onTouchEnd={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-          />
-          <div style={{
-            position: 'absolute', bottom: 5, left: '50%', transform: 'translateX(-50%)',
-            color: isGuidedTour ? '#b026ff' : '#00ff88',
-            fontSize: '0.6rem', fontWeight: 'bold', fontFamily: "'PhillySans', monospace",
-            letterSpacing: '0.12em', whiteSpace: 'nowrap',
-            textShadow: isGuidedTour ? '0 0 5px rgba(176,38,255,0.5)' : '0 0 5px #00ff88',
-          }}>{isGuidedTour ? 'TOUR ON' : 'TOUR OFF'}</div>
+          <img src="/tour-btn.png" alt="Tour Mode" className="oracle-bottom-btn__img" />
+          <span className="oracle-bottom-btn__label">{isGuidedTour ? 'TOUR ON' : 'TOUR'}</span>
         </motion.div>
       </div>
 

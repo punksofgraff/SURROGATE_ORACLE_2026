@@ -755,7 +755,11 @@ const OracleConversation = forwardRef(
 
     useEffect(() => {
       logStep('ORACLE_CONV TRUE MOUNT', 'ok');
-      connectToGemini();
+      // Use ref — not connectToGemini directly — so this effect has [] deps
+      // and runs exactly once on mount. Previously [connectToGemini] deps caused
+      // the effect to re-run every ~1.5s (connectToGemini was being recreated),
+      // closing and reopening the WS in a tight loop.
+      connectToGeminiRef.current();
       return () => {
         logStep('ORACLE_CONV UNMOUNT', 'warn');
         if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
@@ -769,7 +773,7 @@ const OracleConversation = forwardRef(
           sessionCoinsRef.current,
         );
       };
-    }, [connectToGemini]);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     // sessionContext / initialKnifeThemes are intentionally NOT injected as hidden
     // messages here. Any client.realtimeInput text to Gemini Live triggers a full

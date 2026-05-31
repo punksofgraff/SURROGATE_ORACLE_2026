@@ -846,7 +846,7 @@ export function SurrogateOracleImmersion() {
                     <OracleErrorBoundary>
                       <Suspense fallback={<OracleAvatarFallback />}>
                         <Canvas
-                          camera={{ position: [0, 0, 1.8], fov: 42 }}
+                          camera={{ position: [0, 0, 1.8], fov: 55 }}
                           dpr={[1, Math.min(window.devicePixelRatio, 2)]}
                           gl={{ antialias: true, alpha: true }}
                           style={{ width: '100%', height: '100%', background: 'transparent' }}

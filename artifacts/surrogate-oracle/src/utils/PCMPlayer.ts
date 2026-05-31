@@ -85,28 +85,10 @@ export class PCMPlayer {
         console.error('[PCMPlayer] AudioWorklet Processor Error:', err);
       };
 
-      // ── DynamicsCompressor — normalizes Oracle voice level regardless of
-      // Gemini PCM output amplitude. Prevents the voice from being quiet
-      // when Gemini sends low-amplitude audio.
-      let compressor: DynamicsCompressorNode | null = null;
-      try {
-        compressor = this.context.createDynamicsCompressor();
-        compressor.threshold.value = -22; // start compressing at -22 dBFS
-        compressor.knee.value      = 30;  // soft knee — natural transition
-        compressor.ratio.value     = 10;  // aggressive: keeps voice consistently loud
-        compressor.attack.value    = 0.003;
-        compressor.release.value   = 0.20;
-      } catch {
-        compressor = null;
-      }
-
-      // Chain: worklet → [compressor →] analyser → panner/masterGain
-      if (compressor) {
-        this.workletNode.connect(compressor);
-        compressor.connect(this.analyser);
-      } else {
-        this.workletNode.connect(this.analyser);
-      }
+      // Chain: worklet → analyser → panner/masterGain
+      // Note: DynamicsCompressor removed — caused digital static at 24kHz
+      // AudioContext. Oracle presence is managed via masterGain level instead.
+      this.workletNode.connect(this.analyser);
 
       if (this.panner) {
         this.analyser.connect(this.panner);

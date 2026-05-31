@@ -353,10 +353,10 @@ export function SurrogateOracleImmersion() {
   // When Oracle speaks, radio drops to 1.5% so the voice is never competing.
   useEffect(() => {
     let target = 0.06; // Dormant / Terminal
-    if (scenePhase === 'awakened') target = 0.03;
+    if (scenePhase === 'awakened') target = 0.06;
     if (scenePhase === 'oracle')   target = 0.08;  // 8% — audible alley texture
     if (isOracleSpeaking)          target = 0.015; // 1.5% — Oracle voice dominant
-    if ((isMicActive || isUserSpeaking) && scenePhase !== 'oracle') target = 0.04;
+    if ((isMicActive || isUserSpeaking) && scenePhase === 'oracle') target = 0.04;
     if (target !== targetVolRef.current) {
       targetVolRef.current = target;
       fadeToVolume(target);
@@ -606,12 +606,12 @@ export function SurrogateOracleImmersion() {
             <AnimatePresence mode="wait">
               {portraitViewerUrl ? (
                 <motion.div
-                  key="minted-portrait"
+                  key="portrait-face"
                   className="oracle-avatar-container"
                   initial={{ opacity: 0, scale: 0.9, filter: 'brightness(2) blur(10px)' }}
                   animate={{ opacity: 1, scale: 1, filter: 'brightness(1) blur(0px)' }}
                   exit={{ opacity: 0, scale: 1.1 }}
-                  style={{ zIndex: 11 }}
+                  style={{ zIndex: 11, position: 'absolute', inset: 0, width: '100%', height: '100%' }}
                 >
                   <img src={portraitViewerUrl} alt="Minted Portrait" className="oracle-avatar-canvas" style={{ objectFit: 'cover' }} />
                   <div className="oracle-synthesis-success">
@@ -632,7 +632,7 @@ export function SurrogateOracleImmersion() {
                     ease: [0.22, 1, 0.36, 1],
                     y: { type: 'spring', damping: 12, stiffness: 80 }
                   }}
-                  style={{ zIndex: 3 }}
+                  style={{ zIndex: 3, position: 'absolute', inset: 0, width: '100%', height: '100%' }}
                 >
                   {/* ── PRIMARY: Three.js GLB Avatar ── */}
                   <div

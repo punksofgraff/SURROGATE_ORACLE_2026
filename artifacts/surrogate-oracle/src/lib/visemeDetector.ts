@@ -26,8 +26,8 @@ const BANDS = {
 export class VisemeDetector {
   private ctx: AudioContext;
   private analyser: AnalyserNode;
-  private freqBuf: Uint8Array;
-  private timeBuf: Uint8Array;
+  private freqBuf: Uint8Array<ArrayBuffer>;
+  private timeBuf: Uint8Array<ArrayBuffer>;
   private rafId: number | null = null;
   private smoothed: VisemeState = { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
   private readonly onUpdate: (s: VisemeState) => void;

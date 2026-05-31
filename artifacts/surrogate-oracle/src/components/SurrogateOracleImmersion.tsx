@@ -1135,12 +1135,7 @@ export function SurrogateOracleImmersion() {
           onOracleResponse={connection.handleOracleResponse}
           onCoinsEarned={(amt) => setSessionCoins(s => s + amt)}
           onSessionEnd={handleSessionEnd}
-          onTurnComplete={(turn, score, themes) => {
-            if (themes.length) portrait.addThemes(themes);
-            handleTurnComplete(turn, score);
-            // Flush stale PCM buffer 80ms after turn ends — prevents fast-forward skip
-            setTimeout(() => connection.pcmPlayer?.stop(), 80);
-          }}
+          onTurnComplete={(turn, score, themes) => { if (themes.length) portrait.addThemes(themes); handleTurnComplete(turn, score); }}
           onSeekerIdentified={handleSeekerIdentified}
           initialTotemLevel={echo?.totem_level ?? 0}
           onConnected={() => setIsGeminiConnected(true)}

@@ -948,12 +948,12 @@ export function SurrogateOracleImmersion() {
 
       {/* ── Terminal lore overlay ── */}
       <AnimatePresence>
-        {(scenePhase === 'terminal' || (scenePhase === 'awakened' && !journey.selectedKnifeQuestion)) && (
+        {scenePhase === 'terminal' && (
           <motion.div
             key="terminal-layer"
             className="oracle-terminal-overlay"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.6 } }}
+            exit={{ opacity: 0, transition: { duration: 0.8 } }}
             onClick={() => journey.awakeFromTerminal()}
           >
             <div className="oracle-lore-text">

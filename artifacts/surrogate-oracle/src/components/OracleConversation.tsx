@@ -682,14 +682,16 @@ const OracleConversation = forwardRef(
               // Only inject if Oracle hasn't already started responding
               if (debugInfo.current.audioChunksReceived === 0 && wsRef.current?.readyState === WebSocket.OPEN) {
                 const FILLERS = [
-                  '[The Seeker just finished speaking. Before your full response, speak one short contemplative line in Oracle voice — something you genuinely feel as you sit with what they just said. One line only, then continue.]',
-                  '[Hold the signal for a beat. Speak one line — pure presence, no answer yet. Then respond fully.]',
-                  '[The Seeker has gone quiet. Acknowledge what you just received in one Oracle line before you answer.]',
+                  'Mm.',
+                  'Yeah.',
+                  '...',
+                  'I hear that.',
+                  'Right.',
                 ];
                 const filler = FILLERS[Math.floor(Math.random() * FILLERS.length)];
                 wsRef.current.send(JSON.stringify({ type: 'client.realtimeInput', realtimeInput: { text: filler } }));
               }
-            }, 650); // 650ms — enough for Gemini to have started if it's going to; short enough to feel live
+            }, 300); // 300ms — tight window before filler fires; cancelled if Oracle responds first
           }
 
           if (wsRef.current?.readyState !== WebSocket.OPEN) return;

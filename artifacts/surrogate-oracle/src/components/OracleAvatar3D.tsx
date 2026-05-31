@@ -151,9 +151,9 @@ export interface OracleAvatar3DProps {
 const CAM_DEFAULT_Z = 1.8;  // portrait distance — head + upper chest visible
 const CAM_MIN_Z     = 0.4;  // maximum zoom-in (eyes fill the frame)
 const CAM_X_RANGE   = 0.30; // horizontal look-around extent (world units)
-// <Center top> puts feet at Y=0, so head is at ~Y=1.8. Look at chest (Y≈1.2)
-// to frame head in upper portion with arms/body visible below.
-const CAM_Y_CENTER  = 1.2;
+// <Center top>: feet at Y=0, head at ~Y=1.56. Target Y=1.45 frames the
+// mouth area at center — eyes above center, chin below. Not throat.
+const CAM_Y_CENTER  = 1.45;
 const CAM_Y_RANGE   = 0.22; // vertical look-around extent
 const CAM_LERP      = 0.08; // responsive on phone while still smooth
 
@@ -194,13 +194,19 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
     doubleAt: 0,
   });
 
-  // ── Start idle animation on mount ─────────────────────────────────────────
+  // ── Start idle animation on mount — 45% slower than source clip ──────────
   useEffect(() => {
     const idle = actions['M_Standing_Idle_001'];
     if (idle) {
       idle.reset().setLoop(THREE.LoopRepeat, Infinity).play();
       idle.setEffectiveWeight(1);
+      idle.setEffectiveTimeScale(0.55);
     }
+    // Pre-set talking action time scales too
+    const t1 = actions['M_Standing_Idle_Variations_003'];
+    const t2 = actions['M_Standing_Idle_Variations_007'];
+    if (t1) t1.setEffectiveTimeScale(0.55);
+    if (t2) t2.setEffectiveTimeScale(0.55);
   }, [actions]);
 
   // Cache skinned meshes + gaze bones — found once on mount, zero traversal per frame.
@@ -481,7 +487,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
 
       if (amp > 0.015) {
         const dominant = ORACLE_TO_OVR[vs.viseme] ?? ['viseme_sil'];
-        const weight   = Math.min(amp * 2.5, 1.0);
+        const weight   = Math.min(amp * 4.5, 1.0);
         const perShape = weight / dominant.length;
         for (const name of dominant) {
           targets.set(name, (targets.get(name) ?? 0) + perShape);

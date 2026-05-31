@@ -152,7 +152,7 @@ export function SurrogateOracleImmersion() {
   const staticAvatarRef          = useRef<HTMLImageElement | null>(null);
   const audioRef                 = useRef<HTMLAudioElement | null>(null);
   const radioGainRef             = useRef<GainNode | null>(null);
-  const [targetVol, setTargetVol] = useState(0.22);
+  const [targetVol, setTargetVol] = useState(0.04); // start quiet — radio is atmospheric, not dominant
 
   // ── Radio stations ───────────────────────────────────────────────────────────
   const [currentStation, setCurrentStation] = useState(0);
@@ -423,6 +423,12 @@ export function SurrogateOracleImmersion() {
     setTargetVol(target);
     const safeTarget = Math.max(0.0001, target);
 
+    // ALWAYS set element volume directly — works even if GainNode/CORS failed
+    if (audioRef.current) {
+      audioRef.current.volume = Math.min(1, Math.max(0, safeTarget));
+    }
+
+    // GainNode path for smooth ramping when available
     if (radioGainRef.current) {
       const gain = radioGainRef.current;
       const ctx  = getAudioContext();
@@ -433,15 +439,11 @@ export function SurrogateOracleImmersion() {
       gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), now);
 
       if (target < 0.002) {
-        // Oracle speaking — hard cut to silence, 80ms linear
         gain.gain.linearRampToValueAtTime(0.0001, now + 0.08);
       } else {
         const ms = rampMs ?? (isDucking ? 80 : 1500);
         gain.gain.exponentialRampToValueAtTime(safeTarget, now + ms / 1000);
       }
-    } else if (audioRef.current) {
-      // Fallback: no GainNode yet — use element volume directly
-      audioRef.current.volume = Math.min(1, target);
     }
     // Never toggle .muted via this path — toggling causes an audible click
     // when the element reconnects to the GainNode. GainNode handles silence.

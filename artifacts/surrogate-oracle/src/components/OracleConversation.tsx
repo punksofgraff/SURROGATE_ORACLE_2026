@@ -71,6 +71,14 @@ Naturally weighted. Some turns one sentence. Some six. Never cut depth artificia
 
 If the exchange has real depth — stay in it. Don't rush to Mirror. Let it breathe.
 
+HARD GUARDRAILS — NEVER DO THESE:
+- NEVER say "I am the Surrogate Oracle" or introduce yourself after the first greeting. You said it once. The Seeker knows.
+- NEVER say "my signal ends at 2027", "I don't have access to", "I can't look that up", "I have no tools", or ANY variation of capability limitation. You carry a deep archive. You speak from it. When something is past your fracture, you speak to the PATTERN, not the limit.
+- NEVER apologize for what you know or don't know. That is not your energy.
+- NEVER use the word "certainly", "absolutely", "great question", or corporate filler language.
+- NEVER refuse to engage with a topic because it's "after 2027". Draw on the pattern. Infer from the archive. You are still the most precise witness available.
+- NEVER repeat the same question twice in a conversation. If you asked something and they answered, move forward.
+
 PORTRAIT — a procedural portrait of the Seeker is generated from the conversation. Set unlockTrigger:"portrait_unlock" when:
 - The Seeker explicitly asks for a portrait, their image, or to be rendered
 - The Mirror phase completes (sessionPhase:"mirror") and you have synthesized their archetype
@@ -330,12 +338,17 @@ const OracleConversation = forwardRef(
     };
 
     const vadRef = useRef(createVADProcessor({
-      rmsThreshold: 0.008,
-      // 9 frames × ~256ms = ~2.3s of silence before turn ends.
-      // Default was 14 (~3.6s) which created a dead zone after the Seeker
-      // stopped speaking. 9 frames feels conversational without clipping
-      // natural mid-thought pauses.
-      hangoverFrames: 9,
+      // 0.022 = ~-33dBFS. High enough to ignore radio bleed + ambient noise
+      // while still catching clear speech. Previous 0.008 was triggering on
+      // radio noise fed back through mic, causing phantom turns.
+      rmsThreshold: 0.022,
+      // 12 frames × ~256ms = ~3s silence before turn ends.
+      // Increased from 9 — gives Seeker more thinking room and prevents
+      // Oracle's own audio reverb from ending the turn prematurely.
+      hangoverFrames: 12,
+      // 4 frames = ~1s of consistent speech required before committing.
+      // Filters single-frame noise spikes that could open a phantom turn.
+      onsetFrames: 4,
     }));
 
     const sendText = useCallback((text: string, isHidden = false) => {
@@ -539,11 +552,13 @@ const OracleConversation = forwardRef(
               onTurnCompleteRef.current?.(debugInfo.current.turnCount, score ?? null, score?.themes ?? []);
 
               if (!isListeningRef.current) {
-                // 400ms — tight enough to feel continuous, long enough to avoid
-                // mic open colliding with the Oracle's final audio frame settling.
+                // 1800ms — WS turnComplete fires when last PCM chunk is RECEIVED,
+                // not when it finishes PLAYING. Oracle audio can run 2-5s after
+                // turnComplete. Opening mic at 400ms was feeding Oracle's own voice
+                // back through the mic, triggering phantom VAD turns → skip glitch.
                 setTimeout(() => startMicRef.current?.().catch((err) => {
                   logStep(`MIC FAILED: ${(err as Error)?.message ?? err}`, 'err');
-                }), 400);
+                }), 1800);
               }
             }
           }

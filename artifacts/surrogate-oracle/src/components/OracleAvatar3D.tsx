@@ -19,6 +19,19 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { VisemeState } from '../lib/visemeDetector';
 
+// Strip arm/shoulder/hand/finger tracks from an RPM talking clip so only
+// spine/torso sway survives. Face morphs stay under our own useFrame code;
+// arms should NOT gesture autonomously with the talking emote.
+const ARM_TRACK_RE = /\.(LeftShoulder|RightShoulder|LeftArm|RightArm|LeftForeArm|RightForeArm|LeftHand|RightHand)\./i;
+const FINGER_TRACK_RE = /\.(Left|Right)(Index|Middle|Ring|Pinky|Thumb)\d*/i;
+
+function stripArmTracks(clip: THREE.AnimationClip): THREE.AnimationClip {
+  const filtered = clip.tracks.filter(
+    t => !ARM_TRACK_RE.test(t.name) && !FINGER_TRACK_RE.test(t.name),
+  );
+  return new THREE.AnimationClip(clip.name, clip.duration, filtered);
+}
+
 // ── OVR Viseme Standard (Oculus / Ready Player Me) ───────────────────────────
 // 15 phoneme visemes + silence. Stored as morph targets in RPM-compatible GLBs.
 // Oracle worklet produces internal labels (A–H, X); we map them to OVR keys.
@@ -160,9 +173,14 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
   // Smooth camera target — avoids snapping on sudden gesture changes
   const camTarget = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
 
+  // Filter arm/shoulder tracks — keep only spine/torso sway for talking clips.
+  // Arms must NOT gesture in sync with speech; face morph targets handle that.
+  const armFreeT1 = useMemo(() => talking1Clips.map(stripArmTracks), [talking1Clips]);
+  const armFreeT2 = useMemo(() => talking2Clips.map(stripArmTracks), [talking2Clips]);
+
   // Animation mixer — driven by speaking state
   const { actions, mixer } = useAnimations(
-    [...idleClips, ...talking1Clips, ...talking2Clips],
+    [...idleClips, ...armFreeT1, ...armFreeT2],
     groupRef,
   );
   const talkingActionRef = useRef<THREE.AnimationAction | null>(null);
@@ -332,7 +350,8 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
         talkingActionRef.current = null;
       }
 
-      const talkWeight = isSpeaking ? Math.min(1, amp * 3) : 0;
+      // Cap at 0.55 — spine sway should be subtle, not full-emote override
+      const talkWeight = isSpeaking ? Math.min(0.55, amp * 3) : 0;
       idleAction.setEffectiveWeight(1 - talkWeight * 0.6);
       if (talkingActionRef.current) {
         talkingActionRef.current.setEffectiveWeight(talkWeight);

@@ -22,17 +22,71 @@ import { useChainFuelz } from '../hooks/useChainFuelz';
 import type { OracleConversationHandle } from './OracleConversation';
 
 // ── Tab definition ────────────────────────────────────────────────────────────
-type Tab = 'vault' | 'squad' | 'portraits' | 'gemini' | 'dev';
+type Tab = 'vault' | 'squad' | 'portraits' | 'gemini' | 'dev' | 'manifest';
 
-const TABS: { id: Tab; label: string; icon?: string }[] = [
-  { id: 'vault',    label: 'VAULT' },
-  { id: 'squad',    label: 'SQUAD' },
-  { id: 'portraits', label: 'NEURAL\nPRINTS' },
-  { id: 'gemini',   label: 'GEMINI\nLIVE' },
-  { id: 'dev',      label: 'DEV' },
+const TABS: { id: Tab; label: string; glyph: string }[] = [
+  { id: 'vault',    label: 'VAULT',   glyph: '◈' },
+  { id: 'squad',    label: 'SQUAD',   glyph: '⬡' },
+  { id: 'portraits', label: 'PRINTS', glyph: '◻' },
+  { id: 'gemini',   label: 'GEMINI',  glyph: '⬡' },
+  { id: 'dev',      label: 'DEV',     glyph: '⌘' },
+  { id: 'manifest', label: 'M4NIFST', glyph: '⊞' },
 ];
 
-// ── HoloCard wrapper ──────────────────────────────────────────────────────────
+// ── RiftGrid — full-panel 3D perspective grid background ─────────────────────
+function RiftGrid() {
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
+      {/* Primary Sacred Green floor grid — recedes toward top of panel */}
+      <motion.div
+        animate={{ backgroundPosition: ['0px 0px', '0px 44px'] }}
+        transition={{ repeat: Infinity, duration: 2.8, ease: 'linear' }}
+        style={{
+          position: 'absolute',
+          left: '-30%', right: '-30%', top: '15%', bottom: '-10%',
+          backgroundImage: `
+            linear-gradient(rgba(0,255,136,0.11) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0,255,136,0.11) 1px, transparent 1px)
+          `,
+          backgroundSize: '44px 44px',
+          transform: 'perspective(260px) rotateX(58deg)',
+          transformOrigin: '50% 100%',
+        }}
+      />
+      {/* Profane Purple secondary grid — offset phase, slower */}
+      <motion.div
+        animate={{ backgroundPosition: ['0px 0px', '0px 88px'] }}
+        transition={{ repeat: Infinity, duration: 5.6, ease: 'linear' }}
+        style={{
+          position: 'absolute',
+          left: '-30%', right: '-30%', top: '30%', bottom: '-10%',
+          backgroundImage: `
+            linear-gradient(rgba(176,38,255,0.055) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(176,38,255,0.04) 1px, transparent 1px)
+          `,
+          backgroundSize: '88px 88px',
+          backgroundPosition: '22px 22px',
+          transform: 'perspective(260px) rotateX(58deg)',
+          transformOrigin: '50% 100%',
+        }}
+      />
+      {/* Content protection overlay — dark in center, grid bleeds at edges + bottom */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: `
+          radial-gradient(ellipse 85% 65% at 50% 38%, rgba(0,0,22,0.93) 0%, rgba(0,0,22,0.55) 100%)
+        `,
+      }} />
+      {/* Top horizon fade */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'linear-gradient(to bottom, rgba(0,0,25,0.97) 0%, transparent 28%, transparent 72%, rgba(0,0,25,0.6) 100%)',
+      }} />
+    </div>
+  );
+}
+
+// ── HoloCard wrapper — XR corner-bracket framing ──────────────────────────────
 function HoloCard({
   children,
   glowColor = '#00ff88',
@@ -42,31 +96,39 @@ function HoloCard({
   glowColor?: string;
   style?: React.CSSProperties;
 }) {
+  const corners = [
+    { top: 0,    left: 0,    borderTop: `1.5px solid ${glowColor}`, borderLeft:  `1.5px solid ${glowColor}` },
+    { top: 0,    right: 0,   borderTop: `1.5px solid ${glowColor}`, borderRight: `1.5px solid ${glowColor}` },
+    { bottom: 0, left: 0,    borderBottom: `1.5px solid ${glowColor}`, borderLeft:  `1.5px solid ${glowColor}` },
+    { bottom: 0, right: 0,   borderBottom: `1.5px solid ${glowColor}`, borderRight: `1.5px solid ${glowColor}` },
+  ];
   return (
     <motion.div
       whileHover={{ scale: 1.005 }}
       transition={{ duration: 0.2 }}
       style={{
-        background: 'rgba(0,5,20,0.72)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        border: `1px solid ${glowColor}28`,
-        borderRadius: 12,
-        boxShadow: `0 0 18px ${glowColor}0e, inset 0 0 14px rgba(0,0,0,0.45)`,
+        background: 'rgba(0,4,18,0.78)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        border: `1px solid ${glowColor}14`,
+        borderRadius: 10,
+        boxShadow: `0 0 28px ${glowColor}0a, 0 8px 32px rgba(0,0,0,0.55), inset 0 0 14px rgba(0,0,0,0.4)`,
         padding: 16,
         position: 'relative',
         overflow: 'hidden',
         ...style,
       }}
     >
+      {/* Corner brackets */}
+      {corners.map((c, i) => (
+        <div key={i} style={{ position: 'absolute', width: 11, height: 11, ...c, opacity: 0.85 }} />
+      ))}
       {/* Scanline overlay */}
-      <div
-        style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,136,0.018) 2px, rgba(0,255,136,0.018) 4px)',
-          zIndex: 0,
-        }}
-      />
+      <div style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,136,0.016) 2px, rgba(0,255,136,0.016) 4px)',
+        zIndex: 0,
+      }} />
       <div style={{ position: 'relative', zIndex: 1 }}>{children}</div>
     </motion.div>
   );
@@ -239,61 +301,80 @@ export const BackendControlPanel = ({
   return (
     <>
       <motion.div
-        initial={{ x: '100%', opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        exit={{ x: '100%', opacity: 0 }}
+        initial={{ x: '100%', opacity: 0, rotateY: -8, scale: 0.94 }}
+        animate={{ x: 0, opacity: 1, rotateY: 0, scale: 1 }}
+        exit={{ x: '100%', opacity: 0, rotateY: -8, scale: 0.94 }}
         transition={{ type: 'spring', damping: 28, stiffness: 220 }}
         style={{
           position: 'fixed',
           right: 0, top: 0, bottom: 0,
           width: 'min(420px, 92vw)',
-          background: 'linear-gradient(160deg, rgba(0,0,25,0.97) 0%, rgba(8,0,42,0.98) 100%)',
-          borderLeft: '1px solid rgba(176,38,255,0.28)',
+          background: 'linear-gradient(160deg, rgba(0,0,22,0.97) 0%, rgba(6,0,38,0.98) 100%)',
+          borderLeft: '1px solid rgba(176,38,255,0.32)',
           zIndex: 150,
           display: 'flex',
           flexDirection: 'column',
           fontFamily: "'aAnotherTag', 'Orbitron', monospace",
           overflowY: 'hidden',
-          boxShadow: '-20px 0 80px rgba(0,0,0,0.7), -2px 0 0 rgba(176,38,255,0.18)',
+          boxShadow: '-24px 0 90px rgba(0,0,0,0.8), -2px 0 0 rgba(176,38,255,0.22), -1px 0 40px rgba(0,255,136,0.04)',
+          transformOrigin: 'right center',
         }}
         data-testid="backend-panel"
       >
+        {/* ── Rift grid — full panel background ──────────────────────────── */}
+        <RiftGrid />
+
         {/* ── Header ─────────────────────────────────────────────────────── */}
         <div style={{
-          padding: '14px 18px',
-          borderBottom: '1px solid rgba(176,38,255,0.18)',
+          padding: '13px 16px 11px',
+          borderBottom: '1px solid rgba(176,38,255,0.2)',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center',
-          background: 'rgba(176,38,255,0.05)',
+          alignItems: 'flex-start',
+          background: 'rgba(0,0,18,0.55)',
+          backdropFilter: 'blur(8px)',
           flexShrink: 0,
+          position: 'relative',
+          zIndex: 2,
         }}>
           <div>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#00ff88', letterSpacing: '0.14em' }}>
-              ENCULTURATE CRATE
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <motion.div
+                animate={{ opacity: [1, 0.3, 1], scale: [1, 0.85, 1] }}
+                transition={{ repeat: Infinity, duration: 2.1, ease: 'easeInOut' }}
+                style={{ width: 6, height: 6, borderRadius: '50%', background: '#00ff88', boxShadow: '0 0 8px #00ff88', flexShrink: 0 }}
+              />
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#00ff88', letterSpacing: '0.16em' }}>
+                ENCULTURATE CRATE
+              </div>
             </div>
-            <div style={{ fontSize: '0.55rem', color: '#00ccff', marginTop: 2, letterSpacing: '0.1em' }}>
-              LEARN2EARN BACKEND
+            <div style={{ fontSize: '0.49rem', color: '#00ccff66', marginTop: 4, letterSpacing: '0.12em', fontFamily: 'monospace' }}>
+              MODULE://ORACLE.RIFT/v2.30
             </div>
           </div>
           {onClose && (
             <motion.button
               onClick={onClose}
               whileHover={{ scale: 1.15, color: '#00ff88' }}
-              style={{ background: 'none', border: 'none', color: '#ffffff88', cursor: 'pointer', padding: 6 }}
+              style={{ background: 'none', border: 'none', color: '#ffffff55', cursor: 'pointer', padding: 6, marginTop: -2 }}
             >
-              <X size={15} />
+              <X size={14} />
             </motion.button>
           )}
         </div>
 
-        {/* ── Tab strip ──────────────────────────────────────────────────── */}
+        {/* ── Tab strip — swipe-scrollable, XR chip style ────────────────── */}
         <div style={{
           display: 'flex',
           borderBottom: '1px solid rgba(255,255,255,0.06)',
-          background: 'rgba(0,0,0,0.25)',
+          background: 'rgba(0,0,10,0.45)',
+          backdropFilter: 'blur(6px)',
           flexShrink: 0,
           overflowX: 'auto',
+          WebkitOverflowScrolling: 'touch' as React.CSSProperties['WebkitOverflowScrolling'],
+          scrollbarWidth: 'none',
+          position: 'relative',
+          zIndex: 2,
         }}>
           {TABS.map((tab) => {
             const isActive = activeTab === tab.id;
@@ -301,34 +382,38 @@ export const BackendControlPanel = ({
               <motion.button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                whileHover={{ backgroundColor: 'rgba(0,255,136,0.06)' }}
+                whileHover={{ backgroundColor: 'rgba(0,255,136,0.07)' }}
                 data-testid={`tab-${tab.id}`}
                 style={{
                   flex: 1,
-                  minWidth: 52,
-                  padding: '8px 4px',
-                  background: isActive ? 'rgba(0,255,136,0.1)' : 'transparent',
+                  minWidth: 56,
+                  padding: '9px 4px 7px',
+                  background: isActive ? 'rgba(0,255,136,0.08)' : 'transparent',
                   border: 'none',
                   borderBottom: `2px solid ${isActive ? '#00ff88' : 'transparent'}`,
-                  color: isActive ? '#00ff88' : '#ffffff66',
+                  boxShadow: isActive ? 'inset 0 -1px 12px rgba(0,255,136,0.12)' : 'none',
+                  color: isActive ? '#00ff88' : '#ffffff44',
                   fontFamily: "'aAnotherTag', 'Orbitron', monospace",
-                  fontSize: '0.52rem',
-                  letterSpacing: '0.06em',
+                  fontSize: '0.48rem',
+                  letterSpacing: '0.07em',
                   cursor: 'pointer',
-                  lineHeight: 1.3,
-                  whiteSpace: 'pre-line',
                   textAlign: 'center',
-                  transition: 'border-color 0.2s, color 0.2s',
+                  transition: 'border-color 0.2s, color 0.2s, box-shadow 0.2s',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 2,
                 }}
               >
-                {tab.label}
+                <span style={{ fontSize: '0.75rem', lineHeight: 1, opacity: isActive ? 1 : 0.5 }}>{tab.glyph}</span>
+                <span>{tab.label}</span>
               </motion.button>
             );
           })}
         </div>
 
         {/* ── Tab content ────────────────────────────────────────────────── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 12, position: 'relative', zIndex: 2 }}>
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -692,6 +777,69 @@ export const BackendControlPanel = ({
                     </HoloCard>
                   </div>
                 )
+              )}
+
+              {/* ── M4NIFEST tab ──────────────────────────────────── */}
+              {activeTab === 'manifest' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <HoloCard glowColor="#00ffcc">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                      <span style={{ fontSize: '1rem', lineHeight: 1 }}>⊞</span>
+                      <div>
+                        <div style={{ fontSize: '0.7rem', color: '#00ffcc', fontWeight: 700, letterSpacing: '0.14em' }}>M4NIFEST</div>
+                        <div style={{ fontSize: '0.5rem', color: '#00ffcc55', letterSpacing: '0.1em', fontFamily: 'monospace' }}>ASSET PIPELINE</div>
+                      </div>
+                      <div style={{ marginLeft: 'auto' }}>
+                        <span style={{
+                          fontSize: '0.5rem', padding: '2px 8px', borderRadius: 99,
+                          background: 'rgba(176,38,255,0.15)', border: '1px solid rgba(176,38,255,0.4)',
+                          color: '#b026ff', letterSpacing: '0.1em',
+                        }}>PIPELINE OFFLINE</span>
+                      </div>
+                    </div>
+
+                    {/* Drop zone */}
+                    <div style={{
+                      border: '1px dashed rgba(0,255,204,0.25)',
+                      borderRadius: 8,
+                      padding: '28px 16px',
+                      textAlign: 'center',
+                      background: 'rgba(0,255,204,0.03)',
+                      marginBottom: 14,
+                    }}>
+                      <div style={{ fontSize: '1.4rem', marginBottom: 8, opacity: 0.4 }}>↑</div>
+                      <div style={{ fontSize: '0.62rem', color: '#00ffcc66', letterSpacing: '0.1em' }}>DROP .GLB / .FBX</div>
+                      <div style={{ fontSize: '0.5rem', color: '#ffffff22', marginTop: 4, fontFamily: 'monospace' }}>pipeline script required</div>
+                    </div>
+
+                    {/* Category chips */}
+                    <div style={{ fontSize: '0.52rem', color: '#ffffff33', letterSpacing: '0.12em', marginBottom: 8 }}>ROUTE TO CATEGORY</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {['AVATAR', 'ANIMATION', 'ATMOSPHERE', 'ACCESSORY', 'ELEMENT'].map(cat => (
+                        <div key={cat} style={{
+                          padding: '4px 10px', borderRadius: 99,
+                          border: '1px solid rgba(0,255,204,0.15)',
+                          background: 'rgba(0,255,204,0.04)',
+                          fontSize: '0.5rem', color: '#00ffcc44', letterSpacing: '0.1em',
+                        }}>{cat}</div>
+                      ))}
+                    </div>
+                  </HoloCard>
+
+                  <HoloCard glowColor="#b026ff" style={{ padding: '12px 14px' }}>
+                    <div style={{ fontSize: '0.58rem', color: '#b026ff', letterSpacing: '0.12em', marginBottom: 8 }}>MANIFEST REGISTRY</div>
+                    {(['avatars', 'animations', 'atmospheres', 'accessories', 'elements'] as const).map(cat => (
+                      <div key={cat} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)',
+                        fontSize: '0.58rem',
+                      }}>
+                        <span style={{ color: '#ffffff55', fontFamily: 'monospace', letterSpacing: '0.08em' }}>{cat}</span>
+                        <span style={{ color: '#ffffff22', fontFamily: 'monospace' }}>0 assets</span>
+                      </div>
+                    ))}
+                  </HoloCard>
+                </div>
               )}
 
             </motion.div>

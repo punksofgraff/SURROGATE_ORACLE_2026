@@ -2055,20 +2055,10 @@
     bottom: 2%;
   }
 
-  /* ── Knife question selection ──────────────────────────────────────────── */
-  /* Questions average 60–70 chars — bump font so they're comfortably legible */
-  .oracle-knife-overlay { padding: 20px 16px; }
-  .oracle-knife-header  { letter-spacing: 0.20em; }
-  .oracle-knife-subheader {
-    font-size: 0.72rem;
-    margin-bottom: 20px;
-  }
-  .oracle-knife-card {
-    font-size: 0.84rem;
-    padding: 14px 16px;
-    line-height: 1.60;
-  }
-  .oracle-knife-cards { gap: 10px; }
+  /* ── Knife territory rows ──────────────────────────────────────────────── */
+  .oracle-knife-section { padding: 24px 12px 36px; max-height: 68vh; }
+  .oracle-knife-row { padding: 12px 14px 12px 14px; }
+  .oracle-knife-row-question { font-size: 0.84rem; line-height: 1.55; }
 
   /* ── Lore terminal ──────────────────────────────────────────────────── */
   .oracle-terminal-overlay  { padding: 20px 5vw; }
@@ -2848,191 +2838,73 @@
   50%       { opacity: 0.70; }
 }
 
-.oracle-knife-scroll-container {
-  width: 100vw;
-  margin-left: calc(-50vw + 50%);
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 32px 0 40px;
-  display: flex;
-  justify-content: flex-start;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-  perspective: 1200px;
-  -webkit-overflow-scrolling: touch;
-}
-
-.oracle-knife-scroll-container::-webkit-scrollbar {
-  display: none;
-}
-
-.oracle-knife-cards {
-  display: flex;
-  flex-direction: row;
-  gap: 24px;
-  padding: 0 max(20px, calc((100vw - 320px) / 2));
-  min-width: min-content;
-}
-
-.oracle-knife-card {
-  width: 340px;
-  height: 200px;
-  flex-shrink: 0;
-  scroll-snap-align: center;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.07) 0%,
-    rgba(255, 255, 255, 0.01) 100%
-  );
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
-  border-left: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
-  padding: 28px;
-  cursor: pointer;
-  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  font-family: 'Share Tech Mono', monospace;
-  position: relative;
+/* ── Knife territory list — vertical narrative rows ──────────────────────
+   Replaces the horizontal card carousel. Each row is a territory the Oracle
+   names. Full-width, text-first, minimal chrome. The choice feels like
+   the Oracle is speaking, not a product selector.                         */
+.oracle-knife-list {
+  width: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-start;
-  overflow: hidden;
-  box-shadow: 
-    0 15px 50px rgba(0, 0, 0, 0.5),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  padding: 0 4px;
 }
 
-.oracle-knife-shimmer-scan {
-  position: absolute;
-  top: 0;
-  left: -100%;
+.oracle-knife-row {
   width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.05) 45%,
-    rgba(255, 255, 255, 0.12) 50%,
-    rgba(255, 255, 255, 0.05) 55%,
-    transparent 100%
-  );
-  pointer-events: none;
-  animation: knife-shimmer-scan 4s infinite cubic-bezier(0.4, 0, 0.2, 1);
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 14px 20px 14px 18px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  transition: border-left-color 0.2s ease, background 0.2s ease, padding-left 0.2s ease;
 }
 
-@keyframes knife-shimmer-scan {
-  0%   { left: -100%; }
-  40%  { left: 100%; }
-  100% { left: 100%; }
+.oracle-knife-row:first-child {
+  border-top: none;
 }
 
-.oracle-knife-glitch-layer {
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent 0,
-    transparent 2px,
-    rgba(255, 255, 255, 0.02) 2px,
-    rgba(255, 255, 255, 0.02) 4px
-  );
-  opacity: 0.3;
-  pointer-events: none;
+.oracle-knife-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-left-color: var(--accent-color, #00ff88);
+  padding-left: 24px;
 }
 
-.oracle-knife-scramble {
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
-  font-size: 0.9rem;
-  letter-spacing: 0.15em;
-  font-weight: 700;
-  text-transform: uppercase;
+.oracle-knife-row--selected {
+  background: rgba(255, 255, 255, 0.04);
+  border-left-color: var(--accent-color, #00ff88);
 }
 
-.oracle-knife-scramble-q {
-  font-size: 0.95rem;
-  line-height: 1.5;
-  color: rgba(200, 235, 215, 0.85);
+.oracle-knife-row--selected .oracle-knife-territory {
+  color: var(--accent-color, #00ff88);
+  text-shadow: 0 0 10px var(--accent-color, #00ff88);
+}
+
+.oracle-knife-row-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.oracle-knife-row-question {
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: clamp(0.85rem, 2vw, 0.98rem);
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.55;
+  letter-spacing: 0.04em;
   font-weight: 400;
 }
 
-.oracle-knife-card:hover {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.15) 0%,
-    rgba(255, 255, 255, 0.04) 100%
-  );
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: translateY(-12px) scale(1.04);
-  box-shadow: 
-    0 25px 70px rgba(0, 0, 0, 0.7),
-    0 0 30px var(--accent-color, #00ff88)26;
+.oracle-knife-row:hover .oracle-knife-row-question {
+  color: rgba(255, 255, 255, 0.85);
 }
 
-.oracle-knife-card--selected {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: var(--accent-color, #00ff88);
-  box-shadow: 0 0 50px var(--accent-color, #00ff88)40;
-}
-
-.oracle-knife-blade {
-  width: 60px;
-  height: 2px;
-  opacity: 0.8;
-  border-radius: 4px;
-  box-shadow: 0 0 15px var(--accent-color, #00ff88);
-}
-
-.oracle-knife-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-top: 12px;
-}
-
-.oracle-knife-territory {
-  opacity: 1;
-}
-
-.oracle-knife-text {
-  opacity: 1;
-}
-
-.oracle-knife-card-num {
-  position: absolute;
-  top: 24px;
-  right: 28px;
-  font-size: 1.4rem;
-  font-weight: 800;
-  opacity: 0.12;
-  font-family: 'aAnotherTag', monospace;
-  color: #fff;
-}
-
-.oracle-knife-id-tag {
-  position: absolute;
-  bottom: 12px;
-  right: 16px;
-  font-size: 0.55rem;
-  letter-spacing: 0.1em;
-  opacity: 0.3;
-  color: var(--accent-color, #00ff88);
-}
-
-.oracle-knife-card::after {
-  content: '';
-  position: absolute;
-  right: -20px;
-  bottom: -20px;
-  width: 40px;
-  height: 40px;
-  background: var(--accent-color, #00ff88);
-  opacity: 0.03;
-  filter: blur(20px);
-  pointer-events: none;
+.oracle-knife-row--selected .oracle-knife-row-question {
+  color: rgba(255, 255, 255, 0.9);
 }
 
 /* ── oracle-knife-section — NOT a modal. Rises from the bottom of the world.
@@ -3047,48 +2919,39 @@
   z-index: var(--z-oracle);
   background: linear-gradient(
     to top,
-    rgba(0, 0, 8, 0.98) 0%,
-    rgba(0, 0, 8, 0.85) 50%,
-    rgba(0, 0, 8, 0.65) 75%,
+    rgba(0, 0, 8, 0.97) 0%,
+    rgba(0, 0, 8, 0.88) 55%,
+    rgba(0, 0, 8, 0.60) 80%,
     transparent 100%
   );
-  padding: 40px 0 48px;
-  max-height: 85vh;
+  padding: 32px 20px 44px;
+  max-height: 72vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   justify-content: flex-end;
   gap: 0;
   pointer-events: none;
+  overflow-y: auto;
+  scrollbar-width: none;
 }
+
+.oracle-knife-section::-webkit-scrollbar { display: none; }
 
 .oracle-knife-section > * {
   pointer-events: auto;
 }
 
-.oracle-stage[data-oracle-state="awakened"] .oracle-knife-section {
-  padding-top: 0;
-}
-
-.oracle-knife-section .oracle-knife-header {
-  margin-bottom: 4px;
-}
-
-.oracle-knife-section .oracle-knife-cards {
-  padding: 0 max(24px, calc((100vw - 320px) / 2));
-}
-
-/* Territory label — graffiti font above each knife card question */
+/* Territory label — sits beside the icon in the row header */
 .oracle-knife-territory {
-  display: block;
   font-family: 'aAnotherTag', 'Orbitron', monospace;
-  font-size: clamp(0.8rem, 1.6vw, 1.1rem);
-  letter-spacing: 0.18em;
-  color: rgba(0, 255, 136, 0.55);
+  font-size: clamp(0.68rem, 1.4vw, 0.82rem);
+  letter-spacing: 0.20em;
+  color: rgba(0, 255, 136, 0.5);
   text-transform: uppercase;
-  margin-bottom: 6px;
-  text-shadow: 0 0 8px rgba(0,255,136,0.35);
+  text-shadow: 0 0 6px rgba(0,255,136,0.25);
   line-height: 1;
+  transition: color 0.2s ease, text-shadow 0.2s ease;
 }
 
 /* ════════════════════════════════════════════════════════════════════════

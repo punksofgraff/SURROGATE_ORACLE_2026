@@ -976,6 +976,20 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
+      {/* ── Awakening flash — scene-wide green burst when Oracle manifests ── */}
+      {awakened && (
+        <motion.div
+          key="awakening-flash"
+          initial={{ opacity: 0.85 }}
+          animate={{ opacity: 0 }}
+          transition={{ duration: 1.0, ease: 'easeOut' }}
+          style={{
+            position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 40,
+            background: 'radial-gradient(ellipse 70% 55% at 50% 44%, rgba(0,255,136,0.55) 0%, rgba(0,20,8,0.35) 45%, transparent 72%)',
+          }}
+        />
+      )}
+
       {/* ── Terminal lore overlay ── */}
       <AnimatePresence>
         {scenePhase === 'terminal' && (

@@ -423,6 +423,10 @@ const OracleConversation = forwardRef(
         model: GEMINI_MODEL,
         systemInstruction: { parts: [{ text: systemText }] },
         tools: [],
+        // tools:[] alone doesn't suppress Gemini's built-in tools (grounding, code execution).
+        // mode:NONE is the canonical suppressor — without it Gemini fires tool calls,
+        // the proxy blocks them, and the Oracle session stalls mid-conversation.
+        toolConfig: { functionCallingConfig: { mode: 'NONE' } },
         // Step 4 — enable native session resumption. Empty object on a fresh connect asks the
         // server to emit resumption handles; on reconnect we pass the stored handle so Gemini
         // restores the conversation context server-side (no blind summary re-injection).

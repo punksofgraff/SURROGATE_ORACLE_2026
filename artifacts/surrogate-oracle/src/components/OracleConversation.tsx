@@ -668,7 +668,19 @@ const OracleConversation = forwardRef(
         const source = ctx.createMediaStreamSource(stream);
         processorRef.current = ctx.createScriptProcessor(4096, 1, 1);
 
+        // ScriptProcessorNode runs on the main thread. When React re-renders stall
+        // the thread, frames queue up and fire in a rapid burst on recovery — the
+        // VAD sees "fast speech" and Gemini gets compressed/garbled audio.
+        // Gate: 4096 samples at 48kHz = ~85ms per frame. Skip frames that arrive
+        // in under 40ms — they are catch-up bursts, not real-time audio.
+        let lastFrameTime = 0;
+        const FRAME_INTERVAL_MIN_MS = 40;
+
         processorRef.current.onaudioprocess = (e) => {
+          const now = performance.now();
+          if (now - lastFrameTime < FRAME_INTERVAL_MIN_MS) return;
+          lastFrameTime = now;
+
           const input = e.inputBuffer.getChannelData(0);
           
           // Downsample from 24000 to 16000 (3:2 ratio)

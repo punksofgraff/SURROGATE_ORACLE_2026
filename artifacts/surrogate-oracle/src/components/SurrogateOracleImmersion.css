@@ -4210,18 +4210,17 @@
   display: none;
 }
 
-/* ── Avatar wrapper: full immersive presence ─────────────────────────────────
-   Wider, taller aspect ratio — the Oracle fills more of the alley space.
-   Subtle bottom fade so the avatar bleeds naturally into the ground fog.      */
+/* ── Avatar wrapper: holographic presence — no clip, no frame ───────────────
+   overflow: visible so the face-shaped drop-shadow bleeds into alley air.
+   The mask lives on the canvas child — wrapper is just sizing now.           */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-wrapper {
   width: clamp(280px, 92vw, 520px) !important;
   aspect-ratio: 0.72 / 1 !important;
   border: none !important;
-  border-radius: 4px !important;
-  overflow: hidden;
-  /* Fade bottom so Oracle bleeds into the alley floor */
-  -webkit-mask-image: linear-gradient(to bottom, black 75%, transparent 100%);
-  mask-image: linear-gradient(to bottom, black 75%, transparent 100%);
+  border-radius: 0 !important;
+  overflow: visible !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
 }
 
 /* ── Oracle center: sit slightly lower, more in the alley middle-ground ─────*/
@@ -4382,5 +4381,73 @@
   pointer-events: none;
   background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,136,0.015) 2px, rgba(0,255,136,0.015) 4px);
   z-index: 0;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   HOLOGRAPHIC PRESENCE — Oracle is a projection, not a screen
+   No cabinet frame. No rectangle. The face dissolves from alley darkness
+   like a signal barely holding its shape in physical space.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* Kill cabinet speaking animations — these re-created the rectangle.
+   Declared last with matching specificity → wins over lines 1300 & 1317.    */
+.oracle-stage[data-oracle-state="oracle"][data-oracle-speaking="true"] .oracle-cabinet,
+.oracle-stage[data-oracle-state="oracle"][data-user-speaking="true"] .oracle-cabinet {
+  animation: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+  background: transparent !important;
+}
+
+/* ── Canvas: oval dissolution mask ──────────────────────────────────────────
+   Ellipse centered at 44% height (face center, not chest).
+   Solid core → gradual atmospheric dissolve at all edges.
+   No hard line anywhere — the Oracle materializes from darkness.             */
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas {
+  border-radius: 0 !important;
+  -webkit-mask-image: radial-gradient(
+    ellipse 82% 76% at 50% 44%,
+    black 0%,
+    black 35%,
+    rgba(0,0,0,0.92) 48%,
+    rgba(0,0,0,0.65) 58%,
+    rgba(0,0,0,0.28) 68%,
+    rgba(0,0,0,0.06) 76%,
+    transparent 84%
+  );
+  mask-image: radial-gradient(
+    ellipse 82% 76% at 50% 44%,
+    black 0%,
+    black 35%,
+    rgba(0,0,0,0.92) 48%,
+    rgba(0,0,0,0.65) 58%,
+    rgba(0,0,0,0.28) 68%,
+    rgba(0,0,0,0.06) 76%,
+    transparent 84%
+  );
+  /* Resting aura — drop-shadow follows ellipse boundary, not a box.
+     The Oracle glows from within, light bleeds into alley air.              */
+  filter:
+    drop-shadow(0 0 28px rgba(0,255,136,0.28))
+    drop-shadow(0 0 64px rgba(0,255,136,0.10));
+  transition: filter 0.4s ease;
+}
+
+/* Oracle speaking: face aura intensifies. The presence surges. No rectangle. */
+.oracle-stage[data-oracle-state="oracle"][data-oracle-speaking="true"] .oracle-avatar-canvas {
+  filter:
+    drop-shadow(0 0 42px rgba(0,255,136,0.55))
+    drop-shadow(0 0 90px rgba(0,255,136,0.22))
+    drop-shadow(0 0 5px  rgba(0,255,136,0.80)) !important;
+  transition: filter 0.06s ease !important;
+}
+
+/* Seeker speaking: Oracle receives — cyan shift, gentler than oracle pulse.  */
+.oracle-stage[data-oracle-state="oracle"][data-user-speaking="true"] .oracle-avatar-canvas {
+  filter:
+    drop-shadow(0 0 32px rgba(0,220,255,0.42))
+    drop-shadow(0 0 72px rgba(0,220,255,0.14)) !important;
+  transition: filter 0.12s ease !important;
 }
 

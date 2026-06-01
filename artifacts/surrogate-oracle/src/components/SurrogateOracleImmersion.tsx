@@ -1061,7 +1061,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
             className="oracle-terminal-overlay"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.8 } }}
-            onClick={() => journey.awakeFromTerminal()}
+            onClick={() => { markLoreCompleted(); journey.awakeFromTerminal(); }}
           >
             <div className="oracle-lore-text">
               {completedLines.map((line, i) => (

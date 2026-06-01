@@ -41,17 +41,21 @@ Last updated: 2026-06-01. Cinematic Entrance + Audio Battle + Journey Reset comp
 - **Normalization:** `DynamicsCompressor` (threshold=-22dBFS, ratio=10) inserted before Analyser normalizes Gemini PCM amplitude. Oracle voice `masterGain` starts at 1.8.
 
 **Music ducking levels (GainNode target values):**
-- Dormant/Terminal/Awakened: `0.06`
-- Oracle pre-first-speech: `0.055` (gentle background), mic/user active: `0.025`
-- **Oracle post-first-speech (SESSION_AMBIENT):** `0.008` — locked for entire oracle session
-- Oracle voice speaking: `0.001` (near silence, **10ms instant cut** — no ramp, radio bows instantly)
-- Return from speaking: `1500ms` slow exponential ramp (imperceptible)
+- Dormant/Awakened: `0.20` (20% — music stays on through auth)
+- Oracle speaking: `0` (FULL MUTE — `audioElement.pause()` + GainNode 0)
+- Music stays OFF until `resetJourney()` returns to dormant
 
 **Radio Stations (`audioTracks.ts`):**
 - Station 0: Graff Punks (`#00ff88`) — always launches here
 - Station 1: Drone Zone SomaFM (`#00ffcc`)
 - Station 2: Groove Salad SomaFM (`#b026ff`)
 - Station switching: change `audioRef.current.src`, reload, resume. GainNode connection persists.
+
+**Audio Guard Rails (iOS mic → music):**
+- `onMicWillStart` callback fires BEFORE `getUserMedia` in `startMic()`
+- `fadeToVolume(0, 50)` → sets GainNode to 0 immediately + `audioElement.pause()`
+- `AudioContext.resume()` called after `getUserMedia` to prevent suspension
+- `HTMLAudioElement.volume` is FORBIDDEN — iOS resets it on audio session change
 
 **Audio Battle Prevention (Oracle vs Radio):**
 - `oracleHasSpokenRef` (boolean) — replaces `isOracleSpeakingDelayed` for ducking. Simpler, no setState cascade.
@@ -162,6 +166,10 @@ JOURNEY RESET → DORMANT             ok      — resetJourney() called
 - ✅ `setOracleSpeaking` recursion bug — synchronous wrapper prevents stale closure in audio callback
 - ✅ `useParallax.ts` duplicate function declarations — fixed
 - ✅ iOS DeviceOrientation permission — requested on first touch
+- ✅ Music not muting on iOS — `audioElement.pause()` + GainNode 0 on mic activation; `HTMLAudioElement.volume` forbidden
+- ✅ Hamburger menu with EXIT, RESET JOURNEY, AR toggle, TYPE MODE
+- ✅ Signal pad moved to hamburger (removed inline toggle button)
+- ✅ Gradient hamburger icon (green→cyan→purple)
 
 ---
 

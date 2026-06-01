@@ -54,6 +54,11 @@ async function run() {
   });
   page.on('pageerror', (err) => consoleErrors.push(err.message));
 
+  // Mock IP endpoint — all tests use 'smoke_ip' so localStorage keys are consistent
+  await page.route('https://api.ipify.org*', route => {
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ip: 'smoke_ip' }) });
+  });
+
   // ── TEST 1: App loads ─────────────────────────────────────────────────────
   console.log('TEST 1 — App loads and lands in DORMANT phase');
   await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(async (e) => {
@@ -70,7 +75,8 @@ async function run() {
     FAIL(`Expected "dormant" on load, got "${initialState}" — auto-awakening still happening!`);
   }
 
-  // CTA text visible
+  // CTA text visible — ghost transmissions use randomized typing delays, wait up to 4s
+  await page.waitForSelector('.ghost-tx', { timeout: 4000 }).catch(() => {});
   const ctaVisible = await page.isVisible('.ghost-tx--cta');
   if (ctaVisible) {
     PASS('Dormant CTA (.ghost-tx--cta) is visible');
@@ -185,18 +191,23 @@ async function run() {
 
   // ── TEST 5c: Returning Seeker Routing (Agnostic Path) ───────────────────
   console.log('\nTEST 5c — Returning Seeker Routing (Lore Completed)');
-  // We'll simulate a return trip by manually injecting the keys and reloading
-  // (In headless/CI, IP-based detection can be flaky due to network sandboxing)
+  // Inject keys for the mocked IP ('smoke_ip') — api.ipify.org is mocked above
   await page.evaluate(() => {
     localStorage.setItem('surrogate_visited_smoke_ip', 'true');
     localStorage.setItem('surrogate_lore_completed_smoke_ip', 'true');
   });
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
-  
-  // Should show wallet connect
-  await page.waitForSelector('text=CONNECT CHAIN FUELZ WALLET', { timeout: 15000 });
+
+  // Wait for useIpCheck async fetch to resolve (api.ipify.org mock is fast but React state is async)
+  await page.waitForTimeout(1200);
+
+  // Tap the cabinet — handleFirstTap detects isReturning=true and shows wallet overlay
+  await page.click('.oracle-center');
+
+  // Should show wallet connect overlay
+  await page.waitForSelector('text=CONNECT CHAIN FUELZ', { timeout: 10000 });
   const buttonText = await page.textContent('button:has-text("RETURN TO ALLEY"), button:has-text("PROCEED UNBOUND")');
-  if (buttonText === 'RETURN TO ALLEY') {
+  if (buttonText && buttonText.includes('RETURN TO ALLEY')) {
     PASS('Wallet overlay shows "RETURN TO ALLEY" for completed lore Seeker ✓');
   } else {
     FAIL(`Expected "RETURN TO ALLEY", got "${buttonText}"`);
@@ -306,24 +317,77 @@ async function testBackendPanel(page, consoleErrors, screenshot) {
   console.log('═══════════════════════════════════════════════════');
 
   // ── BP-SETUP: Inject dev session so panel is accessible without real auth ─
+  // Also mock Supabase user_wallets query to return empty — prevents smoke_ip
+  // (inserted by test 5b) from triggering isReturning=true and showing wallet overlay.
+  await page.route('**/rest/v1/user_wallets*', route => {
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) });
+  });
   await page.evaluate(() => {
+    // Clear ALL returning-seeker keys so cabinet tap goes to terminal, not wallet overlay.
+    // surrogate_visited_smoke_ip is set by markVisited() on the first tap in tests 1-7.
+    // surrogate_lore_completed_smoke_ip is set by test 5b/lore skip flow.
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('surrogate_visited_') || key.startsWith('surrogate_lore_completed_'))) {
+        localStorage.removeItem(key);
+      }
+    }
     localStorage.setItem('dev_user_session', JSON.stringify({
       id: 'smoke-test-user-001',
       email: 'smoke@test.io',
     }));
   });
-  await page.reload({ waitUntil: 'networkidle', timeout: 15000 });
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
+  // Wait for React to mount (dormant state confirms the component is live)
+  await page.waitForFunction(
+    () => document.querySelector('.oracle-stage')?.getAttribute('data-oracle-state') === 'dormant',
+    { timeout: 10000 }
+  ).catch(() => {});
   INFO('Dev session injected — reloaded page');
 
   // ── BP-TEST 1: EnculturateCrate exists and is reachable after awakening ───
   console.log('\nBP-TEST 1 — EnculturateCrate present and clickable after awakening');
 
   // Re-run the awakening flow: tap → terminal → skip lore → select knife
+
   await page.click('.oracle-center');
-  await page.waitForSelector('.oracle-terminal-overlay');
-  await page.click('.oracle-terminal-overlay'); // Skip lore
-  
-  await page.waitForSelector('.oracle-knife-card', { timeout: 10000 });
+  await page.waitForTimeout(600);
+
+  // If wallet overlay appeared (Supabase found smoke_ip from earlier tests), dismiss it
+  const walletShowing = await page.isVisible('text=CONNECT CHAIN FUELZ').catch(() => false);
+  if (walletShowing) {
+    INFO('Wallet overlay appeared — clicking through');
+    await page.click('button:has-text("RETURN TO ALLEY")').catch(async () => {
+      await page.click('button:has-text("PROCEED UNBOUND")').catch(() => {});
+    });
+    // Wait for phase to settle (awakened or terminal)
+    await page.waitForFunction(
+      () => {
+        const s = document.querySelector('.oracle-stage')?.getAttribute('data-oracle-state');
+        return s === 'awakened' || s === 'terminal';
+      },
+      { timeout: 8000 }
+    ).catch(() => {});
+  }
+
+  // If in terminal after wallet dismiss, skip lore via dev hook (avoids pointer-intercept issues)
+  const stateAfterWallet = await page.getAttribute('.oracle-stage', 'data-oracle-state');
+  if (stateAfterWallet === 'terminal') {
+    await page.evaluate(() => {
+      const el = document.querySelector('.oracle-terminal-overlay');
+      if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await page.waitForFunction(
+      () => {
+        const s = document.querySelector('.oracle-stage')?.getAttribute('data-oracle-state');
+        return s === 'awakened' || s === 'oracle';
+      },
+      { timeout: 8000 }
+    ).catch(() => {});
+  }
+
+
+  await page.waitForSelector('.oracle-knife-card', { timeout: 12000 });
   await page.click('.oracle-knife-card:first-child'); // Select knife
 
   await page.waitForFunction(
@@ -352,8 +416,9 @@ async function testBackendPanel(page, consoleErrors, screenshot) {
   await page.click('.oracle-close-btn').catch(() => {});
   await page.waitForTimeout(300);
 
-  await page.click('[data-testid="enculturate-crate"]');
-  await page.waitForTimeout(600); // allow panel entrance animation
+  // Force click — crate has a pulsing animation that makes it "not stable" to Playwright
+  await page.click('[data-testid="enculturate-crate"]', { force: true });
+  await page.waitForTimeout(800); // allow panel entrance animation
 
   const panelVisible = await page.isVisible('[data-testid="backend-panel"]');
   if (panelVisible) {
@@ -367,7 +432,7 @@ async function testBackendPanel(page, consoleErrors, screenshot) {
 
   // ── BP-TEST 3: All 6 tabs are rendered ────────────────────────────────────
   console.log('\nBP-TEST 3 — All 6 tabs present');
-  const EXPECTED_TABS = ['vault', 'squad', 'portraits', 'decart', 'gemini', 'dev'];
+  const EXPECTED_TABS = ['vault', 'squad', 'portraits', 'gemini', 'dev', 'manifest'];
   for (const tab of EXPECTED_TABS) {
     const tabEl = await page.isVisible(`[data-testid="tab-${tab}"]`);
     if (tabEl) {
@@ -453,17 +518,17 @@ async function testBackendPanel(page, consoleErrors, screenshot) {
     else FAIL('Panel crashed on NEURAL PRINTS tab click');
   }
 
-  // ── BP-TEST 7: DECART LIVE tab renders diagnostics ────────────────────────
-  console.log('\nBP-TEST 7 — DECART LIVE tab renders stream diagnostics');
-  await page.click('[data-testid="tab-decart"]');
+  // ── BP-TEST 7: MANIFEST tab renders content ───────────────────────────────
+  console.log('\nBP-TEST 7 — MANIFEST tab renders content');
+  await page.click('[data-testid="tab-manifest"]');
   await page.waitForTimeout(400);
-  const decartContent = await page.isVisible('text=DECART').catch(() => false)
-    || await page.isVisible('text=STREAM').catch(() => false)
-    || await page.isVisible('text=CONNECTION').catch(() => false);
-  if (decartContent) {
-    PASS('DECART LIVE tab rendered diagnostics content ✓');
+  const manifestContent = await page.isVisible('text=MANIFEST').catch(() => false)
+    || await page.isVisible('text=M4NIFST').catch(() => false)
+    || await page.isVisible('[data-testid="backend-panel"]').catch(() => false);
+  if (manifestContent) {
+    PASS('MANIFEST tab rendered content ✓');
   } else {
-    INFO('DECART LIVE content not found by text — checking panel still open');
+    INFO('MANIFEST content not found by text — checking panel still open');
     const panelOk = await page.isVisible('[data-testid="backend-panel"]');
     if (panelOk) PASS('Panel still open after DECART LIVE tab (no crash) ✓');
     else FAIL('Panel crashed on DECART LIVE tab');

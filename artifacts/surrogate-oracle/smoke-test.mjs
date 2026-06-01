@@ -253,7 +253,7 @@ async function run() {
   console.log('\nTEST 6b — Select a knife → ORACLE phase starts');
   // Wait for knife cards to appear (they have a 2.2s delay in the code)
   await page.waitForSelector('.oracle-knife-card', { timeout: 10000 });
-  await page.click('.oracle-knife-card:first-child');
+  await page.click('.oracle-knife-card');
 
   await page.waitForFunction(
     () => document.querySelector('.oracle-stage')?.getAttribute('data-oracle-state') === 'oracle',
@@ -388,7 +388,7 @@ async function testBackendPanel(page, consoleErrors, screenshot) {
 
 
   await page.waitForSelector('.oracle-knife-card', { timeout: 12000 });
-  await page.click('.oracle-knife-card:first-child'); // Select knife
+  await page.click('.oracle-knife-card'); // Select knife
 
   await page.waitForFunction(
     () => document.querySelector('.oracle-stage')?.getAttribute('data-oracle-state') === 'oracle',

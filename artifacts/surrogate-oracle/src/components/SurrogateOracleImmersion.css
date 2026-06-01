@@ -3175,6 +3175,7 @@
   width: clamp(300px, 88vw, 500px);
   /* height auto — content determines size */
   position: relative;
+  pointer-events: auto;
 
   /* Near-transparent glass with diagonal brand wash */
   background: linear-gradient(

@@ -11,6 +11,20 @@ function oracleLogRelayPlugin() {
   return {
     name: 'oracle-log-relay',
     configureServer(server: any) {
+      // /bust — hard-reload escape hatch. Visit this URL to nuke browser cache and reload.
+      server.middlewares.use('/bust', (_req: any, res: any) => {
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Content-Type', 'text/html');
+        res.end(`<!doctype html><html><head>
+          <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+          <meta http-equiv="Pragma" content="no-cache">
+          <meta http-equiv="Expires" content="0">
+        </head><body><script>
+          if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(r => r.forEach(sw => sw.unregister()));
+          location.replace('/?_bust=' + Date.now());
+        </script></body></html>`);
+      });
+
       server.middlewares.use('/api/oracle-log', (req: any, res: any) => {
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');

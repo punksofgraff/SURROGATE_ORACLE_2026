@@ -3,12 +3,17 @@ import { supabase } from '../lib/supabase';
 import { logStep } from '../components/CodeAuditor';
 
 export function useIpCheck() {
+  // ?newuser — dev override: skip DB + localStorage check, force fresh-user flow
+  const forceNew = new URLSearchParams(window.location.search).has('newuser');
+
   const [isReturning, setIsReturning] = useState(false);
   const [hasCompletedLore, setHasCompletedLore] = useState(false);
   const [ipAddress, setIpAddress] = useState<string | null>(null);
-  const [isChecking, setIsChecking] = useState(true);
+  const [isChecking, setIsChecking] = useState(!forceNew);
 
   useEffect(() => {
+    if (forceNew) return; // skip all checks — dev fresh-user mode
+
     async function checkIp() {
       try {
         // 1. Get IP

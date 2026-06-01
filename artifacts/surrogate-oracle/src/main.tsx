@@ -31,13 +31,10 @@ const _sp = new URLSearchParams(window.location.search);
 if (_sp.has('reset')) {
   localStorage.clear();
   sessionStorage.clear();
-  window.location.replace('/?_b=' + Date.now());
+  window.location.replace('/?newuser');
 } else if (_sp.has('fresh')) {
   ['oracle_lore_completed','oracle_active_session_id','oracle_steps_sticky'].forEach(k => localStorage.removeItem(k));
-  window.location.replace('/?_b=' + Date.now());
-} else if (_sp.has('_b') && !_sp.has('_done')) {
-  // Second hop — replace URL cleanly so HMR re-connects
-  window.history.replaceState({}, '', '/');
+  window.location.replace('/?newuser');
 }
 
 createRoot(document.getElementById("root")!).render(<RootBoundary><App /></RootBoundary>);

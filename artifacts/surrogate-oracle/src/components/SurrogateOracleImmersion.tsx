@@ -517,6 +517,8 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
 
     if (scenePhase === 'oracle') {
       oracleConversationRef.current?.startSession();
+      // Open the transmission filter fully — knife phase narrows it, oracle must be clear
+      connection.pcmPlayer?.setTransmissionQ(0.01, 200);
     }
   }, [scenePhase, connection.initializePCMPlayer]);
 

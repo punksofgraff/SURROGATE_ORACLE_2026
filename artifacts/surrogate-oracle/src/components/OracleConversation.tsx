@@ -432,7 +432,7 @@ const OracleConversation = forwardRef(
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: {
-                voiceName: 'Charon',
+                voiceName: (import.meta.env.VITE_ORACLE_VOICE ?? 'Sadaltager'),
               },
             },
             // Note: speakingRate is NOT valid in the Gemini Live WS speechConfig

@@ -1191,9 +1191,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: clamp(8px, 2.5vw, 24px);
-  padding: 0 8px;
-  filter: drop-shadow(0 0 10px rgba(0,0,0,0.5));
+  gap: clamp(10px, 3vw, 28px);
+  padding: 10px 16px 12px;
+  border-radius: 24px;
+  /* Glass console shelf — depth layer */
+  background: rgba(0, 8, 4, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 255, 136, 0.14);
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.65),
+    0 2px 12px rgba(0, 0, 0, 0.45),
+    0 0 28px rgba(0, 255, 136, 0.06),
+    inset 0 1px 0 rgba(0, 255, 136, 0.08);
   transition: opacity 1.2s var(--ease-cinematic);
   pointer-events: none;
 }
@@ -1202,31 +1212,46 @@
   pointer-events: auto;
 }
 
-/* ── Bottom action buttons — no neon borders, subtle float affordance ────
-   Border-free by default. Float animation signals interactivity without
-   harsh UI chrome. Staggered delays create organic alley-shelf feel.     */
+/* ── Bottom action buttons — arcade console slabs ────────────────────────
+   Each button is a frosted glass slab that floats off the console shelf.
+   Staggered float animation creates organic, breathing alley-shelf feel.  */
 .oracle-bottom-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  padding: 10px 10px 8px;
-  border-radius: 18px;
-  border: 1.5px solid transparent;
-  background: transparent;
+  gap: 6px;
+  padding: 12px 14px 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 255, 136, 0.12);
+  background: rgba(0, 18, 8, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.5),
+    0 1px 4px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(0, 255, 136, 0.06);
   cursor: pointer;
   position: relative;
   overflow: hidden;
-  min-width: 56px;
+  min-width: 64px;
   touch-action: manipulation;
   user-select: none;
-  transition: transform 0.15s ease, opacity 0.2s ease;
+  transition: transform 0.15s ease, opacity 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   animation: btn-float 3.2s ease-in-out infinite;
+}
+
+.oracle-bottom-btn:hover {
+  border-color: rgba(0, 255, 136, 0.30);
+  box-shadow:
+    0 8px 28px rgba(0, 0, 0, 0.6),
+    0 2px 8px rgba(0, 0, 0, 0.4),
+    0 0 18px rgba(0, 255, 136, 0.18),
+    inset 0 1px 0 rgba(0, 255, 136, 0.12);
 }
 
 @keyframes btn-float {
   0%, 100% { transform: translateY(0px); }
-  50%       { transform: translateY(-5px); }
+  50%       { transform: translateY(-6px); }
 }
 
 /* Stagger each slot so they drift out of phase */
@@ -1241,41 +1266,74 @@
 }
 
 .oracle-bottom-btn--active {
-  /* Very subtle inner glow on active — no hard border */
-  filter: drop-shadow(0 0 8px rgba(0, 255, 136, 0.5));
+  border-color: rgba(0, 255, 136, 0.28);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.55),
+    0 0 22px rgba(0, 255, 136, 0.22),
+    inset 0 1px 0 rgba(0, 255, 136, 0.12);
 }
 
 .oracle-bottom-btn__img {
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   object-fit: contain;
   display: block;
 }
 
 .oracle-bottom-btn__label {
   font-family: 'PhillySans', monospace;
-  font-size: 0.52rem;
+  font-size: 0.58rem;
   letter-spacing: 0.13em;
   font-weight: 700;
-  color: rgba(0, 255, 136, 0.45);
+  color: rgba(0, 255, 136, 0.55);
   white-space: nowrap;
   line-height: 1;
 }
 
 .oracle-bottom-btn--active .oracle-bottom-btn__label {
   color: #00ff88;
-  text-shadow: 0 0 6px rgba(0, 255, 136, 0.55);
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.65);
 }
 
 /* Tour active — purple frequency */
 .oracle-bottom-btn--tour {
-  border-color: rgba(176, 38, 255, 0.65);
-  box-shadow: 0 0 16px rgba(176, 38, 255, 0.4), inset 0 0 8px rgba(176, 38, 255, 0.08);
+  border-color: rgba(176, 38, 255, 0.50);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.55),
+    0 0 20px rgba(176, 38, 255, 0.30),
+    inset 0 1px 0 rgba(176, 38, 255, 0.10);
 }
 
 .oracle-bottom-btn--tour .oracle-bottom-btn__label {
   color: #b026ff;
-  text-shadow: 0 0 6px rgba(176, 38, 255, 0.55);
+  text-shadow: 0 0 8px rgba(176, 38, 255, 0.65);
+}
+
+/* ── Desktop: buttons breathe — full arcade console presence ─────────────── */
+@media (min-width: 768px) {
+  .oracle-bottom-bar {
+    gap: clamp(20px, 3vw, 48px);
+    padding: 14px 28px 16px;
+    border-radius: 28px;
+    bottom: 4%;
+  }
+
+  .oracle-bottom-btn {
+    min-width: 88px;
+    padding: 16px 18px 13px;
+    border-radius: 20px;
+    gap: 9px;
+  }
+
+  .oracle-bottom-btn__img {
+    width: 72px;
+    height: 72px;
+  }
+
+  .oracle-bottom-btn__label {
+    font-size: 0.68rem;
+    letter-spacing: 0.15em;
+  }
 }
 .oracle-stage[data-oracle-state="dormant"] .oracle-bottom-bar {
   opacity: 0;

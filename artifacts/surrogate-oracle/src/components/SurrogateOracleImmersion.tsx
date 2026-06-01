@@ -62,7 +62,8 @@ import './SurrogateOracleImmersion.css';
 const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
 const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = 'https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png';
-const AUDIO_STREAM_URL   = defaultAudioTracks[0].url; // Graff Punks — always the launch station
+const DEFAULT_STATION    = 2; // Chill Hop — default launch station
+const AUDIO_STREAM_URL   = defaultAudioTracks[DEFAULT_STATION].url;
 const ORACLE_PLAYBACK_RATE = 1.0;
 
 const SILENCE_VISEME_STATE: VisemeState = { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
@@ -161,7 +162,7 @@ export function SurrogateOracleImmersion() {
   const [hamburgerOpen, setHamburgerOpen] = useState(false);
 
   // ── Radio stations ───────────────────────────────────────────────────────────
-  const [currentStation, setCurrentStation] = useState(0);
+  const [currentStation, setCurrentStation] = useState(DEFAULT_STATION);
   const switchStation = useCallback((idx: number) => {
     if (!audioRef.current || idx === currentStation) return;
     const wasPlaying = !audioRef.current.paused;
@@ -471,7 +472,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
 // - Music ON (20%) during dormant/awakened — mic auth, motion auth don't affect it
 // - Music OFF (0%) when Oracle speaks — stays off until resetJourney()
 // - resetJourney() returns to dormant → music back to 20%
-  const MUSIC_ON_VOLUME = 0.25;
+  const MUSIC_ON_VOLUME = 0.10;
   const MUSIC_OFF_VOLUME = 0;
 
   useEffect(() => {

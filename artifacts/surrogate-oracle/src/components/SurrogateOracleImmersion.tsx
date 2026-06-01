@@ -519,6 +519,9 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
       oracleConversationRef.current?.startSession();
       // Open the transmission filter fully — knife phase narrows it, oracle must be clear
       connection.pcmPlayer?.setTransmissionQ(0.01, 200);
+      // Force-pause music immediately — don't rely on effect chain when targetVol may already be 0
+      if (audioRef.current) audioRef.current.pause();
+      if (radioGainRef.current) radioGainRef.current.gain.setValueAtTime(0, getAudioContext().currentTime);
     }
   }, [scenePhase, connection.initializePCMPlayer]);
 

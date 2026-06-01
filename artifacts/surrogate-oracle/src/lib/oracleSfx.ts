@@ -151,13 +151,6 @@ export function startAlleyAmbience(): () => void {
     shimmer.type = 'sine';
     shimmer.frequency.value = 294;
 
-    // LFO for organic breathing quality (0.07Hz ≈ one breath every 14s)
-    const lfo = c.createOscillator();
-    lfo.type = 'sine';
-    lfo.frequency.value = 0.07;
-    const lfoGain = c.createGain();
-    lfoGain.gain.value = 0.012; // subtle modulation depth
-
     // Individual level controls
     const subGain = c.createGain();
     subGain.gain.value = 0.55;
@@ -170,9 +163,6 @@ export function startAlleyAmbience(): () => void {
     masterGain.gain.setValueAtTime(0, t);
     masterGain.gain.linearRampToValueAtTime(0.042, t + 2.2); // slow fade in
 
-    lfo.connect(lfoGain);
-    lfoGain.connect(masterGain.gain); // LFO modulates master volume
-
     sub.connect(subGain);
     mid.connect(midGain);
     shimmer.connect(shimmerGain);
@@ -184,7 +174,6 @@ export function startAlleyAmbience(): () => void {
     sub.start(t);
     mid.start(t);
     shimmer.start(t);
-    lfo.start(t);
 
     return () => {
       try {
@@ -194,7 +183,6 @@ export function startAlleyAmbience(): () => void {
         sub.stop(stopAt);
         mid.stop(stopAt);
         shimmer.stop(stopAt);
-        lfo.stop(stopAt);
       } catch { /* already stopped */ }
     };
   } catch {

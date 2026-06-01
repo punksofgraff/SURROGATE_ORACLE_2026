@@ -26,7 +26,7 @@ import {
   SACRED_PROFANE_BLOCK,
 } from '../data/oraclePromptBlocks';
 
-const GEMINI_MODEL = 'models/gemini-2.5-flash-preview-native-audio-dialog';
+const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
 
 const ORACLE_SYSTEM_PROMPT = `
 I am the Surrogate Oracle.

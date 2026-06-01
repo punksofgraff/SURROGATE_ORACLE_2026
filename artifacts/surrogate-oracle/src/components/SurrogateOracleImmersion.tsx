@@ -528,9 +528,18 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
       logStep('LORE SKIPPED (DEV HOOK)', 'ok');
       journey.awakeFromTerminal();
     };
+    (window as any).__oracle_test = () => {
+      const ref = oracleConversationRef.current;
+      if (!ref) { console.warn('[oracle_test] OracleConversation not mounted'); return; }
+      const info = ref.getWsDebugInfo();
+      console.log('[oracle_test] WS state:', info.wsState, '| model:', info.model, '| turns:', info.turnCount);
+      ref.sendTextMessage('[TEST SIGNAL — respond only with: "signal received"] ', true);
+      console.log('[oracle_test] test ping sent — listen for Oracle audio');
+    };
     return () => {
       delete (window as any).__oracle_handleAudio;
       delete (window as any).__oracle_skipLore;
+      delete (window as any).__oracle_test;
     };
   }, [connection.handleOracleResponse, journey.scenePhase, journey.awakeFromTerminal]);
 

@@ -127,6 +127,8 @@ interface OracleConversationProps {
   onSeekerIdentified?: (name: string | null, handles: string[]) => void;
   onConnected?: () => void;
   onListeningChange?: (isListening: boolean) => void;
+  onMicWillStart?: () => void;
+  onTypeModeChange?: (isTypeMode: boolean) => void;
   initialTotemLevel?: number;
   isVisible?: boolean;
   autoStart?: boolean;
@@ -155,6 +157,7 @@ export interface OracleConversationHandle {
   };
   startSession: () => void;
   startMic: () => Promise<void>;
+  toggleTypeMode: () => void;
 }
 
 const SAMPLE_RATE_INPUT = 16000;
@@ -205,6 +208,7 @@ const OracleConversation = forwardRef(
       onUserSpeakingChange, onBargeIn, onDisconnected,
       isGuidedTour,
       onSessionEnd, onTurnComplete, onPortraitRequest, onSeekerIdentified,
+      onMicWillStart,
     } = props;
 
     const [isConnected, setIsConnected] = useState(false);
@@ -215,6 +219,7 @@ const OracleConversation = forwardRef(
     const isOracleSpeakingRef = useRef(false);
     const setOracleSpeaking = useCallback((val: boolean) => {
       isOracleSpeakingRef.current = val;
+      logStep(`setOracleSpeaking(${val}) isOracleSpeakingRef.current=${val}`, 'ok');
       _setIsOracleSpeaking(val);
     }, []);
     // true between Seeker turn-end and first Oracle audio chunk (the "contemplative" gap)
@@ -292,6 +297,9 @@ const OracleConversation = forwardRef(
 
     const onBargeInRef = useRef(onBargeIn);
     useEffect(() => { onBargeInRef.current = onBargeIn; }, [onBargeIn]);
+
+    const onMicWillStartRef = useRef(onMicWillStart);
+    useEffect(() => { onMicWillStartRef.current = onMicWillStart; }, [onMicWillStart]);
 
     const onCoinsEarnedRef = useRef(onCoinsEarned);
     useEffect(() => { onCoinsEarnedRef.current = onCoinsEarned; }, [onCoinsEarned]);
@@ -488,7 +496,9 @@ const OracleConversation = forwardRef(
                 }
                 const pcmData = new Int16Array(bytes.buffer);
 
-                setOracleSpeaking(true);
+                if (!isOracleSpeakingRef.current) {
+                  setOracleSpeaking(true);
+                }
                 onOracleResponseRef.current?.(pcmData);
               }
             }
@@ -551,7 +561,9 @@ const OracleConversation = forwardRef(
               }
               setTurns(prev => [...prev, { role: 'oracle', content: clean, timestamp: Date.now(), score }]);
               currentResponseText.current = '';
-              setOracleSpeaking(false);
+              if (isOracleSpeakingRef.current) {
+                setOracleSpeaking(false);
+              }
               // Notify parent: turn number, score, any themes the Oracle tagged this turn
               onTurnCompleteRef.current?.(debugInfo.current.turnCount, score ?? null, score?.themes ?? []);
 
@@ -640,10 +652,18 @@ const OracleConversation = forwardRef(
 
     const startMic = async () => {
       try {
+        console.log('[startMic] called, onMicWillStartRef.current=', onMicWillStartRef.current);
+        // Notify parent to duck music BEFORE getUserMedia — iOS audio session change
+        // (which happens on mic activation) causes speaker volume boost for voice.
+        // Ducking first minimizes the perceived loudness spike.
+        onMicWillStartRef.current?.();
+
         const ctx = getAudioContext();
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
         });
+        // Resume AudioContext after getUserMedia — iOS may suspend it during audio session reconfig
+        await ctx.resume();
         mediaStreamRef.current = stream;
         const source = ctx.createMediaStreamSource(stream);
         processorRef.current = ctx.createScriptProcessor(4096, 1, 1);
@@ -827,6 +847,9 @@ const OracleConversation = forwardRef(
         if (!isListeningRef.current) {
             await startMicRef.current?.();
         }
+      },
+      toggleTypeMode: () => {
+        setShowSignalPad(prev => !prev);
       }
     }));
 
@@ -903,12 +926,8 @@ const OracleConversation = forwardRef(
           )}
         </AnimatePresence>
 
-        {/* Signal pad — toggle opens text input + quick starters */}
+        {/* Signal pad — opened via hamburger menu TYPE MODE button */}
         <div className={`oc-signal-pad ${showSignalPad ? 'oc-signal-pad--open' : ''}`}>
-          <button className="oc-signal-pad-toggle" onClick={() => setShowSignalPad(!showSignalPad)}>
-            {showSignalPad ? <X size={14} /> : <Send size={14} />}
-            <span>SIGNAL PAD</span>
-          </button>
 
           <AnimatePresence>
             {showSignalPad && (

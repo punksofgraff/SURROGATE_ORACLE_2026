@@ -473,15 +473,19 @@
   animation: sub-glitch 5s infinite;
 }
 
-/* Awakened branding — blasts in with chromatic flare as the oracle rises */
+/* Awakened branding — blasts in with chromatic flare as the oracle rises.
+   Runs on its OWN independent layer — NOT tied to avatar motion.
+   The subtitle trails from the right edge behind the oracle. */
 .oracle-stage[data-oracle-state="awakened"] .oracle-branding {
-  animation: branding-blast-in 0.75s ease-out both;
+  animation: branding-blast-in 2.0s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.30s;
 }
 
-/* During knife selection (awakened state), keep subtitle readable but secondary */
+/* Subtitle trails in from far right like graff tag spray behind oracle */
 .oracle-stage[data-oracle-state="awakened"] .oracle-subtitle {
-  opacity: 0.72;
-  transition: opacity 0.4s ease;
+  animation: sub-trail-in 1.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.80s;
+  opacity: 0;
 }
 
 /* ── Center / Cabinet ─────────────────────────────────────────────────── */
@@ -1804,22 +1808,54 @@
   100% { opacity: 0.62; filter: brightness(0.65) grayscale(0.35) contrast(1.25); }
 }
 
-/* Branding blast — chromatic warp resolves as the oracle title appears */
+/* Branding blast — dawning light erupting from rift behind the oracle.
+   Epic vertical + horizontal warp as the entity descends. */
 @keyframes branding-blast-in {
   0% {
-    filter: brightness(3.5) blur(8px) saturate(2);
+    filter: brightness(4) blur(14px) saturate(2.5);
     opacity: 0;
-    transform: translateX(-50%) scaleX(1.06);
+    transform: translateX(-50%) translateY(-40px) scaleY(1.18) scaleX(1.12);
   }
-  28% {
-    filter: brightness(2.2) blur(3px) saturate(1.6);
+  22% {
+    filter: brightness(2.8) blur(7px) saturate(1.8);
     opacity: 1;
-    transform: translateX(-50%) scaleX(1.02);
+    transform: translateX(-50%) translateY(-12px) scaleY(1.06) scaleX(1.05);
+  }
+  55% {
+    filter: brightness(1.4) blur(2px) saturate(1.2);
+    opacity: 1;
+    transform: translateX(-50%) translateY(-3px) scaleY(1.01) scaleX(1.01);
   }
   100% {
     filter: brightness(1) blur(0) saturate(1);
     opacity: 1;
-    transform: translateX(-50%) scaleX(1);
+    transform: translateX(-50%) translateY(0) scaleY(1) scaleX(1);
+  }
+}
+
+/* Subtitle trail-in — SNEAKAR XR ANTHROPOLOGY graff-tags in from the right.
+   Like a wind-blown tag that latches onto the branding column.
+   Trails the avatar entrance to land just behind the descended oracle. */
+@keyframes sub-trail-in {
+  0% {
+    opacity: 0;
+    transform: translateX(55vw) scaleX(1.10);
+    filter: blur(8px) brightness(2.8) saturate(1.6);
+  }
+  38% {
+    opacity: 0.80;
+    transform: translateX(38vw) scaleX(1.04);
+    filter: blur(4px) brightness(1.8) saturate(1.2);
+  }
+  65% {
+    opacity: 1;
+    transform: translateX(15vw) scaleX(1.01);
+    filter: blur(2px) brightness(1.3) saturate(1.0);
+  }
+  100% {
+    opacity: 0.85;
+    transform: translateX(0) scaleX(1);
+    filter: blur(0) brightness(1) saturate(1);
   }
 }
 
@@ -2503,7 +2539,7 @@
 }
 
 .oracle-stage[data-xr-mode="true"][data-oracle-state="oracle"] .oracle-avatar-wrapper {
-  width: clamp(300px, 90vw, 560px);
+  width: clamp(280px, 84vw, 520px);
 }
 
 /* ── Oracle center: repositioned for full-bleed hologram feel ────────────── */

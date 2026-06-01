@@ -52,7 +52,7 @@ export function useOracleConnection({
     if (isFirstChunkRef.current) {
       playOraclePresence();
       isFirstChunkRef.current = false;
-      player.setVolume(1.4, 240);
+      player.setVolume(1.68, 240);
     }
 
     let pcmData: Int16Array | null   = data instanceof Int16Array ? data : null;
@@ -86,6 +86,10 @@ export function useOracleConnection({
     pcmPlayerRef.current = null;
   }, []);
 
+  const boostMicVolume = useCallback((multiplier: number) => {
+    pcmPlayerRef.current?.boostVolume(multiplier, 50);
+  }, []);
+
   const value = useMemo(() => ({
     error,
     pcmPlayer: pcmPlayerRef.current,
@@ -95,10 +99,11 @@ export function useOracleConnection({
     resetFirstChunk,
     cleanup,
     setError,
+    boostMicVolume,
   }), [
     error,
     initializePCMPlayer, initializeOracle,
-    handleOracleResponse, resetFirstChunk, cleanup,
+    handleOracleResponse, resetFirstChunk, cleanup, boostMicVolume,
   ]);
 
   return value;

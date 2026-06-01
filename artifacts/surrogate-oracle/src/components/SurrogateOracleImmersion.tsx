@@ -154,6 +154,9 @@ export function SurrogateOracleImmersion() {
   const radioGainRef             = useRef<GainNode | null>(null);
   const [targetVol, setTargetVol] = useState(0.04); // start quiet — radio is atmospheric, not dominant
 
+  // ── Hamburger menu ──────────────────────────────────────────────────────────
+  const [hamburgerOpen, setHamburgerOpen] = useState(false);
+
   // ── Radio stations ───────────────────────────────────────────────────────────
   const [currentStation, setCurrentStation] = useState(0);
   const switchStation = useCallback((idx: number) => {
@@ -390,33 +393,51 @@ export function SurrogateOracleImmersion() {
   // rampMs: optional override. Defaults: 80ms duck, 1500ms rise (imperceptible).
   const fadeToVolume = useCallback((target: number, rampMs?: number) => {
     setTargetVol(target);
-    const safeTarget = Math.max(0.0001, target);
+    const safeTarget = Math.max(0, target);
 
-    // ALWAYS set element volume directly — works even if GainNode/CORS failed
-    if (audioRef.current) {
-      audioRef.current.volume = Math.min(1, Math.max(0, safeTarget));
+console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.current);
+
+    // Volume is controlled via GainNode only — HTMLAudioElement.volume is NOT used.
+    // iOS resets audio element volume when audio session changes (e.g., on getUserMedia).
+
+    if (!radioGainRef.current) {
+      console.log('[fadeToVolume] EARLY RETURN - no gain node!');
+      return;
     }
 
-    // GainNode path for smooth ramping when available
-    if (radioGainRef.current) {
-      const gain = radioGainRef.current;
-      const ctx  = getAudioContext();
-      const now  = ctx.currentTime;
-      const isDucking = target < (gain.gain.value ?? 0);
+    const gain = radioGainRef.current;
+    const ctx  = getAudioContext();
+    const now  = ctx.currentTime;
+    const currentGain = gain.gain.value ?? 0;
+    const isDucking = target < currentGain;
+    const isInstant = target < 0.002;
+    const ms = rampMs ?? (isDucking ? (isInstant ? 10 : 80) : 1500);
 
-      gain.gain.cancelScheduledValues(now);
-      gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), now);
+    console.log(`[fadeToVolume] currentGain=${currentGain}, target=${target}, isDucking=${isDucking}, isInstant=${isInstant}`);
+    logStep(`FADE_TO_VOL ${safeTarget.toFixed(4)} (${ms}ms, duck=${isDucking}, instant=${isInstant})`, 'ok');
 
-      if (target < 0.002) {
-        // INSTANT duck — 10ms linear ramp (imperceptible, prevents click)
-        gain.gain.linearRampToValueAtTime(0.0001, now + 0.01);
+    // AGGRESSIVE MUTE: cancel ALL scheduled values and set immediately
+    gain.gain.cancelScheduledValues(now);
+
+    if (target === 0) {
+      // Full mute: set to 0 NOW, no ramp
+      gain.gain.setValueAtTime(0, now);
+    } else if (isInstant) {
+      gain.gain.setValueAtTime(safeTarget, now);
+    } else {
+      gain.gain.setValueAtTime(gain.gain.value, now);
+      gain.gain.exponentialRampToValueAtTime(safeTarget, now + ms / 1000);
+    }
+
+    // ALSO pause the audio element directly as backup for iOS
+    if (audioRef.current) {
+      if (target === 0) {
+        audioRef.current.pause();
+        console.log('[fadeToVolume] PAUSED audio element');
       } else {
-        const ms = rampMs ?? (isDucking ? 80 : 1500);
-        gain.gain.exponentialRampToValueAtTime(safeTarget, now + ms / 1000);
+        audioRef.current.play().catch(() => {});
       }
     }
-    // Never toggle .muted via this path — toggling causes an audible click
-    // when the element reconnects to the GainNode. GainNode handles silence.
   }, []);
 
   // ── Tab visibility protection ────────────────────────────────────────────
@@ -443,27 +464,25 @@ export function SurrogateOracleImmersion() {
   //   Oracle speaking     → 0.0001 (instant silence, 50ms cut)
   //
   // Once oracle phase begins the radio never rises above 0.004 again.
-  // When Oracle finishes a turn radio stays at 0.004, not creeping back up.
-  const SESSION_AMBIENT = 0.004;
+  // Music volume philosophy:
+// - Music ON (20%) during dormant/awakened — mic auth, motion auth don't affect it
+// - Music OFF (0%) when Oracle speaks — stays off until resetJourney()
+// - resetJourney() returns to dormant → music back to 20%
+  const MUSIC_ON_VOLUME = 0.20;
+  const MUSIC_OFF_VOLUME = 0;
 
   useEffect(() => {
-    if (isOracleSpeaking && !oracleHasSpokenRef.current) {
-      oracleHasSpokenRef.current = true;
-    }
-
     let nextTarget: number;
 
     if (isOracleSpeaking) {
-      // Oracle voice active → radio near silent instantly
-      nextTarget = 0.001;
-    } else if (scenePhase === 'oracle') {
-      // Oracle phase: locked at SESSION_AMBIENT once spoken, 0.055 pre-first-speech
-      nextTarget = oracleHasSpokenRef.current ? SESSION_AMBIENT : 0.055;
-    } else if (scenePhase === 'awakened') {
-      // Awakened but not yet oracle — pre-first-speech ambience
-      nextTarget = 0.055;
+      // Oracle is speaking — kill music completely
+      nextTarget = MUSIC_OFF_VOLUME;
+    } else if (scenePhase === 'dormant' || scenePhase === 'awakened') {
+      // Music stays ON at 20% through mic auth, motion auth, until Oracle speaks
+      nextTarget = MUSIC_ON_VOLUME;
     } else {
-      nextTarget = 0.06; // dormant / terminal — full ambient
+      // scenePhase === 'oracle' but Oracle not speaking — keep music off
+      nextTarget = MUSIC_OFF_VOLUME;
     }
 
     if (Math.abs(nextTarget - targetVol) > 0.0001) {
@@ -795,6 +814,7 @@ export function SurrogateOracleImmersion() {
                     scale: 1.06,
                     x: 260,
                     filter: 'blur(12px) brightness(4) saturate(0) hue-rotate(60deg)',
+                    boxShadow: '0 0 0px rgba(0,255,136,0)',
                   }}
                   animate={{
                     opacity:  [0, 0,    0.15, 0.55, 0.85,  1],
@@ -808,13 +828,21 @@ export function SurrogateOracleImmersion() {
                       'blur(1px)   brightness(1.4) saturate(0.85) hue-rotate(5deg)',
                       'blur(0px)   brightness(1.0) saturate(1.0) hue-rotate(0deg)',
                     ],
+                    boxShadow: [
+                      '0 0 80px  rgba(0,255,136,0.0)',
+                      '0 0 80px  rgba(0,255,136,0.0)',
+                      '0 0 60px  rgba(0,255,136,0.5)',
+                      '0 0 40px  rgba(0,255,136,0.7)',
+                      '0 0 20px  rgba(0,255,136,0.9)',
+                      '0 0 8px   rgba(0,255,136,0.3)',
+                    ],
                   }}
                   transition={{
                     duration: 12.0,
                     ease: [0.22, 1, 0.36, 1],
                     times: [0, 0.10, 0.28, 0.50, 0.75, 1],
                   }}
-                  style={{ zIndex: 3, position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                  style={{ zIndex: 3, position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}
                 >
                   {/* ── PRIMARY: Three.js GLB Avatar ── */}
                   <div
@@ -1134,6 +1162,11 @@ export function SurrogateOracleImmersion() {
           onConnected={() => setIsGeminiConnected(true)}
           onDisconnected={() => setIsGeminiConnected(false)}
           onListeningChange={setIsMicActive}
+          onMicWillStart={() => {
+            console.log('[onMicWillStart] muting music!');
+            // Mute music completely when mic is activated
+            fadeToVolume(0, 50);
+          }}
           isVisible={isOracleMode}
           autoStart={false}
           onBargeIn={() => connection.pcmPlayer?.stop()}
@@ -1162,16 +1195,141 @@ export function SurrogateOracleImmersion() {
       )}
 
       {isOracleMode && (
-        <>
-          <button className="oracle-exit-btn" onClick={() => { navigator.vibrate?.([80, 60, 80]); exitOracleMode(); }}><X size={20} /><span>EXIT</span></button>
+        <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 100 }}>
           <button
-            className="oracle-exit-btn"
-            style={{ bottom: '2rem', top: 'auto', background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)' }}
-            onClick={() => { if (confirm('Reset journey to dormant? All state will be cleared.')) resetJourney(); }}
+            onClick={() => setHamburgerOpen(!hamburgerOpen)}
+            style={{
+              background: 'rgba(0,0,0,0.6)',
+              border: '1px solid rgba(0,255,136,0.4)',
+              borderRadius: '8px',
+              color: '#00ff88',
+              padding: '8px 12px',
+              cursor: 'pointer',
+              width: '44px',
+              height: '44px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '5px',
+            }}
           >
-            <span style={{ fontSize: '0.7rem', letterSpacing: '0.1em' }}>RESET JOURNEY</span>
+            {hamburgerOpen ? (
+              <span style={{ color: '#00ff88', fontSize: '1.2rem', fontWeight: 'bold' }}>✕</span>
+            ) : (
+              <>
+                <span style={{
+                  display: 'block',
+                  width: '22px',
+                  height: '2px',
+                  background: 'linear-gradient(90deg, #00ff88, #00ffcc)',
+                  borderRadius: '1px',
+                }} />
+                <span style={{
+                  display: 'block',
+                  width: '22px',
+                  height: '2px',
+                  background: 'linear-gradient(90deg, #00ffcc, #b026ff)',
+                  borderRadius: '1px',
+                }} />
+                <span style={{
+                  display: 'block',
+                  width: '22px',
+                  height: '2px',
+                  background: 'linear-gradient(90deg, #b026ff, #00ff88)',
+                  borderRadius: '1px',
+                }} />
+              </>
+            )}
           </button>
-        </>
+          {hamburgerOpen && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              right: 0,
+              marginTop: '8px',
+              background: 'rgba(0,0,0,0.9)',
+              border: '1px solid rgba(0,255,136,0.3)',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              minWidth: '160px',
+            }}>
+              <button
+                onClick={() => { exitOracleMode(); setHamburgerOpen(false); }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '12px 16px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#00ff88',
+                  fontSize: '0.85rem',
+                  letterSpacing: '0.1em',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                EXIT
+              </button>
+              <button
+                onClick={() => { if (confirm('Reset journey to dormant?')) { resetJourney(); setHamburgerOpen(false); } }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '12px 16px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderTop: '1px solid rgba(0,255,136,0.2)',
+                  color: '#00ffcc',
+                  fontSize: '0.85rem',
+                  letterSpacing: '0.1em',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                RESET JOURNEY
+              </button>
+              {isXRMode && (
+                <button
+                  onClick={() => { cameraActive ? deactivateCamera() : activateCamera(); }}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '12px 16px',
+                    background: 'transparent',
+                    border: 'none',
+                    borderTop: '1px solid rgba(0,255,136,0.2)',
+                    color: cameraActive ? '#b026ff' : '#00ffcc',
+                    fontSize: '0.85rem',
+                    letterSpacing: '0.1em',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  {cameraActive ? '◈ ALLEY' : '◈ AR'}
+                </button>
+              )}
+              <button
+                onClick={() => { oracleConversationRef.current?.toggleTypeMode(); setHamburgerOpen(false); }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '12px 16px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderTop: '1px solid rgba(0,255,136,0.2)',
+                  color: '#00ff88',
+                  fontSize: '0.85rem',
+                  letterSpacing: '0.1em',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                TYPE MODE
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Exit ceremony — alignment-aware farewell ── */}
@@ -1281,17 +1439,6 @@ export function SurrogateOracleImmersion() {
 
       {/* ── Depth frame ── */}
       <div className="oracle-depth-frame" aria-hidden="true" />
-
-      {/* ── XR toggle ── */}
-      {isXRMode && (scenePhase === 'awakened' || scenePhase === 'oracle') && (
-        <button
-          className={`oracle-xr-toggle${cameraActive ? ' oracle-xr-toggle--active' : ''}`}
-          onClick={() => cameraActive ? deactivateCamera() : activateCamera()}
-          style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 100 }}
-        >
-          {cameraActive ? '◈ ALLEY' : '◈ AR'}
-        </button>
-      )}
 
       {/* ── Return visitor wallet overlay ── */}
       <AnimatePresence>

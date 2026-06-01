@@ -19,10 +19,10 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { VisemeState } from '../lib/visemeDetector';
 
-// Strip arm/shoulder/hand/finger tracks from an RPM talking clip so only
-// spine/torso sway survives. Face morphs stay under our own useFrame code;
-// arms should NOT gesture autonomously with the talking emote.
-const ARM_TRACK_RE = /\.(LeftShoulder|RightShoulder|LeftArm|RightArm|LeftForeArm|RightForeArm|LeftHand|RightHand)\./i;
+// Strip arm/shoulder/hand/finger tracks from any GLB clip so only
+// spine/torso sway survives. Face morphs + our own useFrame code
+// handle lips/head; arms must NEVER fight that system.
+const ARM_TRACK_RE = /\.(LeftShoulder|RightShoulder|LeftArm|RightArm|LeftForeArm|RightForeArm|LeftHand|RightHand|LeftFinger|RightFinger)\d*/i;
 const FINGER_TRACK_RE = /\.(Left|Right)(Index|Middle|Ring|Pinky|Thumb)\d*/i;
 
 function stripArmTracks(clip: THREE.AnimationClip): THREE.AnimationClip {
@@ -177,10 +177,11 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
   // Arms must NOT gesture in sync with speech; face morph targets handle that.
   const armFreeT1 = useMemo(() => talking1Clips.map(stripArmTracks), [talking1Clips]);
   const armFreeT2 = useMemo(() => talking2Clips.map(stripArmTracks), [talking2Clips]);
+  const armFreeIdle = useMemo(() => idleClips.map(stripArmTracks), [idleClips]);
 
   // Animation mixer — driven by speaking state
   const { actions, mixer } = useAnimations(
-    [...idleClips, ...armFreeT1, ...armFreeT2],
+    [...armFreeIdle, ...armFreeT1, ...armFreeT2],
     groupRef,
   );
   const talkingActionRef = useRef<THREE.AnimationAction | null>(null);

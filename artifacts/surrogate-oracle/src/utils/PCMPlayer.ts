@@ -119,6 +119,15 @@ export class PCMPlayer {
     this.masterGain.gain.exponentialRampToValueAtTime(safeTarget, now + rampMs / 1000);
   }
 
+  public boostVolume(multiplier: number, rampMs: number = 50) {
+    if (!this.masterGain) return;
+    const now = this.context.currentTime;
+    const newTarget = this.masterGain.gain.value * multiplier;
+    this.masterGain.gain.cancelScheduledValues(now);
+    this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+    this.masterGain.gain.exponentialRampToValueAtTime(newTarget, now + rampMs / 1000);
+  }
+
   public getAnalyser(): AnalyserNode {
     return this.analyser;
   }

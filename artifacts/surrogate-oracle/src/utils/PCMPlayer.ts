@@ -23,6 +23,7 @@ export class PCMPlayer {
   private panner: PannerNode | null = null;
   private masterGain: GainNode | null = null;
   private analyser: AnalyserNode;
+  private transmissionFilter: BiquadFilterNode | null = null;
 
   constructor(sampleRate: number = 24000, playbackRate: number = 1.0, existingContext?: AudioContext) {
     this.sampleRate = sampleRate;
@@ -33,6 +34,19 @@ export class PCMPlayer {
 
     this.analyser = this.context.createAnalyser();
     this.analyser.fftSize = 1024;
+
+    // ── Transmission filter — sci-fi tunnel voice for knife phase
+    // Starts transparent (Q≈0). setTransmissionQ(12) narrows to radio-tunnel;
+    // sweeping Q back to 0.1 opens to full presence as the question lands.
+    try {
+      const f = this.context.createBiquadFilter();
+      f.type = 'bandpass';
+      f.frequency.setValueAtTime(1200, this.context.currentTime);
+      f.Q.setValueAtTime(0.1, this.context.currentTime); // transparent by default
+      this.transmissionFilter = f;
+    } catch {
+      this.transmissionFilter = null;
+    }
 
     // ── Master Gain — volume control for the Oracle voice
     try {
@@ -85,10 +99,15 @@ export class PCMPlayer {
         console.error('[PCMPlayer] AudioWorklet Processor Error:', err);
       };
 
-      // Chain: worklet → analyser → panner/masterGain
-      // Note: DynamicsCompressor removed — caused digital static at 24kHz
-      // AudioContext. Oracle presence is managed via masterGain level instead.
-      this.workletNode.connect(this.analyser);
+      // Chain: worklet → transmissionFilter → analyser → panner/masterGain
+      // transmissionFilter Q≈0.1 is transparent; setTransmissionQ(12) narrows
+      // to sci-fi tunnel voice for knife-phase question voice-overs.
+      if (this.transmissionFilter) {
+        this.workletNode.connect(this.transmissionFilter);
+        this.transmissionFilter.connect(this.analyser);
+      } else {
+        this.workletNode.connect(this.analyser);
+      }
 
       if (this.panner) {
         this.analyser.connect(this.panner);
@@ -130,6 +149,20 @@ export class PCMPlayer {
 
   public getAnalyser(): AnalyserNode {
     return this.analyser;
+  }
+
+  /** Narrow (Q=12) → sci-fi tunnel; open (Q=0.1) → full presence. rampMs=0 = instant. */
+  public setTransmissionQ(q: number, rampMs: number = 0): void {
+    if (!this.transmissionFilter) return;
+    const now = this.context.currentTime;
+    const safeQ = Math.max(0.1, q);
+    this.transmissionFilter.Q.cancelScheduledValues(now);
+    this.transmissionFilter.Q.setValueAtTime(this.transmissionFilter.Q.value, now);
+    if (rampMs <= 0) {
+      this.transmissionFilter.Q.setValueAtTime(safeQ, now);
+    } else {
+      this.transmissionFilter.Q.linearRampToValueAtTime(safeQ, now + rampMs / 1000);
+    }
   }
 
   public async feed(data: Int16Array) {

@@ -174,9 +174,11 @@ interface KnifeSelectionProps {
   isGeminiConnected: boolean;
   selectedKnifeIndex: number | null;
   onSelect: (question: string, index: number) => void;
+  onSpeakQuestion?: (question: string) => void;
+  onQuestionProgress?: (charCount: number, total: number) => void;
 }
 
-export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect }: KnifeSelectionProps) {
+export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect, onSpeakQuestion, onQuestionProgress }: KnifeSelectionProps) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [isEmitting, setIsEmitting] = useState(false);
   const [landedChars, setLandedChars] = useState(0);
@@ -201,10 +203,13 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
     if (landingTimerRef.current) clearInterval(landingTimerRef.current);
 
     const startDelay = setTimeout(() => {
+      // Fire voice-over at question start — Oracle transmits from afar as text forms
+      onSpeakQuestion?.(question);
       let count = 0;
       landingTimerRef.current = setInterval(() => {
         count++;
         setLandedChars(count);
+        onQuestionProgress?.(count, question.length);
         if (count >= question.length) {
           clearInterval(landingTimerRef.current!);
           landingTimerRef.current = null;

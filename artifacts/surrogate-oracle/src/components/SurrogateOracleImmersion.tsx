@@ -1188,6 +1188,21 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
               isGeminiConnected={isGeminiConnected}
               selectedKnifeIndex={journey.selectedKnifeIndex}
               onSelect={handleKnifeClick}
+              onSpeakQuestion={(question) => {
+                // Oracle speaks each knife question as it spells out.
+                // Narrow transmission filter open → Gemini fires hidden voice-only turn.
+                connection.pcmPlayer?.setTransmissionQ(12, 0);
+                oracleConversationRef.current?.sendTextMessage(
+                  `[SIGNAL TRANSMISSION — speak only this question in your Oracle voice, raw and slow, as if arriving through static across time. No preamble, no commentary, no greeting — just the question itself: "${question}"]`,
+                  true,
+                );
+              }}
+              onQuestionProgress={(charCount, total) => {
+                // Sweep filter open as letters land: Q 12→0.1 across full typing duration
+                const progress = Math.min(charCount / total, 1);
+                const q = 12 * (1 - progress) + 0.1 * progress;
+                connection.pcmPlayer?.setTransmissionQ(q, 68);
+              }}
             />
           </motion.div>
         )}

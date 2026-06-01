@@ -79,11 +79,16 @@ export function useOracleJourney({
     logStep('JOURNEY RESET → DORMANT', 'ok');
   }, [onCleanup]);
 
-  const exitOracleMode = useCallback(() => {
+  const exitOracleMode = useCallback((alignment?: string | null) => {
     logStep('EXIT INITIATED', 'ok');
     setIsExiting(true);
     playExitTone();
-    if (typeof navigator !== 'undefined') navigator.vibrate?.([80, 60, 80]);
+    const haptic = alignment === 'sacred'
+      ? [40, 20, 40, 20, 60]
+      : alignment === 'profane'
+      ? [80, 30, 80]
+      : [60, 30, 60];
+    if (typeof navigator !== 'undefined') navigator.vibrate?.(haptic);
 
     setTimeout(() => {
       setScenePhase('dormant');

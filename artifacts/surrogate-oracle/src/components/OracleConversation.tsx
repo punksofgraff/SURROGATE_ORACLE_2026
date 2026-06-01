@@ -301,6 +301,28 @@ const OracleConversation = forwardRef(
     const onMicWillStartRef = useRef(onMicWillStart);
     useEffect(() => { onMicWillStartRef.current = onMicWillStart; }, [onMicWillStart]);
 
+    // VAD ring — updated via rAF, no React re-renders
+    const vadScoreRef = useRef<number>(0);
+    const micRingRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      let rafId: number;
+      const tick = () => {
+        if (micRingRef.current) {
+          const score = isListeningRef.current ? vadScoreRef.current : 0;
+          if (score > 0.01) {
+            const glow = 6 + score * 28;
+            const alpha = (0.25 + score * 0.75).toFixed(2);
+            micRingRef.current.style.boxShadow = `0 0 ${glow}px rgba(0,255,136,${alpha}), 0 0 ${glow * 2}px rgba(0,255,136,${(score * 0.3).toFixed(2)})`;
+          } else {
+            micRingRef.current.style.boxShadow = '';
+          }
+        }
+        rafId = requestAnimationFrame(tick);
+      };
+      rafId = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(rafId);
+    }, []);
+
     const onCoinsEarnedRef = useRef(onCoinsEarned);
     useEffect(() => { onCoinsEarnedRef.current = onCoinsEarned; }, [onCoinsEarned]);
 
@@ -467,6 +489,7 @@ const OracleConversation = forwardRef(
             if (msg.usageMetadata?.totalTokenCount) debugInfo.current.lastTokenCount = msg.usageMetadata.totalTokenCount;
             if (msg.serverContent?.interrupted) {
               logStep('ORACLE INTERRUPTED (barge-in)', 'warn');
+              navigator.vibrate?.([20, 10, 20]);
               setOracleSpeaking(false);
               setIsOracleThinking(false);
               if (fillerTimerRef.current) { clearTimeout(fillerTimerRef.current); fillerTimerRef.current = null; }
@@ -505,6 +528,7 @@ const OracleConversation = forwardRef(
 
             if (msg.serverContent?.turnComplete) {
               logStep('ORACLE TURN COMPLETE', 'ok');
+              navigator.vibrate?.([30]);
               setIsOracleThinking(false); // ensure cleared even on text-only turns
               debugInfo.current.turnCount++;
               debugInfo.current.audioChunksReceived = 0; // reset for next turn
@@ -532,6 +556,16 @@ const OracleConversation = forwardRef(
 
                 // Dispatch cultural alignment for Atmosphere shifts
                 window.dispatchEvent(new CustomEvent('oracle:alignment', { detail: { alignment: score.alignment } }));
+
+                // Dispatch full score for Oracle HUD — carries live session phase + totem
+                window.dispatchEvent(new CustomEvent('oracle:score', {
+                  detail: {
+                    sessionPhase: score.sessionPhase,
+                    totemLevel: score.totemLevel,
+                    archetypeTitle: score.archetypeTitle,
+                    emotionalWeight: score.emotionalWeight,
+                  }
+                }));
 
                 // Totem ascent world event — Oracle acknowledges the threshold in voice
                 if (score.totemAdvancement === 'ascend') {
@@ -707,6 +741,7 @@ const OracleConversation = forwardRef(
           const chunk: VADFrame = { data: base64, mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}` };
 
           const result = vadRef.current.processFrame(resampled, chunk);
+          vadScoreRef.current = result.vadScore;
           onUserSpeakingChangeRef.current?.(result.isSpeaking, result.vadScore);
 
           // Contemplative filler: when Seeker's turn ends, show "thinking" state
@@ -742,6 +777,7 @@ const OracleConversation = forwardRef(
 
           // Flush pre-roll on speech onset so leading consonants aren't clipped.
           if (result.isOnsetStart) {
+            navigator.vibrate?.([15]);
             vadRef.current.flushPreRoll().forEach(frame => {
               if (frame.data) wsRef.current!.send(JSON.stringify({
                 type: 'client.realtimeInput',
@@ -880,6 +916,8 @@ const OracleConversation = forwardRef(
 
         {/* Mic trigger — always visible in oracle mode, audio-only by default */}
         <div className="oc-hero">
+          <div className="oc-mic-wrap">
+            <div className="oc-mic-vad-ring" ref={micRingRef} />
           <motion.button
             onClick={(e) => {
               e.stopPropagation();
@@ -899,6 +937,7 @@ const OracleConversation = forwardRef(
               {isListening ? 'TRANSMITTING' : 'OPEN FREQUENCY'}
             </div>
           </motion.button>
+          </div>
 
           {isOracleSpeaking && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="oc-status-pill">

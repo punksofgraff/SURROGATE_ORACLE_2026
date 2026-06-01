@@ -469,7 +469,8 @@
   position: relative;
 }
 
-.oracle-stage[data-oracle-state="awakened"] .oracle-subtitle {
+.oracle-stage[data-oracle-state="awakened"] .oracle-subtitle,
+.oracle-stage[data-oracle-state="oracle"] .oracle-subtitle {
   animation: sub-glitch 5s infinite;
 }
 
@@ -1011,6 +1012,81 @@
   transition: opacity 0.8s ease-out;
 }
 
+/* ── Oracle HUD — live score overlay (oracle phase only) ───────────────────
+   Mirrors DormantHUD's 4-corner layout but subtler — present without intruding.
+   Data flows in via CustomEvents (oracle:score, oracle:alignment, etc.).      */
+.oracle-oracle-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  font-size: clamp(7px, 1.05vw, 9px);
+  color: rgba(0, 255, 136, 0.18);
+  letter-spacing: 0.10em;
+  line-height: 1.5;
+  opacity: 0;
+  transition: opacity 1.4s ease-in;
+}
+
+/* Fade in once oracle phase is active (mounted only in oracle phase) */
+.oracle-stage[data-oracle-state="oracle"] .oracle-oracle-hud {
+  opacity: 1;
+}
+
+.oracle-oracle-hud--glitch {
+  filter: hue-rotate(20deg) brightness(1.5);
+  opacity: 0.4 !important;
+}
+
+.oracle-oracle-hud__corner {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+}
+.oracle-oracle-hud__corner--tl { top: 8px;   left: 8px;   align-items: flex-start; }
+.oracle-oracle-hud__corner--tr { top: 8px;   right: 8px;  align-items: flex-end; text-align: right; }
+.oracle-oracle-hud__corner--bl { bottom: 96px; left: 8px;   align-items: flex-start; }
+.oracle-oracle-hud__corner--br { bottom: 96px; right: 8px;  align-items: flex-end; text-align: right; }
+
+.oracle-oracle-hud__bracket {
+  color: rgba(0, 255, 136, 0.25);
+  font-size: 1.2em;
+  line-height: 1;
+}
+
+.oracle-oracle-hud__line {
+  opacity: 0.85;
+  white-space: nowrap;
+  color: rgba(0, 255, 136, 0.55);
+}
+
+.oracle-oracle-hud__title {
+  color: rgba(255, 255, 255, 0.55);
+  font-family: 'aAnotherTag', monospace;
+  font-size: 1.15em;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+
+.oracle-oracle-hud__dim {
+  opacity: 0.35;
+  white-space: nowrap;
+}
+
+.oracle-oracle-hud__totem {
+  color: rgba(0, 255, 136, 0.45);
+  letter-spacing: 0.06em;
+  font-size: 0.95em;
+  white-space: nowrap;
+}
+
+.oracle-oracle-hud__line--blink {
+  animation: hud-blink 3.2s ease-in-out infinite;
+}
+
 .oracle-mouth-overlay {
   position: absolute;
   left: 50%;
@@ -1249,14 +1325,18 @@
 
 /* ORACLE — branding title lingers as a ghost, then fades to omit (Cheshire Cat effect). */
 .oracle-stage[data-oracle-state="oracle"] .oracle-branding {
-  animation: branding-cheshire-cat 8.0s ease-out forwards;
+  /* 16s — the Oracle arrives and the title ghosts alongside them, then dissolves */
+  animation: branding-cheshire-cat 16s ease-out forwards;
 }
 
 @keyframes branding-cheshire-cat {
+  /* Oracle lands — title stays present, breathing with the scene */
   0%   { opacity: 0.65; }
-  30%  { opacity: 0.18; } /* Linger */
-  80%  { opacity: 0.12; }
-  100% { opacity: 0;    } /* Omit */
+  18%  { opacity: 0.60; }  /* lingers, fully readable */
+  42%  { opacity: 0.42; }  /* begins its slow retreat */
+  68%  { opacity: 0.18; }  /* ghost — barely visible */
+  88%  { opacity: 0.06; }  /* just the memory */
+  100% { opacity: 0;    }  /* the grin fades last */
 }
 
 /* ── Keyframes ─────────────────────────────────────────────────────────── */
@@ -2925,9 +3005,10 @@
   text-align: center;
   margin-bottom: 6px;
   text-shadow:
-    0 0 12px rgba(0,255,136,0.70),
-    -2px 0 0 rgba(0,255,136,0.35),
-     2px 0 0 rgba(0,220,255,0.25);
+    0 0 18px rgba(0,255,136,0.80),
+    0 0 40px rgba(0,255,136,0.30),
+    -2px 0 0 rgba(0,255,136,0.30),
+     2px 0 0 rgba(176,38,255,0.20);
 }
 
 .oracle-knife-subheader {
@@ -2956,133 +3037,260 @@
   50%       { opacity: 0.70; }
 }
 
-/* ── Knife horizontal scroller ───────────────────────────────────────── */
-.oracle-knife-scroll-container {
-  width: 100vw;
-  margin-left: calc(-50vw + 50%);
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 24px 0 36px;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-}
+/* ══════════════════════════════════════════════════════════════════════════
+   KNIFE SELECTION — ascending from the arcade terminal
+   One territory at a time. Holographic glass panel rises from below.
+   The alley shows through. The gradient IS the brand.
+   ══════════════════════════════════════════════════════════════════════════ */
 
-.oracle-knife-scroll-container::-webkit-scrollbar { display: none; }
-
-.oracle-knife-cards {
-  display: flex;
-  flex-direction: row;
-  gap: 14px;
-  padding: 0 max(20px, calc((100vw - 300px) / 2));
-  min-width: min-content;
-}
-
-.oracle-knife-card {
-  width: 300px;
-  flex-shrink: 0;
-  scroll-snap-align: center;
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 8px;
-  padding: 22px 22px 18px;
-  cursor: pointer;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  overflow: hidden;
-  transition: background 0.3s ease, border-color 0.3s ease;
-}
-
-.oracle-knife-card:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.oracle-knife-card--selected {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: var(--accent-color, #00ff88);
-  box-shadow: 0 0 28px color-mix(in srgb, var(--accent-color, #00ff88) 30%, transparent);
-}
-
-.oracle-knife-card-top {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.oracle-knife-card-question {
-  font-family: 'PhillySans', 'Share Tech Mono', monospace;
-  font-size: clamp(0.82rem, 2.2vw, 0.94rem);
-  color: rgba(255, 255, 255, 0.72);
-  line-height: 1.55;
-  letter-spacing: 0.03em;
-  flex: 1;
-}
-
-.oracle-knife-card--selected .oracle-knife-card-question {
-  color: rgba(255, 255, 255, 0.92);
-}
-
-/* Accent bar at bottom of card */
-.oracle-knife-card-accent {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  opacity: 0.5;
-  transition: opacity 0.3s ease;
-}
-
-.oracle-knife-card:hover .oracle-knife-card-accent,
-.oracle-knife-card--selected .oracle-knife-card-accent {
-  opacity: 1;
-}
-
-/* ── oracle-knife-section — NOT a modal. Rises from the bottom of the world.
-   The alley and oracle face remain visible above it. The frequency choice
-   emerges from the scene itself, not from a UI overlay.
-   ════════════════════════════════════════════════════════════════════════ */
+/* ── Section: fills the lower half of the alley ─────────────────────── */
 .oracle-knife-section {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
+  height: 72vh;
   z-index: var(--z-oracle);
-  background: linear-gradient(
-    to top,
-    rgba(0, 0, 8, 0.97) 0%,
-    rgba(0, 0, 8, 0.85) 55%,
-    rgba(0, 0, 8, 0.60) 80%,
-    transparent 100%
-  );
-  padding: 28px 20px 44px;
+  background: transparent;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
-  gap: 0;
+  justify-content: flex-start;
+  padding: 0 20px 90px;
   pointer-events: none;
+  gap: 0;
 }
 
 .oracle-knife-section > * {
   pointer-events: auto;
 }
 
-/* Territory label — sits beside icon in card-top */
+/* ── Card stage — the materialization zone ──────────────────────────── */
+.oracle-knife-stage {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* Origin beam — connects card stage to Oracle screen above.
+   Points UPWARD. The Oracle is the source, the card is what breaks through. */
+.oracle-knife-origin-beam {
+  position: absolute;
+  top: -44px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 56px;
+  background: linear-gradient(to top, rgba(0,255,136,0.45), rgba(0,255,136,0.85), transparent);
+  filter: blur(1.5px);
+  pointer-events: none;
+  opacity: 0.35;
+  transition: opacity 0.12s ease, filter 0.12s ease;
+}
+.oracle-knife-origin-beam--active {
+  opacity: 1;
+  filter: blur(1px) brightness(1.8);
+}
+
+/* Emission radial glow — Oracle screen flares when it transmits */
+.oracle-knife-section::before {
+  content: '';
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%) scaleY(0);
+  width: 320px;
+  height: 200px;
+  background: radial-gradient(
+    ellipse 55% 65% at 50% 0%,
+    rgba(0, 255, 136, 0.30) 0%,
+    rgba(176, 38, 255, 0.07) 55%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: none;
+}
+.oracle-knife-section[data-emitting="true"]::before {
+  animation: knife-emit-flash 0.72s ease-out forwards;
+}
+
+@keyframes knife-emit-flash {
+  0%   { opacity: 0; transform: translateX(-50%) scaleY(0.2); }
+  18%  { opacity: 1; transform: translateX(-50%) scaleY(1); }
+  100% { opacity: 0; transform: translateX(-50%) scaleY(1.5); }
+}
+
+/* Scanline interference — visible during materialization (emitting) */
+.oracle-knife-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 3px,
+    rgba(0, 255, 136, 0.035) 3px,
+    rgba(0, 255, 136, 0.035) 4px
+  );
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: 3;
+}
+.oracle-knife-section[data-emitting="true"] .oracle-knife-card::after {
+  opacity: 1;
+}
+
+/* ── Holographic glass panel ─────────────────────────────────────────── */
+.oracle-knife-card {
+  width: clamp(300px, 88vw, 500px);
+  /* height auto — content determines size */
+  position: relative;
+
+  /* Near-transparent glass with diagonal brand wash */
+  background: linear-gradient(
+    158deg,
+    rgba(0, 255, 136, 0.06) 0%,
+    rgba(0, 0, 0, 0.03) 48%,
+    rgba(176, 38, 255, 0.06) 100%
+  );
+  backdrop-filter: blur(4px) saturate(1.9);
+  -webkit-backdrop-filter: blur(4px) saturate(1.9);
+
+  border: none;
+  border-radius: 16px;
+  padding: 32px 28px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  will-change: transform, opacity, filter;
+}
+
+/* Gradient frame — green at top, purple at bottom. The brand gradient. */
+.oracle-knife-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  padding: 1px;
+  background: linear-gradient(
+    to bottom,
+    #00ff88 0%,
+    rgba(0, 255, 136, 0.28) 38%,
+    rgba(176, 38, 255, 0.28) 62%,
+    #b026ff 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+}
+
+.oracle-knife-card:hover::before {
+  opacity: 1;
+}
+
+/* ── Territory — color handled per-letter by JS (gradient landing) ───── */
 .oracle-knife-territory {
   font-family: 'aAnotherTag', 'Orbitron', monospace;
-  font-size: clamp(0.72rem, 1.5vw, 0.86rem);
-  letter-spacing: 0.18em;
-  color: var(--accent-color, rgba(0, 255, 136, 0.6));
+  font-size: clamp(2.0rem, 6.5vw, 2.9rem);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  text-shadow: 0 0 8px color-mix(in srgb, var(--accent-color, #00ff88) 40%, transparent);
-  line-height: 1;
+  text-align: center;
+  line-height: 1.15;
+  color: #00ff88;  /* fallback; each .oracle-knife-letter overrides */
 }
+
+.oracle-knife-letter {
+  display: inline;
+  transition: color 0.35s ease;
+}
+
+/* ── Gradient divider — the brand line ─────────────────────────────── */
+.oracle-knife-divider {
+  width: 72%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 255, 136, 0.45) 30%,
+    rgba(176, 38, 255, 0.45) 70%,
+    transparent 100%
+  );
+  flex-shrink: 0;
+}
+
+/* ── Question — white, legible, introspective weight ────────────────── */
+.oracle-knife-card-question {
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: clamp(1.15rem, 3.4vw, 1.4rem);
+  color: rgba(255, 255, 255, 0.92);
+  line-height: 1.72;
+  letter-spacing: 0.02em;
+  text-align: center;
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.98), 0 0 30px rgba(0, 0, 0, 0.6);
+  max-width: 28ch;
+}
+
+/* shimmer replaced by letter-by-letter JS gradient landing */
+
+/* ── Select CTA — pulses softly while card manifests ───────────────── */
+.oracle-knife-cta {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.28em;
+  color: rgba(0, 255, 136, 0.45);
+  text-transform: uppercase;
+  animation: oracle-channel-pulse 2.4s ease-in-out infinite;
+}
+
+/* ── Navigation dots — five territory pips ──────────────────────────── */
+.oracle-knife-nav {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 0 0;
+  pointer-events: auto;
+}
+
+.oracle-knife-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 255, 136, 0.28);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  padding: 0;
+}
+
+.oracle-knife-dot--active {
+  background: rgba(0, 255, 136, 0.75);
+  border-color: #00ff88;
+  box-shadow: 0 0 8px rgba(0, 255, 136, 0.6);
+  width: 18px;
+  height: 6px;
+  border-radius: 3px;
+}
+
+/* ── Legacy rules cleared ────────────────────────────────────────────── */
+.oracle-knife-scroll-container { display: none; }
+.oracle-knife-cards { display: none; }
+.oracle-knife-card-accent { display: none; }
+.oracle-knife-card-top { display: none; }
+
+/* (duplicate oracle-knife-section removed — canonical rule is above) */
 
 /* ════════════════════════════════════════════════════════════════════════
    CONVERSATION PHASE BADGE
@@ -3394,7 +3602,25 @@
   margin-bottom: 20px;
 }
 
+.oc-mic-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.oc-mic-vad-ring {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+}
+
 .oc-mic-trigger {
+  position: relative;
+  z-index: 2;
   width: 80px;
   height: 80px;
   border-radius: 50%;
@@ -4210,17 +4436,29 @@
   display: none;
 }
 
-/* ── Avatar wrapper: holographic presence — no clip, no frame ───────────────
-   overflow: visible so the face-shaped drop-shadow bleeds into alley air.
-   The mask lives on the canvas child — wrapper is just sizing now.           */
+/* ── Avatar wrapper: holographic materialization — no rectangle, no frame ─────
+   The figure dissolves into alley air at the edges.
+   A radial gradient mask creates the hologram boundary — crisp center,
+   fading periphery. The drop-shadow follows the same fade, so the glow
+   feels organic, not boxed. Like a signal arriving mid-rift.                */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-wrapper {
   width: clamp(280px, 92vw, 520px) !important;
   aspect-ratio: 0.72 / 1 !important;
   border: none !important;
   border-radius: 0 !important;
   overflow: visible !important;
-  -webkit-mask-image: none !important;
-  mask-image: none !important;
+  -webkit-mask-image: radial-gradient(
+    ellipse 76% 88% at 50% 44%,
+    black 32%,
+    rgba(0,0,0,0.55) 58%,
+    transparent 100%
+  ) !important;
+  mask-image: radial-gradient(
+    ellipse 76% 88% at 50% 44%,
+    black 32%,
+    rgba(0,0,0,0.55) 58%,
+    transparent 100%
+  ) !important;
 }
 
 /* ── Oracle center: sit slightly lower, more in the alley middle-ground ─────*/
@@ -4233,15 +4471,42 @@
   }
 }
 
-/* ── Alley: Oracle speaking makes the walls breathe harder ──────────────────
-   This now fires correctly because data-oracle-speaking is set on the stage. */
+/* ── Oracle ascension dawn — one-shot surge as Oracle arrives ──────────────
+   The alley flares bright, then settles. Fires once per oracle-phase entry.
+   filter animation overrides the transition-based rules for its duration.   */
+@keyframes oracle-alley-dawn {
+  0%   { filter: saturate(2.8) brightness(2.4) hue-rotate(-6deg) blur(0px); }
+  22%  { filter: saturate(2.2) brightness(1.90) hue-rotate(-3deg) blur(0px); }
+  55%  { filter: saturate(1.55) brightness(1.38) blur(0px); }
+  100% { filter: saturate(1.20) brightness(1.12) blur(0px); }
+}
+.oracle-stage[data-oracle-state="oracle"] .oracle-alley {
+  animation: oracle-alley-dawn 3.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── Radial dawn light — rises from below the Oracle's feet ─────────────── */
+@keyframes oracle-dawn-rise {
+  0%   { opacity: 0; transform: scaleX(0.4) scaleY(0.3); }
+  20%  { opacity: 0.85; transform: scaleX(1) scaleY(1); }
+  60%  { opacity: 0.55; transform: scaleX(1.1) scaleY(1.2); }
+  100% { opacity: 0; transform: scaleX(1.3) scaleY(1.5); }
+}
+.oracle-stage[data-oracle-state="oracle"] .oracle-floor-reflection {
+  animation: oracle-dawn-rise 3.2s cubic-bezier(0.16, 1, 0.3, 1) forwards,
+             floor-shimmer 9s ease-in-out 3.2s infinite alternate;
+  opacity: 1;
+}
+
+/* ── Alley: Oracle speaking overrides the dawn animation ────────────────────
+   data-oracle-speaking fires mid-session (after dawn settles) — always wins. */
 .oracle-stage[data-oracle-state="oracle"][data-oracle-speaking="true"] .oracle-alley {
+  animation: none !important;
   filter: saturate(1.50) brightness(1.28) blur(0px) !important;
   transition: filter 0.10s ease-out !important;
 }
 .oracle-stage[data-oracle-state="oracle"]:not([data-oracle-speaking="true"]) .oracle-alley {
-  filter: saturate(1.20) brightness(1.12) blur(0px);
-  transition: filter 2.0s var(--ease-cinematic) !important;
+  /* let the dawn animation run; transition kicks in after it completes */
+  transition: filter 2.0s var(--ease-cinematic);
 }
 
 /* ── Alley: user speaking shifts to cool cyan ────────────────────────────────
@@ -4249,6 +4514,39 @@
 .oracle-stage[data-oracle-state="oracle"][data-user-speaking="true"] .oracle-alley {
   filter: saturate(1.10) brightness(1.10) hue-rotate(15deg) blur(0px) !important;
   transition: filter 0.15s ease-out !important;
+}
+
+/* ── Amplitude halo — avatar drop-shadow pulses with Oracle voice ────────────
+   --oracle-amp (0-1) is written by a rAF loop in SurrogateOracleImmersion.
+   calc() scales the glow radius: 8px at silence, up to 40px at peak.         */
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-wrapper {
+  --amp-glow: calc(8px + var(--oracle-amp, 0) * 32px);
+  filter: drop-shadow(0 0 var(--amp-glow) rgba(0,255,136, calc(0.12 + var(--oracle-amp, 0) * 0.45)));
+  transition: filter 0.05s linear;
+}
+
+/* Alignment overrides — these stack on top of the amp halo via different selectors */
+
+/* ── Alignment atmosphere — sacred/profane alley color temperature ───────────
+   Sacred: walls grow greener, cooler, more alive.
+   Profane: walls warm to purple, slight sepia heat.
+   4s transition — no jarring jumps. More specific than base oracle state rules. */
+.oracle-stage[data-oracle-state="oracle"].alignment-sacred .oracle-alley {
+  filter: saturate(1.55) brightness(1.22) hue-rotate(-10deg) blur(0px) !important;
+  transition: filter 4s ease-in-out !important;
+}
+.oracle-stage[data-oracle-state="oracle"].alignment-profane .oracle-alley {
+  filter: saturate(1.05) brightness(1.08) hue-rotate(22deg) sepia(0.12) blur(0px) !important;
+  transition: filter 4s ease-in-out !important;
+}
+/* Avatar lighting shift: sacred casts green, profane casts purple */
+.oracle-stage[data-oracle-state="oracle"].alignment-sacred .oracle-avatar-wrapper {
+  filter: drop-shadow(0 0 24px rgba(0,255,136,0.22));
+  transition: filter 4s ease-in-out;
+}
+.oracle-stage[data-oracle-state="oracle"].alignment-profane .oracle-avatar-wrapper {
+  filter: drop-shadow(0 0 24px rgba(176,38,255,0.28));
+  transition: filter 4s ease-in-out;
 }
 
 /* ── oc-panel: strip the opaque panel, go transparent bottom strip ───────────

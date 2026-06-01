@@ -27,6 +27,8 @@ import { ArtifactCard } from './ArtifactCard';
 import { ScrambleFragment } from './ScrambleFragment';
 import { logStep } from './CodeAuditor';
 import { DormantHUD } from './ambient/DormantHUD';
+import { OracleHUD } from './ambient/OracleHUD';
+import { OracleSpectrumRing } from './OracleSpectrumRing';
 import { DormantTransmissions } from './ambient/GhostTransmissions';
 import { GlitchCursor } from './ambient/GlitchCursor';
 import { KnifeSelection, KNIFE_QUESTIONS } from './KnifeSelection';
@@ -130,7 +132,7 @@ export function SurrogateOracleImmersion() {
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isGeminiConnected, setIsGeminiConnected] = useState(false);
   const [debugMode, setDebugMode]           = useState(false);
-  const [oracleAlignment]                   = useState<'sacred' | 'profane' | 'neutral' | null>(null);
+  const [oracleAlignment, setOracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
   const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
@@ -577,14 +579,38 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
     };
     window.addEventListener('oracle:unlock', handleOracleUnlock);
 
+    const handleAlignmentShift = (e: Event) => {
+      const { alignment } = (e as CustomEvent).detail || {};
+      if (alignment === 'sacred' || alignment === 'profane') setOracleAlignment(alignment);
+    };
+    window.addEventListener('oracle:alignment', handleAlignmentShift);
+
     return () => {
       window.removeEventListener('oracle:auth:trigger', handleAuthTrigger);
       window.removeEventListener('oracle:unlock', handleOracleUnlock);
+      window.removeEventListener('oracle:alignment', handleAlignmentShift);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Atmosphere & Motion ───────────────────────────────────────────────────
   useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment);
+
+  // ── Amplitude halo — oracle avatar glow tracks Oracle speech amplitude ────
+  // Reads visemeStateRef.current.amplitude (0-1) at 60fps via rAF.
+  // Writes --oracle-amp to the stage element; no React re-renders.
+  const oracleStageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let rafId: number;
+    const tick = () => {
+      if (oracleStageRef.current) {
+        const amp = visemeStateRef.current?.amplitude ?? 0;
+        oracleStageRef.current.style.setProperty('--oracle-amp', amp.toFixed(3));
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleParallaxUpdate = useCallback((x: number, y: number) => {
     // Update camera look-around (preserves current zoom)
@@ -634,7 +660,8 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
 
   return (
     <div
-      className="oracle-stage"
+      ref={oracleStageRef}
+      className={`oracle-stage${oracleAlignment ? ` alignment-${oracleAlignment}` : ''}`}
       data-oracle-state={scenePhase}
       data-exiting={journey.isExiting ? 'true' : undefined}
       data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
@@ -687,6 +714,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
 
       {/* ── Dormant HUD ── */}
       <DormantHUD active={scenePhase === 'dormant'} />
+      <OracleHUD active={isOracleMode} coins={sessionCoins} />
       <DormantTransmissions active={scenePhase === 'dormant'} onCtaClick={enterTerminal} />
 
       {/* ── Top branding ── */}
@@ -725,6 +753,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
       >
         <motion.div className="oracle-cabinet">
           <div className="oracle-avatar-wrapper">
+            {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} />}
             {isOracleMode && <div className="oracle-monitor-cast" />}
             <div className="oracle-scanlines" />
 
@@ -1120,8 +1149,28 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
           <motion.div
             key="awakened-layer"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{ position: 'absolute', inset: 0, zIndex: 100 }}
+            style={{ position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none' }}
           >
+            {/* Return seeker recognition — flash for 2.4s if they've been here before */}
+            {hasCompletedLore && echo?.last_archetype && (
+              <motion.div
+                key="return-seeker"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: [0, 1, 1, 0], y: 0 }}
+                transition={{ duration: 2.4, times: [0, 0.15, 0.75, 1] }}
+                style={{
+                  position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
+                  zIndex: 102, pointerEvents: 'none', textAlign: 'center',
+                  fontFamily: "'Share Tech Mono', monospace",
+                  fontSize: '0.65rem', letterSpacing: '0.2em',
+                  color: 'rgba(0,255,136,0.7)',
+                  textShadow: '0 0 12px rgba(0,255,136,0.5)',
+                }}
+              >
+                SIGNAL RECOGNIZED — {echo.last_archetype.toUpperCase()}
+                {echo.totem_level > 0 && ` / LVL ${echo.totem_level}`}
+              </motion.div>
+            )}
             {isGuidedTour && (
               <motion.div
                 initial={{ opacity: 0, y: -6 }}
@@ -1242,20 +1291,30 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
               </>
             )}
           </button>
+          <AnimatePresence>
           {hamburgerOpen && (
-            <div style={{
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: -6 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: -6 }}
+              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              style={{
               position: 'absolute',
               top: '100%',
               right: 0,
               marginTop: '8px',
-              background: 'rgba(0,0,0,0.9)',
-              border: '1px solid rgba(0,255,136,0.3)',
+              background: 'rgba(0,4,2,0.94)',
+              border: '1px solid rgba(0,255,136,0.35)',
               borderRadius: '8px',
               overflow: 'hidden',
               minWidth: '160px',
+              backdropFilter: 'blur(14px)',
+              WebkitBackdropFilter: 'blur(14px)',
+              transformOrigin: 'top right',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,255,136,0.1)',
             }}>
               <button
-                onClick={() => { exitOracleMode(); setHamburgerOpen(false); }}
+                onClick={() => { exitOracleMode(echoTrackRef.current.alignment); setHamburgerOpen(false); }}
                 style={{
                   display: 'block',
                   width: '100%',
@@ -1327,8 +1386,9 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
               >
                 TYPE MODE
               </button>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
         </div>
       )}
 

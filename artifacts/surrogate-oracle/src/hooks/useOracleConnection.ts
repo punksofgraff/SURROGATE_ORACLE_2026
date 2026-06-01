@@ -90,6 +90,8 @@ export function useOracleConnection({
     pcmPlayerRef.current?.boostVolume(multiplier, 50);
   }, []);
 
+  const getAnalyser = useCallback(() => pcmPlayerRef.current?.getAnalyser() ?? null, []);
+
   const value = useMemo(() => ({
     error,
     pcmPlayer: pcmPlayerRef.current,
@@ -100,10 +102,11 @@ export function useOracleConnection({
     cleanup,
     setError,
     boostMicVolume,
+    getAnalyser,
   }), [
     error,
     initializePCMPlayer, initializeOracle,
-    handleOracleResponse, resetFirstChunk, cleanup, boostMicVolume,
+    handleOracleResponse, resetFirstChunk, cleanup, boostMicVolume, getAnalyser,
   ]);
 
   return value;

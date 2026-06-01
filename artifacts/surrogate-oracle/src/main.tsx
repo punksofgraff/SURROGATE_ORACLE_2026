@@ -27,14 +27,17 @@ class RootBoundary extends Component<{ children: ReactNode }, { error: Error | n
 
 // ?reset — nuke all localStorage and reload clean (dev escape hatch)
 // ?fresh — clear only journey/lore state, keep auth
-if (new URLSearchParams(window.location.search).has('reset')) {
+const _sp = new URLSearchParams(window.location.search);
+if (_sp.has('reset')) {
   localStorage.clear();
   sessionStorage.clear();
-  window.location.replace(window.location.pathname);
-}
-if (new URLSearchParams(window.location.search).has('fresh')) {
+  window.location.replace('/?_b=' + Date.now());
+} else if (_sp.has('fresh')) {
   ['oracle_lore_completed','oracle_active_session_id','oracle_steps_sticky'].forEach(k => localStorage.removeItem(k));
-  window.location.replace(window.location.pathname);
+  window.location.replace('/?_b=' + Date.now());
+} else if (_sp.has('_b') && !_sp.has('_done')) {
+  // Second hop — replace URL cleanly so HMR re-connects
+  window.history.replaceState({}, '', '/');
 }
 
 createRoot(document.getElementById("root")!).render(<RootBoundary><App /></RootBoundary>);

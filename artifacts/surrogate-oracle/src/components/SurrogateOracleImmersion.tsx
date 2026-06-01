@@ -877,9 +877,6 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
                   <div
                     className="oracle-avatar-canvas oracle-avatar-smoke-hook"
                     style={{
-                      opacity:    isOracleMode ? 1 : 0.45,
-                      filter:     isOracleMode ? 'none' : 'blur(4px) brightness(0.6)',
-                      transition: 'opacity 1s ease, filter 1s ease',
                       width: '100%', height: '100%',
                       position: 'absolute', top: 0, left: 0,
                     }}

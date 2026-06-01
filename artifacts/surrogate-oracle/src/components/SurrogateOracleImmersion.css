@@ -4714,3 +4714,39 @@
   transition: filter 0.12s ease !important;
 }
 
+/* ── Max Headroom glitch-phase — unconditional, every oracle session ────────
+   Two signal-dropout bursts per 14s cycle. Pure CSS, data-oracle-state driven.
+   Applied to oracle-avatar-smoke-hook (the canvas wrapper) so transform glitch
+   phases the whole canvas without conflicting with the oval-mask filter chain. */
+@keyframes oracle-headroom-phase {
+  0%    { transform: translateX(0)    scaleX(1);     opacity: 1;    }
+  /* — GLITCH 1 at ~8s (57–58.2%) — horizontal jitter + opacity dropout — */
+  57.0% { transform: translateX(0)    scaleX(1);     opacity: 1;    }
+  57.1% { transform: translateX(5px)  scaleX(1.013); opacity: 0.72; }
+  57.5% { transform: translateX(-4px) scaleX(0.987); opacity: 1.0;  }
+  57.9% { transform: translateX(2px)  scaleX(1.006); opacity: 0.88; }
+  58.2% { transform: translateX(0)    scaleX(1);     opacity: 1;    }
+  /* — GLITCH 2 at ~10.5s (74.7–76.1%) — phase artifact + scaleX distortion — */
+  74.7% { transform: translateX(0)    scaleX(1);     opacity: 1;    }
+  74.9% { transform: translateX(-7px) scaleX(1.020); opacity: 0.65; }
+  75.3% { transform: translateX(5px)  scaleX(0.981); opacity: 1.0;  }
+  75.7% { transform: translateX(-2px) scaleX(1.009); opacity: 0.82; }
+  76.1% { transform: translateX(0)    scaleX(1);     opacity: 1;    }
+  100%  { transform: translateX(0)    scaleX(1);     opacity: 1;    }
+}
+
+/* Awakened (knife-select): canvas dimmed until oracle phase. CSS-driven, not JS. */
+.oracle-stage[data-oracle-state="awakened"] .oracle-avatar-smoke-hook {
+  opacity: 0.45;
+  filter: blur(4px) brightness(0.6);
+  transition: opacity 1s ease, filter 1s ease;
+}
+
+/* Oracle phase: full presence + Max Headroom glitch — unconditional, every session. */
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-smoke-hook {
+  opacity: 1;
+  filter: none;
+  transition: opacity 1s ease, filter 1s ease;
+  animation: oracle-headroom-phase 14s linear infinite;
+}
+

@@ -4773,6 +4773,12 @@
   transition: filter 0.12s ease !important;
 }
 
+/* ── Holographic halo ring — 360° orbit above the Oracle ────────────────── */
+@keyframes oracle-halo-orbit {
+  from { transform: rotateY(0deg); }
+  to   { transform: rotateY(360deg); }
+}
+
 /* ── Max Headroom glitch-phase — unconditional, every oracle session ────────
    Two signal-dropout bursts per 14s cycle. Pure CSS, data-oracle-state driven.
    Applied to oracle-avatar-smoke-hook (the canvas wrapper) so transform glitch

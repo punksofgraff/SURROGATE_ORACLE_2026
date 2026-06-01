@@ -32,6 +32,7 @@ import { OracleSpectrumRing } from './OracleSpectrumRing';
 import { DormantTransmissions } from './ambient/GhostTransmissions';
 import { GlitchCursor } from './ambient/GlitchCursor';
 import { KnifeSelection, KNIFE_QUESTIONS } from './KnifeSelection';
+import { OracleHaloRing } from './OracleHaloRing';
 import { Canvas } from '@react-three/fiber';
 import { OracleAvatar3D } from './OracleAvatar3D';
 import { PortraitGalleryDashboard } from './PortraitGalleryDashboard';
@@ -544,7 +545,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
   }, [connection.handleOracleResponse, journey.scenePhase, journey.awakeFromTerminal]);
 
   // ── XR Mode ──────────────────────────────────────────────────────────────
-  const { isXRMode, cameraActive, activateCamera, deactivateCamera, cameraVideoRef } = useXRMode(() => enterTerminal());
+  const { isXRMode, cameraActive, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef } = useXRMode(() => enterTerminal());
 
   // ── Portrait Hook ─────────────────────────────────────────────────────────
   const handlePortraitGenerated = useCallback((url: string) => {
@@ -764,6 +765,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
           <div className="oracle-avatar-wrapper">
             {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} />}
             {isOracleMode && <div className="oracle-monitor-cast" />}
+            <OracleHaloRing active={isOracleMode} />
             <div className="oracle-scanlines" />
 
             {scenePhase === 'dormant' && (
@@ -1369,26 +1371,27 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
               >
                 RESET JOURNEY
               </button>
-              {isXRMode && (
-                <button
-                  onClick={() => { cameraActive ? deactivateCamera() : activateCamera(); }}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    padding: '12px 16px',
-                    background: 'transparent',
-                    border: 'none',
-                    borderTop: '1px solid rgba(0,255,136,0.2)',
-                    color: cameraActive ? '#b026ff' : '#00ffcc',
-                    fontSize: '0.85rem',
-                    letterSpacing: '0.1em',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                  }}
-                >
-                  {cameraActive ? '◈ ALLEY' : '◈ AR'}
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  if (isXRMode) { deactivateXRMode(); } else { activateXRMode(); }
+                  setHamburgerOpen(false);
+                }}
+                style={{
+                  display: 'block',
+                  width: '100%',
+                  padding: '12px 16px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderTop: '1px solid rgba(0,255,136,0.2)',
+                  color: isXRMode ? '#b026ff' : '#00ffcc',
+                  fontSize: '0.85rem',
+                  letterSpacing: '0.1em',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                }}
+              >
+                {isXRMode ? '◈ EXIT AR' : '◈ AR MODE'}
+              </button>
               <button
                 onClick={() => { oracleConversationRef.current?.toggleTypeMode(); setHamburgerOpen(false); }}
                 style={{

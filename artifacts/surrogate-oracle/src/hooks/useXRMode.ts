@@ -33,6 +33,10 @@ export interface UseXRModeReturn {
   isXRMode: boolean;
   /** Camera passthrough is ACTIVE (user opted in). Separate from isXRMode (context). */
   cameraActive: boolean;
+  /** Activate full XR mode + camera from hamburger menu. */
+  activateXRMode: () => void;
+  /** Deactivate XR mode — back to alley. */
+  deactivateXRMode: () => void;
   /** User explicitly activates camera passthrough — opt-in, not automatic. */
   activateCamera: () => void;
   /** User deactivates camera — returns to alley background. */
@@ -114,6 +118,20 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
       cameraVideoRef.current.srcObject = null;
     }
   }, []);
+
+  const activateXRMode = useCallback(() => {
+    setIsXRMode(true);
+    document.documentElement.style.background = 'transparent';
+    document.body.style.background = 'transparent';
+    startCamera();
+  }, [startCamera]);
+
+  const deactivateXRMode = useCallback(() => {
+    stopCamera();
+    setIsXRMode(false);
+    document.documentElement.style.background = '';
+    document.body.style.background = '';
+  }, [stopCamera]);
 
   const activateCamera = useCallback(() => {
     startCamera();
@@ -207,5 +225,5 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     try { window.parent.postMessage({ type: 'oracle:camera-ready' }, '*'); } catch {}
   }, [isXRMode, cameraReady]);
 
-  return { isXRMode, cameraActive, activateCamera, deactivateCamera, cameraVideoRef, cameraReady, cameraError, markerActive, autoStart };
+  return { isXRMode, cameraActive, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraReady, cameraError, markerActive, autoStart };
 }

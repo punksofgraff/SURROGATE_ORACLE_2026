@@ -1,6 +1,6 @@
 # SURROGATE — Replit Integration
 
-Last updated: 2026-05-31. Animation Pass + Audio Stack Overhaul + Brand Audit complete.
+Last updated: 2026-06-01. Cinematic Entrance + Audio Battle + Journey Reset complete.
 
 ---
 
@@ -78,6 +78,29 @@ Radio stream: `MediaElementSource` → `GainNode(SESSION_AMBIENT=0.008)` → `Sp
 **Radio stations:** `src/config/audioTracks.ts` — Graff Punks (default), Drone Zone, Groove Salad.
 
 ---
+
+## Session Overhaul: 2026-06-01
+
+**Bug fixes:**
+- Audio battle (radio vs Oracle): Radio now ducks INSTANTLY (10ms hard cut, no ramp) when Oracle speaks.
+- VAD threshold raised from 0.022 → 0.035 to prevent Oracle's own voice from triggering VAD.
+- Hard gate added: `isOracleSpeakingRef.current === true` → mic data NOT sent to Gemini.
+- `setOracleSpeaking` wrapper: synchronous ref update before setState (avoids stale closure in audio callback).
+- Mic pre-warm removed from `handleFirstTap` (was causing VAD to pick up Oracle's own audio).
+- `isOracleSpeakingRef` variable name collision in OracleConversation.tsx corrected.
+
+**New features:**
+- `resetJourney()` funtion exported from `useOracleJourney` — full state wipe (scenePhase → dormant, loreComplete → false, etc.).
+- Reset Journey button visible in oracle mode (bottom-left corner, green tint, confirmation dialog).
+- iOS DeviceOrientation permission requested on first touch via `useParallax.ts`.
+- `useParallax.ts` duplicate function declarations fixed (onMouseMove, onWheel, onTouchStart).
+
+**Cinematic Entrance — TOTALLY RADICAL DUDE! 80s Comic Book:**
+- 12-second (5× slower) epic entrance
+- Slides in from 260px to the right
+- `blur(12px) brightness(4) hue-rotate(60deg)` → `blur(0) brightness(1) saturate(1) hue-rotate(0deg)`
+- 6 keyframes with `[0.22, 1, 0.36, 1]` easing (fast out, elastic settle)
+- Asimov × Philip K. Dick approved — no bone-white bags
 
 ## Session Overhaul: 2026-05-31
 

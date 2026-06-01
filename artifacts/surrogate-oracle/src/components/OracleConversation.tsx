@@ -209,7 +209,14 @@ const OracleConversation = forwardRef(
 
     const [isConnected, setIsConnected] = useState(false);
     const [isListening, setIsListening] = useState(false);
-    const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
+    const [isOracleSpeaking, _setIsOracleSpeaking] = useState(false);
+    // Ref mirror of isOracleSpeaking — used in audio processing callback to avoid stale closure.
+    // Updated synchronously before setState so the audio callback sees the latest value.
+    const isOracleSpeakingRef = useRef(false);
+    const setOracleSpeaking = useCallback((val: boolean) => {
+      isOracleSpeakingRef.current = val;
+      _setIsOracleSpeaking(val);
+    }, []);
     // true between Seeker turn-end and first Oracle audio chunk (the "contemplative" gap)
     const [isOracleThinking, setIsOracleThinking] = useState(false);
     const [turns, setTurns] = useState<Turn[]>(() => {
@@ -338,10 +345,11 @@ const OracleConversation = forwardRef(
     };
 
     const vadRef = useRef(createVADProcessor({
-      // 0.022 = ~-33dBFS. High enough to ignore radio bleed + ambient noise
-      // while still catching clear speech. Previous 0.008 was triggering on
-      // radio noise fed back through mic, causing phantom turns.
-      rmsThreshold: 0.022,
+      // 0.035 = ~-29dBFS. Raised to prevent Oracle voice (picked up through
+      // speakers by mic) from triggering VAD during Oracle's own speech.
+      // Previous 0.022 was too sensitive — Oracle's voice at ~0.05-0.1 RMS
+      // through mic was exceeding threshold, causing phantom user turns.
+      rmsThreshold: 0.035,
       // 12 frames × ~256ms = ~3s silence before turn ends.
       // Increased from 9 — gives Seeker more thinking room and prevents
       // Oracle's own audio reverb from ending the turn prematurely.
@@ -384,11 +392,7 @@ const OracleConversation = forwardRef(
         type: 'session.config',
         model: GEMINI_MODEL,
         systemInstruction: { parts: [{ text: systemText }] },
-        // Definitively disable all tool use — tools: [] alone doesn't suppress
-        // built-in Gemini tools (grounding, code execution). toolConfig with mode
-        // NONE is the canonical suppressor for the BidiGenerateContent setup.
         tools: [],
-        toolConfig: { functionCallingConfig: { mode: 'NONE' } },
         // Step 4 — enable native session resumption. Empty object on a fresh connect asks the
         // server to emit resumption handles; on reconnect we pass the stored handle so Gemini
         // restores the conversation context server-side (no blind summary re-injection).
@@ -455,7 +459,7 @@ const OracleConversation = forwardRef(
             if (msg.usageMetadata?.totalTokenCount) debugInfo.current.lastTokenCount = msg.usageMetadata.totalTokenCount;
             if (msg.serverContent?.interrupted) {
               logStep('ORACLE INTERRUPTED (barge-in)', 'warn');
-              setIsOracleSpeaking(false);
+              setOracleSpeaking(false);
               setIsOracleThinking(false);
               if (fillerTimerRef.current) { clearTimeout(fillerTimerRef.current); fillerTimerRef.current = null; }
               onBargeInRef.current?.();
@@ -484,7 +488,7 @@ const OracleConversation = forwardRef(
                 }
                 const pcmData = new Int16Array(bytes.buffer);
 
-                setIsOracleSpeaking(true);
+                setOracleSpeaking(true);
                 onOracleResponseRef.current?.(pcmData);
               }
             }
@@ -547,7 +551,7 @@ const OracleConversation = forwardRef(
               }
               setTurns(prev => [...prev, { role: 'oracle', content: clean, timestamp: Date.now(), score }]);
               currentResponseText.current = '';
-              setIsOracleSpeaking(false);
+              setOracleSpeaking(false);
               // Notify parent: turn number, score, any themes the Oracle tagged this turn
               onTurnCompleteRef.current?.(debugInfo.current.turnCount, score ?? null, score?.themes ?? []);
 
@@ -698,6 +702,11 @@ const OracleConversation = forwardRef(
           }
 
           if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+
+          // MUTE MIC during Oracle speech — Oracle's voice through speakers picked up
+          // by mic must NOT be sent to Gemini (causes confusion/feedback).
+          // VAD threshold helps, but this is a hard gate for certainty.
+          if (isOracleSpeakingRef.current) return;
 
           // Flush pre-roll on speech onset so leading consonants aren't clipped.
           if (result.isOnsetStart) {

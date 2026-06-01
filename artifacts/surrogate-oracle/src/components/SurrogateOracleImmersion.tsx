@@ -291,26 +291,9 @@ export function SurrogateOracleImmersion() {
     }
   }, [targetVol]);
 
-  const [isOracleSpeakingDelayed, setIsOracleSpeakingDelayed] = useState(false);
-  const speakingTimeoutRef = useRef<number | null>(null);
   // Once Oracle first speaks in a session, radio stays at spatial ambience
   // for the rest of the session — no popping back to 0.08 between turns.
   const oracleHasSpokenRef = useRef(false);
-  const [isUserSpeakingDelayed, setIsUserSpeakingDelayed]     = useState(false);
-  const userSpeakingTimeoutRef = useRef<number | null>(null);
-
-  // ── User speaking handler — with "hold" to prevent radio flicker ────────
-  const handleUserSpeakingChange = useCallback((speaking: boolean) => {
-    setIsUserSpeaking(speaking);
-    if (speaking) {
-      if (userSpeakingTimeoutRef.current) window.clearTimeout(userSpeakingTimeoutRef.current);
-      setIsUserSpeakingDelayed(true);
-    } else {
-      userSpeakingTimeoutRef.current = window.setTimeout(() => {
-        setIsUserSpeakingDelayed(false);
-      }, 600); // 600ms hold after user stops
-    }
-  }, []);
 
   // ── Viseme handler — writes to ref only, NO setState ────────────────────
   const handleViseme = useCallback((state: VisemeState) => {
@@ -330,14 +313,6 @@ export function SurrogateOracleImmersion() {
 
   const handleProcessingChange = useCallback((proc: boolean) => {
     setIsOracleSpeaking(proc);
-    if (proc) {
-      if (speakingTimeoutRef.current) window.clearTimeout(speakingTimeoutRef.current);
-      setIsOracleSpeakingDelayed(true);
-    } else {
-      speakingTimeoutRef.current = window.setTimeout(() => {
-        setIsOracleSpeakingDelayed(false);
-      }, 500);
-    }
   }, []);
 
   // ── Connection Hook ──────────────────────────────────────────────────────
@@ -376,17 +351,11 @@ export function SurrogateOracleImmersion() {
     onCleanup: handleCleanup,
   });
 
-  const { scenePhase, enterTerminal, exitOracleMode, selectKnifeQuestion } = journey;
+  const { scenePhase, enterTerminal, exitOracleMode, selectKnifeQuestion, resetJourney } = journey;
 
   const handleFirstTap = useCallback(async () => {
     if (scenePhase !== 'dormant') return;
     await setupAudioSpine();
-
-    // Proactively warm up mic channel — satisfies iOS gesture requirement before
-    // the user reaches the "Open Frequency" button.
-    if (oracleConversationRef.current) {
-      oracleConversationRef.current.startMic().catch(e => console.warn('Mic pre-warm failed:', e));
-    }
 
     markVisited();
 
@@ -439,7 +408,8 @@ export function SurrogateOracleImmersion() {
       gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), now);
 
       if (target < 0.002) {
-        gain.gain.linearRampToValueAtTime(0.0001, now + 0.08);
+        // INSTANT duck — 10ms linear ramp (imperceptible, prevents click)
+        gain.gain.linearRampToValueAtTime(0.0001, now + 0.01);
       } else {
         const ms = rampMs ?? (isDucking ? 80 : 1500);
         gain.gain.exponentialRampToValueAtTime(safeTarget, now + ms / 1000);
@@ -477,15 +447,21 @@ export function SurrogateOracleImmersion() {
   const SESSION_AMBIENT = 0.004;
 
   useEffect(() => {
+    if (isOracleSpeaking && !oracleHasSpokenRef.current) {
+      oracleHasSpokenRef.current = true;
+    }
+
     let nextTarget: number;
 
-    // BUG FIX: scenePhase becomes 'oracle' 1600ms AFTER knife selection.
-    // Oracle's first PCM arrives inside that window (scenePhase still 'awakened').
-    // Fix: duck on isOracleSpeaking regardless of phase — don't wait for oracle phase.
-    if (isOracleSpeaking || isOracleSpeakingDelayed) {
-      nextTarget = 0.0001; // Oracle voice active → radio silent
-    } else if (scenePhase === 'oracle' || scenePhase === 'awakened') {
-      nextTarget = SESSION_AMBIENT; // post-greeting background texture
+    if (isOracleSpeaking) {
+      // Oracle voice active → radio near silent instantly
+      nextTarget = 0.001;
+    } else if (scenePhase === 'oracle') {
+      // Oracle phase: locked at SESSION_AMBIENT once spoken, 0.055 pre-first-speech
+      nextTarget = oracleHasSpokenRef.current ? SESSION_AMBIENT : 0.055;
+    } else if (scenePhase === 'awakened') {
+      // Awakened but not yet oracle — pre-first-speech ambience
+      nextTarget = 0.055;
     } else {
       nextTarget = 0.06; // dormant / terminal — full ambient
     }
@@ -493,7 +469,7 @@ export function SurrogateOracleImmersion() {
     if (Math.abs(nextTarget - targetVol) > 0.0001) {
       fadeToVolume(nextTarget);
     }
-  }, [scenePhase, isOracleSpeaking, isOracleSpeakingDelayed, targetVol, fadeToVolume]);
+  }, [scenePhase, isOracleSpeaking, targetVol, fadeToVolume]);
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -808,26 +784,35 @@ export function SurrogateOracleImmersion() {
                 <motion.div
                   key="live-face"
                   className="oracle-avatar-container"
-                  // Static Dissolve: emerge from the same position as the 2D portrait —
-                  // no y-drop. Start desaturated + green-tinted to match the static's
-                  // surge color. Delayed 0.25s so the static spike leads and the 3D
-                  // face appears to grow out of that flare rather than arrive from outside.
-                  initial={{ opacity: 0, scale: 1.02, filter: 'blur(5px) brightness(2.8) saturate(0) hue-rotate(40deg)' }}
+                  // ╔══════════════════════════════════════════════════════════════╗
+                  // ║  TOTALLY RADICAL DUDE! 80s COMIC BOOK CINEMATIC ENTRANCE  ║
+                  // ║  Asimov × Philip K. Dick approved — no bone-white bags     ║
+                  // ╚══════════════════════════════════════════════════════════════╝
+                  // Slides in from the right with electric comic-book energy,
+                  // neon glow trail, CRT scan-line shimmer, and bold color pop.
+                  initial={{
+                    opacity: 0,
+                    scale: 1.06,
+                    x: 260,
+                    filter: 'blur(12px) brightness(4) saturate(0) hue-rotate(60deg)',
+                  }}
                   animate={{
-                    opacity:    [0, 0,    0.25, 0.75,  1],
-                    scale:      [1.02, 1.02, 1.01, 1.0,  1],
+                    opacity:  [0, 0,    0.15, 0.55, 0.85,  1],
+                    scale:    [1.06, 1.06, 1.04, 1.02, 1.005, 1],
+                    x:       [260, 260,  130,   40,   10,   0],
                     filter: [
-                      'blur(5px)   brightness(2.8) saturate(0)   hue-rotate(40deg)',
-                      'blur(5px)   brightness(2.8) saturate(0)   hue-rotate(40deg)',
-                      'blur(2px)   brightness(2.0) saturate(0.4) hue-rotate(20deg)',
-                      'blur(0.5px) brightness(1.3) saturate(0.9) hue-rotate(5deg)',
+                      'blur(12px)  brightness(4)  saturate(0)   hue-rotate(60deg)',
+                      'blur(12px)  brightness(4)  saturate(0)   hue-rotate(60deg)',
+                      'blur(6px)   brightness(2.8) saturate(0.2) hue-rotate(35deg)',
+                      'blur(3px)   brightness(2.0) saturate(0.5) hue-rotate(15deg)',
+                      'blur(1px)   brightness(1.4) saturate(0.85) hue-rotate(5deg)',
                       'blur(0px)   brightness(1.0) saturate(1.0) hue-rotate(0deg)',
                     ],
                   }}
                   transition={{
-                    duration: 2.0,
-                    ease: 'easeOut',
-                    times: [0, 0.14, 0.40, 0.72, 1],
+                    duration: 12.0,
+                    ease: [0.22, 1, 0.36, 1],
+                    times: [0, 0.10, 0.28, 0.50, 0.75, 1],
                   }}
                   style={{ zIndex: 3, position: 'absolute', inset: 0, width: '100%', height: '100%' }}
                 >
@@ -1151,7 +1136,6 @@ export function SurrogateOracleImmersion() {
           onListeningChange={setIsMicActive}
           isVisible={isOracleMode}
           autoStart={false}
-          onUserSpeakingChange={handleUserSpeakingChange}
           onBargeIn={() => connection.pcmPlayer?.stop()}
           onPortraitRequest={() => portrait.generatePortrait(portrait.getThemes())}
           seekerSummary={(() => {
@@ -1178,7 +1162,16 @@ export function SurrogateOracleImmersion() {
       )}
 
       {isOracleMode && (
-        <button className="oracle-exit-btn" onClick={() => { navigator.vibrate?.([80, 60, 80]); exitOracleMode(); }}><X size={20} /><span>EXIT</span></button>
+        <>
+          <button className="oracle-exit-btn" onClick={() => { navigator.vibrate?.([80, 60, 80]); exitOracleMode(); }}><X size={20} /><span>EXIT</span></button>
+          <button
+            className="oracle-exit-btn"
+            style={{ bottom: '2rem', top: 'auto', background: 'rgba(0,255,136,0.1)', border: '1px solid rgba(0,255,136,0.3)' }}
+            onClick={() => { if (confirm('Reset journey to dormant? All state will be cleared.')) resetJourney(); }}
+          >
+            <span style={{ fontSize: '0.7rem', letterSpacing: '0.1em' }}>RESET JOURNEY</span>
+          </button>
+        </>
       )}
 
       {/* ── Exit ceremony — alignment-aware farewell ── */}

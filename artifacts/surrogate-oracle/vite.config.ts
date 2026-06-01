@@ -90,6 +90,9 @@ export default defineConfig({
     fs: {
       strict: true,
     },
+    watch: {
+      ignored: ['**/.oracle-dev-log.jsonl'],
+    },
     // Force no-cache on every dev response — browser won't reuse stale JS/CSS
     headers: {
       'Cache-Control': 'no-store, no-cache, must-revalidate',

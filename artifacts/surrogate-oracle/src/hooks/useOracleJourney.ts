@@ -48,12 +48,10 @@ export function useOracleJourney({
     alleyAmbienceStopRef.current?.();
     alleyAmbienceStopRef.current = null;
     
-    // Auto-start Gemini session after a brief breath (the 900ms 'performer pause')
-    logStep('startSession() CALLED', 'ok');
-    setTimeout(() => {
-      onStartSession();
-    }, 900);
-  }, [onStartSession]);
+    // NOTE: do NOT auto-start the Gemini session here.
+    // Oracle greets AFTER knife selection, triggered by handleKnifeClick → selectKnifeQuestion.
+    // Awakened phase shows the territory announcement + knife cards — no greeting yet.
+  }, []);
 
   const selectKnifeQuestion = useCallback((question: string, index: number) => {
     logStep(`KNIFE[${index}] SELECTED`, 'ok');
@@ -67,15 +65,26 @@ export function useOracleJourney({
     }, 1600);
   }, []);
 
+  const resetJourney = useCallback(() => {
+    setScenePhase('dormant');
+    setLoreComplete(false);
+    setIsExiting(false);
+    setSelectedKnifeQuestion(null);
+    setSelectedKnifeIndex(null);
+
+    alleyAmbienceStopRef.current?.();
+    alleyAmbienceStopRef.current = null;
+
+    onCleanup();
+    logStep('JOURNEY RESET → DORMANT', 'ok');
+  }, [onCleanup]);
+
   const exitOracleMode = useCallback(() => {
     logStep('EXIT INITIATED', 'ok');
     setIsExiting(true);
     playExitTone();
     if (typeof navigator !== 'undefined') navigator.vibrate?.([80, 60, 80]);
 
-    // Phase 1 (0–1.2s): avatar visually retracts (CSS driven by isExiting flag)
-    // Phase 2 (1.2s): text ceremony starts via ScrambleFragment
-    // Phase 3 (2.8s): scene resets to dormant
     setTimeout(() => {
       setScenePhase('dormant');
       setLoreComplete(false);
@@ -89,7 +98,6 @@ export function useOracleJourney({
       logStep('DORMANT RESTORED', 'ok');
     }, 2800);
 
-    // Exiting flag clears slightly after scene resets so ceremony can finish animating out
     setTimeout(() => {
       setIsExiting(false);
     }, 3200);
@@ -106,9 +114,10 @@ export function useOracleJourney({
     awakeFromTerminal,
     selectKnifeQuestion,
     exitOracleMode,
+    resetJourney,
   }), [
     scenePhase, loreComplete, isExiting, selectedKnifeQuestion, 
     selectedKnifeIndex, enterTerminal, awakeFromTerminal, 
-    selectKnifeQuestion, exitOracleMode
+    selectKnifeQuestion, exitOracleMode, resetJourney
   ]);
 }

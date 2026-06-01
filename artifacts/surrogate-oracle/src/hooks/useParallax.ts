@@ -51,6 +51,7 @@ export function useParallax(
     let targetZoom = 1.0, currentZoom = 1.0;
     let rafId = 0;
     let usingGyro = false;
+    let gyroActive = false;
 
     // Pinch tracking
     let pinchInitialDist = 0;
@@ -62,11 +63,36 @@ export function useParallax(
     // ── Gyro input ────────────────────────────────────────────────────────────
     const onDeviceOrientation = (e: DeviceOrientationEvent) => {
       if (e.alpha === null && e.gamma === null) return;
-      usingGyro = true;
+      if (!gyroActive) {
+        gyroActive = true;
+        usingGyro = true;
+      }
       const gamma = Math.max(-GYRO_MAX_GAMMA, Math.min(GYRO_MAX_GAMMA, e.gamma ?? 0));
       const beta  = Math.max(-GYRO_MAX_BETA,  Math.min(GYRO_MAX_BETA,  (e.beta ?? 0) - 45));
       targetX =  gamma / GYRO_MAX_GAMMA;
       targetY =  beta  / GYRO_MAX_BETA;
+    };
+
+    // Auto-register gyro for non-iOS; iOS requests permission on first touch
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (!isIOS) {
+      window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
+    }
+
+    // iOS: request gyro permission on first touch
+    const requestGyroOnTouch = async () => {
+      if (!isIOS || gyroActive) return;
+      const DE = DeviceOrientationEvent as any;
+      if (typeof DE?.requestPermission === 'function') {
+        try {
+          const result = await DE.requestPermission();
+          if (result === 'granted') {
+            gyroActive = true;
+            usingGyro = true;
+            window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
+          }
+        } catch {}
+      }
     };
 
     // ── Mouse fallback (desktop) ──────────────────────────────────────────────
@@ -84,23 +110,24 @@ export function useParallax(
 
     // ── Touch events (mobile) ─────────────────────────────────────────────────
     const onTouchStart = (e: TouchEvent) => {
+      if (isIOS && e.touches.length === 1) {
+        requestGyroOnTouch();
+      }
+
       if (e.touches.length === 2) {
-        // Pinch start — record initial distance and zoom baseline
         pinchInitialDist = Math.hypot(
           e.touches[1].clientX - e.touches[0].clientX,
           e.touches[1].clientY - e.touches[0].clientY,
         );
         pinchBaseZoom = targetZoom;
-        touchDragStart = null; // cancel any active drag
+        touchDragStart = null;
       } else if (e.touches.length === 1 && !usingGyro) {
-        // Single-finger drag start (only when no gyro)
         touchDragStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
       }
     };
 
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 2 && pinchInitialDist > 0) {
-        // Pinch — scale zoom relative to baseline
         e.preventDefault();
         const dist  = Math.hypot(
           e.touches[1].clientX - e.touches[0].clientX,
@@ -109,7 +136,6 @@ export function useParallax(
         const scale = dist / pinchInitialDist;
         targetZoom  = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinchBaseZoom * scale));
       } else if (e.touches.length === 1 && touchDragStart && !usingGyro) {
-        // Single-finger drag — look-around (same feel as mouse move)
         const dx = e.touches[0].clientX - touchDragStart.x;
         const dy = e.touches[0].clientY - touchDragStart.y;
         targetX   = Math.max(-1, Math.min(1, dx / (window.innerWidth  * 0.4)));
@@ -144,7 +170,6 @@ export function useParallax(
       // ── Far background (alley) ────────────────────────────────────────────
       const alley = el('.oracle-alley');
       if (alley) {
-        // scale(1.1) ensures edges stay hidden as the image shifts
         alley.style.transform =
           `translate(${ix * vw * 0.038}px, ${iy * vh * 0.022}px) scale(1.1)`;
       }
@@ -164,12 +189,11 @@ export function useParallax(
       }
 
       // ── Cabinet / Oracle center — 3D tilt (the hero effect) ───────────────
-      // rotateY tracks left-right (gamma), rotateX tracks forward-back (beta).
       const cabinet = el('.oracle-center');
       if (cabinet) {
         const dx = ix * vw * 0.015;
         const dy = iy * vh * 0.010;
-        const rotX = -iy * 14 * intensity; // Significantly increased rotation for "winning" depth
+        const rotX = -iy * 14 * intensity;
         const rotY =  ix * 16 * intensity;
         cabinet.style.transform =
           `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) rotateX(${rotX}deg) rotateY(${rotY}deg)`;
@@ -211,7 +235,6 @@ export function useParallax(
       window.addEventListener('mousemove', onMouseMove, { passive: true });
       window.addEventListener('wheel', onWheel, { passive: false });
     }
-    window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
     window.addEventListener('touchstart', onTouchStart, { passive: false });
     window.addEventListener('touchmove',  onTouchMove,  { passive: false });
     window.addEventListener('touchend',   onTouchEnd,   { passive: true });
@@ -232,5 +255,5 @@ export function useParallax(
         if (node) node.style.transform = '';
       });
     };
-  }, [phase]); // re-runs when phase changes to update intensity
+  }, [phase]);
 }

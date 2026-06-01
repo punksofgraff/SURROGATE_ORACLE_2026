@@ -1,30 +1,57 @@
 /**
  * OracleHaloRing — holographic text ring orbiting above the Oracle.
  *
- * CSS 3D: characters placed around a cylinder (rotateY + translateZ),
- * the whole ring rotates 360° on Y axis continuously.
- * Looks like a hologram label in AR mode, atmospheric in standard mode.
+ * Revolving door mechanic: two arcs of text at 0° and 180° offset so one
+ * is always sweeping INTO view as the other sweeps OUT. No dead zones,
+ * no "stuck" feeling — continuous 360° rotation at all times.
  */
-import { useMemo } from 'react';
 
-const LABEL = 'SURROGATE:ORACLE  ·  SNEAKAR XR ANTHROPOLOGY AI  ·  ';
-const RADIUS = 110; // px — ring radius in 3D space
-const RPM    = 12;  // rotations per minute → 5s per rotation
+const LABEL   = 'SURROGATE:ORACLE  ·  SNEAKAR XR ANTHROPOLOGY AI  ·  ';
+const RADIUS  = 130;   // px — ring radius
+const DURATION = '8s'; // one full revolution
+
+// Build one arc from the label characters
+function Arc({ chars, offsetDeg }: { chars: string[]; offsetDeg: number }) {
+  const n    = chars.length;
+  const step = 180 / n; // spread over 180° so two arcs fill the full circle
+
+  return (
+    <>
+      {chars.map((ch, i) => (
+        <span
+          key={i}
+          style={{
+            position:   'absolute',
+            left: 0,
+            top:  0,
+            display:    'block',
+            transform:  `rotateY(${offsetDeg + i * step}deg) translateZ(${RADIUS}px)`,
+            fontFamily: "'PhillySans', 'Share Tech Mono', monospace",
+            fontSize:   '0.55rem',
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            color: ch === '·' ? 'rgba(176,38,255,0.95)' : 'rgba(0,255,136,0.90)',
+            textShadow: ch === '·'
+              ? '0 0 10px rgba(176,38,255,0.9), 0 0 24px rgba(176,38,255,0.4)'
+              : '0 0 10px rgba(0,255,136,1.0), 0 0 24px rgba(0,255,136,0.4)',
+            whiteSpace:  'pre',
+            userSelect:  'none',
+            pointerEvents: 'none',
+          }}
+        >
+          {ch}
+        </span>
+      ))}
+    </>
+  );
+}
 
 interface OracleHaloRingProps {
-  active: boolean; // only render in oracle / awakened phase
+  active: boolean;
 }
 
 export function OracleHaloRing({ active }: OracleHaloRingProps) {
-  // Repeat label until we have enough characters to fill 360°
-  const chars = useMemo(() => {
-    const full = LABEL.repeat(3);
-    return full.split('');
-  }, []);
-
-  const n    = chars.length;
-  const step = 360 / n;          // degrees per character
-  const dur  = (60 / RPM) + 's'; // CSS animation duration
+  const chars = LABEL.split('');
 
   if (!active) return null;
 
@@ -32,51 +59,30 @@ export function OracleHaloRing({ active }: OracleHaloRingProps) {
     <div
       aria-hidden="true"
       style={{
-        position: 'absolute',
-        top: '2%',            // sits above the Oracle's head
-        left: '50%',
-        width: 0,
-        height: 0,
-        zIndex: 25,
+        position:      'absolute',
+        top:           '4%',
+        left:          '50%',
+        width:         0,
+        height:        0,
+        zIndex:        25,
         pointerEvents: 'none',
-        perspective: '600px',
+        perspective:   '500px',
       }}
     >
-      {/* Orbit wrapper — rotates the whole ring on Y axis */}
+      {/* Single rotating wrapper — both arcs ride together, 360° continuous */}
       <div
         style={{
-          position: 'absolute',
-          width: 0,
-          height: 0,
+          position:       'absolute',
+          width:          0,
+          height:         0,
           transformStyle: 'preserve-3d',
-          animation: `oracle-halo-orbit ${dur} linear infinite`,
+          animation:      `oracle-halo-orbit ${DURATION} linear infinite`,
         }}
       >
-        {chars.map((ch, i) => (
-          <span
-            key={i}
-            style={{
-              position: 'absolute',
-              left: 0,
-              top: 0,
-              display: 'block',
-              transformStyle: 'preserve-3d',
-              transform: `rotateY(${i * step}deg) translateZ(${RADIUS}px)`,
-              fontFamily: "'PhillySans', 'Share Tech Mono', monospace",
-              fontSize: '0.52rem',
-              fontWeight: 700,
-              letterSpacing: '0.05em',
-              color: ch === '·' ? 'rgba(176,38,255,0.9)' : 'rgba(0,255,136,0.85)',
-              textShadow: ch === '·'
-                ? '0 0 8px rgba(176,38,255,0.8), 0 0 20px rgba(176,38,255,0.4)'
-                : '0 0 8px rgba(0,255,136,0.9), 0 0 20px rgba(0,255,136,0.4)',
-              whiteSpace: 'pre',
-              userSelect: 'none',
-            }}
-          >
-            {ch}
-          </span>
-        ))}
+        {/* Arc A — front half (0°–180°) */}
+        <Arc chars={chars} offsetDeg={0} />
+        {/* Arc B — back half (180°–360°) — always in view when A is edge-on */}
+        <Arc chars={chars} offsetDeg={180} />
       </div>
     </div>
   );

@@ -1209,34 +1209,19 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 12px 14px 10px;
-  border-radius: 16px;
-  border: 1px solid rgba(0, 255, 136, 0.12);
-  background: rgba(0, 18, 8, 0.55);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.5),
-    0 1px 4px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(0, 255, 136, 0.06);
+  gap: 5px;
+  padding: 10px 10px 8px;
+  border-radius: 18px;
+  border: 1.5px solid transparent;
+  background: transparent;
   cursor: pointer;
   position: relative;
   overflow: hidden;
-  min-width: 64px;
+  min-width: 56px;
   touch-action: manipulation;
   user-select: none;
-  transition: transform 0.15s ease, opacity 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.15s ease, opacity 0.2s ease;
   animation: btn-float 3.2s ease-in-out infinite;
-}
-
-.oracle-bottom-btn:hover {
-  border-color: rgba(0, 255, 136, 0.30);
-  box-shadow:
-    0 8px 28px rgba(0, 0, 0, 0.6),
-    0 2px 8px rgba(0, 0, 0, 0.4),
-    0 0 18px rgba(0, 255, 136, 0.18),
-    inset 0 1px 0 rgba(0, 255, 136, 0.12);
 }
 
 @keyframes btn-float {
@@ -1325,7 +1310,8 @@
     letter-spacing: 0.15em;
   }
 }
-.oracle-stage[data-oracle-state="dormant"] .oracle-bottom-bar {
+.oracle-stage[data-oracle-state="dormant"] .oracle-bottom-bar,
+.oracle-stage[data-oracle-state="awakened"] .oracle-bottom-bar {
   opacity: 0;
   pointer-events: none;
 }

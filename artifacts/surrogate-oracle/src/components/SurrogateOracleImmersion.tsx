@@ -471,7 +471,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
 // - Music ON (20%) during dormant/awakened — mic auth, motion auth don't affect it
 // - Music OFF (0%) when Oracle speaks — stays off until resetJourney()
 // - resetJourney() returns to dormant → music back to 20%
-  const MUSIC_ON_VOLUME = 0.20;
+  const MUSIC_ON_VOLUME = 0.25;
   const MUSIC_OFF_VOLUME = 0;
 
   useEffect(() => {
@@ -839,7 +839,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
                     </button>
                   </div>
                 </motion.div>
-              ) : awakened ? (
+              ) : isOracleMode ? (
                 <motion.div
                   key="live-face"
                   className="oracle-avatar-container"

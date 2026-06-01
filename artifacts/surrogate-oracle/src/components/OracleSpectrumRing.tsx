@@ -22,7 +22,7 @@ export function OracleSpectrumRing({ getAnalyser, isActive }: OracleSpectrumRing
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const rafRef      = useRef<number>(0);
   const opacityRef  = useRef<number>(0);
-  const dataRef     = useRef<Uint8Array | null>(null);
+  const dataRef     = useRef<Uint8Array<ArrayBuffer> | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;

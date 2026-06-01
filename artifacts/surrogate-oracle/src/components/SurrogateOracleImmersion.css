@@ -1015,76 +1015,41 @@
 /* ── Oracle HUD — live score overlay (oracle phase only) ───────────────────
    Mirrors DormantHUD's 4-corner layout but subtler — present without intruding.
    Data flows in via CustomEvents (oracle:score, oracle:alignment, etc.).      */
+/* ── Oracle HUD — floating atmosphere fragments around the Oracle ─────────────
+   Not a fixed corner UI. Data glitches in occasionally, floats in alley
+   space around the Oracle's form, then dissolves. Reminding the seeker
+   where they are and what's happening — subtly. Every once in a while.
+   z-index 6 = atmosphere layer: behind cabinet, in the alley air.           */
 .oracle-oracle-hud {
   position: absolute;
   inset: 0;
   z-index: 6;
   pointer-events: none;
-  font-family: 'Share Tech Mono', 'Courier New', monospace;
-  font-size: clamp(7px, 1.05vw, 9px);
-  color: rgba(0, 255, 136, 0.18);
-  letter-spacing: 0.10em;
-  line-height: 1.5;
-  opacity: 0;
-  transition: opacity 1.4s ease-in;
 }
 
-/* Fade in once oracle phase is active (mounted only in oracle phase) */
-.oracle-stage[data-oracle-state="oracle"] .oracle-oracle-hud {
-  opacity: 1;
-}
-
-.oracle-oracle-hud--glitch {
-  filter: hue-rotate(20deg) brightness(1.5);
-  opacity: 0.4 !important;
-}
-
-.oracle-oracle-hud__corner {
+/* ── Individual phase fragment ───────────────────────────────────────────── */
+.oracle-phase-fragment {
   position: absolute;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 10px 12px;
-}
-.oracle-oracle-hud__corner--tl { top: 8px;   left: 8px;   align-items: flex-start; }
-.oracle-oracle-hud__corner--tr { top: 8px;   right: 8px;  align-items: flex-end; text-align: right; }
-.oracle-oracle-hud__corner--bl { bottom: 96px; left: 8px;   align-items: flex-start; }
-.oracle-oracle-hud__corner--br { bottom: 96px; right: 8px;  align-items: flex-end; text-align: right; }
-
-.oracle-oracle-hud__bracket {
-  color: rgba(0, 255, 136, 0.25);
-  font-size: 1.2em;
-  line-height: 1;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: clamp(7.5px, 1.1vw, 10px);
+  letter-spacing: 0.14em;
+  line-height: 1.55;
+  pointer-events: none;
 }
 
-.oracle-oracle-hud__line {
-  opacity: 0.85;
-  white-space: nowrap;
-  color: rgba(0, 255, 136, 0.55);
-}
-
-.oracle-oracle-hud__title {
-  color: rgba(255, 255, 255, 0.55);
-  font-family: 'aAnotherTag', monospace;
-  font-size: 1.15em;
-  letter-spacing: 0.12em;
+.oracle-phase-fragment__label {
+  opacity: 0.32;
+  font-size: 0.88em;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
-.oracle-oracle-hud__dim {
-  opacity: 0.35;
+.oracle-phase-fragment__value {
+  opacity: 0.90;
+  text-transform: uppercase;
   white-space: nowrap;
-}
-
-.oracle-oracle-hud__totem {
-  color: rgba(0, 255, 136, 0.45);
-  letter-spacing: 0.06em;
-  font-size: 0.95em;
-  white-space: nowrap;
-}
-
-.oracle-oracle-hud__line--blink {
-  animation: hud-blink 3.2s ease-in-out infinite;
+  font-size: 1.1em;
 }
 
 .oracle-mouth-overlay {
@@ -3234,7 +3199,7 @@
 /* ── Question — white, legible, introspective weight ────────────────── */
 .oracle-knife-card-question {
   font-family: 'PhillySans', 'Share Tech Mono', monospace;
-  font-size: clamp(1.15rem, 3.4vw, 1.4rem);
+  font-size: clamp(1.44rem, 4.2vw, 1.75rem);
   color: rgba(255, 255, 255, 0.92);
   line-height: 1.72;
   letter-spacing: 0.02em;

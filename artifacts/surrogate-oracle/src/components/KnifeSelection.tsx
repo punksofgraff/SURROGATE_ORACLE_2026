@@ -259,7 +259,6 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
             key={isSelected ? `sel-${selectedKnifeIndex}` : `card-${activeIdx}`}
             className="oracle-knife-card"
             // Origin above the card = Oracle's screen position
-            style={{ transformOrigin: '50% -22%' }}
             initial={{
               scale: 0.02,
               opacity: 0,

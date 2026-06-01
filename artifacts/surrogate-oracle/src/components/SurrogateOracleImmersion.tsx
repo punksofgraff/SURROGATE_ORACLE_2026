@@ -1613,10 +1613,10 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
                 </div>
 
                 <button
-                  onClick={() => { 
-                    setShowWalletConnect(false); 
+                  onClick={() => {
+                    setShowWalletConnect(false);
                     if (hasCompletedLore) {
-                      journey.awakeFromTerminal(); 
+                      journey.awakeFromTerminal();
                     } else {
                       journey.enterTerminal();
                     }
@@ -1633,6 +1633,26 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
                 >
                   [ {hasCompletedLore ? 'RETURN TO ALLEY' : 'PROCEED UNBOUND'} ]
                 </button>
+                {import.meta.env.DEV && (
+                  <button
+                    onClick={() => {
+                      localStorage.clear();
+                      sessionStorage.clear();
+                      window.location.replace('/?newuser');
+                    }}
+                    style={{
+                      marginTop: '1rem', background: 'none', border: '1px solid rgba(176,38,255,0.4)',
+                      borderRadius: '4px', color: 'rgba(176,38,255,0.7)', cursor: 'pointer',
+                      letterSpacing: '0.12em', fontFamily: "'PhillySans', 'Orbitron', monospace",
+                      fontSize: '0.55rem', padding: '4px 10px', opacity: 0.7,
+                      transition: 'opacity 0.2s ease', display: 'block', margin: '1rem auto 0'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '0.7'}
+                  >
+                    ⟳ DEV: RESET FRESH RUN
+                  </button>
+                )}
               </div>
             </motion.div>
           </motion.div>

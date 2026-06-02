@@ -11,6 +11,15 @@ const EMISSION_F1 = [350, 270, 430, 310, 250];   // chest resonance
 const EMISSION_F2 = [1850, 2100, 1700, 2000, 2300]; // voice character
 const EMISSION_PITCH = [110, 98, 120, 105, 92];     // fundamental
 
+// ── Gradient colour per letter (Sacred Green → Brand Cyan) ───────────────────
+// Used by letter-by-letter reveal so each char has explicit color — avoids the
+// background-clip:text parent leaking gradient through opacity:0 children.
+function gradientChar(i: number, total: number): string {
+  const t = total > 1 ? i / (total - 1) : 0;
+  // #00ff88 → #00ffcc  (r:0, g:255, b:136→204)
+  return `rgb(0,255,${Math.round(136 + 68 * t)})`;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface KnifeQuestion {
@@ -161,28 +170,34 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
           alignItems: 'center',
           perspective: '1000px',
         }}>
+          <AnimatePresence mode="wait">
           {KNIFE_QUESTIONS.map((kq, i) => {
             const isThisActive = i === activeIdx;
             const isThisSelected = selectedKnifeIndex === i;
-            
+            // Key changes each time this card becomes active → Framer remounts it
+            // with fresh y:-240 initial so the "drops from above" entrance fires
+            // every cycle, not just on first mount.
+            const cardKey = isThisActive ? `knife-active-${activeIdx}` : `knife-${i}`;
+
             return (
               <motion.div
-                key={i}
+                key={cardKey}
                 className="oracle-knife-card"
-                initial={{ 
-                  scale: 0.05, 
-                  opacity: 0, 
-                  y: -240, 
-                  filter: 'blur(15px) brightness(4) saturate(0)' 
+                initial={{
+                  scale: 0.05,
+                  opacity: 0,
+                  y: -240,
+                  filter: 'blur(15px) brightness(4) saturate(0)'
                 }}
-                animate={isSelected 
-                  ? (isThisSelected 
+                exit={{ opacity: 0, scale: 0.9, y: 20, filter: 'blur(4px)', transition: { duration: 0.35 } }}
+                animate={isSelected
+                  ? (isThisSelected
                       ? { scale: 1.14, opacity: 0, filter: 'blur(14px) brightness(5) saturate(4)', y: -100, x: 0 }
                       : { scale: 0.8, opacity: 0, filter: 'blur(10px) brightness(0.5)', x: 0 })
                   : (isThisActive
-                      ? { 
-                          scale:   [0.05, 0.75, 1.05, 1.00], 
-                          opacity: [0,    0.95, 1.00, 0.91], 
+                      ? {
+                          scale:   [0.05, 0.75, 1.05, 1.00],
+                          opacity: [0,    0.95, 1.00, 0.91],
                           y:       [-240, -40,  10,   0],
                           filter: [
                             'blur(15px) brightness(4)  saturate(0)',
@@ -190,16 +205,16 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
                             'blur(0px)  brightness(1.2) saturate(1.2)',
                             'blur(0px)  brightness(1.0) saturate(1.0)'
                           ],
-                          x: 0, 
-                          zIndex: 10 
+                          x: 0,
+                          zIndex: 10
                         }
-                      : { 
-                          scale: 0.85, 
-                          opacity: 0, 
-                          filter: 'blur(4px)', 
-                          x: 0, 
+                      : {
+                          scale: 0.85,
+                          opacity: 0,
+                          filter: 'blur(4px)',
+                          x: 0,
                           y: 0,
-                          zIndex: 5 
+                          zIndex: 5
                         })
                 }
                 transition={isThisSelected
@@ -246,15 +261,10 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
                 {/* Gradient divider */}
                 <div className="oracle-knife-divider" />
 
-                {/* Question pontif -- letter by letter gradient landing. */}
-                <div className="oracle-knife-card-question" aria-label={kq.question} style={{
-                  background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                  color: 'transparent',
-                  whiteSpace: 'pre-wrap', // handles wrapping with inline-block children
-                }}>
+                {/* Question pontif -- letter by letter gradient landing.
+                    Per-letter explicit color avoids background-clip:text leaking
+                    gradient through opacity:0 spans on the parent div. */}
+                <div className="oracle-knife-card-question" aria-label={kq.question}>
                   {isThisActive ? kq.question.split('').map((char, j) => (
                     <span
                       key={j}
@@ -263,7 +273,8 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
                         opacity: j < landedChars ? 1 : 0,
                         transition: j < landedChars ? 'opacity 0.65s ease-out' : 'none',
                         filter: j < landedChars ? 'blur(0px)' : 'blur(4px)',
-                        display: 'inline-block', // needed for blur/opacity on individual letters
+                        color: gradientChar(j, kq.question.length),
+                        display: 'inline-block',
                         whiteSpace: char === ' ' ? 'pre' : 'normal',
                       }}
                     >
@@ -279,6 +290,7 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
               </motion.div>
             );
           })}
+          </AnimatePresence>
         </div>
       </div>
 

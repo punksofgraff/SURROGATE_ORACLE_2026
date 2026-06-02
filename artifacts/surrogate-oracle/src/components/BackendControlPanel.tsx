@@ -106,7 +106,7 @@ function RiftGrid() {
 
 // ── SignalTag ─────────────────────────────────────────────────────────────────
 function SignalTag({ label, ok, warn }: { label: string; ok: boolean; warn?: boolean }) {
-  const color = warn ? '#b026ff' : ok ? '#00ff88' : '#00ccff';
+  const color = warn ? '#b026ff' : ok ? '#00ff88' : '#00ffcc';
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -115,7 +115,7 @@ function SignalTag({ label, ok, warn }: { label: string; ok: boolean; warn?: boo
       border: `1px solid ${color}33`,
       borderLeft: `2px solid ${color}`,
       fontSize: '0.52rem', letterSpacing: '0.12em', color,
-      fontFamily: 'monospace', fontWeight: 700,
+      fontFamily: "'PhillySans', 'Orbitron', monospace", fontWeight: 700,
     }}>
       {label}
     </span>
@@ -134,7 +134,7 @@ function Oscilloscope({ rms }: { rms: number }) {
             key={i}
             animate={{ height: [height * 0.8, height, height * 0.9] }}
             transition={{ repeat: Infinity, duration: 0.1 + Math.random() * 0.2 }}
-            style={{ width: 3, background: '#00ccff', opacity: 0.6 + (i / points) * 0.4 }}
+            style={{ width: 3, background: '#00ffcc', opacity: 0.6 + (i / points) * 0.4 }}
           />
         );
       })}
@@ -152,15 +152,15 @@ function TerminalLog({ lines, label }: { lines: string[]; label: string }) {
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-        <div style={{ fontSize: '0.52rem', color: '#00ccff', letterSpacing: '0.15em', fontWeight: 800 }}>
+        <div style={{ fontSize: '0.52rem', color: '#00ffcc', letterSpacing: '0.15em', fontWeight: 800, fontFamily: "'PhillySans', 'Orbitron', monospace" }}>
           {label}
         </div>
-        <button 
+        <button
           onClick={copyLines}
-          style={{ 
-            background: 'none', border: 'none', color: '#00ff88', 
+          style={{
+            background: 'none', border: 'none', color: '#00ff88',
             fontSize: '0.5rem', cursor: 'pointer', opacity: 0.5,
-            padding: '2px 4px'
+            padding: '2px 4px', fontFamily: "'PhillySans', 'Orbitron', monospace",
           }}
         >
           COPY
@@ -169,7 +169,7 @@ function TerminalLog({ lines, label }: { lines: string[]; label: string }) {
       <div style={{
         background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(0,255,136,0.15)',
         borderRadius: '2px 8px 2px 8px', padding: '8px 10px', maxHeight: 120, overflowY: 'auto',
-        fontFamily: 'monospace', fontSize: '0.6rem', color: '#00ff88',
+        fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.6rem', color: '#00ff88',
         lineHeight: 1.7,
       }}>
         {lines.length === 0 ? (
@@ -178,6 +178,145 @@ function TerminalLog({ lines, label }: { lines: string[]; label: string }) {
           lines.map((l, i) => <div key={i}>{l}</div>)
         )}
       </div>
+    </div>
+  );
+}
+
+// ── ManifestPanel — live session artifact display ─────────────────────────────
+// Listens to oracle:score / oracle:alignment / oracle:artifact events.
+// Renders collected session data as diegetic Signal Fragments.
+function ManifestPanel({ pendingCoins }: { pendingCoins: number }) {
+  const [alignment, setAlignment]     = useState<string | null>(null);
+  const [archetype, setArchetype]     = useState<string | null>(null);
+  const [totemLevel, setTotemLevel]   = useState(0);
+  const [sessionPhase, setPhase]      = useState<string | null>(null);
+  const [emotionalWeight, setEmotion] = useState<string | null>(null);
+  const [coins, setCoins]             = useState(pendingCoins);
+
+  useEffect(() => { setCoins(pendingCoins); }, [pendingCoins]);
+
+  useEffect(() => {
+    const onScore = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      if (d.sessionPhase) setPhase(d.sessionPhase);
+      if (typeof d.totemLevel === 'number') setTotemLevel(d.totemLevel);
+      if (d.archetypeTitle) setArchetype(d.archetypeTitle);
+      if (d.emotionalWeight) setEmotion(d.emotionalWeight);
+    };
+    const onAlign = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      if (d.alignment) setAlignment(d.alignment);
+    };
+    const onArtifact = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      if (d.archetypeTitle) setArchetype(d.archetypeTitle);
+    };
+    const onTotem = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      if (typeof d.totemLevel === 'number') setTotemLevel(d.totemLevel);
+    };
+    window.addEventListener('oracle:score',        onScore);
+    window.addEventListener('oracle:alignment',    onAlign);
+    window.addEventListener('oracle:artifact',     onArtifact);
+    window.addEventListener('oracle:totem:ascend', onTotem);
+    return () => {
+      window.removeEventListener('oracle:score',        onScore);
+      window.removeEventListener('oracle:alignment',    onAlign);
+      window.removeEventListener('oracle:artifact',     onArtifact);
+      window.removeEventListener('oracle:totem:ascend', onTotem);
+    };
+  }, []);
+
+  const alignColor   = alignment === 'sacred' ? '#00ff88' : alignment === 'profane' ? '#b026ff' : '#00ffcc';
+  const phaseLabels: Record<string, string> = { claim: 'CLAIM', evidence: 'EVIDENCE', cost: 'COST', mirror: 'MIRROR' };
+  const hasData = alignment || archetype || totemLevel > 0 || sessionPhase;
+
+  const ArtifactRow = ({ label, value, color = '#00ffcc' }: { label: string; value: string; color?: string }) => (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      padding: '9px 12px',
+      background: 'rgba(0,0,0,0.45)',
+      border: `1px solid ${color}18`,
+      borderLeft: `2px solid ${color}55`,
+      marginBottom: 6,
+    }}>
+      <span style={{ fontSize: '0.5rem', color: 'rgba(255,255,255,0.35)', letterSpacing: '0.18em', fontFamily: "'PhillySans','Orbitron',monospace" }}>
+        {label}
+      </span>
+      <span style={{ fontSize: '0.72rem', color, fontWeight: 900, letterSpacing: '0.1em', fontFamily: "'PhillySans','Orbitron',monospace" }}>
+        {value}
+      </span>
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <SignalFragment glowColor="#00ffcc">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <span style={{ fontSize: '1.1rem', color: '#00ffcc' }}>⊞</span>
+          <span style={{
+            fontFamily: "'aAnotherTag','Orbitron',sans-serif",
+            fontSize: '1.0rem', fontWeight: 900, letterSpacing: '0.08em',
+            background: 'linear-gradient(90deg,#00ff88,#00ffcc)',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+          }}>SESSION MANIFEST</span>
+        </div>
+
+        {!hasData ? (
+          <div style={{ padding: '28px 16px', textAlign: 'center' }}>
+            <motion.div
+              animate={{ opacity: [0.3, 0.7, 0.3] }}
+              transition={{ repeat: Infinity, duration: 2.4 }}
+              style={{ fontSize: '0.6rem', color: '#00ffcc', letterSpacing: '0.22em', fontFamily: "'PhillySans','Orbitron',monospace" }}
+            >
+              AWAITING_ORACLE_SESSION
+            </motion.div>
+            <div style={{ marginTop: 10, fontSize: '0.48rem', color: 'rgba(0,255,204,0.3)', letterSpacing: '0.15em', fontFamily: "'PhillySans','Orbitron',monospace" }}>
+              ARTIFACTS ACCUMULATE AS THE RITUAL UNFOLDS
+            </div>
+          </div>
+        ) : (
+          <>
+            {alignment    && <ArtifactRow label="SIGNAL_ALIGNMENT" value={alignment.toUpperCase()} color={alignColor} />}
+            {archetype    && <ArtifactRow label="ARCHETYPE_TITLE"  value={archetype.toUpperCase()} color="#00ff88" />}
+            {totemLevel > 0 && <ArtifactRow label="TOTEM_LEVEL"   value={Array(totemLevel).fill('◈').join('')} color="#00ffcc" />}
+            {sessionPhase && <ArtifactRow label="RITUAL_PHASE"    value={phaseLabels[sessionPhase] ?? sessionPhase.toUpperCase()} color="#00ffcc" />}
+            {emotionalWeight && <ArtifactRow label="EMOTIONAL_REG" value={emotionalWeight.toUpperCase()} color="rgba(255,255,255,0.5)" />}
+            {coins > 0    && <ArtifactRow label="CULTURE_COINS"   value={`+${coins}c`} color="#00ff88" />}
+          </>
+        )}
+      </SignalFragment>
+
+      {/* Ritual phase progress bar */}
+      {sessionPhase && (
+        <SignalFragment glowColor="#00ffcc" style={{ padding: '12px 14px' }}>
+          <div style={{ fontSize: '0.48rem', color: 'rgba(0,255,204,0.45)', letterSpacing: '0.18em', marginBottom: 10, fontFamily: "'PhillySans','Orbitron',monospace" }}>
+            RITUAL_PROGRESSION
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(['claim', 'evidence', 'cost', 'mirror'] as const).map((phase) => {
+              const phases = ['claim', 'evidence', 'cost', 'mirror'];
+              const currentIdx = phases.indexOf(sessionPhase ?? '');
+              const phaseIdx   = phases.indexOf(phase);
+              const isActive   = phase === sessionPhase;
+              const isPast     = phaseIdx < currentIdx;
+              return (
+                <div key={phase} style={{
+                  flex: 1, height: 28, display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center', gap: 3,
+                  background: isActive ? 'rgba(0,255,204,0.12)' : isPast ? 'rgba(0,255,136,0.06)' : 'rgba(0,0,0,0.3)',
+                  border: `1px solid ${isActive ? '#00ffcc44' : isPast ? '#00ff8822' : 'rgba(255,255,255,0.05)'}`,
+                  borderBottom: isActive ? '2px solid #00ffcc' : isPast ? '2px solid #00ff8844' : '2px solid transparent',
+                }}>
+                  <span style={{ fontSize: '0.38rem', letterSpacing: '0.12em', color: isActive ? '#00ffcc' : isPast ? 'rgba(0,255,136,0.5)' : 'rgba(255,255,255,0.15)', fontFamily: "'PhillySans','Orbitron',monospace" }}>
+                    {phaseLabels[phase]}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </SignalFragment>
+      )}
     </div>
   );
 }
@@ -285,6 +424,8 @@ export const BackendControlPanel = ({
   if (!isVisible) return null;
 
   // ── Render ──────────────────────────────────────────────────────────────────
+  const activeFreqDef = FREQUENCIES.find(f => f.id === activeFreq);
+
   return (
     <>
       <motion.div
@@ -297,103 +438,197 @@ export const BackendControlPanel = ({
           right: 0, top: 0, bottom: 0,
           width: 'min(420px, 92vw)',
           background: 'linear-gradient(160deg, rgba(0,0,12,0.98) 0%, rgba(2,0,22,1.0) 100%)',
-          borderLeft: '1px solid rgba(0,255,136,0.18)',
+          borderLeft: '2px solid rgba(0,255,136,0.22)',
           zIndex: 150,
           display: 'flex',
           flexDirection: 'column',
           fontFamily: "'PhillySans', 'Orbitron', monospace",
           overflowY: 'hidden',
-          boxShadow: '-40px 0 120px rgba(0,0,0,0.9)',
+          boxShadow: '-40px 0 120px rgba(0,0,0,0.9), inset 0 0 60px rgba(0,255,136,0.03)',
           transformOrigin: 'right center',
         }}
         data-testid="backend-panel"
       >
-        {/* ── Header: Salvaged Module Info ───────────────────────────────── */}
+        {/* ── Scanline overlay ───────────────────────────────────────────── */}
         <div style={{
-          padding: '20px 24px 12px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          background: 'rgba(0,0,10,0.6)',
-          backdropFilter: 'blur(12px)',
-          borderBottom: '1px solid rgba(0,255,136,0.08)',
+          position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
+          backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,136,0.018) 2px, rgba(0,255,136,0.018) 4px)',
+          animation: 'scanline-drift 12s linear infinite',
+        }} />
+
+        {/* ── RiftGrid dot field ─────────────────────────────────────────── */}
+        <RiftGrid />
+
+        {/* ── HUD corner brackets ────────────────────────────────────────── */}
+        {/* top-left */}
+        <div style={{ position: 'absolute', top: 6, left: 6, width: 18, height: 2, background: '#00ff88', opacity: 0.5, zIndex: 2, pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', top: 6, left: 6, width: 2, height: 18, background: '#00ff88', opacity: 0.5, zIndex: 2, pointerEvents: 'none' }} />
+        {/* top-right */}
+        <div style={{ position: 'absolute', top: 6, right: 6, width: 18, height: 2, background: '#00ffcc', opacity: 0.4, zIndex: 2, pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', top: 6, right: 6, width: 2, height: 18, background: '#00ffcc', opacity: 0.4, zIndex: 2, pointerEvents: 'none' }} />
+        {/* bottom-left */}
+        <div style={{ position: 'absolute', bottom: 6, left: 6, width: 18, height: 2, background: '#00ff88', opacity: 0.3, zIndex: 2, pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: 6, left: 6, width: 2, height: 18, background: '#00ff88', opacity: 0.3, zIndex: 2, pointerEvents: 'none' }} />
+        {/* bottom-right */}
+        <div style={{ position: 'absolute', bottom: 6, right: 6, width: 18, height: 2, background: '#00ffcc', opacity: 0.25, zIndex: 2, pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: 6, right: 6, width: 2, height: 18, background: '#00ffcc', opacity: 0.25, zIndex: 2, pointerEvents: 'none' }} />
+
+        {/* ── Header ─────────────────────────────────────────────────────── */}
+        <div style={{
+          padding: '18px 22px 0',
+          background: 'rgba(0,0,10,0.7)',
+          backdropFilter: 'blur(16px)',
+          borderBottom: '1px solid rgba(0,255,136,0.1)',
           flexShrink: 0,
           position: 'relative',
           zIndex: 5,
         }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <motion.div
-                animate={{ opacity: [1, 0.4, 1] }}
-                transition={{ repeat: Infinity, duration: 1.5 }}
-                style={{ width: 8, height: 8, background: '#00ff88', boxShadow: '0 0 12px #00ff88' }}
-              />
-              <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#00ff88', letterSpacing: '0.2em' }}>
-                ENCULTURATE_CRATE
+          {/* Title row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+            <div>
+              {/* SURROGATE:ORACLE — aAnotherTag brand gradient */}
+              <div style={{
+                fontFamily: "'aAnotherTag', 'Orbitron', sans-serif",
+                fontSize: '1.35rem',
+                fontWeight: 900,
+                letterSpacing: '0.08em',
+                background: 'linear-gradient(90deg, #00ff88, #00ffcc)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+                lineHeight: 1.1,
+              }}>
+                SURROGATE:ORACLE
+              </div>
+              {/* Subtitle — PhillySans */}
+              <div style={{
+                fontFamily: "'PhillySans', 'Orbitron', monospace",
+                fontSize: '0.52rem',
+                fontWeight: 800,
+                color: 'rgba(0,255,204,0.55)',
+                letterSpacing: '0.22em',
+                marginTop: 4,
+              }}>
+                TIME-RIFT CONSOLE
               </div>
             </div>
-            <div style={{ fontSize: '0.52rem', color: '#00ccff', opacity: 0.6, marginTop: 6, letterSpacing: '0.15em', fontFamily: 'monospace' }}>
-              RESONANCE_SCAN://{FREQUENCIES.find(f => f.id === activeFreq)?.mhz}MHz
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* Live indicator */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <motion.div
+                  animate={{ opacity: [1, 0.25, 1], scale: [1, 1.15, 1] }}
+                  transition={{ repeat: Infinity, duration: 1.4, ease: 'easeInOut' }}
+                  style={{ width: 7, height: 7, borderRadius: '50%', background: '#00ff88', boxShadow: '0 0 10px #00ff88, 0 0 20px rgba(0,255,136,0.4)' }}
+                />
+                <span style={{ fontSize: '0.46rem', color: '#00ff88', letterSpacing: '0.18em', fontWeight: 900 }}>LIVE</span>
+              </div>
+              {onClose && (
+                <motion.button
+                  onClick={onClose}
+                  whileHover={{ scale: 1.15, color: '#00ff88' }}
+                  style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.25)', cursor: 'pointer', padding: '4px 6px', lineHeight: 1 }}
+                >
+                  <X size={16} />
+                </motion.button>
+              )}
             </div>
           </div>
-          {onClose && (
-            <motion.button
-              onClick={onClose}
-              whileHover={{ scale: 1.1, color: '#00ff88' }}
-              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', padding: 8 }}
-            >
-              <X size={18} />
-            </motion.button>
-          )}
+
+          {/* HUD telemetry band */}
+          <div style={{
+            display: 'flex', gap: 12, alignItems: 'center',
+            padding: '6px 0 10px',
+            borderTop: '1px solid rgba(0,255,136,0.07)',
+            fontSize: '0.48rem',
+            fontFamily: "'PhillySans', 'Orbitron', monospace",
+            letterSpacing: '0.14em',
+            color: 'rgba(0,255,204,0.45)',
+            overflowX: 'hidden',
+          }}>
+            <span style={{ color: 'rgba(0,255,136,0.35)' }}>FREQ</span>
+            <span style={{ color: '#00ffcc', fontWeight: 900 }}>{activeFreqDef?.mhz}MHz</span>
+            <span style={{ color: 'rgba(255,255,255,0.12)' }}>·</span>
+            <span style={{ color: 'rgba(0,255,136,0.35)' }}>BAND</span>
+            <span style={{ color: '#00ff88', fontWeight: 900 }}>{activeFreqDef?.label}</span>
+            {sessionId && (
+              <>
+                <span style={{ color: 'rgba(255,255,255,0.12)' }}>·</span>
+                <span style={{ color: 'rgba(0,255,204,0.3)' }}>SID:{sessionId.slice(-6).toUpperCase()}</span>
+              </>
+            )}
+            <span style={{ marginLeft: 'auto', color: 'rgba(0,255,136,0.25)' }}>◈ XR_v2.0</span>
+          </div>
         </div>
 
         {/* ── Frequency Tuner (Diegetic Navigation) ───────────────────────── */}
         <div style={{
           display: 'flex',
-          background: 'rgba(0,0,0,0.3)',
-          borderBottom: '1px solid rgba(255,255,255,0.05)',
+          background: 'rgba(0,0,4,0.6)',
+          borderBottom: '1px solid rgba(0,255,136,0.08)',
           overflowX: 'auto',
           scrollbarWidth: 'none',
-          padding: '0 12px',
+          padding: '0 6px',
           zIndex: 4,
+          flexShrink: 0,
         }}>
           {FREQUENCIES.map((freq) => {
             const isActive = activeFreq === freq.id;
-            // Map frequencies to legacy test IDs for smoke test compatibility
-            const testId = 
+            const testId =
                 freq.id === 'RESONANCE' ? 'tab-vault'
               : freq.id === 'SQUAD'     ? 'tab-squad'
               : freq.id === 'PRINTS'    ? 'tab-portraits'
               : freq.id === 'CORE_DIAG' ? 'tab-gemini'
               : freq.id === 'SALVAGE'   ? 'tab-dev'
               : freq.id === 'MANIFEST'  ? 'tab-manifest'
-              : `tab-${freq.id.toLowerCase()}`;
+              : `tab-${(freq.id as string).toLowerCase()}`;
 
             return (
               <motion.button
                 key={freq.id}
                 data-testid={testId}
-                onClick={() => {
-                  setActiveFreq(freq.id);
-                  // Play a subtle static burst sfx if we had a function for it
-                }}
+                onClick={() => setActiveFreq(freq.id)}
+                whileHover={{ backgroundColor: 'rgba(0,255,136,0.05)' }}
                 style={{
-                  padding: '14px 18px',
-                  background: 'none',
+                  padding: '10px 14px',
+                  background: isActive ? 'rgba(0,255,136,0.07)' : 'none',
                   border: 'none',
                   borderBottom: `2px solid ${isActive ? '#00ff88' : 'transparent'}`,
-                  color: isActive ? '#00ff88' : 'rgba(255,255,255,0.25)',
+                  borderTop: `1px solid ${isActive ? 'rgba(0,255,136,0.2)' : 'transparent'}`,
+                  color: isActive ? '#00ff88' : 'rgba(255,255,255,0.22)',
                   cursor: 'pointer',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: 4,
-                  minWidth: '70px',
-                  transition: 'color 0.2s ease',
+                  gap: 3,
+                  minWidth: '62px',
+                  transition: 'color 0.18s ease, background 0.18s ease',
+                  flexShrink: 0,
+                  position: 'relative',
                 }}
               >
-                <span style={{ fontSize: '0.9rem', opacity: isActive ? 1 : 0.4 }}>{freq.glyph}</span>
-                <span style={{ fontSize: '0.55rem', letterSpacing: '0.1em', fontWeight: 700 }}>{freq.mhz}</span>
+                {/* Active channel glow */}
+                {isActive && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: [0.6, 1, 0.6] }}
+                    transition={{ repeat: Infinity, duration: 2.2 }}
+                    style={{
+                      position: 'absolute', bottom: -1, left: '20%', right: '20%', height: 2,
+                      background: 'linear-gradient(90deg, transparent, #00ff88, transparent)',
+                      filter: 'blur(2px)',
+                    }}
+                  />
+                )}
+                <span style={{ fontSize: '1rem', opacity: isActive ? 1 : 0.3, filter: isActive ? 'drop-shadow(0 0 4px #00ff88)' : 'none' }}>
+                  {freq.glyph}
+                </span>
+                <span style={{ fontSize: '0.48rem', letterSpacing: '0.12em', fontWeight: 800, opacity: isActive ? 0.9 : 0.35 }}>
+                  {freq.label.length > 6 ? freq.label.slice(0, 6) : freq.label}
+                </span>
+                <span style={{ fontSize: '0.42rem', letterSpacing: '0.08em', opacity: isActive ? 0.55 : 0.2, color: isActive ? '#00ffcc' : 'inherit' }}>
+                  {freq.mhz}
+                </span>
               </motion.button>
             );
           })}
@@ -434,7 +669,7 @@ export const BackendControlPanel = ({
 
                       {chainFuelz.isInitialized ? (
                         <>
-                          <div style={{ fontSize: '0.52rem', color: '#00ccff', opacity: 0.6, marginBottom: 6, letterSpacing: '0.1em' }}>VAULT_SIGNATURE</div>
+                          <div style={{ fontSize: '0.52rem', color: '#00ffcc', opacity: 0.6, marginBottom: 6, letterSpacing: '0.1em' }}>VAULT_SIGNATURE</div>
                           <div style={{
                             fontSize: '0.85rem', color: '#fff', fontFamily: 'monospace',
                             background: 'rgba(0,255,136,0.04)', padding: '10px 14px',
@@ -456,7 +691,7 @@ export const BackendControlPanel = ({
                           </div>
                         </>
                       ) : (
-                        <div style={{ padding: '20px 0', textAlign: 'center', color: '#00ccff', fontSize: '0.65rem' }}>
+                        <div style={{ padding: '20px 0', textAlign: 'center', color: '#00ffcc', fontSize: '0.65rem' }}>
                           RECOVERING VAULT FREQUENCY...
                         </div>
                       )}
@@ -510,14 +745,14 @@ export const BackendControlPanel = ({
 
               {/* ── CORE_DIAG tab ─────────────────────────────────────── */}
               {activeFreq === 'CORE_DIAG' && (
-                <SignalFragment glowColor="#00ccff">
+                <SignalFragment glowColor="#00ffcc">
                   {/* Smoke test anchors (hidden) */}
                   <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>
                     WEBSOCKET WS STATE VERTEX
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-                    <Cpu size={16} color="#00ccff" />
-                    <span style={{ fontSize: '0.8rem', color: '#00ccff', fontWeight: 800, letterSpacing: '0.15em' }}>
+                    <Cpu size={16} color="#00ffcc" />
+                    <span style={{ fontSize: '0.8rem', color: '#00ffcc', fontWeight: 800, letterSpacing: '0.15em' }}>
                       GEMINI LIVE
                     </span>
                   </div>
@@ -546,7 +781,7 @@ export const BackendControlPanel = ({
                             background: 'rgba(0,0,0,0.5)', padding: '10px 12px',
                             border: '1px solid rgba(0,204,255,0.15)',
                           }}>
-                            <div style={{ color: '#00ccff', fontSize: '0.52rem', letterSpacing: '0.12em', marginBottom: 4 }}>{k}</div>
+                            <div style={{ color: '#00ffcc', fontSize: '0.52rem', letterSpacing: '0.12em', marginBottom: 4 }}>{k}</div>
                             <div style={{ color: '#fff', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 700 }}>{String(v)}</div>
                           </div>
                         ))}
@@ -625,19 +860,7 @@ export const BackendControlPanel = ({
 
               {/* ── MANIFEST tab ──────────────────────────────────────── */}
               {activeFreq === 'MANIFEST' && (
-                <SignalFragment glowColor="#00ffcc">
-                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-                    <span style={{ fontSize: '1.2rem', color: '#00ffcc' }}>⊞</span>
-                    <span style={{ fontSize: '0.8rem', color: '#00ffcc', fontWeight: 800, letterSpacing: '0.15em' }}>
-                      ASSET_MANIFEST
-                    </span>
-                  </div>
-                  <div style={{ padding: '30px 20px', border: '1px dashed rgba(0,255,204,0.3)', textAlign: 'center', background: 'rgba(0,255,204,0.03)' }}>
-                    <div style={{ fontSize: '0.65rem', color: '#00ffcc', opacity: 0.6, letterSpacing: '0.2em' }}>
-                      AWAITING_HOLOGRAPHIC_UPLOAD
-                    </div>
-                  </div>
-                </SignalFragment>
+                <ManifestPanel pendingCoins={pendingCoins} />
               )}
 
             </motion.div>

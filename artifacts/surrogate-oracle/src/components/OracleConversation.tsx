@@ -393,13 +393,21 @@ const OracleConversation = forwardRef(
     const micAutoRestartEnabledRef = useRef(false);
 
     const parseScore = (text: string): { clean: string; score: OracleScore | null } => {
-      const match = text.match(/\[\[ORACLE_SCORE: (.*?)\]\]/);
+      // [\s\S]*? matches across newlines — Gemini occasionally wraps the JSON
+      const match = text.match(/\[\[ORACLE_SCORE: ([\s\S]*?)\]\]/);
       if (!match) return { clean: text, score: null };
       try {
         const score = JSON.parse(match[1]);
         return { clean: text.replace(match[0], '').trim(), score };
       } catch {
-        return { clean: text, score: null };
+        // Gemini sometimes emits schema-notation pipes ("sacred"|"profane") — strip them
+        try {
+          const sanitized = match[1].replace(/"([^"]+)"\|"([^"]+)"/g, '"$1"');
+          const score = JSON.parse(sanitized);
+          return { clean: text.replace(match[0], '').trim(), score };
+        } catch {
+          return { clean: text, score: null };
+        }
       }
     };
 
@@ -585,7 +593,9 @@ const OracleConversation = forwardRef(
               const score = scored.score;
               // Strip the identity marker too, so it never reaches the displayed turn.
               const { clean, identity } = parseSeekerIrl(scored.clean);
-              if (!score && currentResponseText.current.length > 0) {
+              // Only warn when the response was substantial — barge-in stubs are
+              // too short to contain a score tag so the miss is expected, not a bug.
+              if (!score && currentResponseText.current.length > 60) {
                 logStep('SCORE PARSE FAILED', 'warn');
               }
               // Web-grounded IRL resolution is out-of-band — fire once, parent orchestrates.

@@ -107,24 +107,66 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     return () => window.removeEventListener('deviceorientation', handleOrientation);
   }, [isXRMode, cameraActive]);
 
-  // ── Motion Scoping (Camera-based) ──
+  // ── Motion Scoping (Camera-based luminance centroid) ─────────────────────────
+  // Samples a 40×30 thumbnail of the camera frame each tick.
+  // Computes a luminance-weighted centroid — faces are typically the brightest
+  // region in a dark scene.  No ML required; runs at full 60fps on any device.
   useEffect(() => {
-    if (!cameraActive || !cameraVideoRef.current) return;
-    
+    if (!cameraActive) return;
+
+    // Wait for the video element to be attached and playing
     let rafId: number;
-    // Simple motion scoping: detect brightest area or pixel changes (placeholder for real face mesh)
-    // For now, we simulate seeker tracking via small random drift when camera is on
+    const canvas = document.createElement('canvas');
+    canvas.width = 40;
+    canvas.height = 30;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    // Smoothed position — prevents jitter on low-contrast frames
+    let smoothX = 0;
+    let smoothY = 0;
+    const ALPHA = 0.12; // EMA smoothing factor
+
     const tick = () => {
-      const t = performance.now() * 0.001;
-      seekerMotionRef.current.facePos = {
-        x: Math.sin(t * 0.5) * 0.2,
-        y: Math.cos(t * 0.3) * 0.1
-      };
       rafId = requestAnimationFrame(tick);
+      const video = cameraVideoRef.current;
+      if (!video || video.readyState < 2 || video.videoWidth === 0) return;
+
+      ctx.drawImage(video, 0, 0, 40, 30);
+      const { data } = ctx.getImageData(0, 0, 40, 30);
+
+      let totalLum = 0, wx = 0, wy = 0;
+      for (let py = 0; py < 30; py++) {
+        for (let px = 0; px < 40; px++) {
+          const idx = (py * 40 + px) * 4;
+          // BT.709 luminance weights
+          const lum = 0.2126 * data[idx] + 0.7152 * data[idx + 1] + 0.0722 * data[idx + 2];
+          totalLum += lum;
+          wx += lum * px;
+          wy += lum * py;
+        }
+      }
+
+      if (totalLum > 0) {
+        // Normalize to -1…1, mirror X because front cam is mirrored
+        const rawX = -(wx / totalLum / 40 * 2 - 1);
+        const rawY =  (wy / totalLum / 30 * 2 - 1);
+        smoothX = smoothX + ALPHA * (rawX - smoothX);
+        smoothY = smoothY + ALPHA * (rawY - smoothY);
+      }
+
+      seekerMotionRef.current.facePos = {
+        x: THREE_MathUtils.clamp(smoothX, -1, 1),
+        y: THREE_MathUtils.clamp(smoothY, -1, 1),
+      };
     };
+
     rafId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(rafId);
-  }, [cameraActive]);
+    return () => {
+      cancelAnimationFrame(rafId);
+      ctx.clearRect(0, 0, 40, 30);
+    };
+  }, [cameraActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep latest marker callback in ref — avoids stale closure in postMessage handler
   const onMarkerRef = useRef(onMarkerDetected);

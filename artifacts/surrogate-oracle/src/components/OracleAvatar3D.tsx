@@ -18,6 +18,7 @@ import { useGLTF, useAnimations, Center } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { VisemeState } from '../lib/visemeDetector';
+import type { SeekerMotion } from '../hooks/useXRMode';
 
 // Strip arm/shoulder/hand/finger tracks from any GLB clip so only
 // spine/torso sway survives. Face morphs + our own useFrame code
@@ -143,6 +144,7 @@ export interface CameraState {
 export interface OracleAvatar3DProps {
   visemeStateRef:  React.RefObject<VisemeState>;
   cameraStateRef?: React.RefObject<CameraState>;
+  seekerMotionRef?: React.RefObject<SeekerMotion | null>;
 }
 
 // Camera orbit bounds
@@ -163,7 +165,7 @@ const CAM_LERP      = 0.08; // responsive on phone while still smooth
 // not the legs — the old hardcoded -1.59 was calibrated for the previous avatar.
 const AVATAR_Y_OFFSET = -1.59;
 
-export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3DProps) {
+export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef }: OracleAvatar3DProps) {
   const { scene }      = useGLTF('/hero3.glb?v=morphs-v2');
   const { animations: idleClips }    = useGLTF('/oracle-idle.glb');
   const { animations: talking1Clips } = useGLTF('/oracle-talking-1.glb');
@@ -409,21 +411,31 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef }: OracleAvatar3
     const bInt = Math.sin(blink.intensity * Math.PI);
 
     // ── Gaze & bone animation ─────────────────────────────────────────────
-    const gx = cameraStateRef?.current
-      ? Math.max(-1, Math.min(1,  cameraStateRef.current.x)) : 0;
-    const gy = cameraStateRef?.current
-      ? Math.max(-1, Math.min(1, -cameraStateRef.current.y)) : 0;
+    // Seeker Tracking: Use real motion data if in XR/Camera mode, else use parallax
+    let seekerX = cameraStateRef?.current ? cameraStateRef.current.x : 0;
+    let seekerY = cameraStateRef?.current ? -cameraStateRef.current.y : 0;
 
-    // Eye gaze follows viewer
-    const eyeLerpF = lerpDt * 0.16;
+    if (seekerMotionRef?.current) {
+      const { phoneTilt, facePos } = seekerMotionRef.current;
+      // Blend phone tilt and face position for a 'deep' tracking effect
+      // phoneTilt provides high-frequency orientation, facePos provides absolute spatial offset
+      seekerX = phoneTilt.x * 0.7 + facePos.x * 0.3;
+      seekerY = phoneTilt.y * 0.7 + facePos.y * 0.3;
+    }
+
+    const gx = Math.max(-1, Math.min(1, seekerX));
+    const gy = Math.max(-1, Math.min(1, seekerY));
+
+    // Eye gaze follows seeker
+    const eyeLerpF = lerpDt * 0.22; // Slightly more responsive tracking
     if (meshData.leftEyeBone) {
-      meshData.leftEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.y, gx * 0.42, eyeLerpF);
-      meshData.leftEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.x, gy * 0.25, eyeLerpF);
+      meshData.leftEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.y, gx * 0.55, eyeLerpF);
+      meshData.leftEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.x, gy * 0.35, eyeLerpF);
       meshData.leftEyeBone.scale.y    = 1.0 - bInt * 0.92;
     }
     if (meshData.rightEyeBone) {
-      meshData.rightEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.y, gx * 0.42, eyeLerpF);
-      meshData.rightEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.x, gy * 0.25, eyeLerpF);
+      meshData.rightEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.y, gx * 0.55, eyeLerpF);
+      meshData.rightEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.x, gy * 0.35, eyeLerpF);
       meshData.rightEyeBone.scale.y    = 1.0 - bInt * 0.92;
     }
 

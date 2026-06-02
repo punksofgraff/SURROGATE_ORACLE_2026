@@ -28,6 +28,14 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import * as THREE from 'three';
+
+const THREE_MathUtils = THREE.MathUtils;
+
+export interface SeekerMotion {
+  phoneTilt: { x: number; y: number }; // normalized -1 to 1 (DeviceOrientation)
+  facePos:  { x: number; y: number }; // normalized -1 to 1 (Camera-based analysis - placeholder)
+}
 
 export interface UseXRModeReturn {
   isXRMode: boolean;
@@ -46,6 +54,7 @@ export interface UseXRModeReturn {
   cameraError: string | null;
   markerActive: boolean;
   autoStart: boolean; // ?autostart param — skips tap gesture, boots immediately
+  seekerMotionRef: React.RefObject<SeekerMotion>;
 }
 
 // Detect XR mode synchronously from URL (stable across renders)
@@ -75,6 +84,47 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
 
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const seekerMotionRef = useRef<SeekerMotion>({
+    phoneTilt: { x: 0, y: 0 },
+    facePos:   { x: 0, y: 0 }
+  });
+
+  // ── Device Orientation Listener ──
+  useEffect(() => {
+    // Only track if XR or camera is active (seeker allowed motion)
+    if (!isXRMode && !cameraActive) return;
+
+    const handleOrientation = (e: DeviceOrientationEvent) => {
+      if (!e.beta || !e.gamma) return;
+      // beta: -180 to 180 (front/back tilt), gamma: -90 to 90 (left/right tilt)
+      // Normalize to -1...1 range for the Oracle's gaze
+      const x = THREE_MathUtils.clamp(e.gamma / 30, -1, 1);
+      const y = THREE_MathUtils.clamp((e.beta - 45) / 30, -1, 1); // 45deg is 'neutral' holding angle
+      seekerMotionRef.current.phoneTilt = { x, y };
+    };
+
+    window.addEventListener('deviceorientation', handleOrientation);
+    return () => window.removeEventListener('deviceorientation', handleOrientation);
+  }, [isXRMode, cameraActive]);
+
+  // ── Motion Scoping (Camera-based) ──
+  useEffect(() => {
+    if (!cameraActive || !cameraVideoRef.current) return;
+    
+    let rafId: number;
+    // Simple motion scoping: detect brightest area or pixel changes (placeholder for real face mesh)
+    // For now, we simulate seeker tracking via small random drift when camera is on
+    const tick = () => {
+      const t = performance.now() * 0.001;
+      seekerMotionRef.current.facePos = {
+        x: Math.sin(t * 0.5) * 0.2,
+        y: Math.cos(t * 0.3) * 0.1
+      };
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [cameraActive]);
 
   // Keep latest marker callback in ref — avoids stale closure in postMessage handler
   const onMarkerRef = useRef(onMarkerDetected);
@@ -231,5 +281,5 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     try { window.parent.postMessage({ type: 'oracle:camera-ready' }, '*'); } catch {}
   }, [isXRMode, cameraReady]);
 
-  return { isXRMode, cameraActive, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraReady, cameraError, markerActive, autoStart };
+  return { isXRMode, cameraActive, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraReady, cameraError, markerActive, autoStart, seekerMotionRef };
 }

@@ -213,8 +213,8 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
           clearInterval(landingTimerRef.current!);
           landingTimerRef.current = null;
         }
-      }, 68); // ~68ms per char — meditative pace, not too slow
-    }, 1350); // 1.35s: right after glitch frame, question begins forming
+      }, 54); // ~54ms per char — slightly faster to stay "ahead of the ball"
+    }, 850); // 0.85s: starts as glitch begins to settle, making the Oracle feel more present
 
     return () => {
       clearTimeout(startDelay);
@@ -230,7 +230,7 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
     if (selectedKnifeIndex !== null) return;
     const id = setInterval(() => {
       setActiveIdx(i => (i + 1) % KNIFE_QUESTIONS.length);
-    }, 12000);  // 12s per territory — let the knife pierce, let the seeker breathe
+    }, 16000);  // 16s per territory — prevents the Oracle from being cut off mid-thought
     return () => clearInterval(id);
   }, [selectedKnifeIndex]);
 
@@ -247,7 +247,13 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
       exit={{ opacity: 0, transition: { duration: 0.6 } }}
       transition={{ duration: 1.2, delay: 0.4 }}
     >
-      <div className="oracle-knife-header">◈ CHOOSE YOUR FREQUENCY</div>
+      <div className="oracle-knife-header" style={{
+        background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        backgroundClip: 'text',
+        display: 'inline-block',
+      }}>◈ CHOOSE YOUR FREQUENCY</div>
       <div className="oracle-knife-subheader">THE ONE ALREADY TRUE. THE EXCAVATION BEGINS THERE.</div>
       {!isGeminiConnected && (
         <div className="oracle-knife-channel-status">◈ OPENING CHANNEL...</div>
@@ -258,100 +264,95 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
         {/* Beam connecting to Oracle screen above */}
         <div className={`oracle-knife-origin-beam${isEmitting ? ' oracle-knife-origin-beam--active' : ''}`} />
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={isSelected ? `sel-${selectedKnifeIndex}` : `card-${activeIdx}`}
-            className="oracle-knife-card"
-            // Origin above the card = Oracle's screen position
-            initial={{
-              scale: 0.02,
-              opacity: 0,
-              filter: 'blur(20px) brightness(4.5) saturate(3)',
-            }}
-            animate={isSelected && selectedKnifeIndex === activeIdx
-              // Selected: surge upward back toward Oracle
-              ? {
-                  scale: 1.14,
-                  opacity: 0,
-                  filter: 'blur(14px) brightness(5) saturate(4)',
+        <div className="oracle-knife-cards-container" style={{
+          display: 'flex',
+          gap: '20px',
+          width: '100%',
+          justifyContent: 'center',
+          alignItems: 'center',
+          perspective: '1000px',
+        }}>
+          {KNIFE_QUESTIONS.map((kq, i) => {
+            const isThisActive = i === activeIdx;
+            const isThisSelected = selectedKnifeIndex === i;
+            
+            return (
+              <motion.div
+                key={i}
+                className="oracle-knife-card"
+                initial={false}
+                animate={isSelected 
+                  ? (isThisSelected 
+                      ? { scale: 1.14, opacity: 0, filter: 'blur(14px) brightness(5) saturate(4)', y: -100 }
+                      : { scale: 0.8, opacity: 0, filter: 'blur(10px) brightness(0.5)' })
+                  : (isThisActive
+                      ? { scale: 1, opacity: 0.91, filter: 'blur(0px)', x: 0, zIndex: 10 }
+                      : { scale: 0.85, opacity: 0.3, filter: 'blur(4px)', x: (i - activeIdx) * 120, zIndex: 5 })
                 }
-              // Materializing: GLITCH into full read, then settle holographic
-              : {
-                  scale:   [0.02, 0.65, 1.06, 1.00, 1.00],
-                  opacity: [0,    0.55, 1.00, 1.00, 0.91],   // spike to 1.0 = glitch frame
-                  filter: [
-                    'blur(20px) brightness(4.5) saturate(3)',
-                    'blur(5px)  brightness(2.0) saturate(2)',
-                    'blur(0px)  brightness(1.0) saturate(1)', // ← full read glitch
-                    'blur(0px)  brightness(1.0) saturate(1)',
-                    'blur(0px)  brightness(1.0) saturate(1)',
-                  ],
+                transition={isThisSelected
+                  ? { duration: 1.5, ease: [0.4, 0, 1, 1] }
+                  : { duration: 0.8, ease: 'easeOut' }
                 }
-            }
-            exit={isSelected
-              ? {}
-              : {
-                  scale: 0.88,
-                  opacity: 0,
-                  filter: 'blur(10px) brightness(0.5)',
-                  transition: { duration: 0.55, ease: [0.4, 0, 1, 1] },
-                }
-            }
-            transition={isSelected && selectedKnifeIndex === activeIdx
-              ? { duration: 1.5, ease: [0.4, 0, 1, 1] }
-              : {
-                  duration: 2.4,
-                  ease: 'easeOut',
-                  times: [0, 0.38, 0.52, 0.58, 1.0],  // glitch at 38-52%
-                }
-            }
-            onClick={() => {
-              if (isSelected) return;
-              navigator.vibrate?.([40]);
-              onSelect(kq.question, activeIdx);
-            }}
-            style={{ transformOrigin: '50% -22%', cursor: isSelected ? 'default' : 'pointer' }}
-          >
-            {/* Icon */}
-            <kq.icon
-              size={28}
-              style={{
-                color: kq.color,
-                filter: `drop-shadow(0 0 14px ${kq.color})`,
-                flexShrink: 0,
-              }}
-            />
-
-            {/* Territory -- STAB. Solid Oracle green. Always. */}
-            <div className="oracle-knife-territory">{kq.territory}</div>
-
-            {/* Gradient divider */}
-            <div className="oracle-knife-divider" />
-
-            {/* Question pontif -- letter by letter gradient landing.
-                The read IS the animation. Deep think forms as letters arrive. */}
-            <div className="oracle-knife-card-question" aria-label={kq.question}>
-              {kq.question.split('').map((char, i) => (
-                <span
-                  key={i}
-                  className="oracle-knife-letter"
+                onClick={() => {
+                  if (isSelected) return;
+                  navigator.vibrate?.([40]);
+                  onSelect(kq.question, i);
+                }}
+                style={{ 
+                  transformOrigin: '50% 50%', 
+                  cursor: isSelected ? 'default' : 'pointer',
+                  position: isThisActive ? 'relative' : 'absolute',
+                  display: (!isSelected || isThisSelected) ? 'flex' : 'none',
+                }}
+              >
+                {/* Icon */}
+                <kq.icon
+                  size={28}
                   style={{
-                    opacity: i < landedChars ? 1 : 0,
-                    color: gradientChar(i, kq.question.length),
-                    transition: i < landedChars ? 'opacity 0.22s ease' : 'none',
+                    color: kq.color,
+                    filter: `drop-shadow(0 0 14px ${kq.color})`,
+                    flexShrink: 0,
                   }}
-                >
-                  {char}
-                </span>
-              ))}
-            </div>
+                />
 
-            {/* CTA */}
-            {!isSelected && (
-              <div className="oracle-knife-cta">◈ SELECT FREQUENCY</div>
-            )}
-          </motion.div>
-        </AnimatePresence>
+                {/* Territory -- STAB. Brand Kit Gradient. */}
+                <div className="oracle-knife-territory" style={{
+                  background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                  color: 'transparent',
+                }}>{kq.territory}</div>
+
+                {/* Gradient divider */}
+                <div className="oracle-knife-divider" />
+
+                {/* Question pontif -- letter by letter gradient landing. */}
+                <div className="oracle-knife-card-question" aria-label={kq.question}>
+                  {isThisActive ? kq.question.split('').map((char, j) => (
+                    <span
+                      key={j}
+                      className="oracle-knife-letter"
+                      style={{
+                        opacity: j < landedChars ? 1 : 0,
+                        color: gradientChar(j, kq.question.length),
+                        transition: j < landedChars ? 'opacity 0.65s ease-out' : 'none',
+                        filter: j < landedChars ? 'blur(0px)' : 'blur(4px)',
+                      }}
+                    >
+                      {char}
+                    </span>
+                  )) : kq.question}
+                </div>
+
+                {/* CTA */}
+                {!isSelected && isThisActive && (
+                  <div className="oracle-knife-cta">◈ SELECT FREQUENCY</div>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Nav dots */}

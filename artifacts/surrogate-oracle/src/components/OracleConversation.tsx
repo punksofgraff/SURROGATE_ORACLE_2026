@@ -967,6 +967,21 @@ const OracleConversation = forwardRef(
 
     return (
       <div className="oc-panel oc-panel-v2" style={{ display: isVisible ? 'flex' : 'none' }}>
+        
+        {/* Header Status Bar with Exit button */}
+        <div className="oc-header" style={{
+          position: 'absolute', top: 0, left: 0, right: 0, 
+          display: 'flex', justifyContent: 'flex-end', padding: '12px 16px',
+          zIndex: 10, pointerEvents: 'none'
+        }}>
+          <button 
+            className="oracle-exit-btn" 
+            onClick={() => onSessionEndRef.current?.(sessionAlignRef.current, sessionTotemRef.current, 0)}
+            style={{ pointerEvents: 'auto' }}
+          >
+            EXIT THE ORACLE
+          </button>
+        </div>
 
         {/* Mic trigger — always visible in oracle mode, audio-only by default */}
         <div className="oc-hero">

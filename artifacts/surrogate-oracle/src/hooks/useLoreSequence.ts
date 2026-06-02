@@ -36,7 +36,9 @@ export function useLoreSequence(active: boolean, onComplete: () => void) {
 
   useEffect(() => {
     if (!active) {
-      setCompletedLines(prev => prev.length ? LORE_SEQUENCE : prev);
+      // If we are not active, we should still show the full sequence if it was completed or skipped.
+      // This ensures the cabinet doesn't go dark after lore.
+      setCompletedLines(LORE_SEQUENCE);
       setCurrentLine('');
       return;
     }

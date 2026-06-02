@@ -557,7 +557,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
   }, [connection.handleOracleResponse, journey.scenePhase, journey.awakeFromTerminal]);
 
   // ── XR Mode ──────────────────────────────────────────────────────────────
-  const { isXRMode, cameraActive, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef } = useXRMode(() => enterTerminal());
+  const { isXRMode, cameraActive, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, seekerMotionRef } = useXRMode(() => enterTerminal());
 
   // ── Portrait Hook ─────────────────────────────────────────────────────────
   const handlePortraitGenerated = useCallback((url: string) => {
@@ -937,7 +937,11 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
                           style={{ width: '100%', height: '100%', background: 'transparent' }}
                           frameloop="always"
                         >
-                          <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} />
+                          <OracleAvatar3D 
+                            visemeStateRef={visemeStateRef} 
+                            cameraStateRef={cameraStateRef} 
+                            seekerMotionRef={seekerMotionRef} 
+                          />
                         </Canvas>
                       </Suspense>
                     </OracleErrorBoundary>
@@ -1130,13 +1134,17 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
 
       {/* ── Terminal lore overlay ── */}
       <AnimatePresence>
-        {scenePhase === 'terminal' && (
+        {(scenePhase === 'terminal' || (scenePhase === 'awakened' && !journey.selectedKnifeIndex)) && (
           <motion.div
             key="terminal-layer"
             className="oracle-terminal-overlay"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.8 } }}
-            onClick={() => { markLoreCompleted(); journey.awakeFromTerminal(); }}
+            onClick={scenePhase === 'terminal' ? () => { markLoreCompleted(); journey.awakeFromTerminal(); } : undefined}
+            style={{ 
+              pointerEvents: scenePhase === 'terminal' ? 'auto' : 'none',
+              zIndex: scenePhase === 'terminal' ? 100 : 20, // lower when it's a bridge
+            }}
           >
             <div className="oracle-lore-text">
               {completedLines.map((line, i) => (
@@ -1248,8 +1256,9 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
                 // Sweep filter open as letters land: Q 12→0.1 across full typing duration
                 const progress = Math.min(charCount / total, 1);
                 const q = 12 * (1 - progress) + 0.1 * progress;
-                connection.setTransmissionQ(q, 68);
+                connection.setTransmissionQ(q, 54);
               }}
+
             />
           </motion.div>
         )}

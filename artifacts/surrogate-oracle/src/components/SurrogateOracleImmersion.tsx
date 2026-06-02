@@ -1333,7 +1333,10 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
             console.log('[onMicWillStart] muting music!');
             fadeToVolume(0, 80);
           }}
-          onUserSpeakingChange={setIsUserSpeaking}
+          onUserSpeakingChange={(speaking) => {
+            // Only update if value changed to prevent high-frequency root re-renders
+            setIsUserSpeaking(prev => prev !== speaking ? speaking : prev);
+          }}
           isVisible={isOracleMode}
           autoStart={false}
           onBargeIn={connection.flushPlayback}

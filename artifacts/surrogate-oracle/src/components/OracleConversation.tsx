@@ -26,7 +26,7 @@ import {
   SACRED_PROFANE_BLOCK,
 } from '../data/oraclePromptBlocks';
 
-const GEMINI_MODEL = import.meta.env.VITE_GEMINI_MODEL ?? 'models/gemini-2.5-flash-native-audio-latest';
+const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
 
 const ORACLE_SYSTEM_PROMPT = `
 I am the Surrogate Oracle.
@@ -838,7 +838,9 @@ const OracleConversation = forwardRef(
           // Stream every chunk continuously — Gemini's native VAD decides when to respond.
           wsRef.current.send(JSON.stringify({
             type: 'client.realtimeInput',
-            realtimeInput: { mediaChunks: [{ data: base64, mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}` }] }
+            realtimeInput: { 
+              media_chunks: [{ data: base64, mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}` }] 
+            }
           }));
           debugInfo.current.audioChunksSent++;
 

@@ -286,6 +286,7 @@ export function SurrogateOracleImmersion() {
     if (radioGainRef.current || !audioRef.current) return;
     try {
       const ctx    = getAudioContext();
+      logStep(`AUDIO CONTEXT STATE: ${ctx.state}`, ctx.state === 'running' ? 'ok' : 'pending');
       const source = ctx.createMediaElementSource(audioRef.current);
       const gain   = ctx.createGain();
       gain.gain.value = targetVol;

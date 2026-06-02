@@ -23,6 +23,7 @@ export class PCMPlayer {
   private panner: PannerNode | null = null;
   private masterGain: GainNode | null = null;
   private analyser: AnalyserNode;
+  private compressor: DynamicsCompressorNode | null = null;
   private transmissionFilter: BiquadFilterNode | null = null;
 
   constructor(sampleRate: number = 24000, playbackRate: number = 1.0, existingContext?: AudioContext) {
@@ -34,6 +35,19 @@ export class PCMPlayer {
 
     this.analyser = this.context.createAnalyser();
     this.analyser.fftSize = 1024;
+
+    // ── Dynamics Compressor — Normalizes Gemini PCM amplitude
+    try {
+      const comp = this.context.createDynamicsCompressor();
+      comp.threshold.setValueAtTime(-22, this.context.currentTime);
+      comp.knee.setValueAtTime(30,      this.context.currentTime);
+      comp.ratio.setValueAtTime(10,      this.context.currentTime);
+      comp.attack.setValueAtTime(0.003,  this.context.currentTime);
+      comp.release.setValueAtTime(0.200, this.context.currentTime);
+      this.compressor = comp;
+    } catch {
+      this.compressor = null;
+    }
 
     // ── Transmission filter — sci-fi tunnel voice for knife phase
     // Starts transparent (Q≈0). setTransmissionQ(12) narrows to radio-tunnel;
@@ -80,45 +94,65 @@ export class PCMPlayer {
       this.panner = null;
     }
 
+    // ── Build the processing chain (Filter → Compressor → Analyser → Output)
+    // We connect these statically in the constructor so the signal path is ready 
+    // for both AudioWorklet and legacy fallback.
+    
+    // Start with the nodes that are always present or optional but early in chain
+    if (this.transmissionFilter && this.compressor) {
+      this.transmissionFilter.connect(this.compressor);
+      this.compressor.connect(this.analyser);
+    } else if (this.transmissionFilter) {
+      this.transmissionFilter.connect(this.analyser);
+    } else if (this.compressor) {
+      this.compressor.connect(this.analyser);
+    }
+
+    // Connect Analyser to the output stage
+    if (this.panner) {
+      this.analyser.connect(this.panner);
+    } else if (this.masterGain) {
+      this.analyser.connect(this.masterGain);
+    } else {
+      this.analyser.connect(this.context.destination);
+    }
+
     // ── Load AudioWorklet ──────────────────────────────────────────────────
     console.log('[PCMPlayer] Initializing AudioWorklet at sampleRate:', this.context.sampleRate);
-    this.workletReady = this.context.audioWorklet.addModule(
-      new URL('../workers/oracle-audio.worklet.ts', import.meta.url).href
-    ).then(() => {
-      console.log('[PCMPlayer] AudioWorklet module loaded');
-      this.workletNode = new AudioWorkletNode(this.context, 'oracle-audio-processor');
-      this.workletNode.port.onmessage = (e) => {
-        if (e.data.type === 'viseme' && this.onViseme) {
-          this.onViseme(e.data.state);
-        } else if (e.data.type === 'ended') {
-          this.onProcessingChange?.(false);
+    
+    if (this.context.audioWorklet) {
+      this.workletReady = this.context.audioWorklet.addModule(
+        new URL('../workers/oracle-audio.worklet.ts', import.meta.url).href
+      ).then(() => {
+        console.log('[PCMPlayer] AudioWorklet module loaded');
+        this.workletNode = new AudioWorkletNode(this.context, 'oracle-audio-processor');
+        this.workletNode.port.onmessage = (e) => {
+          if (e.data.type === 'viseme' && this.onViseme) {
+            this.onViseme(e.data.state);
+          } else if (e.data.type === 'ended') {
+            this.onProcessingChange?.(false);
+          }
+        };
+
+        this.workletNode.onprocessorerror = (err) => {
+          console.error('[PCMPlayer] AudioWorklet Processor Error:', err);
+        };
+
+        // Connect worklet to the start of our chain
+        if (this.transmissionFilter) {
+          this.workletNode.connect(this.transmissionFilter);
+        } else if (this.compressor) {
+          this.workletNode.connect(this.compressor);
+        } else {
+          this.workletNode.connect(this.analyser);
         }
-      };
-
-      this.workletNode.onprocessorerror = (err) => {
-        console.error('[PCMPlayer] AudioWorklet Processor Error:', err);
-      };
-
-      // Chain: worklet → transmissionFilter → analyser → panner/masterGain
-      // transmissionFilter Q≈0.1 is transparent; setTransmissionQ(12) narrows
-      // to sci-fi tunnel voice for knife-phase question voice-overs.
-      if (this.transmissionFilter) {
-        this.workletNode.connect(this.transmissionFilter);
-        this.transmissionFilter.connect(this.analyser);
-      } else {
-        this.workletNode.connect(this.analyser);
-      }
-
-      if (this.panner) {
-        this.analyser.connect(this.panner);
-      } else if (this.masterGain) {
-        this.analyser.connect(this.masterGain);
-      } else {
-        this.analyser.connect(this.context.destination);
-      }
-    }).catch(err => {
-      console.error('❌ Failed to load OracleAudioWorklet:', err);
-    });
+      }).catch(err => {
+        console.error('❌ Failed to load OracleAudioWorklet (falling back to legacy):', err);
+      });
+    } else {
+      console.warn('⚠️ AudioWorklet NOT supported in this browser (falling back to legacy)');
+      this.workletReady = Promise.resolve();
+    }
   }
 
   public setVisemeCallback(callback: (state: any) => void) {
@@ -134,17 +168,22 @@ export class PCMPlayer {
     const now = this.context.currentTime;
     const safeTarget = Math.max(0.0001, target);
     this.masterGain.gain.cancelScheduledValues(now);
-    this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
+    
+    // Ensure current value is non-zero before exponential ramp
+    const startVal = Math.max(0.0001, this.masterGain.gain.value);
+    this.masterGain.gain.setValueAtTime(startVal, now);
     this.masterGain.gain.exponentialRampToValueAtTime(safeTarget, now + rampMs / 1000);
   }
 
   public boostVolume(multiplier: number, rampMs: number = 50) {
     if (!this.masterGain) return;
     const now = this.context.currentTime;
-    const newTarget = this.masterGain.gain.value * multiplier;
+    // Ensure current value is non-zero before multiplication/ramp
+    const startVal = Math.max(0.0001, this.masterGain.gain.value);
+    const newTarget = startVal * multiplier;
     this.masterGain.gain.cancelScheduledValues(now);
-    this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, now);
-    this.masterGain.gain.exponentialRampToValueAtTime(newTarget, now + rampMs / 1000);
+    this.masterGain.gain.setValueAtTime(startVal, now);
+    this.masterGain.gain.exponentialRampToValueAtTime(Math.max(0.0001, newTarget), now + rampMs / 1000);
   }
 
   public getAnalyser(): AnalyserNode {
@@ -157,7 +196,7 @@ export class PCMPlayer {
     const now = this.context.currentTime;
     const safeQ = Math.max(0.1, q);
     this.transmissionFilter.Q.cancelScheduledValues(now);
-    this.transmissionFilter.Q.setValueAtTime(this.transmissionFilter.Q.value, now);
+    this.transmissionFilter.Q.setValueAtTime(Math.max(0.1, this.transmissionFilter.Q.value), now);
     if (rampMs <= 0) {
       this.transmissionFilter.Q.setValueAtTime(safeQ, now);
     } else {
@@ -194,7 +233,14 @@ export class PCMPlayer {
     source.buffer = buffer;
     source.playbackRate.value = this.playbackRate;
 
-    source.connect(this.analyser);
+    // Connect source to the start of our pre-connected chain
+    if (this.transmissionFilter) {
+      source.connect(this.transmissionFilter);
+    } else if (this.compressor) {
+      source.connect(this.compressor);
+    } else {
+      source.connect(this.analyser);
+    }
 
     const currentTime = this.context.currentTime;
     if (this.nextStartTime < currentTime) {

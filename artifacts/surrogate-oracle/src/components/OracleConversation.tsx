@@ -26,7 +26,7 @@ import {
   SACRED_PROFANE_BLOCK,
 } from '../data/oraclePromptBlocks';
 
-const GEMINI_MODEL = import.meta.env.VITE_GEMINI_MODEL ?? 'models/gemini-3.1-flash-live-preview';
+const GEMINI_MODEL = import.meta.env.VITE_GEMINI_MODEL ?? 'models/gemini-2.5-flash-native-audio-latest';
 
 const ORACLE_SYSTEM_PROMPT = `
 I am the Surrogate Oracle.
@@ -440,8 +440,12 @@ const OracleConversation = forwardRef(
     const connectToGemini = useCallback(() => {
       if (wsRef.current) wsRef.current.close();
 
-      // Force WSS for Supabase production domains
-      const wsUrl = `wss://velmmplevfrtrtrypoch.supabase.co/functions/v1/gemini-live-proxy`;
+      // Use environment variable for Supabase URL to avoid hardcoding dev project
+      let supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://velmmplevfrtrtrypoch.supabase.co';
+      // Ensure we have a protocol, defaulting to https if missing
+      if (!supabaseUrl.startsWith('http')) supabaseUrl = 'https://' + supabaseUrl;
+      // Convert to WebSocket protocol
+      const wsUrl = supabaseUrl.replace('https://', 'wss://').replace('http://', 'ws://') + '/functions/v1/gemini-live-proxy';
 
       logStep('GEMINI WS CONNECTING', 'pending');
       const ws = new WebSocket(wsUrl);
@@ -547,18 +551,27 @@ const OracleConversation = forwardRef(
                 }
                 debugInfo.current.audioChunksReceived++;
                 
-                // Efficient Base64 to Int16Array conversion
-                const binaryString = atob(part.inlineData.data);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                  bytes[i] = binaryString.charCodeAt(i);
+                // Efficient Base64 to Int16Array conversion — handles padding and alignment
+                try {
+                  const binaryString = atob(part.inlineData.data);
+                  const len = binaryString.length;
+                  const bytes = new Uint8Array(len);
+                  for (let i = 0; i < len; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                  }
+                  
+                  // Ensure we only create a view of even byte length (PCM16 requirement)
+                  const alignedLen = len - (len % 2);
+                  if (alignedLen > 0) {
+                    const pcmData = new Int16Array(bytes.buffer, 0, alignedLen / 2);
+                    if (!isOracleSpeakingRef.current) {
+                      setOracleSpeaking(true);
+                    }
+                    onOracleResponseRef.current?.(pcmData);
+                  }
+                } catch (convErr) {
+                  console.error('[Oracle] PCM conversion failed:', convErr);
                 }
-                const pcmData = new Int16Array(bytes.buffer);
-
-                if (!isOracleSpeakingRef.current) {
-                  setOracleSpeaking(true);
-                }
-                onOracleResponseRef.current?.(pcmData);
               }
             }
 
@@ -904,8 +917,9 @@ const OracleConversation = forwardRef(
         lastVadState: debugInfo.current.lastVadState,
         lastVadRms: debugInfo.current.lastVadRms,
         connectedAt: debugInfo.current.connectedAt,
-        endpoint: 'velmmplevfrtrtrypoch.supabase.co',
+        endpoint: import.meta.env.VITE_SUPABASE_URL?.replace('https://', '') || 'velmmplevfrtrtrypoch.supabase.co',
         lastError: debugInfo.current.lastError,
+
         recentMessages: debugInfo.current.recentMessages,
       }),
       startSession: () => {

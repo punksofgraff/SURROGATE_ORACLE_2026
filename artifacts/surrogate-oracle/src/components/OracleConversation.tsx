@@ -754,6 +754,13 @@ const OracleConversation = forwardRef(
         onMicWillStartRef.current?.();
 
         const ctx = getAudioContext();
+        // Step 1: Resume AudioContext IMMEDIATELY before any awaits.
+        // Safari and modern browsers require ctx.resume() to be synchronous with the user gesture.
+        // If we await getUserMedia first, the gesture token may expire.
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { 
             echoCancellation: true, 
@@ -762,7 +769,7 @@ const OracleConversation = forwardRef(
             channelCount: 1 
           }
         });
-        // Resume AudioContext after getUserMedia — iOS may suspend it during audio session reconfig
+        // Resume again after getUserMedia — handles iOS audio session reconfigurations
         await ctx.resume();
         mediaStreamRef.current = stream;
         const source = ctx.createMediaStreamSource(stream);

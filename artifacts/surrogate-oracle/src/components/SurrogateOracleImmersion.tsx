@@ -670,6 +670,13 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
   const subtitleText = useTypewriter('SNEAKAR XR Anthropology AI', awakened && titleText.length >= 16, 35);
 
+  // ── XR Auto-start ────────────────────────────────────────────────────────
+  useEffect(() => {
+    // If starting in XR mode (e.g. HolodeXR), actualize the camera immediately 
+    // so tracking works on dormant/terminal screens.
+    if (isXRMode) activateCamera();
+  }, [isXRMode, activateCamera]);
+
   // ── Knife selection ───────────────────────────────────────────────────────
   const handleKnifeClick = (q: string, i: number) => {
     selectKnifeQuestion(q, i);

@@ -50,39 +50,48 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
         this.enqueue(e.data.pcm);
       } else if (e.data.type === 'stop') {
         this.clear();
+        this.port.postMessage({ type: 'ended' });
       }
     };
   }
 
   private enqueue(data: Int16Array) {
-    // Resample from Gemini's fixed 24kHz to whatever rate the AudioContext
-    // actually runs at. If sampleRate === 24000 the ratio is 1.0 (no-op branch).
-    // Without this, a 48kHz context plays 24kHz audio at 2× speed (digital fast-forward).
     const ratio = sampleRate / GEMINI_PCM_RATE;
-    const len = ratio === 1 ? data.length : Math.ceil(data.length * ratio);
+    
+    // Fast path: 1:1 sample rate (no resampling)
+    if (Math.abs(ratio - 1.0) < 0.0001) {
+      const len = data.length;
+      if (this.size + len > this.bufferCapacity) {
+        const overflow = (this.size + len) - this.bufferCapacity;
+        this.head = (this.head + overflow) % this.bufferCapacity;
+        this.size -= overflow;
+      }
+      for (let i = 0; i < len; i++) {
+        this.buffer[this.tail] = data[i] / 32768.0;
+        this.tail = (this.tail + 1) % this.bufferCapacity;
+      }
+      this.size += len;
+      return;
+    }
 
+    // Slow path: Resampling required
+    const len = Math.floor(data.length * ratio);
     if (this.size + len > this.bufferCapacity) {
       const overflow = (this.size + len) - this.bufferCapacity;
       this.head = (this.head + overflow) % this.bufferCapacity;
       this.size -= overflow;
     }
 
-    if (ratio === 1) {
-      for (let i = 0; i < data.length; i++) {
-        this.buffer[this.tail] = data[i] / 32768.0;
-        this.tail = (this.tail + 1) % this.bufferCapacity;
-      }
-    } else {
-      // Linear interpolation resample
-      const srcLen = data.length;
-      for (let i = 0; i < len; i++) {
-        const src = i / ratio;
-        const lo  = Math.floor(src);
-        const hi  = Math.min(lo + 1, srcLen - 1);
-        const frac = src - lo;
-        this.buffer[this.tail] = (data[lo] * (1 - frac) + data[hi] * frac) / 32768.0;
-        this.tail = (this.tail + 1) % this.bufferCapacity;
-      }
+    const srcLen = data.length;
+    for (let i = 0; i < len; i++) {
+      const srcIdx = i / ratio;
+      const lo = Math.floor(srcIdx);
+      const hi = Math.min(lo + 1, srcLen - 1);
+      const frac = srcIdx - lo;
+      
+      const sample = (data[lo] * (1 - frac) + data[hi] * frac) / 32768.0;
+      this.buffer[this.tail] = sample;
+      this.tail = (this.tail + 1) % this.bufferCapacity;
     }
     this.size += len;
   }

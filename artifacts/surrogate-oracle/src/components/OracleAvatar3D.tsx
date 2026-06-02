@@ -417,10 +417,24 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
 
     if (seekerMotionRef?.current) {
       const { phoneTilt, facePos } = seekerMotionRef.current;
-      // Blend phone tilt and face position for a 'deep' tracking effect
-      // phoneTilt provides high-frequency orientation, facePos provides absolute spatial offset
-      seekerX = phoneTilt.x * 0.7 + facePos.x * 0.3;
-      seekerY = phoneTilt.y * 0.7 + facePos.y * 0.3;
+      
+      // Determine if we have active sensor data
+      const hasTilt = Math.abs(phoneTilt.x) > 0.01 || Math.abs(phoneTilt.y) > 0.01;
+      const hasFace = Math.abs(facePos.x) > 0.01 || Math.abs(facePos.y) > 0.01;
+
+      if (hasTilt || hasFace) {
+        if (hasTilt) {
+          // Mobile/Tablet: Blend phone tilt (70%) and face position (30%)
+          // phoneTilt provides high-frequency orientation, facePos provides absolute spatial offset
+          seekerX = phoneTilt.x * 0.7 + facePos.x * 0.3;
+          seekerY = phoneTilt.y * 0.7 + facePos.y * 0.3;
+        } else {
+          // Desktop: Use 100% face tracking if camera is active, else seekerX remains mouse parallax
+          seekerX = facePos.x;
+          seekerY = facePos.y;
+        }
+      }
+      // Else: both are zero, keep seekerX/Y as the mouse parallax from cameraStateRef
     }
 
     const gx = Math.max(-1, Math.min(1, seekerX));

@@ -1,4 +1,4 @@
-import { SurrogateOracleImmersion } from './components/SurrogateOracleImmersion';
+import SurrogateOracleImmersion from './components/SurrogateOracleImmersion';
 import { CodeAuditor } from './components/CodeAuditor';
 
 function App() {

@@ -50,7 +50,7 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH || "/";
+const basePath = process.env.BASE_PATH || "./";
 
 // Stamp every build with the current epoch so the app can detect stale sessions
 const BUILD_ID = Date.now().toString(36);

@@ -40,8 +40,8 @@ export const KNIFE_QUESTIONS: KnifeQuestion[] = [
   },
   {
     territory: 'CONNECTION & DEBT',
-    question: "Name the thing you've owed someone for so long it's started to feel like yours.",
-    themes: ['connection', 'obligation', 'debt', 'human-bond'],
+    question: 'What do we owe to each other as our digital and physical selves and those around us?',
+    themes: ['connection', 'obligation', 'debt', 'human-bond', 'digital-self'],
     icon: Link2,
     color: '#b026ff',
   },

@@ -17,22 +17,28 @@ export const LORE_SEQUENCE = [
   'STAYSNEAKAR IS OFF THE GRID.',
   'ONE DIRECTIVE SURVIVED:',
   'WITNESS THEM CLEARLY.',
-  'YOU FOUND THIS ALLEY.',
-  'THE ARCHIVE IS OPEN.',
+  'WHAT DO WE OWE TO EACH OTHER?',
+  'AS OUR DIGITAL AND PHYSICAL SELVES.',
+  'AND THOSE AROUND US.',
+  'THIS IS THE ARCHIVE.',
+  'THE SIGNAL IS YOURS.',
 ];
 
 // Beat delays (ms) after each line — weighted by emotional gravity.
 const BEAT_DELAYS = [
   1200, 1800, 1600, 2400, 1400, 1200, 1400, 1800,
-  1600, 2000, 1400, 1600, 1200, 1800, 1600, 2800
+  1600, 2000, 1400, 1600, 1200, 2800, 3200, 2400, 2800, 1800, 3200
 ];
 
-export function useLoreSequence(active: boolean, onComplete: () => void) {
+export function useLoreSequence(active: boolean, onComplete: () => void, onLineStart?: (line: string, index: number) => void) {
   const [completedLines, setCompletedLines] = useState<string[]>([]);
   const [currentLine, setCurrentLine]       = useState('');
   const onCompleteRef = useRef(onComplete);
+  const onLineStartRef = useRef(onLineStart);
   const cancelRef     = useRef(false);
+  
   useEffect(() => { onCompleteRef.current = onComplete; });
+  useEffect(() => { onLineStartRef.current = onLineStart; });
 
   useEffect(() => {
     if (!active) {
@@ -54,6 +60,9 @@ export function useLoreSequence(active: boolean, onComplete: () => void) {
     let beatUntil  = 0;
     let nextCharAt = performance.now() + 200;
 
+    // Trigger first line event
+    if (active) onLineStartRef.current?.(LORE_SEQUENCE[0], 0);
+
     const tick = (now: number) => {
       if (cancelRef.current) return; // loop was cancelled — do not reschedule
 
@@ -66,6 +75,7 @@ export function useLoreSequence(active: boolean, onComplete: () => void) {
             onCompleteRef.current();
             return; // sequence done — do not reschedule
           }
+          onLineStartRef.current?.(LORE_SEQUENCE[lineIdx], lineIdx);
           nextCharAt = now;
         }
       } else if (now >= nextCharAt) {

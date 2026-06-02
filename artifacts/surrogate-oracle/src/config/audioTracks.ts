@@ -5,8 +5,8 @@ export interface AudioTrack {
   gain: number;       // per-station gain multiplier (1.0 = reference level)
 }
 
-// Station 0 is always Graff Punks — the Oracle's home frequency.
-// Stations 1+ are atmospheric instrumentals that complement the Oracle experience.
+// Station 0 is always Graff Punks — the Oracle's home frequency. Dominant landing station.
+// Stations 1+ complement the Oracle experience.
 // SomaFM streams are free / no-auth public radio.
 // gain: Graff Punks radiojar stream is hotter than SomaFM — pulled down to match.
 export const defaultAudioTracks: AudioTrack[] = [
@@ -14,7 +14,7 @@ export const defaultAudioTracks: AudioTrack[] = [
     title: 'GRAFF PUNKS',
     url:   'https://stream.radiojar.com/2qm1fc5kb',
     color: '#00ff88',
-    gain:  0.45,
+    gain:  0.65,  // boosted — dominant home frequency
   },
   {
     title: 'DRONE ZONE',
@@ -23,9 +23,9 @@ export const defaultAudioTracks: AudioTrack[] = [
     gain:  1.0,
   },
   {
-    title: 'CHILL HOP',
-    url:   'https://stream.zeno.fm/0r0xa792kwzuv',
+    title: 'BEAT BLENDER',
+    url:   'https://ice1.somafm.com/beatblender-128-mp3',
     color: '#b026ff',
-    gain:  1.0,
+    gain:  1.0,  // SomaFM — modern electronic + hip-hop beats
   },
 ];

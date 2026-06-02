@@ -63,68 +63,48 @@ function makeNoiseBuffer(c: AudioContext, durationSec: number): AudioBuffer {
 // Character: sharp electric discharge — a portal cracking open.
 // Duration: ~550ms.
 
-export function playActivationSfx(): void {
-  try {
-    const c = ctx();
-    const t = c.currentTime;
+  export function playActivationSfx(): void {
+    try {
+      const c = ctx();
+      const t = c.currentTime;
 
-    // Filtered noise burst — wide-to-narrow sweep
-    const noise = c.createBufferSource();
-    noise.buffer = makeNoiseBuffer(c, 0.55);
+      // Filtered noise burst — wide-to-narrow sweep
+      const noise = c.createBufferSource();
+      noise.buffer = makeNoiseBuffer(c, 0.35);
 
-    const noiseFilter = c.createBiquadFilter();
-    noiseFilter.type = 'bandpass';
-    noiseFilter.frequency.setValueAtTime(4000, t);
-    noiseFilter.frequency.exponentialRampToValueAtTime(120, t + 0.4);
-    noiseFilter.Q.value = 2.5;
+      const noiseFilter = c.createBiquadFilter();
+      noiseFilter.type = 'bandpass';
+      noiseFilter.frequency.setValueAtTime(4000, t);
+      noiseFilter.frequency.exponentialRampToValueAtTime(120, t + 0.3);
+      noiseFilter.Q.value = 2.5;
 
-    const noiseGain = c.createGain();
-    noiseGain.gain.setValueAtTime(0.16, t);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+      const noiseGain = c.createGain();
+      noiseGain.gain.setValueAtTime(0.10, t);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
 
-    noise.connect(noiseFilter);
-    noiseFilter.connect(noiseGain);
-    noiseGain.connect(c.destination);
-    noise.start(t);
-    noise.stop(t + 0.55);
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(c.destination);
+      noise.start(t);
+      noise.stop(t + 0.38);
 
-    // Sawtooth sweep — electric discharge pitch falling
-    const osc = c.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(380, t);
-    osc.frequency.exponentialRampToValueAtTime(44, t + 0.38);
+      // Soft presence chime — replaced the hard knife-stab thud
+      const chime = c.createOscillator();
+      chime.type = 'sine';
+      chime.frequency.setValueAtTime(1200, t);
+      chime.frequency.exponentialRampToValueAtTime(180, t + 0.55);
 
-    const distWave = c.createWaveShaper();
-    distWave.curve = makeDistortionCurve(120);
+      const chimeGain = c.createGain();
+      chimeGain.gain.setValueAtTime(0.06, t);
+      chimeGain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
 
-    const oscGain = c.createGain();
-    oscGain.gain.setValueAtTime(0.10, t);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+      chime.connect(chimeGain);
+      chimeGain.connect(c.destination);
+      chime.start(t);
+      chime.stop(t + 0.56);
 
-    osc.connect(distWave);
-    distWave.connect(oscGain);
-    oscGain.connect(c.destination);
-    osc.start(t);
-    osc.stop(t + 0.45);
-
-    // Sub-thud at the end — impact landing
-    const thud = c.createOscillator();
-    thud.type = 'sine';
-    thud.frequency.setValueAtTime(80, t + 0.3);
-    thud.frequency.exponentialRampToValueAtTime(28, t + 0.55);
-
-    const thudGain = c.createGain();
-    thudGain.gain.setValueAtTime(0, t + 0.3);
-    thudGain.gain.linearRampToValueAtTime(0.18, t + 0.34);
-    thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.56);
-
-    thud.connect(thudGain);
-    thudGain.connect(c.destination);
-    thud.start(t + 0.3);
-    thud.stop(t + 0.58);
-
-  } catch { /* silently fail on restricted contexts */ }
-}
+    } catch { /* silently fail on restricted contexts */ }
+  }
 
 // ── 2. ALLEY AMBIENCE ─────────────────────────────────────────────────────────
 // Low-frequency drone during the lore terminal phase.

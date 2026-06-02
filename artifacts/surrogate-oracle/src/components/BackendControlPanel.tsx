@@ -596,16 +596,20 @@ export const BackendControlPanel = ({
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: '0.62rem' }}>
                         {[
                           ['TURNS', geminiInfo.turnCount],
-                          ['AUDIO CHUNKS', geminiInfo.audioChunksReceived],
+                          ['AUDIO IN (rx)', geminiInfo.audioChunksReceived],
+                          ['AUDIO OUT (tx)', (geminiInfo as any).audioChunksSent ?? '—'],
                           ['CONNECTED', geminiInfo.connectedAt ? new Date(geminiInfo.connectedAt).toLocaleTimeString() : '—'],
-                          ['ENDPOINT', geminiInfo.endpoint],
+                          ['VAD STATE', (geminiInfo as any).lastVadState ?? '—'],
+                          ['VAD RMS', (geminiInfo as any).lastVadRms != null ? ((geminiInfo as any).lastVadRms as number).toFixed(4) : '—'],
+                          ['ACT START', (geminiInfo as any).activityStartsSent ?? '—'],
+                          ['ACT END', (geminiInfo as any).activityEndsSent ?? '—'],
                         ].map(([k, v]) => (
                           <div key={k as string} style={{
                             background: 'rgba(0,0,0,0.4)', borderRadius: 6, padding: '7px 10px',
                             border: '1px solid rgba(0,191,255,0.12)',
                           }}>
                             <div style={{ color: '#00ccff', fontSize: '0.52rem', letterSpacing: '0.12em', marginBottom: 3 }}>{k}</div>
-                            <div style={{ color: '#fff', fontFamily: 'monospace' }}>{v}</div>
+                            <div style={{ color: '#fff', fontFamily: 'monospace' }}>{String(v)}</div>
                           </div>
                         ))}
                       </div>

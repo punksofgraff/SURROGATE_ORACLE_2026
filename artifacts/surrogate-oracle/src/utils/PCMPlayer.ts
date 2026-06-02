@@ -51,7 +51,7 @@ export class PCMPlayer {
     // ── Master Gain — volume control for the Oracle voice
     try {
       const gain = this.context.createGain();
-      gain.gain.setValueAtTime(0, this.context.currentTime); // Start silent
+      gain.gain.setValueAtTime(1.0, this.context.currentTime); // Start audible; setVolume ramps to target
       gain.connect(this.context.destination);
       this.masterGain = gain;
     } catch {

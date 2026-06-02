@@ -184,10 +184,9 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
   const [landedChars, setLandedChars] = useState(0);
   const landingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Transmission sound + emission glow on every card cycle
+  // Emission glow on every card cycle (sound removed)
   useEffect(() => {
     if (selectedKnifeIndex !== null) return;
-    playCardEmissionSound(activeIdx);
     setIsEmitting(true);
     const t = setTimeout(() => setIsEmitting(false), 700);
     return () => clearTimeout(t);
@@ -203,7 +202,7 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
     if (landingTimerRef.current) clearInterval(landingTimerRef.current);
 
     const startDelay = setTimeout(() => {
-      // Fire voice-over at question start — Oracle transmits from afar as text forms
+      // Fire voice-over — sendText guards against closed WS internally
       onSpeakQuestion?.(question);
       let count = 0;
       landingTimerRef.current = setInterval(() => {
@@ -309,7 +308,6 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
             onClick={() => {
               if (isSelected) return;
               navigator.vibrate?.([40]);
-              playKnifeChord(activeIdx);
               onSelect(kq.question, activeIdx);
             }}
             style={{ transformOrigin: '50% -22%', cursor: isSelected ? 'default' : 'pointer' }}

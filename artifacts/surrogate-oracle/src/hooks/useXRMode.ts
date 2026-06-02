@@ -83,8 +83,6 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   const startCamera = useCallback(async () => {
     if (streamRef.current) return; // already running
     try {
-      // AR oracle = selfie mode: front camera so the Surrogate appears in front of the user.
-      // (HolodeXR poster scanning uses its own native camera pipeline, not this stream.)
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'user' },
@@ -94,11 +92,9 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
         audio: false,
       });
       streamRef.current = stream;
-      const vid = cameraVideoRef.current;
-      if (vid) {
-        vid.srcObject = stream;
-        vid.play().catch(() => {});
-      }
+      // cameraVideoRef.current may be null here — the <video> element only renders
+      // after setCameraActive(true) triggers a re-render. The useEffect below
+      // attaches the stream once the element is in the DOM.
       setCameraReady(true);
       setCameraActive(true);
     } catch (err) {
@@ -108,6 +104,16 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
       console.warn('[XR] Camera failed:', msg);
     }
   }, []);
+
+  // Attach stream to video element once it renders (cameraActive flip triggers re-render)
+  useEffect(() => {
+    const vid = cameraVideoRef.current;
+    if (!vid || !streamRef.current) return;
+    if (vid.srcObject !== streamRef.current) {
+      vid.srcObject = streamRef.current;
+      vid.play().catch(() => {});
+    }
+  }, [cameraActive]);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach(t => t.stop());

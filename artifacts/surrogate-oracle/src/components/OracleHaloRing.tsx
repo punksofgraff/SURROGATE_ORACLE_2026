@@ -7,8 +7,8 @@
  */
 
 const LABEL   = 'SURROGATE:ORACLE  ·  SNEAKAR XR ANTHROPOLOGY AI  ·  ';
-const RADIUS  = 130;   // px — ring radius
-const DURATION = '8s'; // one full revolution
+const RADIUS  = 160;   // px — ring radius
+const DURATION = '10s'; // one full revolution
 
 // Build one arc from the label characters
 function Arc({ chars, offsetDeg }: { chars: string[]; offsetDeg: number }) {
@@ -27,9 +27,9 @@ function Arc({ chars, offsetDeg }: { chars: string[]; offsetDeg: number }) {
             display:    'block',
             transform:  `rotateY(${offsetDeg + i * step}deg) translateZ(${RADIUS}px)`,
             fontFamily: "'PhillySans', 'Share Tech Mono', monospace",
-            fontSize:   '0.55rem',
-            fontWeight: 700,
-            letterSpacing: '0.04em',
+            fontSize:   '0.7rem',
+            fontWeight: 800,
+            letterSpacing: '0.08em',
             color: ch === '·' ? 'rgba(176,38,255,0.95)' : 'rgba(0,255,136,0.90)',
             textShadow: ch === '·'
               ? '0 0 10px rgba(176,38,255,0.9), 0 0 24px rgba(176,38,255,0.4)'
@@ -60,7 +60,7 @@ export function OracleHaloRing({ active }: OracleHaloRingProps) {
       aria-hidden="true"
       style={{
         position:      'absolute',
-        top:           '4%',
+        top:           '2%',
         left:          '50%',
         width:         0,
         height:        0,

@@ -417,7 +417,7 @@ const OracleConversation = forwardRef(
     };
 
     const vadRef = useRef(createVADProcessor({
-      rmsThreshold: 0.010,
+      rmsThreshold: 0.005,
       // 35 frames × 42.7ms (1024 samples ÷ 24000 Hz context) ≈ 1.5s of silence.
       // UI-only VAD — drives the "READING THE SIGNAL" indicator and vadScore ring.
       // Gemini native VAD (silenceDurationMs:800) is the sole turn-detection authority.
@@ -732,17 +732,23 @@ const OracleConversation = forwardRef(
 
         const ctx = getAudioContext();
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false, channelCount: 1 }
+          audio: { 
+            echoCancellation: true, 
+            noiseSuppression: true, 
+            autoGainControl: true, 
+            channelCount: 1 
+          }
         });
         // Resume AudioContext after getUserMedia — iOS may suspend it during audio session reconfig
         await ctx.resume();
         mediaStreamRef.current = stream;
         const source = ctx.createMediaStreamSource(stream);
-        // 1024 samples = ~21ms @ 48kHz, ~43ms @ 24kHz — within the 20-40ms spec range.
-        // Gemini Live API native VAD handles turn detection; stream continuously.
-        processorRef.current = ctx.createScriptProcessor(1024, 1, 1);
-
+        
         const micSampleRate = source.context.sampleRate;
+        logStep(`MIC SOURCE ACTIVE: rate=${micSampleRate}Hz`, 'ok');
+
+        // Increase buffer size to 2048 for better stability on varied hardware
+        processorRef.current = ctx.createScriptProcessor(2048, 1, 1);
 
         processorRef.current.onaudioprocess = (e) => {
           const input = e.inputBuffer.getChannelData(0);
@@ -763,11 +769,23 @@ const OracleConversation = forwardRef(
           for (let i = 0; i < resampled.length; i++) {
             pcm[i] = Math.max(-1, Math.min(1, resampled[i])) * 0x7FFF;
           }
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
+          
+          // Robust base64 conversion for binary PCM data
+          const uint8 = new Uint8Array(pcm.buffer);
+          let binary = '';
+          const len = uint8.byteLength;
+          for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(uint8[i]);
+          }
+          const base64 = btoa(binary);
 
           // VAD for UI feedback only (user speaking indicator + thinking state)
           const chunk: VADFrame = { data: base64, mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}` };
           const result = vadRef.current.processFrame(resampled, chunk);
+          
+          if (result.vadScore < 0.001 && debugInfo.current.audioChunksSent % 100 === 0) {
+            console.warn('[Mic] Signal extremely low/silent:', result.vadScore.toFixed(6));
+          }
           vadScoreRef.current = result.vadScore;
           debugInfo.current.lastVadRms = result.vadScore;
           if (result.vadState !== debugInfo.current.lastVadState) {
@@ -810,7 +828,7 @@ const OracleConversation = forwardRef(
         // DO NOT connect to ctx.destination — this causes mic feedback/hum.
         // Instead, connect to a silent gain node to ensure the processor stays active.
         const silentGain = ctx.createGain();
-        silentGain.gain.value = 0;
+        silentGain.gain.value = 0.00001; // Near-zero but non-zero to keep node alive
         processorRef.current.connect(silentGain);
         silentGain.connect(ctx.destination);
         

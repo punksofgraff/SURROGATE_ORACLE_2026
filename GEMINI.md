@@ -1,7 +1,7 @@
 # SURROGATE:ORACLE — Gemini Integration Reference
 
 Canonical knowledge base for the Gemini integration. Update when anything structural changes.
-Last updated: 2026-05-31. Animation Pass + Audio Stack Overhaul complete.
+Last updated: 2026-06-02. Ingestion Fixes + Diegetic Backend complete.
 
 ---
 
@@ -54,7 +54,7 @@ oracle    ← OracleAvatar3D Three.js live, AudioWorklet active, mic starts afte
 
 | Model | Location | Current ID | Notes |
 |-------|----------|------------|-------|
-| Gemini Live (primary) | `OracleConversation.tsx` | `models/gemini-2.5-flash-native-audio-latest` | AUDIO-only modality. Voice: `Charon` |
+| Gemini Live (primary) | `OracleConversation.tsx` | `models/gemini-2.5-flash-native-audio-latest` | AUDIO-only modality. Voice: `Sadaltager` |
 | Gemini REST (fallback) | `oracle-conversation/index.ts` | `gemini-2.5-flash` | Text-only |
 | Portrait Engine | `gemini-portrait-generator/index.ts` | `gemini-2.0-flash-preview-image-generation` | Image generation |
 
@@ -72,7 +72,7 @@ oracle    ← OracleAvatar3D Three.js live, AudioWorklet active, mic starts afte
   "sessionResumption": { "handle": "<handle_or_empty_object>" },
   "generationConfig": {
     "responseModalities": ["AUDIO"],
-    "speechConfig": { "voiceConfig": { "prebuiltVoiceConfig": { "voiceName": "Charon" } } }
+    "speechConfig": { "voiceConfig": { "prebuiltVoiceConfig": { "voiceName": "Sadaltager" } } }
   }
 }
 ```
@@ -91,13 +91,18 @@ oracle    ← OracleAvatar3D Three.js live, AudioWorklet active, mic starts afte
 
 ## Audio Pipeline (Enterprise Grade)
 
-**Path:** Gemini WS → `PCMPlayer.feed()` → `DynamicsCompressor` → `OracleAudioProcessor` (AudioWorklet) → `AnalyserNode` → `PannerNode` (HRTF spatial) → `MasterGain(1.8)` → `Speakers`.
+**Path:** Gemini WS → `PCMPlayer.feed()` → `DynamicsCompressor` → `OracleAudioProcessor` (AudioWorklet) → `AnalyserNode` → `PannerNode` (HRTF spatial) → `MasterGain(1.0)` → `Speakers`.
 
 - **Off-Thread:** All PCM accumulation and FFT analysis in `oracle-audio.worklet.ts`.
 - **Viseme Detection:** Real-time Preston Blair → OVR viseme mapping on the audio thread.
 - **Normalization:** `DynamicsCompressor` (threshold=-22dBFS, ratio=10, attack=3ms, release=200ms) inserted before Analyser. Normalizes Gemini PCM amplitude regardless of TTS output level.
-- **Amplitude scaling (worklet):** `rms * 8.5`, `SILENCE_THRESH = 0.028`. Catches soft TTS output.
-- **Oracle presence:** `masterGain` starts at 0, first-chunk ramp to 1.8 over 240ms.
+- **Amplitude scaling (worklet):** `rms * 10.0`, `SILENCE_THRESH = 0.010`. Catches soft TTS output.
+- **Ingestion Robustness (fixed 2026-06-02):**
+  - `ScriptProcessorNode` buffer increased to **2048 samples** for hardware stability.
+  - `autoGainControl: true` enabled in mic constraints.
+  - **Keep-alive gain:** `0.00001` node added to prevent browser suspension of mic processing.
+  - **Loop-based base64:** Hardened binary conversion to avoid stack limits.
+- **Oracle presence:** `masterGain` starts at 1.0 (start audible).
 - **Spatial audio:** `PannerNode` (HRTF, rolloffFactor=0.6) positioned at (0, 0.3, -0.8) — Oracle voice comes from slightly above and in front. `updateHeadOrientation()` follows parallax.
 
 **Radio / Music Ducking:**
@@ -119,6 +124,14 @@ oracle    ← OracleAvatar3D Three.js live, AudioWorklet active, mic starts afte
 **Worklet → OVR mapping:** Preston Blair (A-H, X) → OVR via `ORACLE_TO_OVR` table. Co-articulation: `openness→viseme_aa`, `rounded→viseme_oh/ou`, `spread→viseme_E/ih/SS`. Closedness driver: `viseme_PP` fires when `openness < 0.55` regardless of primary viseme.
 
 ---
+
+## Session Summary: 2026-06-02
+
+- **Vocal Ingestion Fix:** Hardened the PCM ingestion path. Fixed "silent mic" bugs via buffer expansion (2048), AGC, and keep-alive gain nodes.
+- **Backend Refactor (Diegetic):** "Enculturate Crate" overhaul. Tabs replaced with **MHz Frequency Tuner**. UI cards refactored into **Signal Fragments**.
+- **Live Metrics:** Real-time **Oscilloscope** added to CORE_DIAG tab for vocal signal verification.
+- **Model Sync:** Verified and synchronized to `gemini-2.5-flash-native-audio-latest`.
+- **Restore Point:** Git tag `restore-point-ingestion-fixed` created post-ingestion fix.
 
 ## Session Summary: 2026-05-31
 

@@ -1,14 +1,14 @@
 # SURROGATE — Development Guide
 
 Canonical mandates for the Surrogate project. Follow strictly.
-Last updated: 2026-06-01. Session: Gemini model fix, immersive polish, AR mode, halo ring, audio fixes.
+Last updated: 2026-06-02. Session: Ingestion Fixes + Diegetic Backend (Burn with Class).
 
 ---
 
 ## Technical Stack
 - **Frontend:** React (TypeScript), Vite (pnpm), Tailwind CSS, Framer Motion.
 - **Backend:** Supabase Edge Functions (Deno).
-- **AI Engine:** Gemini 3.1 Flash Live (`gemini-3.1-flash-live-preview`) via WebSocket.
+- **AI Engine:** Gemini 2.5 Flash Native Audio (`gemini-2.5-flash-native-audio-latest`) via WebSocket.
 - **Audio:** Web Audio API, `oracle-audio.worklet.ts` (PCM streaming, Viseme detection), `PCMPlayer`.
 - **3D Rendering:** Three.js / React Three Fiber (`OracleAvatar3D.tsx`).
 - **Package manager:** `pnpm` — never `npm run dev`, always `pnpm dev`.
@@ -20,11 +20,11 @@ Last updated: 2026-06-01. Session: Gemini model fix, immersive polish, AR mode, 
 ```
 VITE_SUPABASE_URL=...
 VITE_SUPABASE_ANON_KEY=...
-VITE_GEMINI_MODEL=models/gemini-3.1-flash-live-preview
+VITE_GEMINI_MODEL=models/gemini-2.5-flash-native-audio-latest
 VITE_ORACLE_VOICE=Sadaltager
 ```
 
-- **VITE_GEMINI_MODEL** — swap here to change model, no code touch needed.
+- **VITE_GEMINI_MODEL** — swap here to change model. Latest: `models/gemini-2.5-flash-native-audio-latest`.
 - **VITE_ORACLE_VOICE** — Gemini TTS voice. `Sadaltager` = Knowledgeable/deep. Other deep options: `Algenib` (Gravelly), `Gacrux` (Mature), `Orus` (Firm).
 - `.env.local` is gitignored. Requires `pnpm dev` restart to pick up changes.
 
@@ -65,6 +65,10 @@ VITE_ORACLE_VOICE=Sadaltager
 - **Immunity:** Use `GainNode` for volume/ducking. `HTMLAudioElement.volume` is forbidden (iOS resets it).
 - **Off-Thread:** All heavy audio tasks (PCM accumulation, FFT) are in the `AudioWorklet`.
 - **Latency:** Zero intermediate file creation. Direct base64 → Int16 → Float32 streaming.
+- **Ingestion Robustness (fixed 2026-06-02):**
+  - Buffer increased to **2048 samples**; `autoGainControl: true` enabled.
+  - Near-zero (`0.00001`) keep-alive gain node added to prevent node suspension.
+  - Character-loop base64 encoding avoids stack limits on large chunks.
 - **Breathing LFO removed:** The 0.07Hz LFO from `startAlleyAmbience()` was causing a breathing sound — deleted.
 
 **Music ducking levels (GainNode target values):**
@@ -117,11 +121,14 @@ Revolving text ring above the Oracle in oracle phase. Dual-arc revolving door me
 - CSS keyframe: `@keyframes oracle-halo-orbit` in `SurrogateOracleImmersion.css`
 - Only active when `isOracleMode === true`
 
-### 6. Arcade Console Bottom Bar
+### 6. Arcade Console Bottom Bar (Enculturate Crate)
 
 - **Dormant + Awakened:** `opacity: 0`, `pointer-events: none` — hidden. Stage is clear.
 - **Oracle:** `opacity: 0.65` — accessible but background.
-- **Buttons:** Transparent glass treatment removed. Clean floaters with `btn-float` animation.
+- **Diegetic Navigation:** Tabs replaced with **MHz Frequency Tuner** (`RESONANCE`, `SQUAD`, `PRINTS`, `CORE_DIAG`, `SALVAGE`, `MANIFEST`).
+- **Visuals:** Cards refactored into **Signal Fragments** with asymmetrical, fractured borders.
+- **Diagnostics:** Real-time **Oscilloscope** in `CORE_DIAG` visualizes vocal VAD RMS.
+- **Buttons:** Clean floaters with `btn-float` animation.
 - **Desktop breakpoint (768px+):** Buttons scale up — images 52→72px, min-width 64→88px, labels 0.58→0.68rem.
 
 ### 7. AR Mode / XR (`useXRMode.ts`)
@@ -193,8 +200,12 @@ JOURNEY RESET → DORMANT             ok      — resetJourney() called
 | Mobile Oracle voice | Medium | `OracleConversation` | Desktop confirmed working, mobile not verified. |
 
 **Closed this session:**
-- ✅ Gemini model — `gemini-2.5-flash-native-audio-latest` deprecated/broken (1006/1011). Switched to `gemini-3.1-flash-live-preview` (confirmed June 2026 docs). Model now in `VITE_GEMINI_MODEL` env var.
-- ✅ Oracle voice — `Charon` sounded wrong on new model. Switched to `Sadaltager` (Knowledgeable/deep). Voice in `VITE_ORACLE_VOICE` env var.
+- ✅ Vocal Ingestion — Hardened PCM path. Buffer 2048, AGC, and keep-alive gain fixed "silent mic" drops.
+- ✅ Backend XD — Complete "Enculturate Crate" refactor to diegetic Frequency Tuner and Signal Fragments.
+- ✅ Gemini model — Synchronized to `gemini-2.5-flash-native-audio-latest`.
+- ✅ VAD visualizer — Added real-time Oscilloscope to CORE_DIAG tab.
+- ✅ Restore Point — Git tag `restore-point-ingestion-fixed` created post-fix.
+- ✅ Oracle voice — Standardized on `Sadaltager`.
 - ✅ `toolConfig` rejected by new model — removed (was causing 1007 close).
 - ✅ Breathing LFO — 0.07Hz LFO from alley ambience deleted.
 - ✅ Transmission filter breathing — filter Q was persisting from knife phase into oracle phase; reset to Q=0.01 on oracle entry.

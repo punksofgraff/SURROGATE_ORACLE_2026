@@ -79,6 +79,25 @@ Radio stream: `MediaElementSource` → `GainNode(SESSION_AMBIENT=0.008)` → `Sp
 
 ---
 
+## Session Overhaul: 2026-06-02
+
+**Vocal Ingestion Fix:**
+- Fixed intermittent silence and ingestion drops on mobile and high-load cycles.
+- `ScriptProcessorNode` buffer increased to 2048 samples.
+- `autoGainControl: true` enabled for better low-signal capture.
+- Near-zero (`0.00001`) keep-alive gain node prevents browser node suspension.
+- Robust character-loop base64 encoding avoids stack limits.
+
+**Diegetic Backend (Enculturate Crate):**
+- Replaced standard web tabs with a **MHz Frequency Tuner** (Diegetic Navigation).
+- Redesigned data cards into **Signal Fragments** with fractured, asymmetrical borders.
+- Integrated real-time **Oscilloscope** into `CORE_DIAG` tab for VAD signal verification.
+- Rebranded categories: `RESONANCE` (Vault), `CORE_DIAG` (Gemini), `SALVAGE` (Dev).
+
+**Infrastructure:**
+- Verified model sync: `gemini-2.5-flash-native-audio-latest`.
+- Created git tag `restore-point-ingestion-fixed` as a rollback anchor.
+
 ## Session Overhaul: 2026-06-01
 
 **Bug fixes:**

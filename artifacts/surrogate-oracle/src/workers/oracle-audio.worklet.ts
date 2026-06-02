@@ -25,14 +25,17 @@ interface VisemeState {
   amplitude: number;
 }
 
-const SILENCE_THRESH = 0.010; // Low threshold — catch even quiet Gemini TTS output
+const SILENCE_THRESH = 0.010;
+const GEMINI_PCM_RATE = 24000; // Gemini Live always sends 24kHz PCM
 
 class OracleAudioProcessor extends AudioWorkletProcessor {
   private buffer: Float32Array;
   private head: number = 0;
   private tail: number = 0;
   private size: number = 0;
-  private readonly bufferCapacity: number = 240000; // 10 seconds at 24kHz
+  // bufferCapacity is 10 seconds at the ACTUAL AudioContext rate, not assumed 24kHz.
+  // If the browser overrides our requested 24kHz (e.g. to 48kHz), this stays correct.
+  private readonly bufferCapacity: number = sampleRate * 10;
 
   private smoothed: VisemeState = { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
   
@@ -52,19 +55,34 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
   }
 
   private enqueue(data: Int16Array) {
-    const len = data.length;
-    
-    // If we're about to overflow, we MUST advance the head to drop old data
-    // so we don't end up with a huge latency or a corrupted buffer.
+    // Resample from Gemini's fixed 24kHz to whatever rate the AudioContext
+    // actually runs at. If sampleRate === 24000 the ratio is 1.0 (no-op branch).
+    // Without this, a 48kHz context plays 24kHz audio at 2× speed (digital fast-forward).
+    const ratio = sampleRate / GEMINI_PCM_RATE;
+    const len = ratio === 1 ? data.length : Math.ceil(data.length * ratio);
+
     if (this.size + len > this.bufferCapacity) {
       const overflow = (this.size + len) - this.bufferCapacity;
       this.head = (this.head + overflow) % this.bufferCapacity;
       this.size -= overflow;
     }
 
-    for (let i = 0; i < len; i++) {
-      this.buffer[this.tail] = data[i] / 32768.0;
-      this.tail = (this.tail + 1) % this.bufferCapacity;
+    if (ratio === 1) {
+      for (let i = 0; i < data.length; i++) {
+        this.buffer[this.tail] = data[i] / 32768.0;
+        this.tail = (this.tail + 1) % this.bufferCapacity;
+      }
+    } else {
+      // Linear interpolation resample
+      const srcLen = data.length;
+      for (let i = 0; i < len; i++) {
+        const src = i / ratio;
+        const lo  = Math.floor(src);
+        const hi  = Math.min(lo + 1, srcLen - 1);
+        const frac = src - lo;
+        this.buffer[this.tail] = (data[lo] * (1 - frac) + data[hi] * frac) / 32768.0;
+        this.tail = (this.tail + 1) % this.bufferCapacity;
+      }
     }
     this.size += len;
   }

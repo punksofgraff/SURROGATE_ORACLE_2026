@@ -133,6 +133,7 @@ export function SurrogateOracleImmersion() {
   const [isMicActive, setIsMicActive]       = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isGeminiConnected, setIsGeminiConnected] = useState(false);
+
   const [debugMode, setDebugMode]           = useState(false);
   const [oracleAlignment, setOracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
@@ -363,6 +364,7 @@ export function SurrogateOracleImmersion() {
   const handleFirstTap = useCallback(async () => {
     if (scenePhase !== 'dormant') return;
     await setupAudioSpine();
+    setIsAudioPlaying(true);
 
     markVisited();
 
@@ -424,7 +426,6 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
     gain.gain.cancelScheduledValues(now);
 
     if (target === 0) {
-      // Full mute: set to 0 NOW, no ramp
       gain.gain.setValueAtTime(0, now);
     } else if (isInstant) {
       gain.gain.setValueAtTime(safeTarget, now);
@@ -433,12 +434,12 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
       gain.gain.exponentialRampToValueAtTime(safeTarget, now + ms / 1000);
     }
 
-    // ALSO pause the audio element directly as backup for iOS
+    // iOS backup: pause element on full mute to guarantee silence on Safari.
+    // Resume on non-zero so stream stays alive without reconnect cost.
     if (audioRef.current) {
       if (target === 0) {
         audioRef.current.pause();
-        console.log('[fadeToVolume] PAUSED audio element');
-      } else {
+      } else if (audioRef.current.paused) {
         audioRef.current.play().catch(() => {});
       }
     }
@@ -472,25 +473,31 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
 // - Music ON (20%) during dormant/awakened — mic auth, motion auth don't affect it
 // - Music OFF (0%) when Oracle speaks — stays off until resetJourney()
 // - resetJourney() returns to dormant → music back to 20%
-  const MUSIC_ON_VOLUME = 0.10;
-  const MUSIC_OFF_VOLUME = 0;
+  const MUSIC_LANDING_VOLUME  = 0.25;  // dormant — full presence
+  const MUSIC_LORE_VOLUME     = 0.10;  // terminal — cinematic duck
+  const MUSIC_KNIFE_VOLUME    = 0.10;  // awakened — same as lore, no perceived jump
+  const MUSIC_OFF_VOLUME      = 0;
 
   useEffect(() => {
     let nextTarget: number;
+    let rampMs: number | undefined;
 
     if (isOracleSpeaking) {
-      // Oracle is speaking — kill music completely
       nextTarget = MUSIC_OFF_VOLUME;
-    } else if (scenePhase === 'dormant' || scenePhase === 'awakened') {
-      // Music stays ON at 20% through mic auth, motion auth, until Oracle speaks
-      nextTarget = MUSIC_ON_VOLUME;
+    } else if (scenePhase === 'dormant') {
+      nextTarget = MUSIC_LANDING_VOLUME;
+    } else if (scenePhase === 'terminal') {
+      nextTarget = MUSIC_LORE_VOLUME;
+      rampMs = 2000; // cinematic slow duck into lore
+    } else if (scenePhase === 'awakened') {
+      nextTarget = MUSIC_KNIFE_VOLUME;
+      rampMs = 1500; // warm fade into knife phase
     } else {
-      // scenePhase === 'oracle' but Oracle not speaking — keep music off
       nextTarget = MUSIC_OFF_VOLUME;
     }
 
     if (Math.abs(nextTarget - targetVol) > 0.0001) {
-      fadeToVolume(nextTarget);
+      fadeToVolume(nextTarget, rampMs);
     }
   }, [scenePhase, isOracleSpeaking, targetVol, fadeToVolume]);
 
@@ -518,11 +525,9 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
 
     if (scenePhase === 'oracle') {
       oracleConversationRef.current?.startSession();
-      // Open the transmission filter fully — knife phase narrows it, oracle must be clear
-      connection.pcmPlayer?.setTransmissionQ(0.01, 200);
-      // Force-pause music immediately — don't rely on effect chain when targetVol may already be 0
-      if (audioRef.current) audioRef.current.pause();
-      if (radioGainRef.current) radioGainRef.current.gain.setValueAtTime(0, getAudioContext().currentTime);
+      connection.setTransmissionQ(0.01, 200);
+      // Mute is handled by the ducking effect above — GainNode goes to 0.
+      // We do NOT touch the audio element here (no pause/resume) to avoid reconnect artifacts.
     }
   }, [scenePhase, connection.initializePCMPlayer]);
 
@@ -659,6 +664,16 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
     const knife = KNIFE_QUESTIONS[i];
     lastKnifeRef.current = knife;
     portrait.addThemes(knife.themes);
+
+    // Request mic and motion from this user gesture.
+    // Camera only activates if already in XR mode — non-XR users don't need camera permission.
+    oracleConversationRef.current?.startMic();
+    if (isXRMode) activateCamera();
+    const DE = (DeviceOrientationEvent as any);
+    if (typeof DE?.requestPermission === 'function') {
+      DE.requestPermission().catch(() => {});
+    }
+
     setTimeout(() => {
       // Step 0 (Build Contract §F) — the Oracle previously received only the bare
       // question text and never learned which territory the Seeker drew. Frame the
@@ -702,6 +717,20 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
       {/* ── XR Layer 0: Device camera passthrough ── */}
       {isXRMode && cameraActive && (
         <video ref={cameraVideoRef} className="xr-camera-layer" autoPlay playsInline muted />
+      )}
+
+      {/* ── XR Overlay Layers — cyberpunk visor, scan sweep, hex grid, chroma ── */}
+      {isXRMode && (
+        <>
+          {/* Environment filter (visor darkening) only when camera is live — otherwise kills the alley */}
+          {cameraActive && <div className="xr-environment-filter" />}
+          <div className="xr-scan-sweep" />
+          <div className="xr-hex-grid" />
+          <div
+            className="xr-chroma-layer"
+            data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
+          />
+        </>
       )}
 
       {/* ── Layer 1: Graffiti alley background ── */}
@@ -981,8 +1010,9 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
         )}
       </AnimatePresence>
 
-      {/* ── Bottom Bar ── */}
-      <div className="oracle-bottom-bar">
+      {/* ── Bottom Bar — hidden in dormant + knife (awakened); visible only in oracle ── */}
+      {isOracleMode && (
+        <div className="oracle-bottom-bar">
         {/* Radio — tap to mute/unmute, dots to switch station */}
         <motion.div
           initial={{ opacity: 0.3, filter: 'brightness(0.4) saturate(0.3)' }}
@@ -1055,6 +1085,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
           <span className="oracle-bottom-btn__label">{isGuidedTour ? 'TOUR ON' : 'TOUR'}</span>
         </motion.div>
       </div>
+      )}
 
       {/* ── Portrait Gallery overlay ── */}
       <AnimatePresence>
@@ -1206,11 +1237,9 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
               selectedKnifeIndex={journey.selectedKnifeIndex}
               onSelect={handleKnifeClick}
               onSpeakQuestion={(question) => {
-                // Oracle speaks each knife question as it spells out.
-                // Narrow transmission filter open → Gemini fires hidden voice-only turn.
-                connection.pcmPlayer?.setTransmissionQ(12, 0);
+                connection.setTransmissionQ(12, 0);
                 oracleConversationRef.current?.sendTextMessage(
-                  `[SIGNAL TRANSMISSION — speak only this question in your Oracle voice, raw and slow, as if arriving through static across time. No preamble, no commentary, no greeting — just the question itself: "${question}"]`,
+                  `[SIGNAL TRANSMISSION — speak only this question in your Oracle voice, clear and present, as if arriving through static. Natural pace. No preamble, no commentary, no greeting — just the question itself: "${question}"]`,
                   true,
                 );
               }}
@@ -1218,7 +1247,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
                 // Sweep filter open as letters land: Q 12→0.1 across full typing duration
                 const progress = Math.min(charCount / total, 1);
                 const q = 12 * (1 - progress) + 0.1 * progress;
-                connection.pcmPlayer?.setTransmissionQ(q, 68);
+                connection.setTransmissionQ(q, 68);
               }}
             />
           </motion.div>
@@ -1242,12 +1271,11 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
           onListeningChange={setIsMicActive}
           onMicWillStart={() => {
             console.log('[onMicWillStart] muting music!');
-            // Mute music completely when mic is activated
-            fadeToVolume(0, 50);
+            fadeToVolume(0, 80);
           }}
           isVisible={isOracleMode}
           autoStart={false}
-          onBargeIn={() => connection.pcmPlayer?.stop()}
+          onBargeIn={connection.flushPlayback}
           onPortraitRequest={() => portrait.generatePortrait(portrait.getThemes())}
           seekerSummary={(() => {
             if (!echo) return null;
@@ -1272,6 +1300,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
         />
       )}
 
+      {/* ── Hamburger menu ── */}
       {isOracleMode && (
         <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 100 }}>
           <button
@@ -1379,7 +1408,11 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
               </button>
               <button
                 onClick={() => {
-                  if (isXRMode) { deactivateXRMode(); } else { activateXRMode(); }
+                  if (isXRMode) {
+                    deactivateXRMode();
+                  } else {
+                    activateXRMode(); // activateXRMode already calls startCamera internally
+                  }
                   setHamburgerOpen(false);
                 }}
                 style={{
@@ -1396,7 +1429,10 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
                   textAlign: 'left',
                 }}
               >
-                {isXRMode ? '◈ EXIT AR' : '◈ AR MODE'}
+                {isXRMode
+                  ? (cameraActive ? '◈ EXIT AR' : '◈ EXIT AR (cam off)')
+                  : '◈ AR MODE'
+                }
               </button>
               <button
                 onClick={() => { oracleConversationRef.current?.toggleTypeMode(); setHamburgerOpen(false); }}

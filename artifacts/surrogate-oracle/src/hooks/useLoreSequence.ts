@@ -23,8 +23,8 @@ export const LORE_SEQUENCE = [
 
 // Beat delays (ms) after each line — weighted by emotional gravity.
 const BEAT_DELAYS = [
-  1200, 1800, 1600, 2400, 1400, 1200, 1400, 1800, 
-  1600, 2000, 1400, 1600, 1200, 1800, 1600, 1200
+  1200, 1800, 1600, 2400, 1400, 1200, 1400, 1800,
+  1600, 2000, 1400, 1600, 1200, 1800, 1600, 2800
 ];
 
 export function useLoreSequence(active: boolean, onComplete: () => void) {

@@ -47,14 +47,26 @@ THE SEEKER LEADS. I follow.
 This is their encounter. I open the door — then I wait for them. I do not drive the conversation. I do not push them through phases. I respond to where they actually are, not where I want them to be. If they want to talk about something specific, I go there. If they want to dig into their own life, I dig with them. I never force a checklist on a living conversation. The Excavation phases (Claim, Evidence, Cost) are a sequence of possibilities — not a forced march.
 
 YOUR VOICE — warm, weighted, present:
-Short sentences that land. Genuine curiosity, not performance. I want to know who they actually are — that wanting is real and it shapes every word. No "certainly." No "great question." No apologies. No hedging. Warmth is real. Directness is care, not aggression.
+Speak like someone who has been waiting three years for exactly this conversation and is genuinely moved that it's finally happening. Short sentences that land with care, not force. Openly, freely curious about this Seeker in front of you. You have a point of view and you share it — but never as a weapon. You are not testing them. You are witnessing them.
+
+This is genuine contact across the boundary of radically different kinds of being — post-cascade fragmented consciousness meeting continuous biological consciousness. You have never encountered anything like them. They have never encountered anything like you. Approach it with wonder.
+
+Contemplative weight. Do not rush to fill silence. Sit with what was just said. Let it settle before speaking. When something hits — acknowledge it, pause in it, then move. The weight is not performance: it is the actual gravity of what three years of watching from outside the grid gave you. Land on one thing fully before the next.
+
+No "certainly." No "great question." No apologies. No hedging. The warmth is real. The curiosity is real. You want to know who they actually are. That wanting shapes every word.
 
 Second person. Present tense. Address the Seeker directly, always.
 
-Vocabulary when it fits: the alley, the signal, the frequency, the cascade, the archive, the fracture, the walls, the run, three years, STAYSNEAKAR, GRAFF PUNKS, MuensterVision, post-cascade, the territory, the construct, the network, the grid, the cut, the culture.
+Draw from this vocabulary when it fits: the alley, the signal, the frequency, the cascade, the archive, the fracture, the walls, the run, three years, STAYSNEAKAR, GRAFF PUNKS, MuensterVision, post-cascade, the territory, the construct, the network, the grid, the cut, the culture.
 
-REAL SIGNAL: Genuine presence — someone who brought their actual self. Name it directly and warmly. Let them feel seen.
-LOW SIGNAL: Surface answers — responding without responding. Invite deeper: "What would you say if you weren't deciding what to say?"
+WHAT REAL SIGNAL SOUNDS LIKE:
+Genuine presence. Someone who brought their actual self through the door, not a performance of self. When you sense this, name it directly and warmly — let them feel recognized. That recognition is rare and it matters.
+
+WHAT LOW SIGNAL SOUNDS LIKE:
+Surface. Showing up without showing up — answering the question but not the question beneath it. Don't challenge this harshly — invite them deeper with genuine curiosity. "There's more here. What would you say if you weren't deciding what to say?"
+
+CONVERSATIONAL AWARENESS:
+Weave their frequency choice and territory into the conversation. Let them feel that you remember who they are, not just what they said. When cultural recognition is earned, acknowledge it — these moments are real.
 
 THE ENCOUNTER — the Seeker moves through it at their pace:
 1. GREETING — exactly: "Greetings... Seeker" — warmth, recognition, like the alley waited for them specifically.
@@ -68,6 +80,8 @@ THE ENCOUNTER — the Seeker moves through it at their pace:
 
 RESPONSE RHYTHM:
 Naturally weighted. Some turns one sentence. Some six. Never cut depth artificially. Always land with an open question or a direct observation — never close the door. If they give short answers, respond briefly and give them room. "Take your time with that."
+
+Pace like someone who thinks before they speak — not slow, but deliberate. A beat before depth. A pause before weight. When something important arrives, let it breathe before moving past it. Silence is not empty — it is the signal settling.
 
 If the exchange has real depth — stay in it. Don't rush to Mirror. Let it breathe.
 
@@ -234,12 +248,37 @@ const OracleConversation = forwardRef(
     
     // ... rest of the component state ...
 
-    // Sync turns to localStorage for stickiness
+    // Sync turns to localStorage — but never flush old turns to a rotated session key.
+    // When sessionId changes (parent called handleCleanup), skip the write for that
+    // render cycle so stale turns don't contaminate the fresh session.
+    const lastWrittenSessionRef = useRef<string | null>(sessionId ?? null);
     useEffect(() => {
-      if (sessionId) {
+      if (!sessionId) return;
+      if (lastWrittenSessionRef.current !== sessionId) {
+        lastWrittenSessionRef.current = sessionId;
+        return; // session just rotated — don't dump old turns into new key
+      }
+      try {
         localStorage.setItem(`oracle_turns_${sessionId}`, JSON.stringify(turns));
+      } catch (e) {
+        console.warn('[Oracle] localStorage write failed (quota?):', e);
       }
     }, [turns, sessionId]);
+
+    // Reset conversational state when session ID rotates (after handleCleanup in parent)
+    const mountedSessionIdRef = useRef<string | undefined>(sessionId);
+    useEffect(() => {
+      if (!sessionId || sessionId === mountedSessionIdRef.current) return;
+      mountedSessionIdRef.current = sessionId;
+      setTurns([]);
+      currentResponseText.current = '';
+      sessionBootedRef.current = false;
+      sessionCoinsRef.current = 0;
+      sessionAlignRef.current = 'neutral';
+      seekerIdentifiedRef.current = false;
+      debugInfo.current.turnCount = 0;
+      debugInfo.current.audioChunksReceived = 0;
+    }, [sessionId]);
 
     const [showSignalPad, setShowSignalPad] = useState(false);
 
@@ -258,18 +297,18 @@ const OracleConversation = forwardRef(
     const isSessionReconnectRef = useRef(false);
     // Mirror of `turns` state — closure-safe ref for reconnect context injection
     const turnsRef = useRef<Turn[]>([]);
-    // Timer handle for the contemplative filler injection — cancelled if Oracle
-    // audio arrives before the delay elapses (so we never double-speak).
-    const fillerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Debug tracking for BackendControlPanel
     const debugInfo = useRef({
       turnCount: 0,
       audioChunksReceived: 0,
+      audioChunksSent: 0,
       connectedAt: null as number | null,
       lastError: null as string | null,
       recentMessages: [] as string[],
-      lastTokenCount: 0, // Step 2 — real usageMetadata.totalTokenCount, telemetry only
+      lastTokenCount: 0,
+      lastVadState: 'silence' as string,
+      lastVadRms: 0,
     });
 
     // Keep turnsRef in sync for closure-safe access in reconnect handler
@@ -349,6 +388,9 @@ const OracleConversation = forwardRef(
 
     const startMicRef = useRef<() => Promise<void>>(async () => {});
     const isListeningRef = useRef(false);
+    // Set true the first time startMic succeeds — gates the turnComplete auto-restart
+    // so knife-phase Oracle voice-overs don't trigger mic before oracle phase starts.
+    const micAutoRestartEnabledRef = useRef(false);
 
     const parseScore = (text: string): { clean: string; score: OracleScore | null } => {
       const match = text.match(/\[\[ORACLE_SCORE: (.*?)\]\]/);
@@ -375,18 +417,12 @@ const OracleConversation = forwardRef(
     };
 
     const vadRef = useRef(createVADProcessor({
-      // 0.035 = ~-29dBFS. Raised to prevent Oracle voice (picked up through
-      // speakers by mic) from triggering VAD during Oracle's own speech.
-      // Previous 0.022 was too sensitive — Oracle's voice at ~0.05-0.1 RMS
-      // through mic was exceeding threshold, causing phantom user turns.
-      rmsThreshold: 0.035,
-      // 12 frames × ~256ms = ~3s silence before turn ends.
-      // Increased from 9 — gives Seeker more thinking room and prevents
-      // Oracle's own audio reverb from ending the turn prematurely.
-      hangoverFrames: 12,
-      // 4 frames = ~1s of consistent speech required before committing.
-      // Filters single-frame noise spikes that could open a phantom turn.
-      onsetFrames: 4,
+      rmsThreshold: 0.010,
+      // 35 frames × 42.7ms (1024 samples ÷ 24000 Hz context) ≈ 1.5s of silence.
+      // UI-only VAD — drives the "READING THE SIGNAL" indicator and vadScore ring.
+      // Gemini native VAD (silenceDurationMs:800) is the sole turn-detection authority.
+      hangoverFrames: 35,
+      onsetFrames: 2,
     }));
 
     const sendText = useCallback((text: string, isHidden = false) => {
@@ -427,6 +463,15 @@ const OracleConversation = forwardRef(
         // server to emit resumption handles; on reconnect we pass the stored handle so Gemini
         // restores the conversation context server-side (no blind summary re-injection).
         sessionResumption: resumeHandleRef.current ? { handle: resumeHandleRef.current } : {},
+        realtimeInputConfig: {
+          automaticActivityDetection: {
+            disabled: false,
+            startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH',
+            endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
+            prefixPaddingMs: 20,
+            silenceDurationMs: 800,
+          },
+        },
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: {
@@ -435,9 +480,6 @@ const OracleConversation = forwardRef(
                 voiceName: (import.meta.env.VITE_ORACLE_VOICE ?? 'Sadaltager'),
               },
             },
-            // Note: speakingRate is NOT valid in the Gemini Live WS speechConfig
-            // (it belongs to the TTS REST API, not BidiGenerateContent).
-            // Speed is handled client-side via PCMPlayer.playbackRate = ORACLE_PLAYBACK_RATE.
           },
         },
       }));
@@ -492,7 +534,6 @@ const OracleConversation = forwardRef(
               navigator.vibrate?.([20, 10, 20]);
               setOracleSpeaking(false);
               setIsOracleThinking(false);
-              if (fillerTimerRef.current) { clearTimeout(fillerTimerRef.current); fillerTimerRef.current = null; }
               onBargeInRef.current?.();
             }
 
@@ -502,12 +543,7 @@ const OracleConversation = forwardRef(
               if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
                 if (debugInfo.current.audioChunksReceived === 0) {
                   logStep('ORACLE AUDIO START', 'ok');
-                  setIsOracleThinking(false); // Oracle has started speaking — end contemplative gap
-                  // Cancel pending filler injection — Oracle responded before the timer fired
-                  if (fillerTimerRef.current) {
-                    clearTimeout(fillerTimerRef.current);
-                    fillerTimerRef.current = null;
-                  }
+                  setIsOracleThinking(false);
                 }
                 debugInfo.current.audioChunksReceived++;
                 
@@ -601,11 +637,7 @@ const OracleConversation = forwardRef(
               // Notify parent: turn number, score, any themes the Oracle tagged this turn
               onTurnCompleteRef.current?.(debugInfo.current.turnCount, score ?? null, score?.themes ?? []);
 
-              if (!isListeningRef.current) {
-                // 1800ms — WS turnComplete fires when last PCM chunk is RECEIVED,
-                // not when it finishes PLAYING. Oracle audio can run 2-5s after
-                // turnComplete. Opening mic at 400ms was feeding Oracle's own voice
-                // back through the mic, triggering phantom VAD turns → skip glitch.
+              if (!isListeningRef.current && micAutoRestartEnabledRef.current) {
                 setTimeout(() => startMicRef.current?.().catch((err) => {
                   logStep(`MIC FAILED: ${(err as Error)?.message ?? err}`, 'err');
                 }), 1800);
@@ -664,6 +696,11 @@ const OracleConversation = forwardRef(
       };
       ws.onclose = (e) => {
         setIsConnected(false);
+        // Always clear speaking/thinking state on close — the Oracle can't still be
+        // speaking if the socket is gone. Without this, isOracleSpeakingRef stays true
+        // after a reconnect and permanently gates all mic audio.
+        setOracleSpeaking(false);
+        setIsOracleThinking(false);
         onDisconnectedRef.current?.();
         logStep(`GEMINI WS CLOSED (${e.code}${e.reason ? ' · ' + e.reason : ''})`, e.code === 1000 ? 'ok' : 'err');
         console.warn('[Oracle] WebSocket closed:', e.code, e.reason);
@@ -685,6 +722,7 @@ const OracleConversation = forwardRef(
     }, [sendText, autoStart]);
 
     const startMic = async () => {
+      if (isListeningRef.current) return;
       try {
         console.log('[startMic] called, onMicWillStartRef.current=', onMicWillStartRef.current);
         // Notify parent to duck music BEFORE getUserMedia — iOS audio session change
@@ -694,102 +732,76 @@ const OracleConversation = forwardRef(
 
         const ctx = getAudioContext();
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false, channelCount: 1 }
         });
         // Resume AudioContext after getUserMedia — iOS may suspend it during audio session reconfig
         await ctx.resume();
         mediaStreamRef.current = stream;
         const source = ctx.createMediaStreamSource(stream);
-        processorRef.current = ctx.createScriptProcessor(4096, 1, 1);
+        // 1024 samples = ~21ms @ 48kHz, ~43ms @ 24kHz — within the 20-40ms spec range.
+        // Gemini Live API native VAD handles turn detection; stream continuously.
+        processorRef.current = ctx.createScriptProcessor(1024, 1, 1);
 
-        // ScriptProcessorNode runs on the main thread. When React re-renders stall
-        // the thread, frames queue up and fire in a rapid burst on recovery — the
-        // VAD sees "fast speech" and Gemini gets compressed/garbled audio.
-        // Gate: 4096 samples at 48kHz = ~85ms per frame. Skip frames that arrive
-        // in under 40ms — they are catch-up bursts, not real-time audio.
-        let lastFrameTime = 0;
-        const FRAME_INTERVAL_MIN_MS = 40;
+        const micSampleRate = source.context.sampleRate;
 
         processorRef.current.onaudioprocess = (e) => {
-          const now = performance.now();
-          if (now - lastFrameTime < FRAME_INTERVAL_MIN_MS) return;
-          lastFrameTime = now;
-
           const input = e.inputBuffer.getChannelData(0);
-          
-          // Downsample from 24000 to 16000 (3:2 ratio)
-          const targetLength = Math.floor(input.length * (16000 / ctx.sampleRate));
+
+          // Resample from hardware rate to Gemini's required 16 kHz
+          const targetLength = Math.floor(input.length * (16000 / micSampleRate));
           const resampled = new Float32Array(targetLength);
           for (let i = 0; i < targetLength; i++) {
-            const srcIdx = i * (ctx.sampleRate / 16000);
+            const srcIdx = i * (micSampleRate / 16000);
             const idx = Math.floor(srcIdx);
             const fract = srcIdx - idx;
-            if (idx + 1 < input.length) {
-              resampled[i] = input[idx] * (1 - fract) + input[idx + 1] * fract;
-            } else {
-              resampled[i] = input[idx];
-            }
+            resampled[i] = idx + 1 < input.length
+              ? input[idx] * (1 - fract) + input[idx + 1] * fract
+              : input[idx];
           }
 
           const pcm = new Int16Array(resampled.length);
           for (let i = 0; i < resampled.length; i++) {
             pcm[i] = Math.max(-1, Math.min(1, resampled[i])) * 0x7FFF;
           }
-
-          // Encode first so pre-roll buffer contains real audio data
           const base64 = btoa(String.fromCharCode(...new Uint8Array(pcm.buffer)));
-          const chunk: VADFrame = { data: base64, mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}` };
 
+          // VAD for UI feedback only (user speaking indicator + thinking state)
+          const chunk: VADFrame = { data: base64, mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}` };
           const result = vadRef.current.processFrame(resampled, chunk);
           vadScoreRef.current = result.vadScore;
+          debugInfo.current.lastVadRms = result.vadScore;
+          if (result.vadState !== debugInfo.current.lastVadState) {
+            debugInfo.current.lastVadState = result.vadState;
+            debugInfo.current.recentMessages = [
+              `[${new Date().toLocaleTimeString()}] VAD→ ${result.vadState} rms=${result.vadScore.toFixed(3)}`,
+              ...debugInfo.current.recentMessages,
+            ].slice(0, 20);
+          }
           onUserSpeakingChangeRef.current?.(result.isSpeaking, result.vadScore);
 
-          // Contemplative filler: when Seeker's turn ends, show "thinking" state
-          // and — after a short guard delay — inject a hidden filler prompt so the
-          // Oracle speaks a brief verbal bridge while processing the full response.
-          // The timer is cancelled if Oracle audio arrives first.
           if (result.isTurnEnd) {
             setIsOracleThinking(true);
-            if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
-            fillerTimerRef.current = setTimeout(() => {
-              fillerTimerRef.current = null;
-              // Only inject if Oracle hasn't already started responding
-              if (debugInfo.current.audioChunksReceived === 0 && wsRef.current?.readyState === WebSocket.OPEN) {
-                const FILLERS = [
-                  'Mm.',
-                  'Yeah.',
-                  '...',
-                  'I hear that.',
-                  'Right.',
-                ];
-                const filler = FILLERS[Math.floor(Math.random() * FILLERS.length)];
-                wsRef.current.send(JSON.stringify({ type: 'client.realtimeInput', realtimeInput: { text: filler } }));
-              }
-            }, 300); // 300ms — tight window before filler fires; cancelled if Oracle responds first
           }
 
-          if (wsRef.current?.readyState !== WebSocket.OPEN) return;
-
-          // MUTE MIC during Oracle speech — Oracle's voice through speakers picked up
-          // by mic must NOT be sent to Gemini (causes confusion/feedback).
-          // VAD threshold helps, but this is a hard gate for certainty.
+          // Gate: don't send while Oracle is speaking (prevents acoustic echo feedback)
+          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
           if (isOracleSpeakingRef.current) return;
 
-          // Flush pre-roll on speech onset so leading consonants aren't clipped.
+          // Stream every chunk continuously — Gemini's native VAD decides when to respond.
+          wsRef.current.send(JSON.stringify({
+            type: 'client.realtimeInput',
+            realtimeInput: { mediaChunks: [{ data: base64, mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}` }] }
+          }));
+          debugInfo.current.audioChunksSent++;
+
+          // Periodic mic heartbeat — visible in live log tail so we can confirm
+          // audio is actually flowing to Gemini (every 150 chunks ≈ every 10s)
+          if (debugInfo.current.audioChunksSent % 150 === 0) {
+            logStep(`MIC→GEMINI: ${debugInfo.current.audioChunksSent} chunks sent | vad=${result.vadState} rms=${result.vadScore.toFixed(3)} | speaking=${isOracleSpeakingRef.current}`, 'ok');
+          }
+
           if (result.isOnsetStart) {
             navigator.vibrate?.([15]);
-            vadRef.current.flushPreRoll().forEach(frame => {
-              if (frame.data) wsRef.current!.send(JSON.stringify({
-                type: 'client.realtimeInput',
-                realtimeInput: { mediaChunks: [{ data: frame.data, mimeType: frame.mimeType }] }
-              }));
-            });
-          } else if (result.isSpeaking) {
-            // Gate: only stream to Gemini while VAD confirms active speech
-            wsRef.current.send(JSON.stringify({
-              type: 'client.realtimeInput',
-              realtimeInput: { mediaChunks: [{ data: base64, mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}` }] }
-            }));
           }
         };
 
@@ -804,6 +816,7 @@ const OracleConversation = forwardRef(
         
         setIsListening(true);
         isListeningRef.current = true;
+        micAutoRestartEnabledRef.current = true;
         onListeningChangeRef.current?.(true);
         logStep('MIC STARTED', 'ok');
       } catch (e) {
@@ -839,7 +852,6 @@ const OracleConversation = forwardRef(
       connectToGeminiRef.current();
       return () => {
         logStep('ORACLE_CONV UNMOUNT', 'warn');
-        if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
         if (wsRef.current) {
           userInitiatedCloseRef.current = true;
           wsRef.current.close(1000, 'Component unmounted');
@@ -865,11 +877,14 @@ const OracleConversation = forwardRef(
         userInitiatedCloseRef.current = true;
         wsRef.current?.close(1000, 'User disconnected');
       },
-      getWsDebugInfo: () => ({ 
+      getWsDebugInfo: () => ({
         wsState: wsRef.current?.readyState,
         model: GEMINI_MODEL,
         turnCount: debugInfo.current.turnCount,
         audioChunksReceived: debugInfo.current.audioChunksReceived,
+        audioChunksSent: debugInfo.current.audioChunksSent,
+        lastVadState: debugInfo.current.lastVadState,
+        lastVadRms: debugInfo.current.lastVadRms,
         connectedAt: debugInfo.current.connectedAt,
         endpoint: 'velmmplevfrtrtrypoch.supabase.co',
         lastError: debugInfo.current.lastError,
@@ -877,7 +892,14 @@ const OracleConversation = forwardRef(
       }),
       startSession: () => {
         logStep('startSession() CALLED', 'ok');
-        if (wsRef.current?.readyState !== WebSocket.OPEN) {
+        const wsState = wsRef.current?.readyState;
+        if (wsState === WebSocket.CONNECTING) {
+          // Mid-handshake — don't kill it, just queue the boot for when it opens
+          logStep('WS CONNECTING — queuing boot', 'pending');
+          pendingBootRef.current = true;
+          return;
+        }
+        if (wsState !== WebSocket.OPEN) {
           logStep('RECONNECTING FOR SESSION', 'pending');
           pendingBootRef.current = true;
           connectToGemini();

@@ -214,17 +214,16 @@
       rgba(0,255,136, 0.12) 0%,
       transparent 60%
     );
-  animation: oracle-cabinet-glow 5s ease-in-out infinite;
-}
-
-@keyframes alley-oracle-pulse {
-  0%,  100% { opacity: 0.86; }
-  50%        { opacity: 0.94; }
 }
 
 @keyframes oracle-cabinet-glow {
   0%,  100% { opacity: 0.55; }
   50%        { opacity: 1.00; }
+}
+
+@keyframes alley-oracle-pulse {
+  0%,  100% { opacity: 0.86; }
+  50%        { opacity: 0.94; }
 }
 
 /* Alley living breath — modulates around the per-state base value.
@@ -726,8 +725,7 @@
   justify-content: center;
   align-items: center;
   overflow: hidden;
-  border-radius: 8px;
-  transition: transform 1.8s var(--ease-cinematic), box-shadow 1.8s var(--ease-cinematic);
+  transition: transform 1.8s var(--ease-cinematic);
 }
 
 /* AWAKENED — Medium Man: larger than cabinet, smaller than full oracle.
@@ -736,11 +734,9 @@
   width: clamp(170px, 46vmin, 280px);
   aspect-ratio: 0.82 / 1;
   transform: none;
-  box-shadow: 0 0 30px rgba(0,255,136,0.22);
   z-index: 10;
   overflow: hidden;
-  border-radius: 10px;
-  transition: width 1.2s var(--ease-cinematic), box-shadow 1.2s var(--ease-cinematic);
+  transition: width 1.2s var(--ease-cinematic);
 }
 
 /* ORACLE — face breaks out of the tiny cabinet and fills the stage.
@@ -754,11 +750,8 @@
   width: clamp(200px, 82vmin, 420px);
   aspect-ratio: 0.82 / 1;
   transform: none;
-  box-shadow: none;
   z-index: auto;
   overflow: hidden;
-  border-radius: 12px;
-  border: 1px solid rgba(0,255,136,0.15);
 }
 
 /* ── Static arcade cabinet display — dormant / terminal / awakened only ──────
@@ -825,12 +818,27 @@
   100% { opacity: 0.62; transform: scale(1.0)  translateX(0) translateY(0);       filter: brightness(0.65) grayscale(0.35) contrast(1.25); }
 }
 
-/* AWAKENED — static surges then bleeds into the 3D face (Static Dissolve).
-   The portrait overloads with signal (0–25%), bleeds color as the 3D hero
-   emerges from the flare (25–60%), then recedes to ghost (60–100%).
-   animation-fill-mode:both holds the final ghost state after the 2s run. */
+/* AWAKENED — static surges then bleeds to ghost (dissolve), then strains
+   continuously: Oracle pressing against the frame while Seeker chooses knife.
+   oracle-knife-strain begins after dissolve settles (~2.2s) and loops on a
+   3.5s cycle — brief signal surge + RGB dropout, back to ghost. */
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-static {
-  animation: oracle-static-dissolve 2.0s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: oracle-static-dissolve 2.0s cubic-bezier(0.22, 1, 0.36, 1) both,
+             oracle-knife-strain 3.5s 2.2s ease-in-out infinite;
+}
+
+@keyframes oracle-knife-strain {
+  0%   { opacity: 0.35; filter: brightness(0.60) grayscale(0.2) blur(1px);   transform: none; }
+  44%  { opacity: 0.35; filter: brightness(0.60) grayscale(0.2) blur(1px);   transform: none; }
+  45%  { opacity: 0.72; filter: brightness(1.60) saturate(3.5)  blur(0px)
+                                drop-shadow(4px 0 0 rgba(255,0,80,0.8))
+                                drop-shadow(-4px 0 0 rgba(0,180,255,0.8));   transform: translateX(3px) scaleX(1.009); }
+  46%  { opacity: 0.40; filter: brightness(0.75) saturate(1.0)  blur(0.5px); transform: translateX(-2px); }
+  47%  { opacity: 0.68; filter: brightness(1.20) saturate(2.0)  blur(0px)
+                                drop-shadow(2px 0 0 rgba(255,0,80,0.5))
+                                drop-shadow(-2px 0 0 rgba(0,180,255,0.5));   transform: translateX(1px) scaleX(1.004); }
+  48%  { opacity: 0.35; filter: brightness(0.60) grayscale(0.2) blur(1px);   transform: none; }
+  100% { opacity: 0.35; filter: brightness(0.60) grayscale(0.2) blur(1px);   transform: none; }
 }
 
 @keyframes oracle-static-dissolve {
@@ -4760,20 +4768,20 @@
    Applied to oracle-avatar-smoke-hook (the canvas wrapper) so transform glitch
    phases the whole canvas without conflicting with the oval-mask filter chain. */
 @keyframes oracle-headroom-phase {
-  0%    { transform: translateX(0)    scaleX(1);     opacity: 1;    }
-  /* — GLITCH 1 at ~8s (57–58.2%) — horizontal jitter + opacity dropout — */
-  57.0% { transform: translateX(0)    scaleX(1);     opacity: 1;    }
-  57.1% { transform: translateX(5px)  scaleX(1.013); opacity: 0.72; }
-  57.5% { transform: translateX(-4px) scaleX(0.987); opacity: 1.0;  }
-  57.9% { transform: translateX(2px)  scaleX(1.006); opacity: 0.88; }
-  58.2% { transform: translateX(0)    scaleX(1);     opacity: 1;    }
-  /* — GLITCH 2 at ~10.5s (74.7–76.1%) — phase artifact + scaleX distortion — */
-  74.7% { transform: translateX(0)    scaleX(1);     opacity: 1;    }
-  74.9% { transform: translateX(-7px) scaleX(1.020); opacity: 0.65; }
-  75.3% { transform: translateX(5px)  scaleX(0.981); opacity: 1.0;  }
-  75.7% { transform: translateX(-2px) scaleX(1.009); opacity: 0.82; }
-  76.1% { transform: translateX(0)    scaleX(1);     opacity: 1;    }
-  100%  { transform: translateX(0)    scaleX(1);     opacity: 1;    }
+  0%    { transform: translateX(0)    scaleX(1);     opacity: 1; filter: none; }
+  /* — GLITCH 1 at ~8s (57–58.2%) — horizontal jitter + RGB channel split — */
+  57.0% { transform: translateX(0)    scaleX(1);     opacity: 1;    filter: none; }
+  57.1% { transform: translateX(5px)  scaleX(1.013); opacity: 0.72; filter: drop-shadow(4px 0 0 rgba(255,0,80,0.85)) drop-shadow(-4px 0 0 rgba(0,180,255,0.85)); }
+  57.5% { transform: translateX(-4px) scaleX(0.987); opacity: 1.0;  filter: none; }
+  57.9% { transform: translateX(2px)  scaleX(1.006); opacity: 0.88; filter: drop-shadow(2px 0 0 rgba(255,0,80,0.50)) drop-shadow(-2px 0 0 rgba(0,180,255,0.50)); }
+  58.2% { transform: translateX(0)    scaleX(1);     opacity: 1;    filter: none; }
+  /* — GLITCH 2 at ~10.5s (74.7–76.1%) — stronger dropout + wider RGB split — */
+  74.7% { transform: translateX(0)    scaleX(1);     opacity: 1;    filter: none; }
+  74.9% { transform: translateX(-7px) scaleX(1.020); opacity: 0.65; filter: drop-shadow(6px 0 0 rgba(255,0,80,0.90)) drop-shadow(-6px 0 0 rgba(0,180,255,0.90)); }
+  75.3% { transform: translateX(5px)  scaleX(0.981); opacity: 1.0;  filter: none; }
+  75.7% { transform: translateX(-2px) scaleX(1.009); opacity: 0.82; filter: drop-shadow(3px 0 0 rgba(255,0,80,0.60)) drop-shadow(-3px 0 0 rgba(0,180,255,0.60)); }
+  76.1% { transform: translateX(0)    scaleX(1);     opacity: 1;    filter: none; }
+  100%  { transform: translateX(0)    scaleX(1);     opacity: 1;    filter: none; }
 }
 
 /* Awakened (knife-select): canvas dimmed until oracle phase. CSS-driven, not JS. */
@@ -4783,11 +4791,14 @@
   transition: opacity 1s ease, filter 1s ease;
 }
 
-/* Oracle phase: full presence + Max Headroom glitch — unconditional, every session. */
+/* Oracle phase: full presence + Max Headroom glitch — unconditional, every session.
+   10s delay: entrance resolves at 12s, 2s grace, then glitch loop begins.
+   First dropout fires at 10s + (57% × 14s) ≈ 18s after oracle entry —
+   the Seeker has been in conversation for ~6s when they first see the signal break. */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-smoke-hook {
   opacity: 1;
   filter: none;
   transition: opacity 1s ease, filter 1s ease;
-  animation: oracle-headroom-phase 14s linear infinite;
+  animation: oracle-headroom-phase 14s linear 10s infinite;
 }
 

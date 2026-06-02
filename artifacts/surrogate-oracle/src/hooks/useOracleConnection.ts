@@ -52,7 +52,7 @@ export function useOracleConnection({
     if (isFirstChunkRef.current) {
       playOraclePresence();
       isFirstChunkRef.current = false;
-      player.setVolume(1.68, 240);
+      player.setVolume(2.50, 40);
     }
 
     let pcmData: Int16Array | null   = data instanceof Int16Array ? data : null;
@@ -92,6 +92,15 @@ export function useOracleConnection({
 
   const getAnalyser = useCallback(() => pcmPlayerRef.current?.getAnalyser() ?? null, []);
 
+  const setTransmissionQ = useCallback((q: number, rampMs = 0) => {
+    pcmPlayerRef.current?.setTransmissionQ(q, rampMs);
+  }, []);
+
+  // Stable callback — always reads live ref, never stale. Use for barge-in flush.
+  const flushPlayback = useCallback(() => {
+    pcmPlayerRef.current?.stop();
+  }, []);
+
   const value = useMemo(() => ({
     error,
     pcmPlayer: pcmPlayerRef.current,
@@ -103,10 +112,13 @@ export function useOracleConnection({
     setError,
     boostMicVolume,
     getAnalyser,
+    setTransmissionQ,
+    flushPlayback,
   }), [
     error,
     initializePCMPlayer, initializeOracle,
-    handleOracleResponse, resetFirstChunk, cleanup, boostMicVolume, getAnalyser,
+    handleOracleResponse, resetFirstChunk, cleanup, boostMicVolume, getAnalyser, setTransmissionQ,
+    flushPlayback,
   ]);
 
   return value;

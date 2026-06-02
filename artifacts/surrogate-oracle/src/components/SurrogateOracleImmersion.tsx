@@ -534,7 +534,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
 
   // ── Dev hooks ────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
+    // ALWAYS expose hooks for server-side diagnostics (v2.0 requirement)
     (window as any).__oracle_handleAudio = (url: string) => connection.handleOracleResponse(url);
     (window as any).__oracle_skipLore = () => {
       if (journey.scenePhase !== 'terminal') return;
@@ -549,10 +549,14 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
       ref.sendTextMessage('[TEST SIGNAL — respond only with: "signal received"] ', true);
       console.log('[oracle_test] test ping sent — listen for Oracle audio');
     };
+    // Expose ref for server-side debug polling
+    (window as any).oracleConversationRef = oracleConversationRef;
+
     return () => {
       delete (window as any).__oracle_handleAudio;
       delete (window as any).__oracle_skipLore;
       delete (window as any).__oracle_test;
+      delete (window as any).oracleConversationRef;
     };
   }, [connection.handleOracleResponse, journey.scenePhase, journey.awakeFromTerminal]);
 
@@ -1329,6 +1333,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
             console.log('[onMicWillStart] muting music!');
             fadeToVolume(0, 80);
           }}
+          onUserSpeakingChange={setIsUserSpeaking}
           isVisible={isOracleMode}
           autoStart={false}
           onBargeIn={connection.flushPlayback}

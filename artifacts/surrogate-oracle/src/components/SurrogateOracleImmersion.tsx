@@ -646,10 +646,21 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
 
   useParallax(scenePhase, handleParallaxUpdate, handleZoom);
 
-  const { completedLines, currentLine } = useLoreSequence(scenePhase === 'terminal', () => {
+  // ── Transition: Terminal → Awakened (The Rift Opens) ──────────────────────
+  const handleAwakeTransition = useCallback(() => {
     markLoreCompleted();
-    journey.awakeFromTerminal();
-  });
+    
+    // Trigger a global "rift glitch" that bridges the two states
+    document.body.setAttribute('data-rift-opening', 'true');
+    
+    // Cinematic delay to allow the glitch to peak before the alley resolves
+    setTimeout(() => {
+      journey.awakeFromTerminal();
+      document.body.removeAttribute('data-rift-opening');
+    }, 850);
+  }, [journey, markLoreCompleted]);
+
+  const { completedLines, currentLine } = useLoreSequence(scenePhase === 'terminal', handleAwakeTransition);
 
   const isOracleMode = scenePhase === 'oracle';
   const awakened     = scenePhase === 'awakened' || isOracleMode;
@@ -742,9 +753,18 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
 
       {/* ── Foreground debris ── */}
       <div className="oracle-debris-layer" aria-hidden="true">
-        {DEBRIS.map(([glyph, color, left, top, delay, dur], i) => (
+        {DEBRIS.map(([glyph, _color, left, top, delay, dur], i) => (
           <span key={i} className="oracle-debris-piece"
-            style={{ left, top, color, animationDelay: delay, animationDuration: dur } as any}>
+            style={{ 
+              left, top, 
+              animationDelay: delay, animationDuration: dur,
+              background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              color: 'transparent',
+              display: 'inline-block',
+            } as any}>
             {glyph}
           </span>
         ))}
@@ -775,7 +795,7 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
          }}>
           {titleText}
         </h1>
-        {awakened && titleText.length < 16 && <span className="oracle-cursor">▌</span>}
+        {titleText.length > 0 && titleText.length < 16 && <span className="oracle-cursor">▌</span>}
         {subtitleText && (
           <div className="oracle-subtitle" style={{
             display: 'inline-block',
@@ -880,43 +900,39 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
                   key="live-face"
                   className="oracle-avatar-container"
                   // ╔══════════════════════════════════════════════════════════════╗
-                  // ║  TOTALLY RADICAL DUDE! 80s COMIC BOOK CINEMATIC ENTRANCE  ║
-                  // ║  Asimov × Philip K. Dick approved — no bone-white bags     ║
+                  // ║  MAX HEADROOM PHASE-GLITCH MATERIALIZATION                   ║
+                  // ║  Oracle tears into the world from the cabinet itself.        ║
                   // ╚══════════════════════════════════════════════════════════════╝
-                  // Slides in from the right with electric comic-book energy,
-                  // neon glow trail, CRT scan-line shimmer, and bold color pop.
                   initial={{
                     opacity: 0,
-                    scale: 1.06,
-                    x: 260,
-                    filter: 'blur(12px) brightness(4) saturate(0) hue-rotate(60deg)',
+                    scale: 0.85,
+                    filter: 'blur(20px) brightness(6) saturate(0) hue-rotate(180deg)',
                     boxShadow: '0 0 0px rgba(0,255,136,0)',
                   }}
                   animate={{
-                    opacity:  [0, 0,    0.15, 0.55, 0.85,  1],
-                    scale:    [1.06, 1.06, 1.04, 1.02, 1.005, 1],
-                    x:       [260, 260,  130,   40,   10,   0],
+                    opacity:  [0,    0.9,  0.2,  1.0,  0.6,  1],
+                    scale:    [0.85, 1.15, 0.95, 1.05, 0.98, 1],
                     filter: [
-                      'blur(12px)  brightness(4)  saturate(0)   hue-rotate(60deg)',
-                      'blur(12px)  brightness(4)  saturate(0)   hue-rotate(60deg)',
-                      'blur(6px)   brightness(2.8) saturate(0.2) hue-rotate(35deg)',
-                      'blur(3px)   brightness(2.0) saturate(0.5) hue-rotate(15deg)',
-                      'blur(1px)   brightness(1.4) saturate(0.85) hue-rotate(5deg)',
-                      'blur(0px)   brightness(1.0) saturate(1.0) hue-rotate(0deg)',
+                      'blur(20px) brightness(6)   saturate(0)   hue-rotate(180deg)',
+                      'blur(12px) brightness(3.5) saturate(2)   hue-rotate(90deg)',
+                      'blur(25px) brightness(5)   saturate(0.5) hue-rotate(45deg)',
+                      'blur(4px)  brightness(1.8) saturate(1.5) hue-rotate(15deg)',
+                      'blur(8px)  brightness(2.5) saturate(0.8) hue-rotate(5deg)',
+                      'blur(0px)  brightness(1.0) saturate(1.0) hue-rotate(0deg)',
                     ],
                     boxShadow: [
-                      '0 0 80px  rgba(0,255,136,0.0)',
-                      '0 0 80px  rgba(0,255,136,0.0)',
-                      '0 0 60px  rgba(0,255,136,0.5)',
-                      '0 0 40px  rgba(0,255,136,0.7)',
-                      '0 0 20px  rgba(0,255,136,0.9)',
+                      '0 0 100px rgba(0,255,136,0.0)',
+                      '0 0 140px rgba(0,255,136,0.9)',
+                      '0 0 60px  rgba(0,255,136,0.3)',
+                      '0 0 100px rgba(0,255,136,0.7)',
+                      '0 0 40px  rgba(0,255,136,0.4)',
                       '0 0 8px   rgba(0,255,136,0.3)',
                     ],
                   }}
                   transition={{
-                    duration: 12.0,
-                    ease: [0.22, 1, 0.36, 1],
-                    times: [0, 0.10, 0.28, 0.50, 0.75, 1],
+                    duration: 1.6,
+                    ease: [0.25, 1, 0.5, 1], // snappy, erratic
+                    times: [0, 0.15, 0.35, 0.6, 0.85, 1] // stutter steps
                   }}
                   style={{ zIndex: 3, position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}
                 >
@@ -962,21 +978,31 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.4 }}
-            style={{
-              position: 'fixed', bottom: 'calc(var(--bottom-bar-h, 160px) + 12px)', left: '50%',
-              transform: 'translateX(-50%)', zIndex: 90, pointerEvents: 'none',
-              background: 'rgba(176,38,255,0.12)', border: '1px solid rgba(176,38,255,0.5)',
-              borderRadius: 20, padding: '6px 18px',
-              fontFamily: "'PhillySans', monospace", fontSize: '0.7rem',
-              letterSpacing: '0.12em', color: '#b026ff',
-              textShadow: '0 0 8px rgba(176,38,255,0.6)',
-              backdropFilter: 'blur(6px)',
-            }}
-          >
-            {scenePhase === 'dormant' && '› Tap the cabinet to begin.'}
-            {scenePhase === 'terminal' && '› Watch. The Oracle is finding you.'}
-            {scenePhase === 'awakened' && '› Choose your archetype. There is no wrong answer.'}
-          </motion.div>
+             style={{
+               position: 'fixed', bottom: 'calc(var(--bottom-bar-h, 160px) + 12px)', left: '50%',
+               transform: 'translateX(-50%)', zIndex: 90, pointerEvents: 'none',
+               background: 'rgba(0, 10, 15, 0.65)', border: '1px solid rgba(0,255,136,0.3)',
+               borderRadius: 20, padding: '6px 18px',
+               fontFamily: "'PhillySans', monospace", fontSize: '0.7rem',
+               letterSpacing: '0.12em',
+               backdropFilter: 'blur(12px)',
+               boxShadow: '0 0 15px rgba(0,255,136,0.1)',
+             }}
+           >
+             <span style={{
+               background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
+               WebkitBackgroundClip: 'text',
+               WebkitTextFillColor: 'transparent',
+               backgroundClip: 'text',
+               color: 'transparent',
+               fontWeight: 'bold',
+               display: 'inline-block', // critical for background-clip
+             }}>
+               {scenePhase === 'dormant' && '› Tap the cabinet to begin.'}
+               {scenePhase === 'terminal' && '› Watch. The Oracle is finding you.'}
+               {scenePhase === 'awakened' && '› Choose your archetype. There is no wrong answer.'}
+             </span>
+           </motion.div>
         )}
       </AnimatePresence>
 
@@ -1134,22 +1160,24 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
 
       {/* ── Terminal lore overlay ── */}
       <AnimatePresence>
-        {(scenePhase === 'terminal' || (scenePhase === 'awakened' && !journey.selectedKnifeIndex)) && (
+        {scenePhase === 'terminal' && (
           <motion.div
             key="terminal-layer"
             className="oracle-terminal-overlay"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             exit={{ opacity: 0, transition: { duration: 0.8 } }}
-            onClick={scenePhase === 'terminal' ? () => { markLoreCompleted(); journey.awakeFromTerminal(); } : undefined}
+            onClick={handleAwakeTransition}
             style={{ 
-              pointerEvents: scenePhase === 'terminal' ? 'auto' : 'none',
-              zIndex: scenePhase === 'terminal' ? 100 : 20, // lower when it's a bridge
+              pointerEvents: 'auto',
+              zIndex: 100,
             }}
           >
             <div className="oracle-lore-text">
               {completedLines.map((line, i) => (
                 <div key={`lore-${i}`} className="oracle-lore-line" style={{ whiteSpace: 'pre-wrap' }}>
-                  <span className="oracle-lore-prompt">›</span>{line}
+                  <span className="oracle-lore-line__content">
+                    <span className="oracle-lore-prompt">›</span>{line}
+                  </span>
                 </div>
               ))}
 
@@ -1172,12 +1200,18 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
 
               {currentLine && (
                 <div className="oracle-lore-line oracle-lore-line--typing" style={{ whiteSpace: 'pre-wrap' }}>
-                  <span className="oracle-lore-prompt">›</span>{currentLine}<GlitchCursor />
+                  <span className="oracle-lore-line__content">
+                    <span className="oracle-lore-prompt">›</span>{currentLine}
+                  </span>
+                  <GlitchCursor />
                 </div>
               )}
               {!currentLine && completedLines.length < LORE_SEQUENCE.length && (
                 <div className="oracle-lore-line">
-                  <span className="oracle-lore-prompt">›</span><GlitchCursor />
+                  <span className="oracle-lore-line__content">
+                    <span className="oracle-lore-prompt">›</span>
+                  </span>
+                  <GlitchCursor />
                 </div>
               )}
             </div>
@@ -1217,8 +1251,10 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
                   zIndex: 102, pointerEvents: 'none', textAlign: 'center',
                   fontFamily: "'Share Tech Mono', monospace",
                   fontSize: '0.65rem', letterSpacing: '0.2em',
-                  color: 'rgba(0,255,136,0.7)',
-                  textShadow: '0 0 12px rgba(0,255,136,0.5)',
+                  background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
                 }}
               >
                 SIGNAL RECOGNIZED — {echo.last_archetype.toUpperCase()}
@@ -1234,7 +1270,10 @@ console.log('[fadeToVolume] called target=', target, 'gainRef=', radioGainRef.cu
                   position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)',
                   zIndex: 101, fontFamily: "'PhillySans', monospace",
                   fontSize: '0.65rem', letterSpacing: '0.2em',
-                  color: '#00ff88', textShadow: '0 0 8px rgba(0,255,136,0.5)',
+                  background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
                   pointerEvents: 'none',
                 }}
               >

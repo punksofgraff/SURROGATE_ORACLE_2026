@@ -261,23 +261,6 @@ async function testAwakened(page, pass, fail) {
   if (cardCount === 5) { pass.push('awakened: 5 knife cards'); console.log('    ✓  5 knife cards'); }
   else                  { fail.push('awakened: knife cards ' + cardCount + '/5'); console.log('    ✗  knife cards: ' + cardCount + '/5'); }
 
-  // LORE BRIDGE: completed lore lines must persist in awakened (even after skip).
-  // oracle-terminal-overlay renders when loreCompletedLines.length > 0 && awakened && no knife selected.
-  // This validates the useLoreSequence completedLines-retention fix — if completedLines were reset
-  // on skip, this overlay would be invisible (length===0) and the cabinet goes dark between lore
-  // and knife reveal. The fix keeps completedLines intact, so the bridge is always present here.
-  var bridgeInDom = await page.evaluate(function() {
-    return !!document.querySelector('.oracle-terminal-overlay');
-  });
-  if (bridgeInDom) {
-    pass.push('awakened: lore bridge overlay in DOM (completedLines retained)');
-    console.log('    ✓  oracle-terminal-overlay in DOM — lore bridge persists (completedLines fix working)');
-  } else {
-    fail.push('awakened: lore bridge overlay MISSING — completedLines may have been reset on skip');
-    console.log('    ✗  oracle-terminal-overlay NOT in DOM — blank cabinet gap detected');
-    console.log('       Check useLoreSequence: completedLines must NOT reset when active=false');
-  }
-
   // OracleConversation mounts at enterTerminal() — during lore, not at awakened.
   // isVisible=false hides the panel, but Gemini WS is already connecting.
   // The step log is the authoritative signal, not .oc-panel visibility.

@@ -113,7 +113,9 @@ function GhostText({
 
   return (
     <div className={cls} style={style} onClick={onClick}>
-      {inst.text.slice(0, chars)}
+      <span className="ghost-tx__content">
+        {inst.text.slice(0, chars)}
+      </span>
       {phase === 'typing' && <span className="ghost-tx__cur" />}
     </div>
   );

@@ -291,20 +291,27 @@
   position: absolute;
   z-index: 8;
   font-family: 'aAnotherTag', 'Orbitron', monospace;
-  font-size: clamp(28px, 8vw, 42px);
-  letter-spacing: 0.04em;
+  font-size: clamp(24px, 7vw, 36px);
+  font-weight: 700;
+  letter-spacing: 0.02em;
   line-height: 1.25;
   pointer-events: none;
-  max-width: 60vw;
+  max-width: 80vw;
   white-space: normal;
   word-break: break-word;
   transition: opacity 1.4s ease, filter 1.4s ease;
-  /* Green → purple gradient as text types left to right */
-  background: linear-gradient(90deg, #00ff88 0%, #00ffaa 60%, #00ffcc 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 0 8px rgba(0,255,136,0.50));
+  /* Shadow moves to container but we use text-shadow on content for precision */
+}
+
+.ghost-tx__content {
+  display: inline-block;
+  background-image: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+  /* NO text-shadow or filter here — it breaks background-clip: text in many browsers */
+  padding: 2px 0; /* slight vertical bleed prevents clipping on descenders */
 }
 .ghost-tx--typing  { opacity: 0.78; filter: none; }
 .ghost-tx--holding { opacity: 0.68; filter: none; }
@@ -345,11 +352,12 @@
   display: inline-block;
   width: 0.55em;
   height: 0.85em;
-  background: rgba(0, 255, 136, 0.9);
+  background: #00ffcc; /* brand cyan */
   -webkit-text-fill-color: initial; /* override gradient — cursor is a block, not text */
   vertical-align: middle;
   margin-left: 2px;
   animation: ghost-cur-blink 0.65s steps(1) infinite;
+  box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
 }
 @keyframes ghost-cur-blink {
   0%, 100% { opacity: 1; }
@@ -1708,6 +1716,18 @@
 }
 
 /* ── Lore Terminal Overlay ─────────────────────────────────────────────── */
+/* ── Rift Opening Glitch ── */
+body[data-rift-opening="true"] .oracle-terminal-overlay {
+  animation: rift-blast 0.85s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+@keyframes rift-blast {
+  0%   { filter: brightness(1) contrast(1); transform: scale(1); }
+  40%  { filter: brightness(2.5) contrast(1.5) hue-rotate(45deg); transform: scale(1.05); }
+  70%  { filter: brightness(4) contrast(2) hue-rotate(-20deg); transform: scale(0.98); opacity: 0.8; }
+  100% { filter: brightness(1) contrast(1); transform: scale(1); opacity: 1; }
+}
+
 .oracle-terminal-overlay {
   position: absolute;
   inset: 0;
@@ -1775,11 +1795,20 @@
   margin-top: 0.4em;
 }
 
-/* ── Individual Lore Line — chromatic aberration resolves into clean green */
+/* ── Individual Lore Line — chromatic aberration resolves into brand gradient */
 .oracle-lore-line {
   display: block;
   animation: lore-line-in 0.9s ease-out both;
   will-change: transform, opacity, text-shadow;
+}
+
+.oracle-lore-line__content {
+  display: inline-block;
+  background-image: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
 }
 
 @keyframes lore-line-in {

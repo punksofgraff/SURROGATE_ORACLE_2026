@@ -3,36 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen, Link2, Cpu, Globe, Factory } from 'lucide-react';
 import { getAudioContext } from '../lib/oracleSfx';
 
-// ── Territory chord tones (on select) ────────────────────────────────────────
-const TERRITORY_CHORDS: [number, number, number][] = [
-  [440, 550, 660],
-  [370, 466, 554],
-  [528, 660, 792],
-  [349, 440, 523],
-  [396, 495, 594],
-];
-
-function playKnifeChord(idx: number) {
-  try {
-    const actx = getAudioContext();
-    const freqs = TERRITORY_CHORDS[idx] ?? TERRITORY_CHORDS[0];
-    const now = actx.currentTime;
-    freqs.forEach((freq, i) => {
-      const osc = actx.createOscillator();
-      const gain = actx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.08 - i * 0.015, now + 0.012);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
-      osc.connect(gain);
-      gain.connect(actx.destination);
-      osc.start(now);
-      osc.stop(now + 0.30);
-    });
-  } catch { /* no gesture yet */ }
-}
-
 // ── Transmission sound — "what the fuck did I just find?" ────────────────────
 // Formant synthesis: pink noise + two bandpass filters at vocal frequencies
 // + sawtooth carrier. Each territory has a distinct vocal register.
@@ -40,87 +10,6 @@ function playKnifeChord(idx: number) {
 const EMISSION_F1 = [350, 270, 430, 310, 250];   // chest resonance
 const EMISSION_F2 = [1850, 2100, 1700, 2000, 2300]; // voice character
 const EMISSION_PITCH = [110, 98, 120, 105, 92];     // fundamental
-
-function playCardEmissionSound(idx: number) {
-  try {
-    const actx = getAudioContext();
-    const now = actx.currentTime;
-    const dur = 0.58;
-
-    // Pink noise buffer — more natural texture than white noise
-    const buf = actx.createBuffer(1, Math.ceil(actx.sampleRate * dur), actx.sampleRate);
-    const d = buf.getChannelData(0);
-    let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
-    for (let i = 0; i < d.length; i++) {
-      const wn = Math.random() * 2 - 1;
-      b0 = 0.99886*b0 + wn*0.0555179; b1 = 0.99332*b1 + wn*0.0750759;
-      b2 = 0.96900*b2 + wn*0.1538520; b3 = 0.86650*b3 + wn*0.3104856;
-      b4 = 0.55000*b4 + wn*0.5329522; b5 = -0.7616*b5 - wn*0.0168980;
-      d[i] = (b0+b1+b2+b3+b4+b5+b6+wn*0.5362) * 0.11;
-      b6 = wn * 0.115926;
-    }
-    const src = actx.createBufferSource();
-    src.buffer = buf;
-
-    // F1 — throat resonance
-    const bpF1 = actx.createBiquadFilter();
-    bpF1.type = 'bandpass';
-    bpF1.frequency.value = EMISSION_F1[idx];
-    bpF1.Q.value = 2.8;
-
-    // F2 — mouth/voice character
-    const bpF2 = actx.createBiquadFilter();
-    bpF2.type = 'bandpass';
-    bpF2.frequency.value = EMISSION_F2[idx];
-    bpF2.Q.value = 4.5;
-
-    // Sawtooth carrier — gives voice-like harmonics
-    const osc = actx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.value = EMISSION_PITCH[idx];
-    // Slight frequency drift: makes it feel alive, not synthetic
-    osc.frequency.setValueAtTime(EMISSION_PITCH[idx], now);
-    osc.frequency.linearRampToValueAtTime(EMISSION_PITCH[idx] * 0.94, now + dur);
-    const oscGain = actx.createGain();
-    oscGain.gain.value = 0.032;
-
-    // Envelope: fast attack, hold, decay — like a word starting
-    const env = actx.createGain();
-    env.gain.setValueAtTime(0, now);
-    env.gain.linearRampToValueAtTime(0.16, now + 0.055);
-    env.gain.setValueAtTime(0.14, now + 0.20);
-    env.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
-    // Soft saturation — "breaking through" signal quality
-    const wave = actx.createWaveShaper();
-    const k = 100;
-    const curve = new Float32Array(256);
-    for (let i = 0; i < 256; i++) {
-      const x = (i * 2 / 256) - 1;
-      curve[i] = (1 + k / 30) * x / (1 + k / 30 * Math.abs(x));
-    }
-    wave.curve = curve;
-
-    src.connect(bpF1); src.connect(bpF2);
-    osc.connect(oscGain);
-    bpF1.connect(env); bpF2.connect(env); oscGain.connect(env);
-    env.connect(wave);
-    wave.connect(actx.destination);
-
-    src.start(now); src.stop(now + dur);
-    osc.start(now); osc.stop(now + dur);
-  } catch { /* AudioContext not yet available */ }
-}
-
-// ── Gradient color per letter position ───────────────────────────────────────
-// t=0 → #00ff88, t=1 → #b026ff
-function gradientChar(i: number, total: number): string {
-  const t = total > 1 ? i / (total - 1) : 0;
-  const r = Math.round(176 * t);
-  const g = Math.round(255 - 217 * t);
-  const b = Math.round(136 + 119 * t);
-  return `rgb(${r},${g},${b})`;
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -265,9 +154,9 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
         <div className={`oracle-knife-origin-beam${isEmitting ? ' oracle-knife-origin-beam--active' : ''}`} />
 
         <div className="oracle-knife-cards-container" style={{
-          display: 'flex',
-          gap: '20px',
+          position: 'relative',
           width: '100%',
+          display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
           perspective: '1000px',
@@ -280,18 +169,48 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
               <motion.div
                 key={i}
                 className="oracle-knife-card"
-                initial={false}
+                initial={{ 
+                  scale: 0.05, 
+                  opacity: 0, 
+                  y: -240, 
+                  filter: 'blur(15px) brightness(4) saturate(0)' 
+                }}
                 animate={isSelected 
                   ? (isThisSelected 
-                      ? { scale: 1.14, opacity: 0, filter: 'blur(14px) brightness(5) saturate(4)', y: -100 }
-                      : { scale: 0.8, opacity: 0, filter: 'blur(10px) brightness(0.5)' })
+                      ? { scale: 1.14, opacity: 0, filter: 'blur(14px) brightness(5) saturate(4)', y: -100, x: 0 }
+                      : { scale: 0.8, opacity: 0, filter: 'blur(10px) brightness(0.5)', x: 0 })
                   : (isThisActive
-                      ? { scale: 1, opacity: 0.91, filter: 'blur(0px)', x: 0, zIndex: 10 }
-                      : { scale: 0.85, opacity: 0.3, filter: 'blur(4px)', x: (i - activeIdx) * 120, zIndex: 5 })
+                      ? { 
+                          scale:   [0.05, 0.75, 1.05, 1.00], 
+                          opacity: [0,    0.95, 1.00, 0.91], 
+                          y:       [-240, -40,  10,   0],
+                          filter: [
+                            'blur(15px) brightness(4)  saturate(0)',
+                            'blur(5px)  brightness(2.5) saturate(2)',
+                            'blur(0px)  brightness(1.2) saturate(1.2)',
+                            'blur(0px)  brightness(1.0) saturate(1.0)'
+                          ],
+                          x: 0, 
+                          zIndex: 10 
+                        }
+                      : { 
+                          scale: 0.85, 
+                          opacity: 0, 
+                          filter: 'blur(4px)', 
+                          x: 0, 
+                          y: 0,
+                          zIndex: 5 
+                        })
                 }
                 transition={isThisSelected
                   ? { duration: 1.5, ease: [0.4, 0, 1, 1] }
-                  : { duration: 0.8, ease: 'easeOut' }
+                  : (isThisActive && !isSelected)
+                    ? { 
+                        duration: 1.2, 
+                        ease: [0.23, 1, 0.32, 1],
+                        times: [0, 0.45, 0.65, 1] 
+                      }
+                    : { duration: 0.8, ease: 'easeOut' }
                 }
                 onClick={() => {
                   if (isSelected) return;
@@ -328,16 +247,24 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
                 <div className="oracle-knife-divider" />
 
                 {/* Question pontif -- letter by letter gradient landing. */}
-                <div className="oracle-knife-card-question" aria-label={kq.question}>
+                <div className="oracle-knife-card-question" aria-label={kq.question} style={{
+                  background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                  color: 'transparent',
+                  whiteSpace: 'pre-wrap', // handles wrapping with inline-block children
+                }}>
                   {isThisActive ? kq.question.split('').map((char, j) => (
                     <span
                       key={j}
                       className="oracle-knife-letter"
                       style={{
                         opacity: j < landedChars ? 1 : 0,
-                        color: gradientChar(j, kq.question.length),
                         transition: j < landedChars ? 'opacity 0.65s ease-out' : 'none',
                         filter: j < landedChars ? 'blur(0px)' : 'blur(4px)',
+                        display: 'inline-block', // needed for blur/opacity on individual letters
+                        whiteSpace: char === ' ' ? 'pre' : 'normal',
                       }}
                     >
                       {char}

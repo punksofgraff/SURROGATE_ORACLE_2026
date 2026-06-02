@@ -25,8 +25,8 @@ const SPEED_MAX = 1.4;
 const DROP_INTERVAL = 3; // frames between spawning a new column's drop
 const HEAD_BRIGHTNESS = 1.0; // leading char is bright white
 const TRAIL_COLOR_R = 0;
-const TRAIL_COLOR_G = 200;
-const TRAIL_COLOR_B = 100;
+const TRAIL_COLOR_G = 255;
+const TRAIL_COLOR_B = 170; // Cyan-Emerald brand mix
 
 interface Drop {
   col: number;      // column index

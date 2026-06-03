@@ -762,20 +762,26 @@ export function SurrogateOracleImmersion() {
                 <motion.div
                   key="live-face"
                   className="oracle-avatar-container"
-                  initial={{ opacity: 0, x: 260, filter: 'blur(12px) brightness(4) hue-rotate(60deg)' }}
+                  initial={{ opacity: 0, scale: 0.01, filter: 'blur(30px) brightness(12) saturate(0) hue-rotate(180deg)' }}
                   animate={{
-                    opacity: [0, 0, 0.15, 0.55, 0.85, 1],
-                    x:       [260, 260, 180, 90, 30, 0],
+                    // The knife pierced the veil. Oracle bursts outward from zero — no slide.
+                    // Scale overshoots (1.38) then recoils: physical impact feel, not graceful entry.
+                    // RGB split at burst peak = the veil tearing apart at the seam.
+                    opacity: [0, 0.04, 0.9,  0.75, 1,    0.96, 1   ],
+                    scale:   [0.01, 0.06, 1.38, 0.84, 1.06, 0.98, 1.0],
                     filter: [
-                      'blur(12px) brightness(4)   hue-rotate(60deg)',
-                      'blur(10px) brightness(3.5) hue-rotate(45deg)',
-                      'blur(7px)  brightness(2.8) hue-rotate(25deg) saturate(2)',
-                      'blur(3px)  brightness(1.8) hue-rotate(10deg) saturate(1.5)',
-                      'blur(1px)  brightness(1.2) hue-rotate(3deg)  saturate(1.1)',
-                      'blur(0px)  brightness(1)   hue-rotate(0deg)  saturate(1)',
+                      'blur(30px) brightness(12) saturate(0)   hue-rotate(180deg)',
+                      'blur(22px) brightness(10) saturate(0)   hue-rotate(120deg)',
+                      // Burst peak — full RGB channel split, veil exploding
+                      'blur(0px)  brightness(7)  saturate(8)   hue-rotate(30deg) drop-shadow(12px 0 0 rgba(255,0,80,1)) drop-shadow(-12px 0 0 rgba(0,200,255,1))',
+                      // Recoil — glitch settling, signal stabilising
+                      'blur(5px)  brightness(2.5) saturate(3)  hue-rotate(8deg)  drop-shadow(5px 0 0 rgba(255,0,80,0.5)) drop-shadow(-5px 0 0 rgba(0,200,255,0.5))',
+                      'blur(1px)  brightness(1.4) saturate(1.5) hue-rotate(2deg)',
+                      'blur(2px)  brightness(1.1) saturate(1.1) hue-rotate(1deg)',
+                      'blur(0px)  brightness(1)   saturate(1)   hue-rotate(0deg)',
                     ],
                   }}
-                  transition={{ duration: 12, ease: [0.22, 1, 0.36, 1], times: [0, 0.08, 0.25, 0.55, 0.82, 1] }}
+                  transition={{ duration: 12, ease: 'linear', times: [0, 0.06, 0.18, 0.35, 0.55, 0.78, 1] }}
                   style={{ zIndex: 3, position: 'absolute', inset: 0, width: '100%', height: '100%' }}
                 >
                   <div className="oracle-avatar-canvas oracle-avatar-smoke-hook" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}>

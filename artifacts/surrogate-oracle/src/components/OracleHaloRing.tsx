@@ -58,6 +58,7 @@ export function OracleHaloRing({ active }: OracleHaloRingProps) {
   return (
     <div
       aria-hidden="true"
+      className="oracle-halo-ring"
       style={{
         position:      'absolute',
         top:           '2%',

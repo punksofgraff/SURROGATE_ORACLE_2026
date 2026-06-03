@@ -233,7 +233,6 @@ const OracleConversation = forwardRef(
     const isOracleSpeakingRef = useRef(false);
     const setOracleSpeaking = useCallback((val: boolean) => {
       isOracleSpeakingRef.current = val;
-      logStep(`setOracleSpeaking(${val}) isOracleSpeakingRef.current=${val}`, 'ok');
       _setIsOracleSpeaking(val);
     }, []);
     // true between Seeker turn-end and first Oracle audio chunk (the "contemplative" gap)
@@ -433,7 +432,8 @@ const OracleConversation = forwardRef(
       onsetFrames: 2,
     }));
 
-    const pendingMessagesRef = useRef<{text: string, isHidden: boolean}[]>([]);
+    const pendingMessagesRef  = useRef<{text: string, isHidden: boolean}[]>([]);
+    const wasInterruptedRef   = useRef(false); // tracks barge-in to suppress score-parse warn
 
     const sendText = useCallback((text: string, isHidden = false) => {
       const ws = wsRef.current;
@@ -566,6 +566,7 @@ const OracleConversation = forwardRef(
             if (msg.usageMetadata?.totalTokenCount) debugInfo.current.lastTokenCount = msg.usageMetadata.totalTokenCount;
             if (msg.serverContent?.interrupted) {
               logStep('ORACLE INTERRUPTED (barge-in)', 'warn');
+              wasInterruptedRef.current = true;
               navigator.vibrate?.([20, 10, 20]);
               setOracleSpeaking(false);
               setIsOracleThinking(false);
@@ -616,11 +617,12 @@ const OracleConversation = forwardRef(
               const score = scored.score;
               // Strip the identity marker too, so it never reaches the displayed turn.
               const { clean, identity } = parseSeekerIrl(scored.clean);
-              // Only warn when the response was substantial — barge-in stubs are
-              // too short to contain a score tag so the miss is expected, not a bug.
-              if (!score && currentResponseText.current.length > 60) {
+              // Only warn when the response was substantial and not interrupted.
+              // Barge-in stubs are too short for a score tag — expected, not a bug.
+              if (!score && currentResponseText.current.length > 60 && !wasInterruptedRef.current) {
                 logStep('SCORE PARSE FAILED', 'warn');
               }
+              wasInterruptedRef.current = false; // reset for next turn
               // Web-grounded IRL resolution is out-of-band — fire once, parent orchestrates.
               if (identity && !seekerIdentifiedRef.current && (identity.name || identity.handles?.length)) {
                 seekerIdentifiedRef.current = true;
@@ -913,7 +915,14 @@ const OracleConversation = forwardRef(
     useEffect(() => { connectToGeminiRef.current = connectToGemini; }, [connectToGemini]);
 
     useEffect(() => {
-      logStep('ORACLE_CONV TRUE MOUNT', 'ok');
+      logStep('OracleConversation MOUNTED', 'ok');
+      const hasSupabaseUrl = !!import.meta.env.VITE_SUPABASE_URL;
+      const hasSupabaseKey = !!import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (hasSupabaseUrl && hasSupabaseKey) {
+        logStep('ENV OK (Supabase vars)', 'ok');
+      } else {
+        logStep(`ENV MISSING (${!hasSupabaseUrl ? 'VITE_SUPABASE_URL ' : ''}${!hasSupabaseKey ? 'VITE_SUPABASE_ANON_KEY' : ''})`, 'err');
+      }
       // Use ref — not connectToGemini directly — so this effect has [] deps
       // and runs exactly once on mount. Previously [connectToGemini] deps caused
       // the effect to re-run every ~1.5s (connectToGemini was being recreated),

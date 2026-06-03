@@ -169,7 +169,7 @@ export interface OracleConversationHandle {
     lastError: string | null;
     recentMessages: string[];
   };
-  startSession: () => void;
+  startSession: (bootMessage?: string) => void;
   startMic: () => Promise<void>;
   toggleTypeMode: () => void;
 }
@@ -433,12 +433,23 @@ const OracleConversation = forwardRef(
       onsetFrames: 2,
     }));
 
+    const pendingMessagesRef = useRef<{text: string, isHidden: boolean}[]>([]);
+
     const sendText = useCallback((text: string, isHidden = false) => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      const ws = wsRef.current;
+      if (!ws) return;
+
+      if (ws.readyState === WebSocket.CONNECTING) {
+        pendingMessagesRef.current.push({ text, isHidden });
+        return;
+      }
+
+      if (ws.readyState !== WebSocket.OPEN) return;
+
       const isBoot = text === '__ORACLE_BOOT__' || isHidden;
       if (text === '__ORACLE_BOOT__') logStep('__ORACLE_BOOT__ path triggered', 'ok');
       const body = isBoot ? (text === '__ORACLE_BOOT__' ? 'Greetings... Seeker' : text) : text;
-      wsRef.current.send(JSON.stringify({ type: 'client.realtimeInput', realtimeInput: { text: body } }));
+      ws.send(JSON.stringify({ type: 'client.realtimeInput', realtimeInput: { text: body } }));
       if (!isBoot) {
         setTurns(prev => [...prev, { role: 'user', content: text, timestamp: Date.now() }]);
         setInputText('');
@@ -447,6 +458,7 @@ const OracleConversation = forwardRef(
 
     const connectToGemini = useCallback(() => {
       if (wsRef.current) wsRef.current.close();
+      pendingMessagesRef.current = []; // Clear queue on fresh connect
 
       // Use environment variable for Supabase URL to avoid hardcoding dev project
       let supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://velmmplevfrtrtrypoch.supabase.co';
@@ -515,26 +527,37 @@ const OracleConversation = forwardRef(
 
         if (msg.type === 'session.created') {
           logStep('GEMINI SESSION CREATED', 'ok');
-          if ((autoStart || pendingBootRef.current) && !sessionBootedRef.current) {
+          const shouldBoot = (autoStart || pendingBootRef.current) && !sessionBootedRef.current;
+          
+          if (shouldBoot) {
             sessionBootedRef.current = true;
-            pendingBootRef.current = false;
             const wasReconnect = isSessionReconnectRef.current;
             isSessionReconnectRef.current = false; // consumed — reset immediately
             if (wasReconnect && resumeHandleRef.current) {
-              // Native session resumption: Gemini restored full context server-side.
-              // No greeting, no blind summary — Oracle continues mid-thought.
               logStep('SESSION RESUMED (native handle)', 'ok');
             } else if (wasReconnect && turnsRef.current.length > 0) {
-              // Fallback (no handle yet) — inject a blind summary of the last turns.
               const lastTurns = turnsRef.current.slice(-6)
                 .map(t => `${t.role === 'user' ? 'Seeker' : 'Oracle'}: ${t.content.slice(0, 200)}`)
                 .join('\n');
               const restoreMsg = `[SIGNAL RESTORED — you just reconnected mid-session. Do NOT re-introduce yourself. Continue the conversation naturally from where it was. Last exchange:\n${lastTurns}]`;
               logStep('SESSION CONTEXT RESTORED', 'ok');
               setTimeout(() => sendText(restoreMsg, true), 300);
-            } else {
+            } else if (pendingMessagesRef.current.length === 0) {
+              // Only send default boot when no custom message (e.g. lore story) was queued.
+              // If a custom bootMessage was queued while WS was connecting, let it be the
+              // Oracle's first utterance — don't prepend a separate "Greetings... Seeker".
               setTimeout(() => sendText('__ORACLE_BOOT__'), 200);
             }
+          }
+
+          // ALWAYS flush any messages queued during connection (e.g. lore lines sent during WS handshake)
+          if (pendingMessagesRef.current.length > 0) {
+            logStep(`Flushing ${pendingMessagesRef.current.length} queued messages`, 'ok');
+            // Delay slightly to follow the boot message (if any)
+            setTimeout(() => {
+              pendingMessagesRef.current.forEach(m => sendText(m.text, m.isHidden));
+              pendingMessagesRef.current = [];
+            }, 450);
           }
         }
           if (msg.type === 'server.content') {
@@ -858,11 +881,7 @@ const OracleConversation = forwardRef(
         source.connect(processorRef.current);
         
         // DO NOT connect to ctx.destination — this causes mic feedback/hum.
-        // Instead, connect to a silent gain node to ensure the processor stays active.
-        const silentGain = ctx.createGain();
-        silentGain.gain.value = 0.00001; // Near-zero but non-zero to keep node alive
-        processorRef.current.connect(silentGain);
-        silentGain.connect(ctx.destination);
+        // The processor stays active as long as it's connected to the source and has an onaudioprocess.
         
         setIsListening(true);
         isListeningRef.current = true;
@@ -941,29 +960,37 @@ const OracleConversation = forwardRef(
 
         recentMessages: debugInfo.current.recentMessages,
       }),
-      startSession: () => {
+      startSession: (bootMessage?: string) => {
         logStep('startSession() CALLED', 'ok');
         const wsState = wsRef.current?.readyState;
         if (wsState === WebSocket.CONNECTING) {
           // Mid-handshake — don't kill it, just queue the boot for when it opens
           logStep('WS CONNECTING — queuing boot', 'pending');
           pendingBootRef.current = true;
+          if (bootMessage) pendingMessagesRef.current.push({ text: bootMessage, isHidden: true });
           return;
         }
         if (wsState !== WebSocket.OPEN) {
           logStep('RECONNECTING FOR SESSION', 'pending');
           pendingBootRef.current = true;
+          if (bootMessage) pendingMessagesRef.current.push({ text: bootMessage, isHidden: true });
           connectToGemini();
           return;
         }
         if (!sessionBootedRef.current) {
           sessionBootedRef.current = true;
-          logStep('__ORACLE_BOOT__ path triggered', 'ok');
-          sendText('__ORACLE_BOOT__');
+          if (bootMessage) {
+            logStep('CUSTOM BOOT path triggered', 'ok');
+            sendText(bootMessage, true);
+          } else {
+            logStep('__ORACLE_BOOT__ path triggered', 'ok');
+            sendText('__ORACLE_BOOT__');
+          }
         } else {
           logStep('SESSION ALREADY ACTIVE — terminal boot confirmed', 'ok');
         }
       },
+
       startMic: async () => {
         if (!isListeningRef.current) {
             await startMicRef.current?.();

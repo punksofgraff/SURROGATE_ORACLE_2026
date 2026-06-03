@@ -4474,28 +4474,15 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 }
 
 /* ── Avatar wrapper: holographic materialization — no rectangle, no frame ─────
-   The figure dissolves into alley air at the edges.
-   A radial gradient mask creates the hologram boundary — crisp center,
-   fading periphery. The drop-shadow follows the same fade, so the glow
-   feels organic, not boxed. Like a signal arriving mid-rift.                */
+   Masks removed: iOS Safari cannot apply CSS mask-image to hardware-composited
+   (WebGL) layers — the canvas goes invisible. Drop-shadow + clip-path handle
+   the hologram boundary instead.                                              */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-wrapper {
   width: clamp(280px, 92vw, 520px) !important;
   aspect-ratio: 0.72 / 1 !important;
   border: none !important;
   border-radius: 0 !important;
   overflow: visible !important;
-  -webkit-mask-image: radial-gradient(
-    ellipse 76% 88% at 50% 44%,
-    black 32%,
-    rgba(0,0,0,0.55) 58%,
-    transparent 100%
-  ) !important;
-  mask-image: radial-gradient(
-    ellipse 76% 88% at 50% 44%,
-    black 32%,
-    rgba(0,0,0,0.55) 58%,
-    transparent 100%
-  ) !important;
 }
 
 /* ── Oracle center: sit slightly lower, more in the alley middle-ground ─────*/
@@ -4735,34 +4722,11 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   background: transparent !important;
 }
 
-/* ── Canvas: oval dissolution mask ──────────────────────────────────────────
-   Ellipse centered at 44% height (face center, not chest).
-   Solid core → gradual atmospheric dissolve at all edges.
-   No hard line anywhere — the Oracle materializes from darkness.             */
+/* ── Canvas: resting aura — drop-shadow follows the figure, not a box ───────
+   Masks removed: iOS Safari cannot apply CSS mask-image to hardware-composited
+   (WebGL) layers. Drop-shadow alone handles the holographic edge bleed.       */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas {
   border-radius: 0 !important;
-  -webkit-mask-image: radial-gradient(
-    ellipse 82% 76% at 50% 44%,
-    black 0%,
-    black 35%,
-    rgba(0,0,0,0.92) 48%,
-    rgba(0,0,0,0.65) 58%,
-    rgba(0,0,0,0.28) 68%,
-    rgba(0,0,0,0.06) 76%,
-    transparent 84%
-  );
-  mask-image: radial-gradient(
-    ellipse 82% 76% at 50% 44%,
-    black 0%,
-    black 35%,
-    rgba(0,0,0,0.92) 48%,
-    rgba(0,0,0,0.65) 58%,
-    rgba(0,0,0,0.28) 68%,
-    rgba(0,0,0,0.06) 76%,
-    transparent 84%
-  );
-  /* Resting aura — drop-shadow follows ellipse boundary, not a box.
-     The Oracle glows from within, light bleeds into alley air.              */
   filter:
     drop-shadow(0 0 28px rgba(0,255,136,0.28))
     drop-shadow(0 0 64px rgba(0,255,136,0.10));
@@ -4831,18 +4795,4 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   animation: oracle-headroom-phase 14s linear 10s infinite;
 }
 
-/* ── Mobile: strip WebGL-incompatible CSS masks ──────────────────────────────
-   iOS Safari cannot apply mask-image to hardware-composited (WebGL) layers —
-   the canvas renders invisible. Remove both masks; the drop-shadow glow still
-   reads as presence. The wrapper mask stays on desktop for the soft-fade edge. */
-@media (max-width: 767px) {
-  .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-wrapper {
-    -webkit-mask-image: none !important;
-    mask-image: none !important;
-  }
-  .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas {
-    -webkit-mask-image: none !important;
-    mask-image: none !important;
-  }
-}
 

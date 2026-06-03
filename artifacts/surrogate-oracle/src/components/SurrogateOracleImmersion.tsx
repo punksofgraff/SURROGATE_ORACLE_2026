@@ -1012,6 +1012,19 @@ export function SurrogateOracleImmersion() {
         </div>
       )}
 
+      {debugMode && (
+        <BackendControlPanel
+          isVisible={debugMode}
+          onClose={() => setDebugMode(false)}
+          userId={currentUserId || undefined}
+          sessionId={currentSessionId}
+          userEmail={userEmail || undefined}
+          isAuthenticated={!!currentUserId}
+          pendingCoins={sessionCoins}
+          oracleConversationRef={oracleConversationRef}
+        />
+      )}
+
       {showAuthOverlay && (
         <GoogleSignInOverlay
           onClose={() => setShowAuthOverlay(false)}

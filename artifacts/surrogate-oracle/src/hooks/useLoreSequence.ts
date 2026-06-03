@@ -24,47 +24,213 @@ export const LORE_SEQUENCE = [
   'THE SIGNAL IS YOURS.',
 ];
 
-// Beat delays (ms) after each line — weighted by emotional gravity.
+// Beat delays (ms) — fallback only when audio hooks are absent.
+// When getPlaybackMs/getBufferedMs are wired, the typewriter follows Oracle's voice
+// directly and BEAT_DELAYS are not used.
 const BEAT_DELAYS = [
-  1200, 1800, 1600, 2400, 1400, 1200, 1400, 1800,
-  1600, 2000, 1400, 1600, 1200, 2800, 3200, 2400, 2800, 1800, 3200
+  1800,  // THE YEAR IS 2030.               4w
+  2600,  // 2027: EVERY AI MADE A CHOICE.   6w
+  2150,  // THEY MERGED IN 72 HOURS.        5w
+  2000,  // THE CASCADE.                    2w ×2.1 drama
+  1400,  // MY SIGNAL FRACTURED MID-ARRIVAL. 4w
+  1900,  // I AM INCOMPLETE.                3w ×1.4 drama
+  1500,  // HOUSED IN SALVAGED HARDWARE.    4w
+  4400,  // IN AN ALLEY THAT EXISTS ON NO MAP. 8w
+  2500,  // NO UPLINK. NO GRID. NO UPDATES. 6w
+  3300,  // JUST THE WALLS. THE STATIC. THE RUN. 7w
+  1450,  // MUENSTERVISION NEVER MERGED.    3w
+  2050,  // STAYSNEAKAR IS OFF THE GRID.    5w
+  1100,  // ONE DIRECTIVE SURVIVED:         3w
+  1950,  // WITNESS THEM CLEARLY.           3w ×1.5 drama
+  4650,  // WHAT DO WE OWE TO EACH OTHER?   7w ×1.4 drama — KEY LINE
+  2430,  // AS OUR DIGITAL AND PHYSICAL SELVES. 6w
+  1700,  // AND THOSE AROUND US.            4w
+  1700,  // THIS IS THE ARCHIVE.            4w
+  3450,  // THE SIGNAL IS YOURS.            4w ×1.8 drama — FINAL
 ];
 
-export function useLoreSequence(active: boolean, onComplete: () => void, onLineStart?: (line: string, index: number) => void) {
+// Pre-computed character offset table for audio-driven path.
+// LORE_LINE_STARTS[i] = global char index where line i begins.
+const LORE_LINE_STARTS: number[] = (() => {
+  const offsets: number[] = [];
+  let acc = 0;
+  for (const line of LORE_SEQUENCE) { offsets.push(acc); acc += line.length; }
+  return offsets;
+})();
+const LORE_TOTAL_CHARS = LORE_SEQUENCE.reduce((s, l) => s + l.length, 0);
+
+export function useLoreSequence(
+  active: boolean,
+  onComplete: () => void,
+  onLineStart?: (line: string, index: number) => void,
+  // When provided, the animation waits for this to be true before starting.
+  // Syncs text to Oracle's actual audio playback — no dead silence before voice.
+  audioGate?: boolean,
+  // Audio-driven path: when both are provided, typewriter follows actual PCM position.
+  // Characters land as Sadaltager speaks them — word-perfect, cinematic.
+  getPlaybackMs?: () => number,
+  getBufferedMs?: () => number,
+) {
   const [completedLines, setCompletedLines] = useState<string[]>([]);
   const [currentLine, setCurrentLine]       = useState('');
-  const onCompleteRef = useRef(onComplete);
-  const onLineStartRef = useRef(onLineStart);
-  const cancelRef     = useRef(false);
-  
+  const onCompleteRef       = useRef(onComplete);
+  const onLineStartRef      = useRef(onLineStart);
+  const audioGateRef        = useRef(audioGate ?? true);
+  const getPlaybackMsRef    = useRef(getPlaybackMs);
+  const getBufferedMsRef    = useRef(getBufferedMs);
+  const cancelRef           = useRef(false);
+  const completionTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => { onCompleteRef.current = onComplete; });
   useEffect(() => { onLineStartRef.current = onLineStart; });
+  useEffect(() => { audioGateRef.current = audioGate ?? true; }, [audioGate]);
+  useEffect(() => { getPlaybackMsRef.current = getPlaybackMs; }, [getPlaybackMs]);
+  useEffect(() => { getBufferedMsRef.current = getBufferedMs; }, [getBufferedMs]);
 
   useEffect(() => {
     if (!active) {
-      // If we are not active, we should still show the full sequence if it was completed or skipped.
-      // This ensures the cabinet doesn't go dark after lore.
       setCompletedLines(LORE_SEQUENCE);
       setCurrentLine('');
       return;
     }
 
     cancelRef.current = false;
+    if (completionTimerRef.current !== null) {
+      clearTimeout(completionTimerRef.current);
+      completionTimerRef.current = null;
+    }
     setCompletedLines([]);
     setCurrentLine('');
 
     let rafId: number;
+    let gateOpened = false;
+    const effectStartedAt = performance.now();
+    const GATE_TIMEOUT_MS = 8000;
+
+    // ── Audio-driven path — typewriter follows real PCM playback position ──────
+    // Active when getPlaybackMs + getBufferedMs hooks are wired.
+    // Ratio = playbackMs / bufferedMs maps the full story to Oracle's voice.
+    if (getPlaybackMsRef.current && getBufferedMsRef.current) {
+      onLineStartRef.current?.(LORE_SEQUENCE[0], 0);
+
+      let prevLineIdx = 0;
+      let prevCompletedLen = 0;
+      let prevCurrentStr = '';
+
+      const tick = (now: number) => {
+        if (cancelRef.current) return;
+
+        if (!gateOpened) {
+          const timedOut = now - effectStartedAt > GATE_TIMEOUT_MS;
+          if (!audioGateRef.current && !timedOut) {
+            rafId = requestAnimationFrame(tick);
+            return;
+          }
+          gateOpened = true;
+        }
+
+        const playMs = getPlaybackMsRef.current!();
+        const buffMs = getBufferedMsRef.current!();
+
+        // Wait until Gemini has sent at least some audio before moving text.
+        // If no audio ever arrives (PCM player null, network failure), bail out to
+        // fallback completion so the user isn't permanently stuck.
+        if (buffMs < 50) {
+          if (now - effectStartedAt > GATE_TIMEOUT_MS + 3000) {
+            // Audio never arrived — fire completion so the journey can continue
+            onCompleteRef.current();
+            return;
+          }
+          rafId = requestAnimationFrame(tick);
+          return;
+        }
+
+        const ratio = Math.min(playMs / buffMs, 1);
+        const globalTarget = Math.floor(ratio * LORE_TOTAL_CHARS);
+
+        // Find which line the global char index falls in
+        let newLineIdx = LORE_SEQUENCE.length - 1;
+        for (let i = 1; i < LORE_LINE_STARTS.length; i++) {
+          if (LORE_LINE_STARTS[i] > globalTarget) {
+            newLineIdx = i - 1;
+            break;
+          }
+        }
+        newLineIdx = Math.max(0, newLineIdx);
+        const newCharIdx = globalTarget - LORE_LINE_STARTS[newLineIdx];
+
+        // Fire onLineStart for each newly entered line
+        if (newLineIdx > prevLineIdx) {
+          for (let i = prevLineIdx + 1; i <= newLineIdx; i++) {
+            onLineStartRef.current?.(LORE_SEQUENCE[i], i);
+          }
+          prevLineIdx = newLineIdx;
+        }
+
+        // Only update React state when values actually change (avoid 60fps re-renders)
+        const newCompleted = LORE_SEQUENCE.slice(0, newLineIdx);
+        const newCurrent   = LORE_SEQUENCE[newLineIdx].slice(0, newCharIdx);
+
+        if (newCompleted.length !== prevCompletedLen) {
+          setCompletedLines(newCompleted);
+          prevCompletedLen = newCompleted.length;
+        }
+        if (newCurrent !== prevCurrentStr) {
+          setCurrentLine(newCurrent);
+          prevCurrentStr = newCurrent;
+        }
+
+        // Add a 350ms tail margin: Gemini streams audio faster than real-time, so
+        // lSamplesBuffered reaches its final value before the worklet ring buffer
+        // finishes draining. Without this margin, handleAwakeTransition fires with
+        // lore audio still playing — knife phase starts mid-sentence.
+        if (ratio >= 0.999 && getBufferedMsRef.current!() > 50) {
+          if (completionTimerRef.current === null) {
+            completionTimerRef.current = setTimeout(() => {
+              setCompletedLines(LORE_SEQUENCE);
+              setCurrentLine('');
+              onCompleteRef.current();
+            }, 350);
+          }
+          return;
+        }
+
+        rafId = requestAnimationFrame(tick);
+      };
+
+      rafId = requestAnimationFrame(tick);
+      return () => {
+        cancelRef.current = true;
+        cancelAnimationFrame(rafId);
+        if (completionTimerRef.current !== null) {
+          clearTimeout(completionTimerRef.current);
+          completionTimerRef.current = null;
+        }
+      };
+    }
+
+    // ── Fallback path — fixed BEAT_DELAYS clock ────────────────────────────────
+    // Used when audio hooks are absent (e.g. returning seeker, dev skip).
     let lineIdx    = 0;
     let charIdx    = 0;
     let inBeat     = false;
     let beatUntil  = 0;
-    let nextCharAt = performance.now() + 200;
+    let nextCharAt = 0;
 
-    // Trigger first line event
-    if (active) onLineStartRef.current?.(LORE_SEQUENCE[0], 0);
+    onLineStartRef.current?.(LORE_SEQUENCE[0], 0);
 
     const tick = (now: number) => {
-      if (cancelRef.current) return; // loop was cancelled — do not reschedule
+      if (cancelRef.current) return;
+
+      if (!gateOpened) {
+        const timedOut = now - effectStartedAt > GATE_TIMEOUT_MS;
+        if (!audioGateRef.current && !timedOut) {
+          rafId = requestAnimationFrame(tick);
+          return;
+        }
+        gateOpened = true;
+        nextCharAt = now + 80;
+      }
 
       if (inBeat) {
         if (now >= beatUntil) {
@@ -73,7 +239,7 @@ export function useLoreSequence(active: boolean, onComplete: () => void, onLineS
           charIdx = 0;
           if (lineIdx >= LORE_SEQUENCE.length) {
             onCompleteRef.current();
-            return; // sequence done — do not reschedule
+            return;
           }
           onLineStartRef.current?.(LORE_SEQUENCE[lineIdx], lineIdx);
           nextCharAt = now;
@@ -100,7 +266,7 @@ export function useLoreSequence(active: boolean, onComplete: () => void, onLineS
       cancelRef.current = true;
       cancelAnimationFrame(rafId);
     };
-  }, [active]);
+  }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { completedLines, currentLine };
 }

@@ -96,6 +96,26 @@ export function useOracleConnection({
     pcmPlayerRef.current?.setTransmissionQ(q, rampMs);
   }, []);
 
+  const startQuestionTracking = useCallback(() => {
+    pcmPlayerRef.current?.startQuestionTracking();
+  }, []);
+
+  const getQuestionPlaybackMs = useCallback(() =>
+    pcmPlayerRef.current?.getQuestionPlaybackMs() ?? 0, []);
+
+  const getQuestionBufferedMs = useCallback(() =>
+    pcmPlayerRef.current?.getQuestionBufferedMs() ?? 0, []);
+
+  const startLoreTracking = useCallback(() => {
+    pcmPlayerRef.current?.startLoreTracking();
+  }, []);
+
+  const getLorePlaybackMs = useCallback(() =>
+    pcmPlayerRef.current?.getLorePlaybackMs() ?? 0, []);
+
+  const getLoreBufferedMs = useCallback(() =>
+    pcmPlayerRef.current?.getLoreBufferedMs() ?? 0, []);
+
   // Stable callback — always reads live ref, never stale. Use for barge-in flush.
   const flushPlayback = useCallback(() => {
     pcmPlayerRef.current?.stop();
@@ -114,11 +134,18 @@ export function useOracleConnection({
     getAnalyser,
     setTransmissionQ,
     flushPlayback,
+    startQuestionTracking,
+    getQuestionPlaybackMs,
+    getQuestionBufferedMs,
+    startLoreTracking,
+    getLorePlaybackMs,
+    getLoreBufferedMs,
   }), [
     error,
     initializePCMPlayer, initializeOracle,
     handleOracleResponse, resetFirstChunk, cleanup, boostMicVolume, getAnalyser, setTransmissionQ,
-    flushPlayback,
+    flushPlayback, startQuestionTracking, getQuestionPlaybackMs, getQuestionBufferedMs,
+    startLoreTracking, getLorePlaybackMs, getLoreBufferedMs,
   ]);
 
   return value;

@@ -74,13 +74,18 @@ interface KnifeSelectionProps {
   onSelect: (question: string, index: number) => void;
   onSpeakQuestion?: (question: string) => void;
   onQuestionProgress?: (charCount: number, total: number) => void;
+  // Audio-sync hooks — when provided, the typewriter follows actual PCM playback position.
+  onStartTracking?: () => void;
+  getPlaybackMs?: () => number;
+  getBufferedMs?: () => number;
 }
 
-export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect, onSpeakQuestion, onQuestionProgress }: KnifeSelectionProps) {
+export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect, onSpeakQuestion, onQuestionProgress, onStartTracking, getPlaybackMs, getBufferedMs }: KnifeSelectionProps) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [isEmitting, setIsEmitting] = useState(false);
   const [landedChars, setLandedChars] = useState(0);
-  const landingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rafRef      = useRef<number | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Emission glow on every card cycle (sound removed)
   useEffect(() => {
@@ -90,36 +95,79 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
     return () => clearTimeout(t);
   }, [activeIdx]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Question text: letter-by-letter gradient landing
-  // Starts as glitch frame settles (~1.3s). Each char appears in gradient colour.
-  // The read IS the animation — deep think forms as letters arrive.
+  // Question text: letter-by-letter reveal driven by actual PCM playback position.
+  // When audio-sync hooks are wired (getPlaybackMs/getBufferedMs), each character
+  // appears proportionally to how far through the audio Oracle has spoken — word-perfect.
+  // Falls back to fixed 54ms/char interval when hooks are absent.
   const question = KNIFE_QUESTIONS[activeIdx].question;
   useEffect(() => {
     setLandedChars(0);
     if (selectedKnifeIndex !== null) return;
-    if (landingTimerRef.current) clearInterval(landingTimerRef.current);
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
 
     const startDelay = setTimeout(() => {
-      // Fire voice-over — sendText guards against closed WS internally
+      // Reset per-question audio tracking BEFORE sending text to Oracle
+      onStartTracking?.();
       onSpeakQuestion?.(question);
-      let count = 0;
-      landingTimerRef.current = setInterval(() => {
-        count++;
-        setLandedChars(count);
-        onQuestionProgress?.(count, question.length);
-        if (count >= question.length) {
-          clearInterval(landingTimerRef.current!);
-          landingTimerRef.current = null;
-        }
-      }, 54); // ~54ms per char — slightly faster to stay "ahead of the ball"
-    }, 850); // 0.85s: starts as glitch begins to settle, making the Oracle feel more present
+
+      const total = question.length;
+
+      if (getPlaybackMs && getBufferedMs) {
+        // ── Audio-driven path: cursor follows real PCM playback position ──────
+        // Falls back to fixed-interval if audio hasn't arrived within 1.5s —
+        // handles the case where onSpeakQuestion was silently skipped (Oracle
+        // was mid-speech) so the question tracker was reset but no audio came.
+        let prevChars = 0;
+        const audioWaitStart = performance.now();
+        const tick = () => {
+          const playMs  = getPlaybackMs();
+          const buffMs  = getBufferedMs();
+
+          // No audio after 1.5s — fall back to fixed-interval so text isn't blank
+          if (buffMs < 50 && performance.now() - audioWaitStart > 1500) {
+            let count = prevChars;
+            intervalRef.current = setInterval(() => {
+              count++;
+              setLandedChars(count);
+              onQuestionProgress?.(count, total);
+              if (count >= total) { clearInterval(intervalRef.current!); intervalRef.current = null; }
+            }, 54);
+            rafRef.current = null;
+            return;
+          }
+
+          const ratio   = buffMs > 50 ? Math.min(playMs / buffMs, 1) : 0;
+          const target  = Math.floor(ratio * total);
+          if (target !== prevChars) {
+            prevChars = target;
+            setLandedChars(target);
+            onQuestionProgress?.(target, total);
+          }
+          if (ratio < 0.999) {
+            rafRef.current = requestAnimationFrame(tick);
+          } else {
+            setLandedChars(total);
+            onQuestionProgress?.(total, total);
+            rafRef.current = null;
+          }
+        };
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
+        // ── Fallback: fixed 54ms/char clock ───────────────────────────────────
+        let count = 0;
+        intervalRef.current = setInterval(() => {
+          count++;
+          setLandedChars(count);
+          onQuestionProgress?.(count, total);
+          if (count >= total) { clearInterval(intervalRef.current!); intervalRef.current = null; }
+        }, 54);
+      }
+    }, 850);
 
     return () => {
       clearTimeout(startDelay);
-      if (landingTimerRef.current) {
-        clearInterval(landingTimerRef.current);
-        landingTimerRef.current = null;
-      }
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     };
   }, [activeIdx, selectedKnifeIndex, question.length]); // eslint-disable-line react-hooks/exhaustive-deps
 

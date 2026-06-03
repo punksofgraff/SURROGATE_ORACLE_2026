@@ -20,6 +20,19 @@ export class PCMPlayer {
   private onViseme: ((state: any) => void) | null = null;
   private onProcessingChange: ((isProcessing: boolean) => void) | null = null;
 
+  // Per-question playback tracking — drives word-sync typewriter in KnifeSelection.
+  // qFirstFeedTime: context.currentTime when first chunk of the current question starts playing.
+  // qSamplesBuffered: total Int16 samples received since startQuestionTracking().
+  private qTrackingActive: boolean = false;
+  private qFirstFeedTime: number = 0;
+  private qSamplesBuffered: number = 0;
+
+  // Per-lore playback tracking — drives audio-sync typewriter in useLoreSequence (Act 1).
+  // Parallel to q-tracker; both can be active simultaneously without conflict.
+  private lTrackingActive: boolean = false;
+  private lFirstFeedTime: number = 0;
+  private lSamplesBuffered: number = 0;
+
   private panner: PannerNode | null = null;
   private masterGain: GainNode | null = null;
   private analyser: AnalyserNode;
@@ -131,6 +144,9 @@ export class PCMPlayer {
             this.onViseme(e.data.state);
           } else if (e.data.type === 'ended') {
             this.onProcessingChange?.(false);
+          } else if (e.data.type === 'buffer-full') {
+            // Should never fire with 60s buffer — if it does, a response is truly enormous
+            console.warn('[PCMPlayer] Worklet buffer full — dropped', e.data.dropped, 'samples');
           }
         };
 
@@ -204,6 +220,48 @@ export class PCMPlayer {
     }
   }
 
+  /** Call this right before asking Oracle to speak a question. Resets per-question counters. */
+  public startQuestionTracking(): void {
+    this.qTrackingActive = true;
+    this.qFirstFeedTime = 0;
+    this.qSamplesBuffered = 0;
+  }
+
+  /**
+   * Milliseconds of audio played for the current question.
+   * Returns 0 until the first PCM chunk arrives.
+   */
+  public getQuestionPlaybackMs(): number {
+    if (!this.qTrackingActive || this.qFirstFeedTime === 0) return 0;
+    return Math.max(0, (this.context.currentTime - this.qFirstFeedTime) * 1000);
+  }
+
+  /**
+   * Total milliseconds of audio received (buffered) for the current question.
+   * Grows as Gemini streams chunks; plateaus when the turn completes.
+   */
+  public getQuestionBufferedMs(): number {
+    return (this.qSamplesBuffered / this.sampleRate) * 1000;
+  }
+
+  /** Call this right before asking Oracle to narrate the lore story. Resets per-lore counters. */
+  public startLoreTracking(): void {
+    this.lTrackingActive = true;
+    this.lFirstFeedTime = 0;
+    this.lSamplesBuffered = 0;
+  }
+
+  /** Milliseconds of lore audio played. Returns 0 until first PCM chunk arrives. */
+  public getLorePlaybackMs(): number {
+    if (!this.lTrackingActive || this.lFirstFeedTime === 0) return 0;
+    return Math.max(0, (this.context.currentTime - this.lFirstFeedTime) * 1000);
+  }
+
+  /** Total milliseconds of lore audio received. Grows as Gemini streams; plateaus at turn end. */
+  public getLoreBufferedMs(): number {
+    return (this.lSamplesBuffered / this.sampleRate) * 1000;
+  }
+
   public async feed(data: Int16Array) {
     if (this.context.state === 'suspended') {
       await this.context.resume();
@@ -212,6 +270,29 @@ export class PCMPlayer {
     await this.workletReady;
 
     this.onProcessingChange?.(true);
+
+    // Capture when this question's audio actually starts playing.
+    // For legacy mode: nextStartTime is the scheduled play time of this chunk.
+    // For worklet mode: approximate with currentTime + 50ms (worklet buffer latency).
+    if (this.qTrackingActive) {
+      if (this.qFirstFeedTime === 0) {
+        const ct = this.context.currentTime;
+        this.qFirstFeedTime = this.workletNode
+          ? ct + 0.05
+          : (this.nextStartTime > ct ? this.nextStartTime : ct + 0.05);
+      }
+      this.qSamplesBuffered += data.length;
+    }
+
+    if (this.lTrackingActive) {
+      if (this.lFirstFeedTime === 0) {
+        const ct = this.context.currentTime;
+        this.lFirstFeedTime = this.workletNode
+          ? ct + 0.05
+          : (this.nextStartTime > ct ? this.nextStartTime : ct + 0.05);
+      }
+      this.lSamplesBuffered += data.length;
+    }
 
     if (this.workletNode) {
       this.workletNode.port.postMessage({ type: 'feed', pcm: data });

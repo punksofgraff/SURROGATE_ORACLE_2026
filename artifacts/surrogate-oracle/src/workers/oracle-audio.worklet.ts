@@ -33,9 +33,11 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
   private head: number = 0;
   private tail: number = 0;
   private size: number = 0;
-  // bufferCapacity is 10 seconds at the ACTUAL AudioContext rate, not assumed 24kHz.
-  // If the browser overrides our requested 24kHz (e.g. to 48kHz), this stays correct.
-  private readonly bufferCapacity: number = sampleRate * 10;
+  // bufferCapacity is 60 seconds at the ACTUAL AudioContext rate.
+  // 60s handles lore narration (~50s) and long Oracle monologues without overflow.
+  // Gemini can stream audio faster than real-time for large-text prompts — a 10s
+  // buffer caused the beginning of long responses to be dropped (fast-forward).
+  private readonly bufferCapacity: number = sampleRate * 60;
 
   private smoothed: VisemeState = { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
   
@@ -57,14 +59,16 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
 
   private enqueue(data: Int16Array) {
     const ratio = sampleRate / GEMINI_PCM_RATE;
-    
+
     // Fast path: 1:1 sample rate (no resampling)
     if (Math.abs(ratio - 1.0) < 0.0001) {
       const len = data.length;
       if (this.size + len > this.bufferCapacity) {
-        const overflow = (this.size + len) - this.bufferCapacity;
-        this.head = (this.head + overflow) % this.bufferCapacity;
-        this.size -= overflow;
+        // Drop new data rather than overwriting playing audio — the beginning
+        // of a response is more important than the end. With a 60s buffer this
+        // should never fire in practice; log it if it does.
+        this.port.postMessage({ type: 'buffer-full', dropped: len });
+        return;
       }
       for (let i = 0; i < len; i++) {
         this.buffer[this.tail] = data[i] / 32768.0;
@@ -77,9 +81,8 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
     // Slow path: Resampling required
     const len = Math.floor(data.length * ratio);
     if (this.size + len > this.bufferCapacity) {
-      const overflow = (this.size + len) - this.bufferCapacity;
-      this.head = (this.head + overflow) % this.bufferCapacity;
-      this.size -= overflow;
+      this.port.postMessage({ type: 'buffer-full', dropped: data.length });
+      return;
     }
 
     const srcLen = data.length;

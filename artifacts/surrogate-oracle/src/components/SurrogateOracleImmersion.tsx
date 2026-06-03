@@ -169,6 +169,10 @@ export function SurrogateOracleImmersion() {
     { archetype: null, cost: null, alignment: null }
   );
   const pendingTransitionRef     = useRef(false);
+  // True when new-user lore narration was started (loreOnly boot path).
+  // Prevents handleAwakeTransition from firing the greeting in awakened phase —
+  // greeting fires at oracle phase entry instead.
+  const loreNarratedRef          = useRef(false);
   const holdTimerRef             = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdFiredRef             = useRef(false);
   const holdAutoRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -234,32 +238,24 @@ export function SurrogateOracleImmersion() {
 
   // ── Transition: Terminal → Awakened ──────────────────────────────────────
   const handleAwakeTransition = useCallback(() => {
-    // NOTE: isDone check removed — completedLinesLengthRef is updated via useEffect
-    // AFTER React processes state, but onComplete fires synchronously in the same
-    // setTimeout. Stale ref caused LORE INCOMPLETE — TRANSITION BLOCKED for all users.
-    // Trust onComplete: it only fires when useLoreSequence is genuinely done.
-
-    if (!currentUserId && !hasCompletedLore) {
-      logStep('AUTH GATE TRIGGERED', 'warn');
-      pendingTransitionRef.current = true;
-      setShowAuthOverlay(true);
-      return;
-    }
-
     markLoreCompleted();
     document.body.setAttribute('data-rift-opening', 'true');
     setTimeout(() => {
       journey.awakeFromTerminal();
       document.body.removeAttribute('data-rift-opening');
-      // For returning users (session not yet started): boots with "Greetings... Seeker".
-      // For new users (session already started in handleFirstTap): this is a no-op.
-      oracleConversationRef.current?.startSession();
+      // Fire "Greetings... Seeker" only for returning users (who skipped lore).
+      // New users have loreNarratedRef=true — their greeting fires at oracle phase entry.
+      if (!loreNarratedRef.current) {
+        oracleConversationRef.current?.startSession();
+      }
     }, 850);
-  }, [hasCompletedLore, currentUserId, markLoreCompleted, journey]);
+  }, [markLoreCompleted, journey]);
 
   const { completedLines, currentLine } = useLoreSequence(
     scenePhase === 'terminal' && loreStarted,
-    handleAwakeTransition,
+    // onComplete is a noop — the "ENTER THE ARCHIVE" button is the explicit user gate.
+    // Auto-transitioning on lore completion removed: user must press the button to proceed.
+    () => {},
     handleLoreLineStart,
     isOracleSpeaking,              // gate: text waits for Oracle's voice before starting
     connection.getLorePlaybackMs,  // audio-driven: characters land as Oracle speaks
@@ -321,6 +317,7 @@ export function SurrogateOracleImmersion() {
     } else {
       logStep('TAP 1 → ACTIVATING NARRATIVE', 'ok');
       setLoreStarted(true);
+      loreNarratedRef.current = true; // greeting reserved for oracle phase entry
       connection.setTransmissionQ(0.01, 0);
       connection.startLoreTracking();
       const fullStory = LORE_SEQUENCE.join('\n');
@@ -864,7 +861,7 @@ export function SurrogateOracleImmersion() {
               ))}
               {loreStarted && !currentLine && completedLines.length >= LORE_SEQUENCE.length && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} style={{ marginTop: '2rem', textAlign: 'center' }}>
-                  <button onClick={(e) => { e.stopPropagation(); handleAwakeTransition(); }} style={{ background: '#00ff88', border: 'none', color: '#000', padding: '0.8rem 1.5rem', fontFamily: "'PhillySans', 'Orbitron', monospace", fontWeight: 900, cursor: 'pointer', borderRadius: '4px' }}>{!currentUserId && !hasCompletedLore ? 'ESTABLISH NEURAL LINK' : 'ENTER THE ARCHIVE'}</button>
+                  <button onClick={(e) => { e.stopPropagation(); handleAwakeTransition(); }} style={{ background: '#00ff88', border: 'none', color: '#000', padding: '0.8rem 1.5rem', fontFamily: "'PhillySans', 'Orbitron', monospace", fontWeight: 900, cursor: 'pointer', borderRadius: '4px' }}>ENTER THE ARCHIVE</button>
                 </motion.div>
               )}
               {loreStarted && currentLine && (

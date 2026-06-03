@@ -133,11 +133,12 @@ export function useLoreSequence(
         const buffMs = getBufferedMsRef.current!();
 
         // Wait until Gemini has sent at least some audio before moving text.
-        // If no audio ever arrives (PCM player null, network failure), bail out to
-        // fallback completion so the user isn't permanently stuck.
+        // If no audio ever arrives (PCM player null, network failure), show all lines
+        // and bail out so the user isn't permanently stuck.
         if (buffMs < 50) {
           if (now - effectStartedAt > GATE_TIMEOUT_MS + 3000) {
-            // Audio never arrived — fire completion so the journey can continue
+            setCompletedLines(LORE_SEQUENCE);
+            setCurrentLine('');
             onCompleteRef.current();
             return;
           }

@@ -476,14 +476,22 @@ async function run() {
   // ══════════════════════════════════════════════════════════
   header('§11  Handshake Logic — pendingMessages + Boot Sequence');
 
-  // The lore path: startSession(fullStory) → WS was already OPEN → direct send
-  // OR: WS was CONNECTING → queued → flushed on session.created
-  // Both paths should result in __ORACLE_BOOT__ NOT being the first Oracle message
-  // and lore content being the first Oracle utterance.
-  const bootPath = steps.find(s => s.label.includes('ORACLE_BOOT__') || s.label.includes('CUSTOM BOOT'));
-  check('handshake', 'Lore uses CUSTOM BOOT path (not default greeting)',
-    bootPath?.label?.includes('CUSTOM BOOT') || bootPath?.label?.includes('startSession') ? 'pass' : 'warn',
-    bootPath?.label || 'boot path step not logged');
+  // New design: lore uses loreOnly=true path — does NOT consume session boot.
+  // Oracle greets "Greetings... Seeker" at Act 4 (oracle phase entry), not at lore start.
+  const loreNarPath = steps.find(s => s.label.includes('LORE NARRATION path'));
+  check('handshake', 'Lore uses LORE NARRATION path (boot reserved for Act 4)',
+    loreNarPath ? 'pass' : 'warn',
+    loreNarPath?.label || 'lore narration path step not found');
+
+  // Oracle greeting fires at oracle phase entry (not during lore)
+  const oracleBootSteps = steps.filter(s => s.label.includes('__ORACLE_BOOT__ path triggered'));
+  const oracleBootIdx   = oracleBootSteps.length > 0
+    ? steps.findIndex(s => s.label.includes('__ORACLE_BOOT__ path triggered'))
+    : -1;
+  const oracleEntryIdx  = steps.findIndex(s => s.label.includes('ORACLE PHASE ENTERED'));
+  check('handshake', 'Oracle greeting fires at Act 4 entry (after knife selection)',
+    oracleBootIdx > 0 && oracleEntryIdx > 0 && oracleBootIdx >= oracleEntryIdx ? 'pass' : 'warn',
+    `greeting @${oracleBootIdx}, oracle-entry @${oracleEntryIdx}`);
 
   // SESSION ALREADY ACTIVE fires from the scenePhase==='oracle' useEffect which calls startSession()
   // as a safety net for returning users. The sessionBootedRef guard catches it. Expected behavior.

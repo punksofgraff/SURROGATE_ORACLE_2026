@@ -169,7 +169,7 @@ export interface OracleConversationHandle {
     lastError: string | null;
     recentMessages: string[];
   };
-  startSession: (bootMessage?: string) => void;
+  startSession: (bootMessage?: string, loreOnly?: boolean) => void;
   startMic: () => Promise<void>;
   toggleTypeMode: () => void;
 }
@@ -447,7 +447,6 @@ const OracleConversation = forwardRef(
       if (ws.readyState !== WebSocket.OPEN) return;
 
       const isBoot = text === '__ORACLE_BOOT__' || isHidden;
-      if (text === '__ORACLE_BOOT__') logStep('__ORACLE_BOOT__ path triggered', 'ok');
       const body = isBoot ? (text === '__ORACLE_BOOT__' ? 'Greetings... Seeker' : text) : text;
       ws.send(JSON.stringify({ type: 'client.realtimeInput', realtimeInput: { text: body } }));
       if (!isBoot) {
@@ -969,9 +968,29 @@ const OracleConversation = forwardRef(
 
         recentMessages: debugInfo.current.recentMessages,
       }),
-      startSession: (bootMessage?: string) => {
+      startSession: (bootMessage?: string, loreOnly = false) => {
         logStep('startSession() CALLED', 'ok');
         const wsState = wsRef.current?.readyState;
+
+        if (loreOnly) {
+          // Lore-only mode: deliver the narration text without consuming the session boot.
+          // sessionBootedRef stays false so oracle phase entry can fire "Greetings... Seeker".
+          if (!bootMessage) return;
+          logStep('LORE NARRATION path (boot reserved for Act 4)', 'ok');
+          if (wsState === WebSocket.CONNECTING) {
+            // Queue for flush on session.created — no pendingBootRef so shouldBoot stays false
+            pendingMessagesRef.current.push({ text: bootMessage, isHidden: true });
+            return;
+          }
+          if (wsState !== WebSocket.OPEN) {
+            pendingMessagesRef.current.push({ text: bootMessage, isHidden: true });
+            connectToGemini();
+            return;
+          }
+          sendText(bootMessage, true);
+          return;
+        }
+
         if (wsState === WebSocket.CONNECTING) {
           // Mid-handshake — don't kill it, just queue the boot for when it opens
           logStep('WS CONNECTING — queuing boot', 'pending');

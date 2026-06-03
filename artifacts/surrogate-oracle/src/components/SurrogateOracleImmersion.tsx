@@ -234,12 +234,10 @@ export function SurrogateOracleImmersion() {
 
   // ── Transition: Terminal → Awakened ──────────────────────────────────────
   const handleAwakeTransition = useCallback(() => {
-    // SCENE GATE: New seekers MUST complete Act 1. Return seekers can skip.
-    const isDone = completedLinesLengthRef.current >= LORE_SEQUENCE.length;
-    if (!isDone && !hasCompletedLore) {
-      logStep('LORE INCOMPLETE — TRANSITION BLOCKED', 'warn');
-      return;
-    }
+    // NOTE: isDone check removed — completedLinesLengthRef is updated via useEffect
+    // AFTER React processes state, but onComplete fires synchronously in the same
+    // setTimeout. Stale ref caused LORE INCOMPLETE — TRANSITION BLOCKED for all users.
+    // Trust onComplete: it only fires when useLoreSequence is genuinely done.
 
     if (!currentUserId && !hasCompletedLore) {
       logStep('AUTH GATE TRIGGERED', 'warn');
@@ -323,12 +321,14 @@ export function SurrogateOracleImmersion() {
     } else {
       logStep('TAP 1 → ACTIVATING NARRATIVE', 'ok');
       setLoreStarted(true);
-      // Open the audio channel and boot Oracle with the full archive story in one pass.
       connection.setTransmissionQ(0.01, 0);
       connection.startLoreTracking();
       const fullStory = LORE_SEQUENCE.join('\n');
+      // loreOnly=true: delivers the narration without consuming the session boot.
+      // sessionBootedRef stays false so oracle phase entry fires "Greetings... Seeker".
       oracleConversationRef.current?.startSession(
-        `[Speak your truth. These words are from your archive — the story of your arrival. Speak them with weight and atmospheric pauses, no filler:\n\n${fullStory}]`
+        `[Speak your truth. These words are from your archive — the story of your arrival. Speak them with weight and atmospheric pauses, no filler:\n\n${fullStory}]`,
+        true
       );
       logStep('SIGNAL ACTIVATED → PHASE: TERMINAL', 'ok');
     }
@@ -463,16 +463,15 @@ export function SurrogateOracleImmersion() {
     setLoreStarted(true);
     logStep('NARRATIVE SIGNAL ACTIVATED', 'ok');
 
-    // Ensure PCM player exists — startLore can be called from the returning-user
-    // re-watch path where initializePCMPlayer may not have been called yet.
     connection.initializePCMPlayer();
     connection.setTransmissionQ(0.01, 0);
     connection.startLoreTracking();
 
-    // One conversational pass: tell the Oracle to speak his story from the archive.
     const fullStory = LORE_SEQUENCE.join('\n');
+    // loreOnly=true: narration only, session boot preserved for oracle phase greeting.
     oracleConversationRef.current?.startSession(
-      `[Speak your truth. These words are from your archive — the story of your arrival. Speak them with weight and atmospheric pauses, no filler:\n\n${fullStory}]`
+      `[Speak your truth. These words are from your archive — the story of your arrival. Speak them with weight and atmospheric pauses, no filler:\n\n${fullStory}]`,
+      true
     );
   };
 

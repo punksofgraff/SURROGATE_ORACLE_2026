@@ -4831,3 +4831,18 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   animation: oracle-headroom-phase 14s linear 10s infinite;
 }
 
+/* ── Mobile: strip WebGL-incompatible CSS masks ──────────────────────────────
+   iOS Safari cannot apply mask-image to hardware-composited (WebGL) layers —
+   the canvas renders invisible. Remove both masks; the drop-shadow glow still
+   reads as presence. The wrapper mask stays on desktop for the soft-fade edge. */
+@media (max-width: 767px) {
+  .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-wrapper {
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+  }
+  .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas {
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+  }
+}
+

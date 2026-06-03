@@ -727,18 +727,13 @@ export function SurrogateOracleImmersion() {
       </div>
 
       <div className="oracle-center" onClick={handleFirstTap} style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}>
-        <motion.div className="oracle-cabinet">
+        <motion.div className="oracle-cabinet" style={{ position: 'relative' }}>
+          {/* Halo lives outside oracle-avatar-wrapper to escape overflow:hidden clipping */}
+          <OracleHaloRing active={isOracleMode} isXRMode={isXRMode} />
           <div className="oracle-avatar-wrapper">
             {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} />}
             {isOracleMode && <div className="oracle-monitor-cast" />}
-            <OracleHaloRing active={isOracleMode} />
             <div className="oracle-scanlines" />
-            {scenePhase === 'dormant' && (
-              <>
-                <div className="oracle-cabinet-pulse-ring" />
-                <div className="oracle-cabinet-pulse-ring" style={{ animationDelay: '1.9s' }} />
-              </>
-            )}
             <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
             <AnimatePresence mode="wait">
               {portrait.portraitError ? (

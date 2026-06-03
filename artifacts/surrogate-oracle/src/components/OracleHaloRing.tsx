@@ -1,56 +1,80 @@
 /**
- * OracleHaloRing — holographic text ring orbiting above the Oracle.
+ * OracleHaloRing — holographic text ring floating above the Oracle.
  *
- * Revolving door mechanic: two arcs of text at 0° and 180° offset so one
- * is always sweeping INTO view as the other sweeps OUT. No dead zones,
- * no "stuck" feeling — continuous 360° rotation at all times.
+ * Ring lies on a tilted horizontal plane (rotateX tilt) so it reads as
+ * a 3D halo above the Oracle's head, not a flat spinning wheel.
+ *
+ * Two arcs at 0° and 180° offset — revolving door mechanic ensures one
+ * arc is always readable while the other sweeps behind. No dead zones.
+ *
+ * In XR/AR mode: boosted opacity + stronger glow for real-world contrast.
  */
 
-const LABEL   = 'SURROGATE:ORACLE  ·  SNEAKAR XR ANTHROPOLOGY AI  ·  ';
-const RADIUS  = 160;   // px — ring radius
-const DURATION = '10s'; // one full revolution
+interface OracleHaloRingProps {
+  active: boolean;
+  isXRMode?: boolean;
+}
 
-// Build one arc from the label characters
-function Arc({ chars, offsetDeg }: { chars: string[]; offsetDeg: number }) {
+const LABEL    = 'SURROGATE:ORACLE  ·  SNEAKAR XR ANTHROPOLOGY AI  ·  ';
+const RADIUS   = 170;    // px — ring radius (distance from centre to each char)
+const TILT     = -28;    // degrees — rotateX tilt: negative = leaning back into scene
+const DURATION = '11s';  // one full revolution
+
+function Arc({
+  chars,
+  offsetDeg,
+  xrMode = false,
+}: {
+  chars: string[];
+  offsetDeg: number;
+  xrMode?: boolean;
+}) {
   const n    = chars.length;
-  const step = 180 / n; // spread over 180° so two arcs fill the full circle
+  const step = 180 / n;
 
   return (
     <>
-      {chars.map((ch, i) => (
-        <span
-          key={i}
-          style={{
-            position:   'absolute',
-            left: 0,
-            top:  0,
-            display:    'block',
-            transform:  `rotateY(${offsetDeg + i * step}deg) translateZ(${RADIUS}px)`,
-            fontFamily: "'PhillySans', 'Share Tech Mono', monospace",
-            fontSize:   '0.7rem',
-            fontWeight: 800,
-            letterSpacing: '0.08em',
-            color: ch === '·' ? 'rgba(176,38,255,0.95)' : 'rgba(0,255,136,0.90)',
-            textShadow: ch === '·'
-              ? '0 0 10px rgba(176,38,255,0.9), 0 0 24px rgba(176,38,255,0.4)'
-              : '0 0 10px rgba(0,255,136,1.0), 0 0 24px rgba(0,255,136,0.4)',
-            whiteSpace:  'pre',
-            userSelect:  'none',
-            pointerEvents: 'none',
-          }}
-        >
-          {ch}
-        </span>
-      ))}
+      {chars.map((ch, i) => {
+        const isPurple = ch === '·';
+        const baseColor  = isPurple ? 'rgba(176,38,255,0.92)' : 'rgba(0,255,136,0.88)';
+        const glowColor  = isPurple ? 'rgba(176,38,255,0.9)' : 'rgba(0,255,136,1.0)';
+        const glowFar    = isPurple ? 'rgba(176,38,255,0.35)' : 'rgba(0,255,136,0.35)';
+        const xrGlow     = isPurple
+          ? '0 0 14px rgba(176,38,255,1), 0 0 32px rgba(176,38,255,0.6)'
+          : '0 0 14px rgba(0,255,136,1), 0 0 32px rgba(0,255,136,0.6)';
+
+        return (
+          <span
+            key={i}
+            style={{
+              position:      'absolute',
+              left:          0,
+              top:           0,
+              display:       'block',
+              transform:     `rotateY(${offsetDeg + i * step}deg) translateZ(${RADIUS}px)`,
+              fontFamily:    "'PhillySans', 'Share Tech Mono', monospace",
+              fontSize:      '0.6rem',
+              fontWeight:    800,
+              letterSpacing: '0.06em',
+              color:         baseColor,
+              textShadow:    xrMode
+                ? xrGlow
+                : `0 0 8px ${glowColor}, 0 0 20px ${glowFar}`,
+              whiteSpace:    'pre',
+              userSelect:    'none',
+              pointerEvents: 'none',
+              opacity:       xrMode ? 1 : 0.88,
+            }}
+          >
+            {ch}
+          </span>
+        );
+      })}
     </>
   );
 }
 
-interface OracleHaloRingProps {
-  active: boolean;
-}
-
-export function OracleHaloRing({ active }: OracleHaloRingProps) {
+export function OracleHaloRing({ active, isXRMode = false }: OracleHaloRingProps) {
   const chars = LABEL.split('');
 
   if (!active) return null;
@@ -60,30 +84,44 @@ export function OracleHaloRing({ active }: OracleHaloRingProps) {
       aria-hidden="true"
       className="oracle-halo-ring"
       style={{
+        // Anchored at 50% left, centred horizontally above the avatar.
+        // Negative top pushes ring above the oracle-avatar-wrapper.
         position:      'absolute',
-        top:           '2%',
+        top:           '-12%',
         left:          '50%',
         width:         0,
         height:        0,
-        zIndex:        25,
+        zIndex:        30,
         pointerEvents: 'none',
-        perspective:   '500px',
+        // Perspective here creates depth for direct children only —
+        // the ring wrapper uses preserve-3d to pass it through to chars.
+        perspective:   '800px',
       }}
     >
-      {/* Single rotating wrapper — both arcs ride together, 360° continuous */}
       <div
         style={{
           position:       'absolute',
           width:          0,
           height:         0,
+          // Tilt the ring plane: rotateX makes it lay at an angle above the
+          // Oracle — reads as a horizontal halo, not a vertical wheel.
+          transform:      `rotateX(${TILT}deg)`,
           transformStyle: 'preserve-3d',
-          animation:      `oracle-halo-orbit ${DURATION} linear infinite`,
         }}
       >
-        {/* Arc A — front half (0°–180°) */}
-        <Arc chars={chars} offsetDeg={0} />
-        {/* Arc B — back half (180°–360°) — always in view when A is edge-on */}
-        <Arc chars={chars} offsetDeg={180} />
+        {/* Rotating inner — both arcs ride together */}
+        <div
+          style={{
+            position:       'absolute',
+            width:          0,
+            height:         0,
+            transformStyle: 'preserve-3d',
+            animation:      `oracle-halo-orbit ${DURATION} linear infinite`,
+          }}
+        >
+          <Arc chars={chars} offsetDeg={0}   xrMode={isXRMode} />
+          <Arc chars={chars} offsetDeg={180} xrMode={isXRMode} />
+        </div>
       </div>
     </div>
   );

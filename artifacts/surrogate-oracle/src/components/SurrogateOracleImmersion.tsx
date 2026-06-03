@@ -253,9 +253,7 @@ export function SurrogateOracleImmersion() {
 
   const { completedLines, currentLine } = useLoreSequence(
     scenePhase === 'terminal' && loreStarted,
-    // onComplete is a noop — the "ENTER THE ARCHIVE" button is the explicit user gate.
-    // Auto-transitioning on lore completion removed: user must press the button to proceed.
-    () => {},
+    handleAwakeTransition,
     handleLoreLineStart,
     isOracleSpeaking,              // gate: text waits for Oracle's voice before starting
     connection.getLorePlaybackMs,  // audio-driven: characters land as Oracle speaks

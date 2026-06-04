@@ -192,11 +192,11 @@ async function run() {
       return new Promise((resolve) => {
         const ctx = new AudioContext({ sampleRate: requestedRate });
         const actual = ctx.sampleRate;
-        ctx.audioWorklet.addModule(workletUrl).then(() => {
+        ctx.audioWorklet.addModule(workletUrl).then(async () => {
           const node = new AudioWorkletNode(ctx, 'oracle-audio-processor');
           const sil = ctx.createGain(); sil.gain.value = 0;
           node.connect(sil); sil.connect(ctx.destination);
-          ctx.resume();
+          await ctx.resume();
           const start = Date.now();
           node.port.onmessage = (e) => {
             if (e.data.type === 'ended') {
@@ -239,11 +239,11 @@ async function run() {
       return new Promise((resolve) => {
         const ctx = new AudioContext({ sampleRate: requestedRate });
         const actual = ctx.sampleRate;
-        ctx.audioWorklet.addModule(workletUrl).then(() => {
+        ctx.audioWorklet.addModule(workletUrl).then(async () => {
           const node = new AudioWorkletNode(ctx, 'oracle-audio-processor');
           const sil = ctx.createGain(); sil.gain.value = 0;
           node.connect(sil); sil.connect(ctx.destination);
-          ctx.resume();
+          await ctx.resume();
           const start = Date.now();
           node.port.onmessage = (e) => {
             if (e.data.type === 'ended') {
@@ -289,11 +289,11 @@ async function run() {
       const pcmSamples = new Int16Array(pcmArr);
       return new Promise((resolve) => {
         const ctx = new AudioContext({ sampleRate: requestedRate });
-        ctx.audioWorklet.addModule(workletUrl).then(() => {
+        ctx.audioWorklet.addModule(workletUrl).then(async () => {
           const node = new AudioWorkletNode(ctx, 'oracle-audio-processor');
           const sil = ctx.createGain(); sil.gain.value = 0;
           node.connect(sil); sil.connect(ctx.destination);
-          ctx.resume();
+          await ctx.resume();
           const start = Date.now();
           // Feed all bursts at once — simulates rapid Gemini chunk delivery
           for (let i = 0; i < bursts; i++) {
@@ -338,7 +338,7 @@ async function run() {
       const pcmSamples = new Int16Array(pcmArr);
       return new Promise((resolve) => {
         const ctx = new AudioContext({ sampleRate: requestedRate });
-        ctx.audioWorklet.addModule(workletUrl).then(() => {
+        ctx.audioWorklet.addModule(workletUrl).then(async () => {
           const node = new AudioWorkletNode(ctx, 'oracle-audio-processor');
           const sil = ctx.createGain(); sil.gain.value = 0;
           node.connect(sil); sil.connect(ctx.destination);

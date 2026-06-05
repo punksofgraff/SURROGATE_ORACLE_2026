@@ -893,10 +893,6 @@ const OracleConversation = forwardRef(
           // Continuous stream: MUST send while Oracle is speaking to enable native Gemini VAD barge-in.
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-          // Hard gate: do NOT send microphone data while the Oracle is speaking.
-          // This prevents the Oracle's own voice (from speakers) from leaking into the mic and triggering a false barge-in loop.
-          if (isOracleSpeakingRef.current) return;
-
           // Stream every chunk continuously — Gemini's native VAD decides when to respond.
           wsRef.current.send(JSON.stringify({
             type: 'client.realtimeInput',

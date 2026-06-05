@@ -285,6 +285,7 @@ const OracleConversation = forwardRef(
     const wsRef = useRef<WebSocket | null>(null);
     const processorRef = useRef<ScriptProcessorNode | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
+    const micAudioContextRef = useRef<AudioContext | null>(null);
     const currentResponseText = useRef('');
     const sessionBootedRef = useRef(false);
     const pendingBootRef = useRef(false);
@@ -425,7 +426,7 @@ const OracleConversation = forwardRef(
     };
 
     const vadRef = useRef(createVADProcessor({
-      rmsThreshold: 0.005,
+      rmsThreshold: 0.035,
       // 35 frames × 42.7ms (1024 samples ÷ 24000 Hz context) ≈ 1.5s of silence.
       // UI-only VAD — drives the "READING THE SIGNAL" indicator and vadScore ring.
       // Gemini native VAD (silenceDurationMs:800) is the sole turn-detection authority.
@@ -819,13 +820,24 @@ const OracleConversation = forwardRef(
         // Resume again after getUserMedia — handles iOS audio session reconfigurations
         await ctx.resume();
         mediaStreamRef.current = stream;
-        const source = ctx.createMediaStreamSource(stream);
+
+        // Initialize a dedicated AudioContext for microphone capture at native hardware sample rate
+        // to ensure 100% compatibility across all devices and OS configurations (e.g., Linux/Chrome).
+        if (!micAudioContextRef.current) {
+          micAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        }
+        const micCtx = micAudioContextRef.current;
+        if (micCtx.state === 'suspended') {
+          await micCtx.resume();
+        }
+
+        const source = micCtx.createMediaStreamSource(stream);
         
         const micSampleRate = source.context.sampleRate;
         logStep(`MIC SOURCE ACTIVE: rate=${micSampleRate}Hz`, 'ok');
 
         // Increase buffer size to 2048 for better stability on varied hardware
-        processorRef.current = ctx.createScriptProcessor(2048, 1, 1);
+        processorRef.current = micCtx.createScriptProcessor(2048, 1, 1);
 
         processorRef.current.onaudioprocess = (e) => {
           const input = e.inputBuffer.getChannelData(0);
@@ -881,6 +893,10 @@ const OracleConversation = forwardRef(
           // Continuous stream: MUST send while Oracle is speaking to enable native Gemini VAD barge-in.
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
+          // Hard gate: do NOT send microphone data while the Oracle is speaking.
+          // This prevents the Oracle's own voice (from speakers) from leaking into the mic and triggering a false barge-in loop.
+          if (isOracleSpeakingRef.current) return;
+
           // Stream every chunk continuously — Gemini's native VAD decides when to respond.
           wsRef.current.send(JSON.stringify({
             type: 'client.realtimeInput',
@@ -903,8 +919,14 @@ const OracleConversation = forwardRef(
 
         source.connect(processorRef.current);
         
-        // DO NOT connect to ctx.destination — this causes mic feedback/hum.
-        // The processor stays active as long as it's connected to the source and has an onaudioprocess.
+        // Near-zero (0.00001) keep-alive gain node to prevent browser node suspension.
+        // By connecting the processor through a silent gain node to the destination,
+        // we keep the Web Audio graph active so modern browsers do not garbage collect
+        // or suspend the ScriptProcessorNode's onaudioprocess, without causing feedback/hum.
+        const keepAliveGain = micCtx.createGain();
+        keepAliveGain.gain.value = 0.00001;
+        processorRef.current.connect(keepAliveGain);
+        keepAliveGain.connect(micCtx.destination);
         
         setIsListening(true);
         isListeningRef.current = true;
@@ -924,6 +946,9 @@ const OracleConversation = forwardRef(
       processorRef.current = null;
       mediaStreamRef.current?.getTracks().forEach(t => t.stop());
       mediaStreamRef.current = null;
+      if (micAudioContextRef.current && micAudioContextRef.current.state !== 'closed') {
+        micAudioContextRef.current.suspend().catch(() => {});
+      }
       isListeningRef.current = false;
       setIsListening(false);
       onListeningChangeRef.current?.(false);

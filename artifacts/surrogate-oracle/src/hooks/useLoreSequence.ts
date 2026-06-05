@@ -147,7 +147,8 @@ export function useLoreSequence(
           return;
         }
 
-        const ratio = Math.min(playMs / buffMs, 1);
+        const rawRatio = playMs / buffMs;
+        const ratio = Math.min(rawRatio * 1.15, 1); // typography runs 15% faster
         const globalTarget = Math.floor(ratio * LORE_TOTAL_CHARS);
 
         // Find which line the global char index falls in
@@ -191,7 +192,7 @@ export function useLoreSequence(
         // lSamplesBuffered reaches its final value before the worklet ring buffer
         // finishes draining. Without this margin, handleAwakeTransition fires with
         // lore audio still playing — knife phase starts mid-sentence.
-        if (ratio >= 0.999 && getBufferedMsRef.current!() > 50) {
+        if (rawRatio >= 0.999 && getBufferedMsRef.current!() > 50) {
           if (completionTimerRef.current === null) {
             completionTimerRef.current = setTimeout(() => {
               setCompletedLines(LORE_SEQUENCE);
@@ -260,13 +261,13 @@ export function useLoreSequence(
         const line = LORE_SEQUENCE[lineIdx];
         charIdx++;
         setCurrentLine(line.slice(0, charIdx));
-        nextCharAt = now + 24;
+        nextCharAt = now + 20; // 15% faster (was 24ms)
 
         if (charIdx >= line.length) {
           setCompletedLines(prev => [...prev, line]);
           setCurrentLine('');
           inBeat    = true;
-          beatUntil = now + (BEAT_DELAYS[lineIdx] ?? 2500);
+          beatUntil = now + Math.floor((BEAT_DELAYS[lineIdx] ?? 2500) * 0.85); // 15% faster delays
         }
       }
 

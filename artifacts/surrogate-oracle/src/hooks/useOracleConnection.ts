@@ -66,9 +66,18 @@ export function useOracleConnection({
         const arrayBuf = await resp.arrayBuffer();
         const audioBuf = await player.getContext().decodeAudioData(arrayBuf);
         const rawData  = audioBuf.getChannelData(0);
-        const int16    = new Int16Array(rawData.length);
-        for (let i = 0; i < rawData.length; i++) {
-          int16[i] = Math.max(-32768, Math.min(32767, rawData[i] * 32768));
+        
+        const isLore = audioUrl.includes('lore-narration.mp3');
+        const speed = isLore ? 0.90 : 1.0;
+        const newLen = Math.floor(rawData.length / speed);
+        const int16    = new Int16Array(newLen);
+        for (let i = 0; i < newLen; i++) {
+          const srcIdx = i * speed;
+          const lo = Math.floor(srcIdx);
+          const hi = Math.min(lo + 1, rawData.length - 1);
+          const fract = srcIdx - lo;
+          const val = rawData[lo] * (1 - fract) + rawData[hi] * fract;
+          int16[i] = Math.max(-32768, Math.min(32767, val * 32768));
         }
         player.feed(int16);
       } catch (err) {

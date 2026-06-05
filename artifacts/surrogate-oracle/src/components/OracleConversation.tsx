@@ -173,6 +173,7 @@ export interface OracleConversationHandle {
   startSession: (bootMessage?: string, loreOnly?: boolean) => void;
   startMic: () => Promise<void>;
   toggleTypeMode: () => void;
+  enableMicAutoRestart: () => void;
 }
 
 const SAMPLE_RATE_INPUT = 16000;
@@ -1069,6 +1070,9 @@ const OracleConversation = forwardRef(
       },
       toggleTypeMode: () => {
         setShowSignalPad(prev => !prev);
+      },
+      enableMicAutoRestart: () => {
+        micAutoRestartEnabledRef.current = true;
       }
     }));
 

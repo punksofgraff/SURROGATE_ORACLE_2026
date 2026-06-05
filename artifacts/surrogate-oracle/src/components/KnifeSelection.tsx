@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen, Link2, Cpu, Globe, Factory } from 'lucide-react';
 import { getAudioContext } from '../lib/oracleSfx';
+import { ScrambleFragment } from './ScrambleFragment';
 
 // ── Transmission sound — "what the fuck did I just find?" ────────────────────
 // Formant synthesis: pink noise + two bandpass filters at vocal frequencies
@@ -118,6 +119,7 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
         // handles the case where onSpeakQuestion was silently skipped (Oracle
         // was mid-speech) so the question tracker was reset but no audio came.
         let prevChars = 0;
+        let prevRatio = 0;
         const audioWaitStart = performance.now();
         const tick = () => {
           const playMs  = getPlaybackMs();
@@ -136,19 +138,40 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
             return;
           }
 
-          const ratio   = buffMs > 50 ? Math.min(playMs / buffMs, 1) : 0;
-          const target  = Math.floor(ratio * total);
-          if (target !== prevChars) {
-            prevChars = target;
-            setLandedChars(target);
-            onQuestionProgress?.(target, total);
-          }
-          if (ratio < 0.999) {
-            rafRef.current = requestAnimationFrame(tick);
+          if (buffMs > 50) {
+            const msPerChar = 56; // Calibrated for Oracle speech cadence (approx 15-18 chars/sec)
+            const estimatedTotalMs = total * msPerChar;
+            const maxPlayMs = Math.min(playMs, buffMs);
+            let ratio = Math.min(maxPlayMs / estimatedTotalMs, 1);
+
+            // If playback caught up to the buffer and streaming completed, force reveal.
+            if (playMs >= buffMs && playMs > 0) {
+              ratio = 1;
+            }
+
+            // Monotonic filter: never let the typing ratio move backwards.
+            if (ratio < prevRatio) {
+              ratio = prevRatio;
+            } else {
+              prevRatio = ratio;
+            }
+
+            const target = Math.floor(ratio * total);
+            if (target > prevChars) {
+              prevChars = target;
+              setLandedChars(target);
+              onQuestionProgress?.(target, total);
+            }
+
+            if (ratio < 0.999) {
+              rafRef.current = requestAnimationFrame(tick);
+            } else {
+              setLandedChars(total);
+              onQuestionProgress?.(total, total);
+              rafRef.current = null;
+            }
           } else {
-            setLandedChars(total);
-            onQuestionProgress?.(total, total);
-            rafRef.current = null;
+            rafRef.current = requestAnimationFrame(tick);
           }
         };
         rafRef.current = requestAnimationFrame(tick);
@@ -199,8 +222,24 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
         WebkitTextFillColor: 'transparent',
         backgroundClip: 'text',
         display: 'inline-block',
-      }}>◈ CHOOSE YOUR FREQUENCY</div>
-      <div className="oracle-knife-subheader">THE ONE ALREADY TRUE. THE EXCAVATION BEGINS THERE.</div>
+      }}>
+        <ScrambleFragment
+          texts={['◈ CHOOSE YOUR FREQUENCY']}
+          mode="typewriter"
+          revealMs={40}
+          holdMs={999999}
+          pauseMs={0}
+        />
+      </div>
+      <div className="oracle-knife-subheader">
+        <ScrambleFragment
+          texts={['THE ONE ALREADY TRUE. THE EXCAVATION BEGINS THERE.']}
+          mode="typewriter"
+          revealMs={20}
+          holdMs={999999}
+          pauseMs={0}
+        />
+      </div>
       {!isGeminiConnected && (
         <div className="oracle-knife-channel-status">◈ OPENING CHANNEL...</div>
       )}
@@ -313,22 +352,53 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
                     Per-letter explicit color avoids background-clip:text leaking
                     gradient through opacity:0 spans on the parent div. */}
                 <div className="oracle-knife-card-question" aria-label={kq.question}>
-                  {isThisActive ? kq.question.split('').map((char, j) => (
-                    <span
-                      key={j}
-                      className="oracle-knife-letter"
-                      style={{
-                        opacity: j < landedChars ? 1 : 0,
-                        transition: j < landedChars ? 'opacity 0.65s ease-out' : 'none',
-                        filter: j < landedChars ? 'blur(0px)' : 'blur(4px)',
-                        color: gradientChar(j, kq.question.length),
-                        display: 'inline-block',
-                        whiteSpace: char === ' ' ? 'pre' : 'normal',
-                      }}
-                    >
-                      {char}
-                    </span>
-                  )) : kq.question}
+                  {isThisActive ? (() => {
+                    const words = kq.question.split(' ');
+                    let globalCharIdx = 0;
+                    return words.map((word, wordIdx) => {
+                      const chars = word.split('');
+                      const wordStartIdx = globalCharIdx;
+                      globalCharIdx += chars.length + 1; // +1 for the space
+
+                      return (
+                        <span
+                          key={wordIdx}
+                          style={{ display: 'inline-block', whiteSpace: 'nowrap' }}
+                        >
+                          {chars.map((char, charIdx) => {
+                            const j = wordStartIdx + charIdx;
+                            return (
+                              <span
+                                key={charIdx}
+                                className="oracle-knife-letter"
+                                style={{
+                                  opacity: j < landedChars ? 1 : 0,
+                                  transition: j < landedChars ? 'opacity 0.65s ease-out' : 'none',
+                                  filter: j < landedChars ? 'blur(0px)' : 'blur(4px)',
+                                  color: gradientChar(j, kq.question.length),
+                                  display: 'inline-block',
+                                }}
+                              >
+                                {char}
+                              </span>
+                            );
+                          })}
+                          {wordIdx < words.length - 1 && (
+                            <span
+                              className="oracle-knife-letter"
+                              style={{
+                                opacity: (wordStartIdx + chars.length) < landedChars ? 1 : 0,
+                                display: 'inline-block',
+                                whiteSpace: 'pre',
+                              }}
+                            >
+                              {' '}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    });
+                  })() : kq.question}
                 </div>
 
                 {/* CTA */}

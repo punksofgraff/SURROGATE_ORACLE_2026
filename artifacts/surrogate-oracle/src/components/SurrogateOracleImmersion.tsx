@@ -321,6 +321,7 @@ export function SurrogateOracleImmersion() {
   const startLore = useCallback(async () => {
     if (loreStarted) return;
     setLoreStarted(true);
+    loreNarratedRef.current = true;
     logStep('NARRATIVE SIGNAL ACTIVATED', 'ok');
 
     connection.initializePCMPlayer();
@@ -496,7 +497,13 @@ export function SurrogateOracleImmersion() {
     const knife = KNIFE_QUESTIONS[i];
     lastKnifeRef.current = knife;
     portrait.addThemes(knife.themes);
-    oracleConversationRef.current?.startMic();
+    
+    // Stop any active card preview/voiceover immediately
+    connection.flushPlayback();
+    // Enable mic auto-restart so the mic turns on automatically AFTER the Oracle finishes her initial reply,
+    // avoiding recording background noise/feedback while she reads the question and answers it.
+    oracleConversationRef.current?.enableMicAutoRestart();
+
     const DE = (DeviceOrientationEvent as any);
     if (typeof DE?.requestPermission === 'function') DE.requestPermission().catch(() => {});
     setTimeout(() => {
@@ -990,7 +997,7 @@ export function SurrogateOracleImmersion() {
                 // to be flushed and the responses to collide (fast-forward).
                 if (isOracleSpeaking) return;
                 connection.setTransmissionQ(12, 0);
-                oracleConversationRef.current?.sendTextMessage(`[SIGNAL TRANSMISSION — speak: "${question}"]`, true);
+                oracleConversationRef.current?.sendTextMessage(`[SIGNAL TRANSMISSION — speak: "${question}". Speak ONLY these exact words verbatim, with absolutely no preamble, no commentary, and no other text. Speak with high vocal resonance, slowly (20% slower than normal), as a transmission filter.]`, true);
               }}
               onQuestionProgress={(charCount, total) => { const progress = Math.min(charCount / total, 1); const q = 12 * (1 - progress) + 0.1 * progress; connection.setTransmissionQ(q, 54); }}
               onStartTracking={connection.startQuestionTracking}

@@ -81,6 +81,7 @@ export function useLoreSequence(
   const getBufferedMsRef    = useRef(getBufferedMs);
   const cancelRef           = useRef(false);
   const completionTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevRatioRef        = useRef(0);
 
   useEffect(() => { onCompleteRef.current = onComplete; });
   useEffect(() => { onLineStartRef.current = onLineStart; });
@@ -96,6 +97,7 @@ export function useLoreSequence(
     }
 
     cancelRef.current = false;
+    prevRatioRef.current = 0;
     if (completionTimerRef.current !== null) {
       clearTimeout(completionTimerRef.current);
       completionTimerRef.current = null;
@@ -147,8 +149,13 @@ export function useLoreSequence(
           return;
         }
 
-        const rawRatio = playMs / buffMs;
-        const ratio = Math.min(rawRatio * 1.15, 1); // typography runs 15% faster
+        let rawRatio = playMs / buffMs;
+        if (rawRatio < prevRatioRef.current) {
+          rawRatio = prevRatioRef.current;
+        } else {
+          prevRatioRef.current = rawRatio;
+        }
+        const ratio = Math.min(rawRatio * 1.265, 1); // typography runs 26.5% faster (10% increase from 15%)
         const globalTarget = Math.floor(ratio * LORE_TOTAL_CHARS);
 
         // Find which line the global char index falls in
@@ -261,13 +268,13 @@ export function useLoreSequence(
         const line = LORE_SEQUENCE[lineIdx];
         charIdx++;
         setCurrentLine(line.slice(0, charIdx));
-        nextCharAt = now + 20; // 15% faster (was 24ms)
+        nextCharAt = now + 18; // 10% faster (was 20ms)
 
         if (charIdx >= line.length) {
           setCompletedLines(prev => [...prev, line]);
           setCurrentLine('');
           inBeat    = true;
-          beatUntil = now + Math.floor((BEAT_DELAYS[lineIdx] ?? 2500) * 0.85); // 15% faster delays
+          beatUntil = now + Math.floor((BEAT_DELAYS[lineIdx] ?? 2500) * 0.765); // 10% faster delays (was 0.85)
         }
       }
 

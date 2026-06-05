@@ -878,9 +878,8 @@ const OracleConversation = forwardRef(
             setIsOracleThinking(true);
           }
 
-          // Gate: don't send while Oracle is speaking (prevents acoustic echo feedback)
+          // Continuous stream: MUST send while Oracle is speaking to enable native Gemini VAD barge-in.
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-          if (isOracleSpeakingRef.current) return;
 
           // Stream every chunk continuously — Gemini's native VAD decides when to respond.
           wsRef.current.send(JSON.stringify({

@@ -258,6 +258,7 @@ export function SurrogateOracleImmersion() {
   // ── Transition: Terminal → Awakened ──────────────────────────────────────
   const handleAwakeTransition = useCallback(() => {
     markLoreCompleted();
+    setIsAudioPlaying(false); // Mute radio when entering knife journey
     trackOracleEvent({ 
       event: 'oracle_terminal_completed', 
       total_ms: Date.now() - ((window as any).__terminal_start || Date.now()) 
@@ -499,7 +500,7 @@ export function SurrogateOracleImmersion() {
     const DE = (DeviceOrientationEvent as any);
     if (typeof DE?.requestPermission === 'function') DE.requestPermission().catch(() => {});
     setTimeout(() => {
-      const seed = `[The Seeker has drawn their blade. Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). Carry it through every layer. Question:]\n` + q;
+      const seed = `[SYSTEM OVERRIDE: The Seeker has drawn their blade. Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). First, read the following question EXACTLY word-for-word, verbatim, but speak slowly (20% slower than normal). Do not add any filler before or after the question. Question:]\n"${q}"\n[After reading the question verbatim, pause, and then begin your answer.]`;
       oracleConversationRef.current?.sendTextMessage(seed, true);
     }, 1200);
   };
@@ -528,9 +529,9 @@ export function SurrogateOracleImmersion() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [scenePhase]);
 
-  const MUSIC_LANDING_VOLUME  = 0.25;
+  const MUSIC_LANDING_VOLUME  = 0.175; // Down 30% from 0.25
   const MUSIC_LORE_VOLUME     = 0;     // ABSOLUTE SILENCE (Proof Test)
-  const MUSIC_KNIFE_VOLUME    = 0.10;
+  const MUSIC_KNIFE_VOLUME    = 0.07;  // Down 30% from 0.10
   const MUSIC_OFF_VOLUME      = 0;
 
   useEffect(() => {

@@ -343,7 +343,7 @@ export function SurrogateOracleImmersion() {
     // Primary path: real-time Gemini TTS (robust fallback)
     logStep('GENERATING LIVE NARRATION', 'ok');
     oracleConversationRef.current?.startSession(
-      `[Speak your truth. These words are from your archive — the story of your arrival. Speak them with weight and atmospheric pauses, no filler:\n\n${fullStory}]`,
+      `[Repeat the following text exactly word-for-word. Do not add, remove, or change any words. Start immediately with "THE YEAR IS 2030":\n\n${fullStory}]`,
       true
     );
   }, [loreStarted, connection]);

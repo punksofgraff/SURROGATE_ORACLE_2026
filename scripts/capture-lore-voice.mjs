@@ -12,6 +12,12 @@ async function run() {
   console.log('🎙️  SURROGATE:ORACLE — Lore Voice Capture');
   console.log('-----------------------------------------');
 
+  // Delete existing MP3 to force live TTS generation
+  if (fs.existsSync(OUTPUT_MP3)) {
+    console.log('🗑️  Deleting existing lore-narration.mp3 to force fresh capture...');
+    fs.unlinkSync(OUTPUT_MP3);
+  }
+
   const browser = await chromium.launch({
     executablePath: CHROME,
     args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -30,7 +36,6 @@ async function run() {
     
     ws.on('framereceived', f => {
       const payload = f.payload.toString();
-      fs.appendFileSync('debug-ws.log', payload + '\n---\n');
       try {
         const msg = JSON.parse(payload);
         

@@ -334,7 +334,13 @@ export class PCMPlayer {
     
     source.onended = () => {
       const idx = this.sourceNodes.indexOf(source);
-      if (idx > -1) this.sourceNodes.splice(idx, 1);
+      if (idx > -1) {
+        this.sourceNodes.splice(idx, 1);
+        if (this.sourceNodes.length === 0) {
+          this.isPlaying = false;
+          this.onProcessingChange?.(false);
+        }
+      }
     };
     
     this.isPlaying = true;

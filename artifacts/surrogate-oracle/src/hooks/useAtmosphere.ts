@@ -120,6 +120,7 @@ export function useAtmosphere(
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
   phase: Phase,
   alignment: Alignment,
+  isDegraded = false,
 ) {
   const particlesRef        = useRef<Particle[]>([]);
   const rafRef              = useRef<number>(0);
@@ -145,16 +146,19 @@ export function useAtmosphere(
     const [r, g, b] = alignmentColor(alignment);
     const rawConfig = PHASE_CONFIGS[phase] ?? PHASE_CONFIGS.dormant;
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const config: PhaseConfig = prefersReducedMotion
-      ? {
-          ...rawConfig,
-          sparkCount:    0,
-          dustCount:     Math.round(rawConfig.dustCount  * 0.4),
-          steamCount:    Math.round(rawConfig.steamCount * 0.4),
-          speedMult:     rawConfig.speedMult * 0.5,
-          masterOpacity: rawConfig.masterOpacity * 0.6,
-        }
-      : rawConfig;
+    
+    // Performance degradation / Accessibility overrides
+    let config: PhaseConfig = rawConfig;
+    if (prefersReducedMotion || isDegraded) {
+      config = {
+        ...rawConfig,
+        sparkCount:    0,
+        dustCount:     Math.round(rawConfig.dustCount  * (isDegraded ? 0.6 : 0.4)),
+        steamCount:    Math.round(rawConfig.steamCount * (isDegraded ? 0.6 : 0.4)),
+        speedMult:     rawConfig.speedMult * (isDegraded ? 0.75 : 0.5),
+        masterOpacity: rawConfig.masterOpacity * (isDegraded ? 0.85 : 0.6),
+      };
+    }
     configRef.current = config;
 
     // Rebuild particle pool on phase change — splice to desired counts

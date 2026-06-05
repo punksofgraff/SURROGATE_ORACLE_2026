@@ -49,12 +49,15 @@ import { useLoreSequence, LORE_SEQUENCE } from '../hooks/useLoreSequence';
 import { useOracleConnection } from '../hooks/useOracleConnection';
 import { usePortraitPipeline } from '../hooks/usePortraitPipeline';
 import { useOracleJourney } from '../hooks/useOracleJourney';
+import { usePerformanceGuard } from '../hooks/usePerformanceGuard';
 
 // Data
 import { COST_NAMES } from '../data/archetypes';
 
 // Libs/Utils
 import { getAudioContext } from '../lib/oracleSfx';
+import { trackOracleEvent } from '../lib/analytics';
+import { getABVariant } from '../lib/ab-testing';
 import type { VisemeState } from '../lib/visemeDetector';
 import { defaultAudioTracks } from '../config/audioTracks';
 import './SurrogateOracleImmersion.css';
@@ -124,6 +127,12 @@ function OracleAvatarFallback() {
 }
 
 export function SurrogateOracleImmersion() {
+  // ── Performance & Accessibility ─────────────────────────────────────────
+  const isDegraded = usePerformanceGuard(true);
+  const prefersReducedMotion = typeof window !== 'undefined' 
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches 
+    : false;
+
   // ── State ───────────────────────────────────────────────────────────────
   const [oracleAvatarDataUrl] = useState<string>(ORACLE_AVATAR_URL);
   const [currentUserId, setCurrentUserId]   = useState<string | null>(null);
@@ -231,6 +240,16 @@ export function SurrogateOracleImmersion() {
 
   const { scenePhase, enterTerminal, exitOracleMode, selectKnifeQuestion, resetJourney } = journey;
 
+  // ── Telemetry: Phase Tracking ──────────────────────────────────────────
+  useEffect(() => {
+    trackOracleEvent({
+      event: 'oracle_phase_entered',
+      phase: scenePhase,
+      is_returning: isReturning,
+      session_id: currentSessionId
+    });
+  }, [scenePhase, isReturning, currentSessionId]);
+
   const handleLoreLineStart = useCallback((line: string, index: number) => {
     // Lore narration is now handled in a single pass via startLore/startSession.
     // Line-by-line calls removed to reduce network noise and improve atmosphere.
@@ -239,6 +258,10 @@ export function SurrogateOracleImmersion() {
   // ── Transition: Terminal → Awakened ──────────────────────────────────────
   const handleAwakeTransition = useCallback(() => {
     markLoreCompleted();
+    trackOracleEvent({ 
+      event: 'oracle_terminal_completed', 
+      total_ms: Date.now() - ((window as any).__terminal_start || Date.now()) 
+    });
     document.body.setAttribute('data-rift-opening', 'true');
     setTimeout(() => {
       journey.awakeFromTerminal();
@@ -294,6 +317,37 @@ export function SurrogateOracleImmersion() {
     }
   }, [targetVol]);
 
+  const startLore = useCallback(async () => {
+    if (loreStarted) return;
+    setLoreStarted(true);
+    logStep('NARRATIVE SIGNAL ACTIVATED', 'ok');
+
+    connection.initializePCMPlayer();
+    connection.setTransmissionQ(0.01, 0);
+    connection.startLoreTracking();
+
+    const fullStory = LORE_SEQUENCE.join('\n');
+    const LORE_AUDIO_URL = '/lore-narration.mp3';
+
+    try {
+      // Try to use pre-recorded MP3 if available
+      const check = await fetch(LORE_AUDIO_URL, { method: 'HEAD' });
+      if (check.ok && check.headers.get('content-type')?.includes('audio')) {
+        logStep('PLAYING ARCHIVE RECORDING', 'ok');
+        connection.handleOracleResponse(LORE_AUDIO_URL);
+        oracleConversationRef.current?.sendTextMessage(`[THE ARCHIVE IS SPEAKING: ${fullStory}]`, true);
+        return;
+      }
+    } catch (e) {}
+
+    // Primary path: real-time Gemini TTS (robust fallback)
+    logStep('GENERATING LIVE NARRATION', 'ok');
+    oracleConversationRef.current?.startSession(
+      `[Speak your truth. These words are from your archive — the story of your arrival. Speak them with weight and atmospheric pauses, no filler:\n\n${fullStory}]`,
+      true
+    );
+  }, [loreStarted, connection]);
+
   const handleFirstTap = useCallback(async () => {
     if (scenePhase !== 'dormant') return;
     await setupAudioSpine();
@@ -308,26 +362,16 @@ export function SurrogateOracleImmersion() {
     connection.initializePCMPlayer();
 
     enterTerminal();
+    (window as any).__terminal_start = Date.now();
 
     if (hasCompletedLore) {
       logStep('RECOGNIZED SIGNAL → SKIP AVAILABLE', 'ok');
       // Do NOT set loreStarted; let them see the 'Signal Recognized' overlay.
     } else {
       logStep('TAP 1 → ACTIVATING NARRATIVE', 'ok');
-      setLoreStarted(true);
-      loreNarratedRef.current = true; // greeting reserved for oracle phase entry
-      connection.setTransmissionQ(0.01, 0);
-      connection.startLoreTracking();
-      const fullStory = LORE_SEQUENCE.join('\n');
-      // loreOnly=true: delivers the narration without consuming the session boot.
-      // sessionBootedRef stays false so oracle phase entry fires "Greetings... Seeker".
-      oracleConversationRef.current?.startSession(
-        `[Speak your truth. These words are from your archive — the story of your arrival. Speak them with weight and atmospheric pauses, no filler:\n\n${fullStory}]`,
-        true
-      );
-      logStep('SIGNAL ACTIVATED → PHASE: TERMINAL', 'ok');
+      startLore();
     }
-  }, [scenePhase, setupAudioSpine, enterTerminal, markVisited, loadEcho, hasCompletedLore, connection]);
+  }, [scenePhase, setupAudioSpine, enterTerminal, markVisited, loadEcho, hasCompletedLore, connection, startLore]);
 
   const fadeToVolume = useCallback((target: number, rampMs?: number) => {
     setTargetVol(target);
@@ -406,6 +450,12 @@ export function SurrogateOracleImmersion() {
 
   const handleSessionEnd = useCallback((alignment: string, totemLevel: number, _coins: number) => {
     const key = seekerKeyRef.current;
+    trackOracleEvent({ 
+      event: 'oracle_exit', 
+      phase_at_exit: scenePhase, 
+      turns: oracleConversationRef.current?.getSessionTurns().length || 0,
+      total_ms: Date.now() - ((window as any).__session_start || Date.now())
+    });
     if (key) {
       saveEcho({
         seekerKey: key,
@@ -452,22 +502,6 @@ export function SurrogateOracleImmersion() {
       const seed = `[The Seeker has drawn their blade. Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). Carry it through every layer. Question:]\n` + q;
       oracleConversationRef.current?.sendTextMessage(seed, true);
     }, 1200);
-  };
-
-  const startLore = () => {
-    setLoreStarted(true);
-    logStep('NARRATIVE SIGNAL ACTIVATED', 'ok');
-
-    connection.initializePCMPlayer();
-    connection.setTransmissionQ(0.01, 0);
-    connection.startLoreTracking();
-
-    const fullStory = LORE_SEQUENCE.join('\n');
-    // loreOnly=true: narration only, session boot preserved for oracle phase greeting.
-    oracleConversationRef.current?.startSession(
-      `[Speak your truth. These words are from your archive — the story of your arrival. Speak them with weight and atmospheric pauses, no filler:\n\n${fullStory}]`,
-      true
-    );
   };
 
   // ── Effects ─────────────────────────────────────────────────────────────
@@ -541,6 +575,11 @@ export function SurrogateOracleImmersion() {
     (window as any).__oracle_skipLore = () => {
       if (journey.scenePhase !== 'terminal') return;
       logStep('LORE SKIPPED (DEV HOOK)', 'ok');
+      trackOracleEvent({ 
+        event: 'oracle_terminal_skipped', 
+        at_slide: completedLinesLengthRef.current, 
+        ms_elapsed: Date.now() - ((window as any).__terminal_start || Date.now()) 
+      });
       journey.awakeFromTerminal();
     };
     return () => {
@@ -591,8 +630,18 @@ export function SurrogateOracleImmersion() {
 
   useEffect(() => {
     logStep('NEURAL LINK AWAKENING', 'ok');
+    (window as any).__session_start = Date.now();
     setShowConversation(true);
     connection.initializePCMPlayer();
+
+    // Forced AudioContext resume on any interaction
+    const resumeAudio = () => {
+      const ctx = getAudioContext();
+      if (ctx.state === 'suspended') ctx.resume();
+    };
+    window.addEventListener('click', resumeAudio);
+    window.addEventListener('touchstart', resumeAudio);
+
     const handleAuthTrigger = () => setShowAuthOverlay(true);
     window.addEventListener('oracle:auth:trigger', handleAuthTrigger);
     const handleOracleUnlock = (e: any) => {
@@ -606,13 +655,15 @@ export function SurrogateOracleImmersion() {
     };
     window.addEventListener('oracle:alignment', handleAlignmentShift);
     return () => {
+      window.removeEventListener('click', resumeAudio);
+      window.removeEventListener('touchstart', resumeAudio);
       window.removeEventListener('oracle:auth:trigger', handleAuthTrigger);
       window.removeEventListener('oracle:unlock', handleOracleUnlock);
       window.removeEventListener('oracle:alignment', handleAlignmentShift);
     };
   }, []);
 
-  useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment);
+  useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment, isDegraded);
 
   const oracleStageRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -728,8 +779,10 @@ export function SurrogateOracleImmersion() {
 
       <div className="oracle-center" onClick={handleFirstTap} style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}>
         <motion.div className="oracle-cabinet" style={{ position: 'relative' }}>
-          {/* Halo lives outside oracle-avatar-wrapper to escape overflow:hidden clipping */}
-          <OracleHaloRing active={isOracleMode} isXRMode={isXRMode} />
+          {/* Halo now active in both awakened and oracle phases */}
+          <div data-halo-ghost={awakened ? 'true' : undefined}>
+            <OracleHaloRing active={awakened} isXRMode={isXRMode} />
+          </div>
           <div className="oracle-avatar-wrapper">
             {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} />}
             {isOracleMode && <div className="oracle-monitor-cast" />}
@@ -757,32 +810,21 @@ export function SurrogateOracleImmersion() {
                 <motion.div
                   key="live-face"
                   className="oracle-avatar-container"
-                  initial={{ opacity: 0, scale: 0.01, filter: 'blur(30px) brightness(12) saturate(0) hue-rotate(180deg)' }}
-                  animate={{
-                    // The knife pierced the veil. Oracle bursts outward from zero — no slide.
-                    // Scale overshoots (1.38) then recoils: physical impact feel, not graceful entry.
-                    // RGB split at burst peak = the veil tearing apart at the seam.
-                    opacity: [0, 0.04, 0.9,  0.75, 1,    0.96, 1   ],
-                    scale:   [0.01, 0.06, 1.38, 0.84, 1.06, 0.98, 1.0],
-                    filter: [
-                      'blur(30px) brightness(12) saturate(0)   hue-rotate(180deg)',
-                      'blur(22px) brightness(10) saturate(0)   hue-rotate(120deg)',
-                      // Burst peak — full RGB channel split, veil exploding
-                      'blur(0px)  brightness(7)  saturate(8)   hue-rotate(30deg) drop-shadow(12px 0 0 rgba(255,0,80,1)) drop-shadow(-12px 0 0 rgba(0,200,255,1))',
-                      // Recoil — glitch settling, signal stabilising
-                      'blur(5px)  brightness(2.5) saturate(3)  hue-rotate(8deg)  drop-shadow(5px 0 0 rgba(255,0,80,0.5)) drop-shadow(-5px 0 0 rgba(0,200,255,0.5))',
-                      'blur(1px)  brightness(1.4) saturate(1.5) hue-rotate(2deg)',
-                      'blur(2px)  brightness(1.1) saturate(1.1) hue-rotate(1deg)',
-                      'blur(0px)  brightness(1)   saturate(1)   hue-rotate(0deg)',
-                    ],
-                  }}
-                  transition={{ duration: 12, ease: 'linear', times: [0, 0.06, 0.18, 0.35, 0.55, 0.78, 1] }}
-                  style={{ zIndex: 3, position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 1.2, ease: "easeOut" }}
+                  style={{ zIndex: 3, position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'auto' }}
                 >
                   <div className="oracle-avatar-canvas oracle-avatar-smoke-hook" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}>
                     <OracleErrorBoundary>
                       <Suspense fallback={<OracleAvatarFallback />}>
-                        <Canvas camera={{ position: [0, 0, 1.8], fov: 55 }} dpr={[1, Math.min(window.devicePixelRatio, 2)]} gl={{ antialias: true, alpha: true }} style={{ width: '100%', height: '100%', background: 'transparent' }} frameloop="always">
+                        <Canvas 
+                          camera={{ position: [0, 0, 1.8], fov: 55 }} 
+                          dpr={isDegraded ? [1, 1] : [1, Math.min(window.devicePixelRatio, 2)]} 
+                          gl={{ antialias: !isDegraded, alpha: true }} 
+                          style={{ width: '100%', height: '100%', background: 'transparent' }} 
+                          frameloop="always"
+                        >
                           <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
                         </Canvas>
                       </Suspense>

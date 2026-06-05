@@ -153,7 +153,7 @@ export interface OracleAvatar3DProps {
 const CAM_DEFAULT_Z = 1.8;  // portrait distance — head + upper chest visible
 const CAM_MIN_Z     = 0.4;  // maximum zoom-in (eyes fill the frame)
 const CAM_X_RANGE   = 0.30; // horizontal look-around extent (world units)
-// <Center top>: feet at Y=0, head at ~Y=1.56. Target Y=1.45 frames the
+// <Center bottom>: feet at Y=0, head at ~Y=1.6. Target Y=1.45 frames the
 // mouth area at center — eyes above center, chin below. Not throat.
 const CAM_Y_CENTER  = 1.45;
 const CAM_Y_RANGE   = 0.22; // vertical look-around extent
@@ -561,11 +561,8 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   });
 
   return (
-    <group ref={groupRef} dispose={null}>
-      {/* <Center> auto-frames the avatar by bounding box — no manual Y offset */}
-      <Center top>
-        <primitive object={scene} />
-      </Center>
+    <group ref={groupRef} position={[0, meshData.avatarYOffset, 0]} dispose={null}>
+      <primitive object={scene} />
       <OracleSceneLights />
     </group>
   );

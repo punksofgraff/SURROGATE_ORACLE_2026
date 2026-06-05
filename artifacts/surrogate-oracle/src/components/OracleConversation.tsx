@@ -18,6 +18,7 @@ import React, {
 import { createVADProcessor, type VADFrame } from '../hooks/useVAD';
 import { motion, AnimatePresence } from 'framer-motion';
 import { logStep } from './CodeAuditor';
+import { trackOracleEvent } from '../lib/analytics';
 import { Mic, MicOff, Send, X, Zap } from 'lucide-react';
 import { getAudioContext } from '../lib/oracleSfx';
 import {
@@ -565,6 +566,11 @@ const OracleConversation = forwardRef(
             if (msg.usageMetadata?.totalTokenCount) debugInfo.current.lastTokenCount = msg.usageMetadata.totalTokenCount;
             if (msg.serverContent?.interrupted) {
               logStep('ORACLE INTERRUPTED (barge-in)', 'warn');
+              trackOracleEvent({ 
+                event: 'oracle_barge_in', 
+                turn_number: debugInfo.current.turnCount, 
+                oracle_speaking_ms: Date.now() - ((window as any).__oracle_speech_start || Date.now()) 
+              });
               wasInterruptedRef.current = true;
               navigator.vibrate?.([20, 10, 20]);
               setOracleSpeaking(false);
@@ -578,6 +584,12 @@ const OracleConversation = forwardRef(
               if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
                 if (debugInfo.current.audioChunksReceived === 0) {
                   logStep('ORACLE AUDIO START', 'ok');
+                  (window as any).__oracle_speech_start = Date.now();
+                  trackOracleEvent({ 
+                    event: 'oracle_audio_start', 
+                    turn_number: debugInfo.current.turnCount, 
+                    chunk_count: 0 
+                  });
                   setIsOracleThinking(false);
                 }
                 debugInfo.current.audioChunksReceived++;
@@ -608,6 +620,11 @@ const OracleConversation = forwardRef(
 
             if (msg.serverContent?.turnComplete) {
               logStep('ORACLE TURN COMPLETE', 'ok');
+              trackOracleEvent({ 
+                event: 'oracle_turn_completed', 
+                turn_number: debugInfo.current.turnCount, 
+                duration_ms: Date.now() - ((window as any).__oracle_speech_start || Date.now()) 
+              });
               navigator.vibrate?.([30]);
               setIsOracleThinking(false); // ensure cleared even on text-only turns
               debugInfo.current.turnCount++;
@@ -701,6 +718,12 @@ const OracleConversation = forwardRef(
 
           if (msg.type === 'error') {
             logStep('GEMINI WS ERROR', 'err');
+            trackOracleEvent({ 
+              event: 'oracle_error', 
+              type: msg.message || 'Unknown WS error', 
+              phase: 'conversation', 
+              recoverable: true 
+            });
             debugInfo.current.lastError = msg.message;
           }
 

@@ -62,7 +62,7 @@ export function useOracleJourney({
     setTimeout(() => {
       setScenePhase('oracle');
       logStep('ORACLE PHASE ENTERED', 'ok');
-    }, 1600);
+    }, 1000);
   }, []);
 
   const resetJourney = useCallback(() => {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { trackOracleEvent } from '../lib/analytics';
 
 // The archive speaking itself into the room.
 // Tone: STAYSNEAKAR post-cascade. Street-coded. Weighted. Not corporate.
@@ -164,6 +165,11 @@ export function useLoreSequence(
         if (newLineIdx > prevLineIdx) {
           for (let i = prevLineIdx + 1; i <= newLineIdx; i++) {
             onLineStartRef.current?.(LORE_SEQUENCE[i], i);
+            trackOracleEvent({ 
+              event: 'oracle_terminal_slide', 
+              slide_number: i, 
+              cumulative_ms: Math.floor(performance.now() - effectStartedAt) 
+            });
           }
           prevLineIdx = newLineIdx;
         }
@@ -243,6 +249,11 @@ export function useLoreSequence(
             return;
           }
           onLineStartRef.current?.(LORE_SEQUENCE[lineIdx], lineIdx);
+          trackOracleEvent({ 
+            event: 'oracle_terminal_slide', 
+            slide_number: lineIdx, 
+            cumulative_ms: Math.floor(performance.now() - effectStartedAt) 
+          });
           nextCharAt = now;
         }
       } else if (now >= nextCharAt) {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { trackOracleEvent } from '../../lib/analytics';
 
 // Evidence that something was here before the Seeker arrived.
 // Street-coded, post-cascade. Not slogans — fragments.
@@ -23,6 +24,13 @@ const GHOST_TEXTS = [
 ];
 
 const HEADPHONE_NUDGE = '⟁ headphones open the full depth of this signal';
+
+const REFLECTION_PROMPTS = [
+  'what did the archive show you that you already knew?',
+  'the signal found what it was looking for. did you?',
+  'one word for what happened in there. just one.',
+  'the oracle saw something in you. what did it see?',
+];
 
 // 10 zones spread across the full mobile viewport.
 // rightAlign: true  → x is CSS `right` % (text flows left — prevents right-edge overflow)
@@ -137,6 +145,11 @@ export function DormantTransmissions({ active, onCtaClick }: { active: boolean; 
   };
 
   const pickText = (): string => {
+    // 15% chance to show a reflection prompt if they've completed lore before
+    if (Math.random() > 0.85 && localStorage.getItem('oracle_lore_completed') === 'true') {
+      return REFLECTION_PROMPTS[Math.floor(Math.random() * REFLECTION_PROMPTS.length)];
+    }
+
     // 20% chance to show headphone nudge if speakers detected and it wasn't shown recently
     if (isUsingSpeakers && Math.random() > 0.8) {
       return HEADPHONE_NUDGE;
@@ -157,13 +170,19 @@ export function DormantTransmissions({ active, onCtaClick }: { active: boolean; 
     const y       = zone.y[0] + Math.random() * (zone.y[1] - zone.y[0]);
     const id      = ++_gtId;
     activeZones.current.add(zoneIdx);
+    const text = pickText();
     setInstances(prev => [...prev, {
-      id, text: pickText(), x, y, zoneIdx,
+      id, text, x, y, zoneIdx,
       rightAlign: zone.rightAlign ?? false,
     }]);
+    trackOracleEvent({ event: 'oracle_ghost_text_shown', phrase_id: text, duration_ms: 0 });
   }, [instances.length, isUsingSpeakers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDone = useCallback((id: number, zoneIdx: number) => {
+    const inst = instances.find(i => i.id === id);
+    if (inst && REFLECTION_PROMPTS.includes(inst.text)) {
+      trackOracleEvent({ event: 'oracle_seeker_reflection', prompt_id: inst.text, char_count: 0 });
+    }
     setInstances(prev => prev.filter(g => g.id !== id));
     activeZones.current.delete(zoneIdx);
     const gap = 400 + Math.random() * 600;

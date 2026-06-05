@@ -4,7 +4,7 @@ const BASE = 'http://localhost:5173';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const browser = await chromium.launch({
-  executablePath: '/home/runner/workspace/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome',
+  executablePath: '/nix/store/0n9rl5l9syy808xi9bk4f6dhnfrvhkww-playwright-browsers-chromium/chromium-1080/chrome-linux/chrome',
   args: ['--no-sandbox', '--disable-setuid-sandbox']
 });
 const ctx = await browser.newContext({ permissions: ['microphone', 'camera'] });

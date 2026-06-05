@@ -177,7 +177,7 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: 'user' },
+          facingMode: 'user',
           width: { ideal: 1280 },
           height: { ideal: 1280 },
         },

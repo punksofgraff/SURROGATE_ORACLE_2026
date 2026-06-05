@@ -89,6 +89,10 @@ Deno.serve(async (req: Request) => {
         setup.contextWindowCompression = { slidingWindow: {} };
         // Step 4 (forward-compat) — relay session-resumption config when the client sends it.
         if (msg.sessionResumption !== undefined) setup.sessionResumption = msg.sessionResumption;
+        
+        // Step 5 — Native Voice Activity Detection (barge-in) tuning
+        if (msg.realtimeInputConfig !== undefined) setup.realtimeInputConfig = msg.realtimeInputConfig;
+
         console.log('📤 Sending setup to Gemini, model:', msg.model);
         gemini.send(JSON.stringify({ setup }));
 

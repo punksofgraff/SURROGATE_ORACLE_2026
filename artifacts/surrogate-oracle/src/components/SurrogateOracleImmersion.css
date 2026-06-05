@@ -1392,7 +1392,7 @@
 }
 
 /* Wire voice pulse to oracle speaking state */
-.oracle-stage[data-oracle-state="oracle"][data-oracle-speaking="true"] .oracle-cabinet {
+.oracle-stage[data-oracle-speaking="true"] .oracle-cabinet {
   animation: cabinet-voice-pulse 0.9s ease-in-out infinite !important;
   border-color: rgba(0,255,136,0.85);
 }
@@ -4478,8 +4478,8 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
    (WebGL) layers — the canvas goes invisible. Drop-shadow + clip-path handle
    the hologram boundary instead.                                              */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-wrapper {
-  width: clamp(280px, 92vw, 520px) !important;
-  aspect-ratio: 0.72 / 1 !important;
+  width: clamp(200px, 82vmin, 420px) !important;
+  aspect-ratio: 0.82 / 1 !important;
   border: none !important;
   border-radius: 0 !important;
   overflow: visible !important;
@@ -4487,11 +4487,11 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 
 /* ── Oracle center: sit slightly lower, more in the alley middle-ground ─────*/
 .oracle-stage[data-oracle-state="oracle"] .oracle-center {
-  top: 38%;
+  top: 33%;
 }
 @media (max-width: 480px) {
   .oracle-stage[data-oracle-state="oracle"] .oracle-center {
-    top: 40%;
+    top: 33%;
   }
 }
 
@@ -4810,3 +4810,85 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 }
 
 
+
+/* ── Accessibility: Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  .oracle-stage::after {
+    animation: none !important;
+  }
+  
+  .oracle-scanlines,
+  .oracle-light-rays,
+  .oracle-ground-fog,
+  .oracle-avatar-static,
+  .oracle-cabinet,
+  .oracle-bottom-btn {
+    animation: none !important;
+  }
+  
+  .oracle-title, .oracle-subtitle {
+    animation: none !important;
+  }
+  
+  .atmosphere-layer {
+    display: none; /* Already handled in JS, but CSS as a second layer */
+  }
+
+  /* Ensure elements are visible at their target state opacities even if animations are disabled */
+  .oracle-stage[data-oracle-state="dormant"] .oracle-avatar-static { opacity: 0.35; }
+  .oracle-stage[data-oracle-state="terminal"] .oracle-avatar-static { opacity: 0.60; }
+  .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-static { opacity: 0.35; }
+  .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-static { opacity: 0.15; }
+  
+  .oracle-stage[data-oracle-state="awakened"] .oracle-branding,
+  .oracle-stage[data-oracle-state="oracle"] .oracle-branding {
+    opacity: 0.65;
+  }
+}
+
+/* ── Branding & Halo: Presence & Ghosting ── */
+.oracle-branding {
+  transition: opacity 0.8s ease-in-out;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.oracle-stage[data-oracle-state="awakened"] .oracle-branding,
+.oracle-stage[data-oracle-state="oracle"] .oracle-branding {
+  opacity: 1;
+}
+
+[data-halo-ghost="true"] {
+  animation: halo-ghost-flicker 4s ease-in-out infinite;
+}
+
+@keyframes halo-ghost-flicker {
+  0%, 100% { opacity: 0.8; filter: blur(0px) drop-shadow(0 0 5px rgba(0,255,136,0.4)); }
+  5% { opacity: 0.4; filter: blur(2px) drop-shadow(0 0 15px rgba(0,255,136,0.8)); transform: translateX(-2px) skewX(2deg); }
+  7% { opacity: 0.9; filter: blur(0px); transform: translateX(0); }
+  45% { opacity: 0.85; }
+  50% { opacity: 0.3; filter: blur(4px) brightness(2); transform: scale(1.05); }
+  52% { opacity: 0.8; filter: blur(0px); transform: scale(1); }
+  80% { opacity: 0.9; }
+}
+
+.oracle-stage[data-oracle-state="awakened"] .oracle-branding {
+  animation: header-ghost-pulse 6s ease-in-out infinite;
+}
+
+@keyframes header-ghost-pulse {
+  0%, 100% { opacity: 0.7; filter: brightness(1); }
+  50% { opacity: 0.4; filter: brightness(1.4) blur(1px); }
+}
+
+/* Ensure the title is always visible once the journey starts */
+.oracle-stage:not([data-oracle-state="dormant"]) .oracle-branding {
+  display: block;
+}

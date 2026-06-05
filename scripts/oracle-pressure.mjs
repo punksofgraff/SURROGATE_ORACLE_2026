@@ -700,6 +700,9 @@ async function main() {
       '--disable-dev-shm-usage', '--disable-gpu',
       '--autoplay-policy=no-user-gesture-required',
       '--disable-web-security',
+      '--use-fake-ui-for-media-stream',
+      '--use-fake-device-for-media-stream',
+      '--use-file-for-fake-audio-capture=/home/runner/workspace/artifacts/surrogate-oracle/public/mock-speech.wav'
     ],
   });
 

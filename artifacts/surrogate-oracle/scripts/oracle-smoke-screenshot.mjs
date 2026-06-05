@@ -60,7 +60,15 @@ async function warn_(condition, msg, detail) {
   const browser = await puppeteer.launch({
     headless: true,
     executablePath: puppeteer.executablePath(),
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--use-fake-ui-for-media-stream',
+      '--use-fake-device-for-media-stream',
+      '--use-file-for-fake-audio-capture=' + join(__dirname, '../public/mock-speech.wav')
+    ],
   });
 
   const page = await browser.newPage();

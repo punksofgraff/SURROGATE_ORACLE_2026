@@ -159,7 +159,7 @@ export function SurrogateOracleImmersion() {
   const [isGuidedTour, setIsGuidedTour]     = useState(false);
   const [showPortraitGallery, setShowPortraitGallery] = useState(false);
   const [loreStarted, setLoreStarted]       = useState(false);
-  const [targetVol, setTargetVol]           = useState(0.04);
+  const [targetVol, setTargetVol]           = useState(0.028);
   const [currentStation, setCurrentStation] = useState(DEFAULT_STATION);
   const [holdTooltip, setHoldTooltip]       = useState<{ title: string; body: string } | null>(null);
   const [hamburgerOpen, setHamburgerOpen]   = useState(false);
@@ -535,9 +535,9 @@ export function SurrogateOracleImmersion() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [scenePhase]);
 
-  const MUSIC_LANDING_VOLUME  = 0.10;   // 40% of original 0.25 (guarded against VAD leak)
+  const MUSIC_LANDING_VOLUME  = 0.07;   // Globally reduced by 30% from 0.10
   const MUSIC_LORE_VOLUME     = 0;      // ABSOLUTE SILENCE (Proof Test)
-  const MUSIC_KNIFE_VOLUME    = 0.04;   // 40% of original 0.10 (guarded against VAD leak)
+  const MUSIC_KNIFE_VOLUME    = 0.028;  // Globally reduced by 30% from 0.04
   const MUSIC_OFF_VOLUME      = 0;
 
   useEffect(() => {

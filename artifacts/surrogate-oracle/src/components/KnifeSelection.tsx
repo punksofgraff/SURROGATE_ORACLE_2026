@@ -139,15 +139,8 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
           }
 
           if (buffMs > 50) {
-            const msPerChar = 48; // Calibrated for Oracle speech cadence (approx 15-18 chars/sec, boosted 15% faster)
-            const estimatedTotalMs = total * msPerChar;
-            const maxPlayMs = Math.min(playMs, buffMs);
-            let ratio = Math.min(maxPlayMs / estimatedTotalMs, 1);
-
-            // If playback caught up to the buffer and streaming completed, force reveal.
-            if (playMs >= buffMs && playMs > 0) {
-              ratio = 1;
-            }
+            // Match voice to end of typing perfectly by tracking actual playback duration ratio
+            let ratio = Math.min(playMs / buffMs, 1);
 
             // Monotonic filter: never let the typing ratio move backwards.
             if (ratio < prevRatio) {

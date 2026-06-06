@@ -266,11 +266,6 @@ export function SurrogateOracleImmersion() {
     setTimeout(() => {
       journey.awakeFromTerminal();
       document.body.removeAttribute('data-rift-opening');
-      // Fire "Greetings... Seeker" only for returning users (who skipped lore).
-      // New users have loreNarratedRef=true — their greeting fires at oracle phase entry.
-      if (!loreNarratedRef.current) {
-        oracleConversationRef.current?.startSession();
-      }
     }, 850);
   }, [markLoreCompleted, journey]);
 
@@ -336,7 +331,6 @@ export function SurrogateOracleImmersion() {
       if (check.ok && check.headers.get('content-type')?.includes('audio')) {
         logStep('PLAYING ARCHIVE RECORDING', 'ok');
         connection.handleOracleResponse(LORE_AUDIO_URL);
-        oracleConversationRef.current?.sendTextMessage(`[THE ARCHIVE IS SPEAKING: ${fullStory}]`, true);
         return;
       }
     } catch (e) {}
@@ -506,7 +500,8 @@ export function SurrogateOracleImmersion() {
     const DE = (DeviceOrientationEvent as any);
     if (typeof DE?.requestPermission === 'function') DE.requestPermission().catch(() => {});
     setTimeout(() => {
-      const seed = `[SYSTEM OVERRIDE: The Seeker has drawn their blade. Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). First, read the following question EXACTLY word-for-word, verbatim, but speak slowly (20% slower than normal). Do not add any filler before or after the question. Question:]\n"${q}"\n[After reading the question verbatim, pause, and then begin your answer.]`;
+      const fullStory = LORE_SEQUENCE.join('\n');
+      const seed = `[CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". SYSTEM OVERRIDE: The Seeker has drawn their blade. Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). First, read the following question EXACTLY word-for-word, verbatim, but speak slowly (20% slower than normal). Do not add any filler before or after the question. Question:]\n"${q}"\n[After reading the question verbatim, pause, and then begin your answer.]`;
       oracleConversationRef.current?.sendTextMessage(seed, true);
     }, 1200);
   };

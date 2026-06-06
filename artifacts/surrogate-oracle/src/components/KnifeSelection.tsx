@@ -182,7 +182,7 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
           if (count >= total) { clearInterval(intervalRef.current!); intervalRef.current = null; }
         }, 46);
       }
-    }, 850);
+    }, 250);
 
     return () => {
       clearTimeout(startDelay);

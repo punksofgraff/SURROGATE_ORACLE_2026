@@ -948,6 +948,7 @@ const OracleConversation = forwardRef(
       }
       isListeningRef.current = false;
       setIsListening(false);
+      micAutoRestartEnabledRef.current = false; // Disable auto-restart on manual stop!
       onListeningChangeRef.current?.(false);
       vadRef.current.reset();
       onUserSpeakingChangeRef.current?.(false, 0);

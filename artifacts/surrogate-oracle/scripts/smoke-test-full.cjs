@@ -411,9 +411,13 @@ async function runSmoke() {
   // Hit the edge function directly via Supabase REST
   try {
     const { supabaseUrl, supabaseKey } = await page.evaluate(() => {
+      let meta = null;
+      try {
+        meta = new Function('return import.meta')();
+      } catch (e) {}
       return {
-        supabaseUrl: import.meta?.env?.VITE_SUPABASE_URL || window.__VITE_SUPABASE_URL__ || '',
-        supabaseKey: import.meta?.env?.VITE_SUPABASE_ANON_KEY || window.__VITE_SUPABASE_ANON_KEY__ || '',
+        supabaseUrl: meta?.env?.VITE_SUPABASE_URL || window.__VITE_SUPABASE_URL__ || '',
+        supabaseKey: meta?.env?.VITE_SUPABASE_ANON_KEY || window.__VITE_SUPABASE_ANON_KEY__ || '',
       };
     }).catch(() => ({ supabaseUrl: '', supabaseKey: '' }));
 

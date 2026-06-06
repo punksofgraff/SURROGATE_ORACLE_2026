@@ -199,7 +199,10 @@ export function useLoreSequence(
         // lSamplesBuffered reaches its final value before the worklet ring buffer
         // finishes draining. Without this margin, handleAwakeTransition fires with
         // lore audio still playing — knife phase starts mid-sentence.
-        if (rawRatio >= 0.999 && getBufferedMsRef.current!() > 50) {
+        // We MUST also verify that Gemini's turn is actually complete (!audioGateRef.current).
+        // Otherwise, a network stall will cause rawRatio to hit 1.0 prematurely.
+        const isAudioFinished = !audioGateRef.current && (rawRatio >= 0.98 || (buffMs > 0 && playMs >= buffMs - 150));
+        if (isAudioFinished && buffMs > 50) {
           if (completionTimerRef.current === null) {
             completionTimerRef.current = setTimeout(() => {
               setCompletedLines(LORE_SEQUENCE);

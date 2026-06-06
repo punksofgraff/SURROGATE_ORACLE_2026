@@ -258,7 +258,6 @@ export function SurrogateOracleImmersion() {
   // ── Transition: Terminal → Awakened ──────────────────────────────────────
   const handleAwakeTransition = useCallback(() => {
     markLoreCompleted();
-    setIsAudioPlaying(false); // Mute radio when entering knife journey
     trackOracleEvent({ 
       event: 'oracle_terminal_completed', 
       total_ms: Date.now() - ((window as any).__terminal_start || Date.now()) 
@@ -536,21 +535,43 @@ export function SurrogateOracleImmersion() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [scenePhase]);
 
-  const MUSIC_LANDING_VOLUME  = 0.175; // Down 30% from 0.25
-  const MUSIC_LORE_VOLUME     = 0;     // ABSOLUTE SILENCE (Proof Test)
-  const MUSIC_KNIFE_VOLUME    = 0.07;  // Down 30% from 0.10
+  const MUSIC_LANDING_VOLUME  = 0.10;   // 40% of original 0.25 (guarded against VAD leak)
+  const MUSIC_LORE_VOLUME     = 0;      // ABSOLUTE SILENCE (Proof Test)
+  const MUSIC_KNIFE_VOLUME    = 0.04;   // 40% of original 0.10 (guarded against VAD leak)
   const MUSIC_OFF_VOLUME      = 0;
 
   useEffect(() => {
     let nextTarget: number;
     let rampMs: number | undefined;
-    if (isOracleSpeaking) nextTarget = MUSIC_OFF_VOLUME;
-    else if (scenePhase === 'dormant') nextTarget = MUSIC_LANDING_VOLUME;
-    else if (scenePhase === 'terminal') { nextTarget = MUSIC_OFF_VOLUME; rampMs = 800; } // Quick duck to zero
-    else if (scenePhase === 'awakened') { nextTarget = MUSIC_KNIFE_VOLUME; rampMs = 1500; }
-    else nextTarget = MUSIC_OFF_VOLUME;
-    if (Math.abs(nextTarget - targetVol) > 0.0001) fadeToVolume(nextTarget, rampMs);
-  }, [scenePhase, isOracleSpeaking, targetVol, fadeToVolume]);
+
+    if (!isAudioPlaying) {
+      nextTarget = MUSIC_OFF_VOLUME;
+    } else if (isOracleSpeaking) {
+      nextTarget = MUSIC_OFF_VOLUME;
+    } else if (isMicActive) {
+      // Duck completely when mic is active to avoid acoustic VAD battle
+      nextTarget = MUSIC_OFF_VOLUME;
+      rampMs = 80;
+    } else if (scenePhase === 'dormant') {
+      nextTarget = MUSIC_LANDING_VOLUME;
+    } else if (scenePhase === 'terminal') {
+      nextTarget = MUSIC_OFF_VOLUME;
+      rampMs = 800; // Quick duck to zero
+    } else if (scenePhase === 'awakened') {
+      nextTarget = MUSIC_KNIFE_VOLUME;
+      rampMs = 1500;
+    } else if (scenePhase === 'oracle') {
+      // Restore music volume when in oracle mode and mic is NOT active!
+      nextTarget = MUSIC_KNIFE_VOLUME;
+      rampMs = 1500;
+    } else {
+      nextTarget = MUSIC_OFF_VOLUME;
+    }
+
+    if (Math.abs(nextTarget - targetVol) > 0.0001) {
+      fadeToVolume(nextTarget, rampMs);
+    }
+  }, [scenePhase, isOracleSpeaking, isMicActive, isAudioPlaying, targetVol, fadeToVolume]);
 
   useEffect(() => {
     if (!audioRef.current) return;

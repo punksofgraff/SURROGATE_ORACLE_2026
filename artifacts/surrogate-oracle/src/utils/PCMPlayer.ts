@@ -32,6 +32,7 @@ export class PCMPlayer {
   private lTrackingActive: boolean = false;
   private lFirstFeedTime: number = 0;
   private lSamplesBuffered: number = 0;
+  private glitchTimer: ReturnType<typeof setTimeout> | null = null;
 
   private panner: PannerNode | null = null;
   private masterGain: GainNode | null = null;
@@ -290,6 +291,7 @@ export class PCMPlayer {
         this.lFirstFeedTime = this.workletNode
           ? ct + 0.05
           : (this.nextStartTime > ct ? this.nextStartTime : ct + 0.05);
+        this.startLoreAudioGlitcher();
       }
       this.lSamplesBuffered += data.length;
     }
@@ -348,6 +350,7 @@ export class PCMPlayer {
 
   public stop() {
     this.onProcessingChange?.(false);
+    this.stopLoreAudioGlitcher();
     if (this.workletNode) {
       this.workletNode.port.postMessage({ type: 'stop' });
     }
@@ -373,5 +376,61 @@ export class PCMPlayer {
     const t = this.context.currentTime + 0.08;
     this.panner.positionX.linearRampToValueAtTime(normX * 0.55, t);
     this.panner.positionZ.linearRampToValueAtTime(-0.8 + normZ * 0.35, t);
+  }
+
+  private startLoreAudioGlitcher() {
+    if (this.glitchTimer) return;
+
+    const runGlitchLoop = () => {
+      if (!this.lTrackingActive || !this.isPlaying) {
+        this.stopLoreAudioGlitcher();
+        return;
+      }
+
+      // Schedule the next glitch in 1.2s to 3s
+      const nextDelay = 1200 + Math.random() * 1800;
+      this.glitchTimer = setTimeout(() => {
+        if (!this.lTrackingActive || !this.isPlaying) return;
+
+        this.applyAudioGlitchBurst();
+        runGlitchLoop();
+      }, nextDelay);
+    };
+
+    runGlitchLoop();
+  }
+
+  private stopLoreAudioGlitcher() {
+    if (this.glitchTimer) {
+      clearTimeout(this.glitchTimer);
+      this.glitchTimer = null;
+    }
+  }
+
+  private applyAudioGlitchBurst() {
+    if (!this.transmissionFilter || !this.masterGain) return;
+    const now = this.context.currentTime;
+    
+    // Glitch duration: 80ms to 200ms
+    const duration = (80 + Math.random() * 120) / 1000;
+    
+    const origFreq = 1200;
+    const origQ = 0.1;
+    const origGain = this.masterGain.gain.value;
+
+    // Randomize biquad parameters for the glitch duration
+    const glitchFreq = 300 + Math.random() * 2700; // Sweep between 300Hz and 3000Hz
+    const glitchQ = 10 + Math.random() * 15;        // High narrow resonance
+    const glitchVolumeMultiplier = 0.15 + Math.random() * 0.25; // Signal fade-out (drop to 15-40% volume)
+
+    // Apply the glitch instantly
+    this.transmissionFilter.frequency.setValueAtTime(glitchFreq, now);
+    this.transmissionFilter.Q.setValueAtTime(glitchQ, now);
+    this.masterGain.gain.setValueAtTime(origGain * glitchVolumeMultiplier, now);
+
+    // Schedule restore
+    this.transmissionFilter.frequency.setValueAtTime(origFreq, now + duration);
+    this.transmissionFilter.Q.setValueAtTime(origQ, now + duration);
+    this.masterGain.gain.setValueAtTime(origGain, now + duration);
   }
 }

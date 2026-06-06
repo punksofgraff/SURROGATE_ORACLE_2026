@@ -133,13 +133,13 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
               setLandedChars(count);
               onQuestionProgress?.(count, total);
               if (count >= total) { clearInterval(intervalRef.current!); intervalRef.current = null; }
-            }, 54);
+            }, 46);
             rafRef.current = null;
             return;
           }
 
           if (buffMs > 50) {
-            const msPerChar = 56; // Calibrated for Oracle speech cadence (approx 15-18 chars/sec)
+            const msPerChar = 48; // Calibrated for Oracle speech cadence (approx 15-18 chars/sec, boosted 15% faster)
             const estimatedTotalMs = total * msPerChar;
             const maxPlayMs = Math.min(playMs, buffMs);
             let ratio = Math.min(maxPlayMs / estimatedTotalMs, 1);
@@ -176,14 +176,14 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
         };
         rafRef.current = requestAnimationFrame(tick);
       } else {
-        // ── Fallback: fixed 54ms/char clock ───────────────────────────────────
+        // ── Fallback: fixed 46ms/char clock ───────────────────────────────────
         let count = 0;
         intervalRef.current = setInterval(() => {
           count++;
           setLandedChars(count);
           onQuestionProgress?.(count, total);
           if (count >= total) { clearInterval(intervalRef.current!); intervalRef.current = null; }
-        }, 54);
+        }, 46);
       }
     }, 850);
 

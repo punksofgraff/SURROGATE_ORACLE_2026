@@ -155,7 +155,7 @@ export function useLoreSequence(
         } else {
           prevRatioRef.current = rawRatio;
         }
-        const ratio = Math.min(rawRatio * 1.265, 1); // typography runs 26.5% faster (10% increase from 15%)
+        const ratio = Math.min(rawRatio * 1.83, 1); // typography runs 10% faster (1.83 instead of 1.66)
         const globalTarget = Math.floor(ratio * LORE_TOTAL_CHARS);
 
         // Find which line the global char index falls in
@@ -271,13 +271,13 @@ export function useLoreSequence(
         const line = LORE_SEQUENCE[lineIdx];
         charIdx++;
         setCurrentLine(line.slice(0, charIdx));
-        nextCharAt = now + 18; // 10% faster (was 20ms)
+        nextCharAt = now + 7; // Even faster character typing (was 8ms, boosted 10%)
 
         if (charIdx >= line.length) {
           setCompletedLines(prev => [...prev, line]);
           setCurrentLine('');
           inBeat    = true;
-          beatUntil = now + Math.floor((BEAT_DELAYS[lineIdx] ?? 2500) * 0.765); // 10% faster delays (was 0.85)
+          beatUntil = now + Math.floor((BEAT_DELAYS[lineIdx] ?? 2500) * 0.38); // Even shorter delays (38% of original delay, boosted 10%)
         }
       }
 

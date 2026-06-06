@@ -502,7 +502,7 @@ export function SurrogateOracleImmersion() {
     setTimeout(() => {
       const fullStory = LORE_SEQUENCE.join('\n');
       const seed = `[CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". SYSTEM OVERRIDE: The Seeker has drawn their blade. Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). First, read the following question EXACTLY word-for-word, verbatim, but speak slowly (20% slower than normal). Do not add any filler before or after the question. Question:]\n"${q}"\n[After reading the question verbatim, pause, and then begin your answer.]`;
-      oracleConversationRef.current?.sendTextMessage(seed, true);
+      oracleConversationRef.current?.startSession(seed);
     }, 1200);
   };
 
@@ -530,9 +530,9 @@ export function SurrogateOracleImmersion() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [scenePhase]);
 
-  const MUSIC_LANDING_VOLUME  = 0.07;   // Globally reduced by 30% from 0.10
+  const MUSIC_LANDING_VOLUME  = 0.0525; // Globally reduced by an additional 25% (was 0.07)
   const MUSIC_LORE_VOLUME     = 0;      // ABSOLUTE SILENCE (Proof Test)
-  const MUSIC_KNIFE_VOLUME    = 0.028;  // Globally reduced by 30% from 0.04
+  const MUSIC_KNIFE_VOLUME    = 0.021;  // Globally reduced by an additional 25% (was 0.028)
   const MUSIC_OFF_VOLUME      = 0;
 
   useEffect(() => {
@@ -576,6 +576,7 @@ export function SurrogateOracleImmersion() {
 
   useEffect(() => {
     if (scenePhase === 'awakened') {
+      connection.flushPlayback(); // Stop any leftover lore narration/ambient sounds before knife selection
       connection.initializePCMPlayer();
       import('../lib/supabase').then(({ supabase }) => {
         supabase.auth.getUser().then(({ data }) => { if (data?.user?.email) setUserEmail(data.user.email); });
@@ -583,7 +584,6 @@ export function SurrogateOracleImmersion() {
       setTimeout(() => logStep('ORACLE ANNOUNCES TERRITORIES', 'ok'), 1200);
     }
     if (scenePhase === 'oracle') {
-      oracleConversationRef.current?.startSession();
       connection.setTransmissionQ(0.01, 200);
     }
   }, [scenePhase, connection]);
@@ -1019,6 +1019,7 @@ export function SurrogateOracleImmersion() {
               onStartTracking={connection.startQuestionTracking}
               getPlaybackMs={connection.getQuestionPlaybackMs}
               getBufferedMs={connection.getQuestionBufferedMs}
+              onActiveCardChange={() => connection.flushPlayback()}
             />
           </motion.div>
         )}
@@ -1039,6 +1040,11 @@ export function SurrogateOracleImmersion() {
           onDisconnected={() => setIsGeminiConnected(false)}
           onListeningChange={setIsMicActive}
           onMicWillStart={() => fadeToVolume(0, 80)}
+          onMicClick={(willListen) => {
+            if (willListen) {
+              setIsAudioPlaying(false);
+            }
+          }}
           onUserSpeakingChange={(speaking) => setIsUserSpeaking(prev => prev !== speaking ? speaking : prev)}
           isVisible={isOracleMode}
           autoStart={false}

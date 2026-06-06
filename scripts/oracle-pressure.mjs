@@ -337,12 +337,12 @@ async function testOracle(page, pass, fail) {
   // sessionBootedRef is true before oracle phase starts, so startSession() is
   // correctly a no-op and logs SESSION ALREADY ACTIVE instead.
   var allSteps = await getSteps(page);
-  var bootSent    = allSteps.find(function(s) { return s.label.includes('__ORACLE_BOOT__'); });
+  var bootSent    = allSteps.find(function(s) { return s.label.includes('__ORACLE_BOOT__') || s.label.includes('CUSTOM BOOT path triggered'); });
   var alreadyActive = allSteps.find(function(s) { return s.label.includes('SESSION ALREADY ACTIVE'); });
 
   if (bootSent) {
-    pass.push('step: __ORACLE_BOOT__ sent (first boot in oracle phase)');
-    console.log('    ✓  __ORACLE_BOOT__ path confirmed in step log');
+    pass.push('step: __ORACLE_BOOT__ / CUSTOM BOOT sent (first boot in oracle phase)');
+    console.log('    ✓  __ORACLE_BOOT__ / CUSTOM BOOT path confirmed in step log');
   } else if (alreadyActive) {
     // Spec-correct: Oracle was booted in terminal phase (greeting played during lore).
     // Oracle phase startSession() is a no-op — session already active.

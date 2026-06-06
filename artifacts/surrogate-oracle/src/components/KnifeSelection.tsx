@@ -79,9 +79,10 @@ interface KnifeSelectionProps {
   onStartTracking?: () => void;
   getPlaybackMs?: () => number;
   getBufferedMs?: () => number;
+  onActiveCardChange?: () => void;
 }
 
-export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect, onSpeakQuestion, onQuestionProgress, onStartTracking, getPlaybackMs, getBufferedMs }: KnifeSelectionProps) {
+export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect, onSpeakQuestion, onQuestionProgress, onStartTracking, getPlaybackMs, getBufferedMs, onActiveCardChange }: KnifeSelectionProps) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [isEmitting, setIsEmitting] = useState(false);
   const [landedChars, setLandedChars] = useState(0);
@@ -105,6 +106,9 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
     setLandedChars(0);
     if (selectedKnifeIndex !== null) return;
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+
+    // Flush any currently playing audio from the previous card immediately on change
+    onActiveCardChange?.();
 
     const startDelay = setTimeout(() => {
       // Reset per-question audio tracking BEFORE sending text to Oracle

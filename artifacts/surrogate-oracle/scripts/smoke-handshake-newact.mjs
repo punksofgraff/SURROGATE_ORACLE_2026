@@ -484,9 +484,9 @@ async function run() {
     loreNarPath?.label || 'lore narration path step not found');
 
   // Oracle greeting fires at oracle phase entry (not during lore)
-  const oracleBootSteps = steps.filter(s => s.label.includes('__ORACLE_BOOT__ path triggered'));
+  const oracleBootSteps = steps.filter(s => s.label.includes('__ORACLE_BOOT__ path triggered') || s.label.includes('CUSTOM BOOT path triggered'));
   const oracleBootIdx   = oracleBootSteps.length > 0
-    ? steps.findIndex(s => s.label.includes('__ORACLE_BOOT__ path triggered'))
+    ? steps.findIndex(s => s.label.includes('__ORACLE_BOOT__ path triggered') || s.label.includes('CUSTOM BOOT path triggered'))
     : -1;
   const oracleEntryIdx  = steps.findIndex(s => s.label.includes('ORACLE PHASE ENTERED'));
   check('handshake', 'Oracle greeting fires at Act 4 entry (after knife selection)',

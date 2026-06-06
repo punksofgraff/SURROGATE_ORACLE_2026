@@ -143,6 +143,7 @@ interface OracleConversationProps {
   onConnected?: () => void;
   onListeningChange?: (isListening: boolean) => void;
   onMicWillStart?: () => void;
+  onMicClick?: (willListen: boolean) => void;
   onTypeModeChange?: (isTypeMode: boolean) => void;
   initialTotemLevel?: number;
   isVisible?: boolean;
@@ -225,6 +226,7 @@ const OracleConversation = forwardRef(
       isGuidedTour,
       onSessionEnd, onTurnComplete, onPortraitRequest, onSeekerIdentified,
       onMicWillStart,
+      onMicClick,
     } = props;
 
     const [isConnected, setIsConnected] = useState(false);
@@ -341,6 +343,9 @@ const OracleConversation = forwardRef(
 
     const onMicWillStartRef = useRef(onMicWillStart);
     useEffect(() => { onMicWillStartRef.current = onMicWillStart; }, [onMicWillStart]);
+
+    const onMicClickRef = useRef(onMicClick);
+    useEffect(() => { onMicClickRef.current = onMicClick; }, [onMicClick]);
 
     // VAD ring — updated via rAF, no React re-renders
     const vadScoreRef = useRef<number>(0);
@@ -887,6 +892,12 @@ const OracleConversation = forwardRef(
           }
           onUserSpeakingChangeRef.current?.(result.isSpeaking, result.vadScore);
 
+          if (result.isSpeaking && isOracleSpeakingRef.current) {
+            logStep('LOCAL BARGE-IN TRIGGERED', 'warn');
+            onBargeInRef.current?.();
+            setOracleSpeaking(false);
+          }
+
           if (result.isTurnEnd) {
             setIsOracleThinking(true);
           }
@@ -1061,6 +1072,10 @@ const OracleConversation = forwardRef(
           }
         } else {
           logStep('SESSION ALREADY ACTIVE — terminal boot confirmed', 'ok');
+          if (bootMessage) {
+            logStep('SESSION ALREADY ACTIVE — sending custom bootMessage as normal text', 'ok');
+            sendText(bootMessage, true);
+          }
         }
       },
 
@@ -1112,7 +1127,9 @@ const OracleConversation = forwardRef(
           <motion.button
             onClick={(e) => {
               e.stopPropagation();
-              isListening ? stopMic() : startMic();
+              const nextState = !isListening;
+              onMicClickRef.current?.(nextState);
+              nextState ? startMic() : stopMic();
             }}
             className="oc-mic-trigger"
             animate={{

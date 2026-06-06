@@ -319,7 +319,7 @@ export function SurrogateOracleImmersion() {
     logStep('NARRATIVE SIGNAL ACTIVATED', 'ok');
 
     connection.initializePCMPlayer();
-    connection.setTransmissionQ(0.01, 0);
+    connection.setTransmissionQ(12, 0);
     connection.startLoreTracking();
 
     const fullStory = LORE_SEQUENCE.join('\n');

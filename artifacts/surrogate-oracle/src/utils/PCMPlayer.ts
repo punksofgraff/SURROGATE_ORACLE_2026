@@ -144,6 +144,7 @@ export class PCMPlayer {
           if (e.data.type === 'viseme' && this.onViseme) {
             this.onViseme(e.data.state);
           } else if (e.data.type === 'ended') {
+            this.isPlaying = false;
             this.onProcessingChange?.(false);
           } else if (e.data.type === 'buffer-full') {
             // Should never fire with 60s buffer — if it does, a response is truly enormous
@@ -271,6 +272,7 @@ export class PCMPlayer {
     await this.workletReady;
 
     this.onProcessingChange?.(true);
+    this.isPlaying = true;
 
     // Capture when this question's audio actually starts playing.
     // For legacy mode: nextStartTime is the scheduled play time of this chunk.

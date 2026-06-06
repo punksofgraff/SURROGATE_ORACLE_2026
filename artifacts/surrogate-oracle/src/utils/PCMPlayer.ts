@@ -283,6 +283,7 @@ export class PCMPlayer {
         this.qFirstFeedTime = this.workletNode
           ? ct + 0.05
           : (this.nextStartTime > ct ? this.nextStartTime : ct + 0.05);
+        this.startLoreAudioGlitcher();
       }
       this.qSamplesBuffered += data.length;
     }
@@ -384,7 +385,7 @@ export class PCMPlayer {
     if (this.glitchTimer) return;
 
     const runGlitchLoop = () => {
-      if (!this.lTrackingActive || !this.isPlaying) {
+      if ((!this.lTrackingActive && !this.qTrackingActive) || !this.isPlaying) {
         this.stopLoreAudioGlitcher();
         return;
       }
@@ -392,7 +393,7 @@ export class PCMPlayer {
       // Schedule the next glitch in 1.2s to 3s
       const nextDelay = 1200 + Math.random() * 1800;
       this.glitchTimer = setTimeout(() => {
-        if (!this.lTrackingActive || !this.isPlaying) return;
+        if ((!this.lTrackingActive && !this.qTrackingActive) || !this.isPlaying) return;
 
         this.applyAudioGlitchBurst();
         runGlitchLoop();

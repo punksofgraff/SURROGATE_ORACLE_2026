@@ -149,14 +149,14 @@ export function useLoreSequence(
           return;
         }
 
-        // Use the actual lore-narration.mp3 duration (47.3s / 47304ms) as a lower bound for buffMs to prevent rushing during streaming or initial decode
-        let rawRatio = playMs / Math.max(buffMs, 47304);
-        if (rawRatio < prevRatioRef.current) {
-          rawRatio = prevRatioRef.current;
+        // The lore narration is a fixed length. Map typography exactly to 43 seconds.
+        let ratio = playMs / 43000;
+        if (ratio < prevRatioRef.current) {
+          ratio = prevRatioRef.current;
         } else {
-          prevRatioRef.current = rawRatio;
+          prevRatioRef.current = ratio;
         }
-        const ratio = Math.min(rawRatio * 1.83, 1); // typography runs 10% faster (1.83 instead of 1.66)
+        ratio = Math.min(ratio, 1);
         const globalTarget = Math.floor(ratio * LORE_TOTAL_CHARS);
 
         // Find which line the global char index falls in
@@ -201,8 +201,8 @@ export function useLoreSequence(
         // finishes draining. Without this margin, handleAwakeTransition fires with
         // lore audio still playing — knife phase starts mid-sentence.
         // We MUST also verify that Gemini's turn is actually complete (!audioGateRef.current).
-        // Otherwise, a network stall will cause rawRatio to hit 1.0 prematurely.
-        const isAudioFinished = !audioGateRef.current && (rawRatio >= 0.98 || (buffMs > 0 && playMs >= buffMs - 150));
+        // Otherwise, a network stall will cause ratio to hit 1.0 prematurely.
+        const isAudioFinished = !audioGateRef.current && (ratio >= 0.99 || (buffMs > 0 && playMs >= buffMs - 150));
         if (isAudioFinished && buffMs > 50) {
           if (completionTimerRef.current === null) {
             completionTimerRef.current = setTimeout(() => {

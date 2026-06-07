@@ -164,8 +164,8 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
 
           if (buffMs > 50) {
             // Match voice to end of typing perfectly by tracking actual playback duration ratio
-            // Use expected slow spoken duration as a lower-bound denominator to prevent premature rushing during streaming (80ms/char for slow ritual pacing)
-            const expectedDurationMs = total * 80;
+            // Use expected fast spoken duration as a lower-bound denominator to prevent premature rushing during streaming (40ms/char for Oracle TTS pacing)
+            const expectedDurationMs = total * 40;
             let ratio = Math.min(playMs / Math.max(buffMs, expectedDurationMs), 1);
 
             // Monotonic filter: never let the typing ratio move backwards.

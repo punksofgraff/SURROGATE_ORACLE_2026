@@ -156,8 +156,7 @@ export function useLoreSequence(
         } else {
           prevRatioRef.current = rawRatio;
         }
-        // Change from 1.83 multiplier to 1.05 to keep typography perfectly matched with narration playback.
-        const ratio = Math.min(rawRatio * 1.05, 1);
+        const ratio = Math.min(rawRatio * 1.83, 1); // typography runs 10% faster (1.83 instead of 1.66)
         const globalTarget = Math.floor(ratio * LORE_TOTAL_CHARS);
 
         // Find which line the global char index falls in

@@ -1018,12 +1018,10 @@ export function SurrogateOracleImmersion() {
                 // to be flushed and the responses to collide (fast-forward).
                 if (isOracleSpeaking) return;
                 connection.setTransmissionQ(12, 0);
-                oracleConversationRef.current?.sendTextMessage(`You are transmitting a signal. You must say the following exact words out loud: "${question}". Speak ONLY these exact words, with no preamble.`, true);
+                oracleConversationRef.current?.sendTextMessage(`Speak only these exact words verbatim, nothing before or after: ${question}`, true);
               }}
               onQuestionProgress={(charCount, total) => { const progress = Math.min(charCount / total, 1); const q = 12 * (1 - progress) + 0.1 * progress; connection.setTransmissionQ(q, 54); }}
               onStartTracking={connection.startQuestionTracking}
-              getPlaybackMs={connection.getQuestionPlaybackMs}
-              getBufferedMs={connection.getQuestionBufferedMs}
               onActiveCardChange={() => connection.flushPlayback()}
             />
           </motion.div>

@@ -207,13 +207,13 @@ export class PCMPlayer {
     return this.analyser;
   }
 
-  /** Narrow (Q=12) → sci-fi tunnel; open (Q=0.1) → full presence. rampMs=0 = instant. */
+  /** Narrow (Q=12) → sci-fi tunnel; open (Q≈0) → full presence. rampMs=0 = instant. */
   public setTransmissionQ(q: number, rampMs: number = 0): void {
     if (!this.transmissionFilter) return;
     const now = this.context.currentTime;
-    const safeQ = Math.max(0.1, q);
+    const safeQ = Math.max(0.0001, q);
     this.transmissionFilter.Q.cancelScheduledValues(now);
-    this.transmissionFilter.Q.setValueAtTime(Math.max(0.1, this.transmissionFilter.Q.value), now);
+    this.transmissionFilter.Q.setValueAtTime(Math.max(0.0001, this.transmissionFilter.Q.value), now);
     if (rampMs <= 0) {
       this.transmissionFilter.Q.setValueAtTime(safeQ, now);
     } else {
@@ -359,6 +359,7 @@ export class PCMPlayer {
     this.sourceNodes = [];
     this.nextStartTime = 0;
     this.isPlaying = false;
+    this.lTrackingActive = false;
   }
 
   public close() {

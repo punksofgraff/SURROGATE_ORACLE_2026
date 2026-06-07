@@ -78,18 +78,17 @@ interface KnifeSelectionProps {
   onQuestionProgress?: (charCount: number, total: number) => void;
   // Audio-sync hooks — when provided, the typewriter follows actual PCM playback position.
   onStartTracking?: () => void;
-  getPlaybackMs?: () => number;
-  getBufferedMs?: () => number;
   onActiveCardChange?: () => void;
 }
 
-export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKnifeIndex, onSelect, onSpeakQuestion, onQuestionProgress, onStartTracking, getPlaybackMs, getBufferedMs, onActiveCardChange }: KnifeSelectionProps) {
+export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKnifeIndex, onSelect, onSpeakQuestion, onQuestionProgress, onStartTracking, onActiveCardChange }: KnifeSelectionProps) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [isEmitting, setIsEmitting] = useState(false);
   const [landedChars, setLandedChars] = useState(0);
-  const rafRef      = useRef<number | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const spokenQuestionRef = useRef<string | null>(null);
+  const rafRef                 = useRef<number | null>(null);
+  const intervalRef            = useRef<ReturnType<typeof setInterval> | null>(null);
+  const spokenQuestionRef      = useRef<string | null>(null);
+  const prevOracleSpeakingRef  = useRef(false);
 
   // Emission glow on every card cycle (sound removed)
   useEffect(() => {
@@ -100,7 +99,7 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
   }, [activeIdx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Question text: letter-by-letter reveal driven by actual PCM playback position.
-  // When audio-sync hooks are wired (getPlaybackMs/getBufferedMs), each character
+  // Typewriter runs at fixed 54ms/char; Oracle is triggered at 2/3 of chars revealed.
   // appears proportionally to how far through the audio Oracle has spoken — word-perfect.
   // Falls back to fixed 54ms/char interval when hooks are absent.
   const question = KNIFE_QUESTIONS[activeIdx].question;
@@ -110,117 +109,56 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
       return;
     }
 
-    // If we have already initiated/spoken this question, do not restart
-    if (spokenQuestionRef.current === question) {
-      return;
-    }
-
-    // If the Oracle is currently speaking (e.g. intro/greeting or transition from another card),
-    // wait for silence before sending the question narration request.
-    if (isOracleSpeaking) {
-      return;
-    }
+    if (spokenQuestionRef.current === question) return;
 
     setLandedChars(0);
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
 
-    // Flush any currently playing audio from the previous card immediately on change
     onActiveCardChange?.();
 
+    // Wait for any ongoing Oracle speech (e.g. territories announcement on first card)
+    if (isOracleSpeaking) return;
+
+    const total = question.length;
+    let count = 0;
+
+    // Fire Oracle immediately (before typing starts) to absorb Gemini's ~3s response latency.
+    // Voice arrives mid-type rather than seconds after the card finishes.
+    spokenQuestionRef.current = question;
+    onStartTracking?.();
+    onSpeakQuestion?.(question);
+
     const startDelay = setTimeout(() => {
-      // Mark as spoken before calling onSpeakQuestion to prevent race-condition re-triggers
-      spokenQuestionRef.current = question;
-
-      // Reset per-question audio tracking BEFORE sending text to Oracle
-      onStartTracking?.();
-      onSpeakQuestion?.(question);
-
-      const total = question.length;
-
-      if (getPlaybackMs && getBufferedMs) {
-        // ── Audio-driven path: cursor follows real PCM playback position ──────
-        // Falls back to fixed-interval if audio hasn't arrived within 5.0s —
-        // handles the case where onSpeakQuestion was silently skipped (Oracle
-        // was mid-speech) so the question tracker was reset but no audio came.
-        let prevChars = 0;
-        let prevRatio = 0;
-        const audioWaitStart = performance.now();
-        const tick = () => {
-          const playMs  = getPlaybackMs();
-          const buffMs  = getBufferedMs();
-
-          // No audio after 5.0s — fall back to fixed-interval so text isn't blank
-          if (buffMs < 50 && performance.now() - audioWaitStart > 5000) {
-            let count = prevChars;
-            intervalRef.current = setInterval(() => {
-              count++;
-              setLandedChars(count);
-              onQuestionProgress?.(count, total);
-              if (count >= total) { clearInterval(intervalRef.current!); intervalRef.current = null; }
-            }, 46);
-            rafRef.current = null;
-            return;
-          }
-
-          if (buffMs > 50) {
-            // Match voice to end of typing perfectly by tracking actual playback duration ratio
-            // Use expected fast spoken duration as a lower-bound denominator to prevent premature rushing during streaming (40ms/char for Oracle TTS pacing)
-            const expectedDurationMs = total * 40;
-            let ratio = Math.min(playMs / Math.max(buffMs, expectedDurationMs), 1);
-
-            // Monotonic filter: never let the typing ratio move backwards.
-            if (ratio < prevRatio) {
-              ratio = prevRatio;
-            } else {
-              prevRatio = ratio;
-            }
-
-            const target = Math.floor(ratio * total);
-            if (target > prevChars) {
-              prevChars = target;
-              setLandedChars(target);
-              onQuestionProgress?.(target, total);
-            }
-
-            if (ratio < 0.999) {
-              rafRef.current = requestAnimationFrame(tick);
-            } else {
-              setLandedChars(total);
-              onQuestionProgress?.(total, total);
-              rafRef.current = null;
-            }
-          } else {
-            rafRef.current = requestAnimationFrame(tick);
-          }
-        };
-        rafRef.current = requestAnimationFrame(tick);
-      } else {
-        // ── Fallback: fixed 46ms/char clock ───────────────────────────────────
-        let count = 0;
-        intervalRef.current = setInterval(() => {
-          count++;
-          setLandedChars(count);
-          onQuestionProgress?.(count, total);
-          if (count >= total) { clearInterval(intervalRef.current!); intervalRef.current = null; }
-        }, 46);
-      }
-    }, 250);
+      intervalRef.current = setInterval(() => {
+        count++;
+        setLandedChars(count);
+        onQuestionProgress?.(count, total);
+        if (count >= total) {
+          clearInterval(intervalRef.current!);
+          intervalRef.current = null;
+        }
+      }, 54);
+    }, 400);
 
     return () => {
       clearTimeout(startDelay);
-      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
   }, [activeIdx, selectedKnifeIndex, question, isOracleSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-cycle while nothing selected
+  // Advance to next card after Oracle finishes speaking the current question.
+  // Detects the isOracleSpeaking falling edge and only cycles if this card was actually spoken.
   useEffect(() => {
     if (selectedKnifeIndex !== null) return;
-    const id = setInterval(() => {
+    const justFinished = prevOracleSpeakingRef.current && !isOracleSpeaking;
+    prevOracleSpeakingRef.current = isOracleSpeaking;
+    if (!justFinished || spokenQuestionRef.current !== question) return;
+    const id = setTimeout(() => {
       setActiveIdx(i => (i + 1) % KNIFE_QUESTIONS.length);
-    }, 16000);  // 16s per territory — prevents the Oracle from being cut off mid-thought
-    return () => clearInterval(id);
-  }, [selectedKnifeIndex]);
+    }, 3000);
+    return () => clearTimeout(id);
+  }, [isOracleSpeaking, selectedKnifeIndex, question]);
 
   const kq = KNIFE_QUESTIONS[activeIdx];
   const isSelected = selectedKnifeIndex !== null;

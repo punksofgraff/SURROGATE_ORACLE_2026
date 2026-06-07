@@ -71,6 +71,7 @@ export const KNIFE_QUESTIONS: KnifeQuestion[] = [
 
 interface KnifeSelectionProps {
   isGeminiConnected: boolean;
+  isOracleSpeaking: boolean;
   selectedKnifeIndex: number | null;
   onSelect: (question: string, index: number) => void;
   onSpeakQuestion?: (question: string) => void;
@@ -82,12 +83,13 @@ interface KnifeSelectionProps {
   onActiveCardChange?: () => void;
 }
 
-export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect, onSpeakQuestion, onQuestionProgress, onStartTracking, getPlaybackMs, getBufferedMs, onActiveCardChange }: KnifeSelectionProps) {
+export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKnifeIndex, onSelect, onSpeakQuestion, onQuestionProgress, onStartTracking, getPlaybackMs, getBufferedMs, onActiveCardChange }: KnifeSelectionProps) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [isEmitting, setIsEmitting] = useState(false);
   const [landedChars, setLandedChars] = useState(0);
   const rafRef      = useRef<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const spokenQuestionRef = useRef<string | null>(null);
 
   // Emission glow on every card cycle (sound removed)
   useEffect(() => {
@@ -103,14 +105,32 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
   // Falls back to fixed 54ms/char interval when hooks are absent.
   const question = KNIFE_QUESTIONS[activeIdx].question;
   useEffect(() => {
+    if (selectedKnifeIndex !== null) {
+      spokenQuestionRef.current = null;
+      return;
+    }
+
+    // If we have already initiated/spoken this question, do not restart
+    if (spokenQuestionRef.current === question) {
+      return;
+    }
+
+    // If the Oracle is currently speaking (e.g. intro/greeting or transition from another card),
+    // wait for silence before sending the question narration request.
+    if (isOracleSpeaking) {
+      return;
+    }
+
     setLandedChars(0);
-    if (selectedKnifeIndex !== null) return;
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
 
     // Flush any currently playing audio from the previous card immediately on change
     onActiveCardChange?.();
 
     const startDelay = setTimeout(() => {
+      // Mark as spoken before calling onSpeakQuestion to prevent race-condition re-triggers
+      spokenQuestionRef.current = question;
+
       // Reset per-question audio tracking BEFORE sending text to Oracle
       onStartTracking?.();
       onSpeakQuestion?.(question);
@@ -119,7 +139,7 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
 
       if (getPlaybackMs && getBufferedMs) {
         // ── Audio-driven path: cursor follows real PCM playback position ──────
-        // Falls back to fixed-interval if audio hasn't arrived within 1.5s —
+        // Falls back to fixed-interval if audio hasn't arrived within 5.0s —
         // handles the case where onSpeakQuestion was silently skipped (Oracle
         // was mid-speech) so the question tracker was reset but no audio came.
         let prevChars = 0;
@@ -129,8 +149,8 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
           const playMs  = getPlaybackMs();
           const buffMs  = getBufferedMs();
 
-          // No audio after 1.5s — fall back to fixed-interval so text isn't blank
-          if (buffMs < 50 && performance.now() - audioWaitStart > 1500) {
+          // No audio after 5.0s — fall back to fixed-interval so text isn't blank
+          if (buffMs < 50 && performance.now() - audioWaitStart > 5000) {
             let count = prevChars;
             intervalRef.current = setInterval(() => {
               count++;
@@ -144,7 +164,9 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
 
           if (buffMs > 50) {
             // Match voice to end of typing perfectly by tracking actual playback duration ratio
-            let ratio = Math.min(playMs / buffMs, 1);
+            // Use expected slow spoken duration as a lower-bound denominator to prevent premature rushing during streaming (80ms/char for slow ritual pacing)
+            const expectedDurationMs = total * 80;
+            let ratio = Math.min(playMs / Math.max(buffMs, expectedDurationMs), 1);
 
             // Monotonic filter: never let the typing ratio move backwards.
             if (ratio < prevRatio) {
@@ -189,7 +211,7 @@ export function KnifeSelection({ isGeminiConnected, selectedKnifeIndex, onSelect
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     };
-  }, [activeIdx, selectedKnifeIndex, question.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeIdx, selectedKnifeIndex, question, isOracleSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-cycle while nothing selected
   useEffect(() => {

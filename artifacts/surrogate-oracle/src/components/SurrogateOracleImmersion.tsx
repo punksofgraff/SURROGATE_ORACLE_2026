@@ -1005,6 +1005,7 @@ export function SurrogateOracleImmersion() {
             )}
             <KnifeSelection
               isGeminiConnected={isGeminiConnected}
+              isOracleSpeaking={isOracleSpeaking}
               selectedKnifeIndex={journey.selectedKnifeIndex}
               onSelect={handleKnifeClick}
               onSpeakQuestion={(question) => {

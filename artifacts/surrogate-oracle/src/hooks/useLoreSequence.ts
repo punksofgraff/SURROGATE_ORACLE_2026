@@ -149,13 +149,15 @@ export function useLoreSequence(
           return;
         }
 
-        let rawRatio = playMs / buffMs;
+        // Use the actual lore-narration.mp3 duration (47.3s / 47304ms) as a lower bound for buffMs to prevent rushing during streaming or initial decode
+        let rawRatio = playMs / Math.max(buffMs, 47304);
         if (rawRatio < prevRatioRef.current) {
           rawRatio = prevRatioRef.current;
         } else {
           prevRatioRef.current = rawRatio;
         }
-        const ratio = Math.min(rawRatio * 1.83, 1); // typography runs 10% faster (1.83 instead of 1.66)
+        // Change from 1.83 multiplier to 1.05 to keep typography perfectly matched with narration playback.
+        const ratio = Math.min(rawRatio * 1.05, 1);
         const globalTarget = Math.floor(ratio * LORE_TOTAL_CHARS);
 
         // Find which line the global char index falls in

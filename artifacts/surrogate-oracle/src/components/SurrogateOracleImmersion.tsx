@@ -620,11 +620,23 @@ export function SurrogateOracleImmersion() {
         supabase.auth.getUser().then(({ data }) => { if (data?.user?.email) setUserEmail(data.user.email); });
       });
       setTimeout(() => logStep('ORACLE ANNOUNCES TERRITORIES', 'ok'), 1200);
+      // First-visit audible orientation — speaks before the first knife question fires.
+      // KnifeSelection's isOracleSpeaking guard defers the first question until this finishes.
+      // Returning seekers (echo.last_archetype set) already know the flow — skip for them.
+      if (!echo?.last_archetype) {
+        setTimeout(() => {
+          connection.setTransmissionQ(12, 0);
+          oracleConversationRef.current?.sendTextMessage(
+            `Speak only these exact words verbatim, nothing before or after: "Three signals have opened. Each carries a question. The one that pulls at you — that's yours."`,
+            true
+          );
+        }, 900);
+      }
     }
     if (scenePhase === 'oracle') {
       connection.setTransmissionQ(0.01, 200);
     }
-  }, [scenePhase, connection]);
+  }, [scenePhase, connection, echo?.last_archetype]);
 
   useEffect(() => {
     (window as any).__oracle_handleAudio = (url: string) => connection.handleOracleResponse(url);

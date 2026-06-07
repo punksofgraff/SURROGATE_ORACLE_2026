@@ -818,7 +818,15 @@ const OracleConversation = forwardRef(
         // both clean user closes AND Gemini context-limit / session-timeout drops).
         // userInitiatedCloseRef = real user exit; goawayReconnectRef = GOAWAY already
         // owns the reconnect (don't double-fire it here).
-        const wasActive = sessionBootedRef.current;
+        // isSessionReconnectRef covers the case where a reconnect attempt is rejected by
+        // Gemini before session.created fires (e.g. stale resume handle) — sessionBootedRef
+        // is already false at that point so wasActive would be false without this guard.
+        const wasActive = sessionBootedRef.current || isSessionReconnectRef.current;
+        // If a reconnect attempt was rejected before session.created (stale handle), clear
+        // it so the next attempt falls back to blind context injection instead of looping.
+        if (isSessionReconnectRef.current && !sessionBootedRef.current) {
+          resumeHandleRef.current = null;
+        }
         if (!userInitiatedCloseRef.current && !goawayReconnectRef.current && wasActive) {
           if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttemptsRef.current++;

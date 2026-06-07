@@ -25,6 +25,7 @@ export function useOracleConnection({
   const [error, setError]                       = useState<string | null>(null);
   const pcmPlayerRef           = useRef<PCMPlayer | null>(null);
   const isFirstChunkRef        = useRef(true);
+  const flushVersionRef        = useRef(0);
 
   // ── PRIMARY PATH: PCMPlayer init (synchronous, instant) ──────────────────
 
@@ -58,8 +59,13 @@ export function useOracleConnection({
     let pcmData: Int16Array | null   = data instanceof Int16Array ? data : null;
     let audioUrl: string | null      = typeof data === 'string' ? data : null;
 
+    // Capture current flush version to prevent feeding stale async MP3 buffers
+    const capturedFlushVersion = flushVersionRef.current;
+
     if (pcmData) {
-      player.feed(pcmData);
+      if (capturedFlushVersion === flushVersionRef.current) {
+        player.feed(pcmData);
+      }
     } else if (audioUrl) {
       try {
         const resp     = await fetch(audioUrl);
@@ -91,7 +97,12 @@ export function useOracleConnection({
             int16[i] = Math.max(-32768, Math.min(32767, sample * 32768));
           }
         }
-        player.feed(int16);
+
+        if (capturedFlushVersion === flushVersionRef.current) {
+          player.feed(int16);
+        } else {
+          console.warn('[Audio] Ignored delayed MP3 feed because playback was flushed');
+        }
       } catch (err) {
         console.error('Audio URL decode failed:', err);
       }
@@ -139,6 +150,7 @@ export function useOracleConnection({
 
   // Stable callback — always reads live ref, never stale. Use for barge-in flush.
   const flushPlayback = useCallback(() => {
+    flushVersionRef.current += 1;
     pcmPlayerRef.current?.stop();
   }, []);
 

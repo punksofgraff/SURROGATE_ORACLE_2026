@@ -230,6 +230,10 @@ const OracleConversation = forwardRef(
     } = props;
 
     const [isConnected, setIsConnected] = useState(false);
+    // Connection health surfaced to the Seeker — expo Wi-Fi drops mid-ritual and a
+    // solo attendee needs to SEE "reconnecting" / a manual retry, not silent death.
+    const [reconnecting, setReconnecting] = useState(false);
+    const [reconnectExhausted, setReconnectExhausted] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const [isOracleSpeaking, _setIsOracleSpeaking] = useState(false);
     // Ref mirror of isOracleSpeaking — used in audio processing callback to avoid stale closure.
@@ -326,8 +330,14 @@ const OracleConversation = forwardRef(
 
     // Stable ref to latest connectToGemini so ws.onclose can call it without stale closure
     const connectToGeminiRef = useRef<() => void>(() => {});
-    // Reconnect attempt counter — resets on successful open, stops after 3 attempts
+    // Reconnect attempt counter — resets on successful open, stops after MAX attempts.
+    // 5 (was 3) gives a flaky expo-Wi-Fi room more room to recover before giving up.
+    const MAX_RECONNECT_ATTEMPTS = 5;
     const reconnectAttemptsRef = useRef(0);
+    // Set by the GOAWAY pre-emptive reconnect so ws.onclose knows that path already owns
+    // the reconnect — separate from userInitiatedCloseRef (a real user exit) so the two
+    // meanings never collide in a timing window.
+    const goawayReconnectRef = useRef(false);
     // Step 4 — latest native session-resumption handle from Gemini. Null until the server emits
     // a resumable SessionResumptionUpdate; passed on reconnect to restore context server-side.
     const resumeHandleRef = useRef<string | null>(null);
@@ -398,6 +408,17 @@ const OracleConversation = forwardRef(
     // Set true the first time startMic succeeds — gates the turnComplete auto-restart
     // so knife-phase Oracle voice-overs don't trigger mic before oracle phase starts.
     const micAutoRestartEnabledRef = useRef(false);
+
+    // Silent-mic recovery — a hands-on attendee with no staff needs to KNOW the mic
+    // died (muted/permission glitch/hardware), not just stare at a "TRANSMITTING" label
+    // that's secretly capturing digital silence. SILENCE_FLOOR (0.001) is true digital
+    // silence — far below the 0.035 VAD threshold — so in a loud expo hall a working mic
+    // never reads this low. Sustained sub-floor while listening = the mic is genuinely dead.
+    const SILENCE_FLOOR = 0.001;
+    const SILENCE_TIMEOUT_MS = 5000;
+    const [micSignalLost, setMicSignalLost] = useState(false);
+    const micSignalLostRef = useRef(false); // logic-read mirror of state (closure-safe)
+    const silentSinceRef = useRef<number | null>(null);
 
     const parseScore = (text: string): { clean: string; score: OracleScore | null } => {
       // [\s\S]*? matches across newlines — Gemini occasionally wraps the JSON
@@ -517,6 +538,9 @@ const OracleConversation = forwardRef(
       // Step 3 — context-window compression is forced on proxy-side; surface it for the audit log.
       logStep('CONTEXT COMPRESSION ACTIVE', 'ok');
       setIsConnected(true);
+      // Live again — clear any "reconnecting"/"lost" UI the Seeker may have seen.
+      setReconnecting(false);
+      setReconnectExhausted(false);
       onConnectedRef.current?.();
       };
 
@@ -534,7 +558,10 @@ const OracleConversation = forwardRef(
 
         if (msg.type === 'session.created') {
           logStep('GEMINI SESSION CREATED', 'ok');
-          const shouldBoot = (autoStart || pendingBootRef.current) && !sessionBootedRef.current;
+          // A reconnect of an already-booted session must re-enter the boot block so the
+          // context-restore path runs — otherwise (autoStart=false, pendingBootRef=false)
+          // the Oracle comes back silent after an expo-Wi-Fi drop.
+          const shouldBoot = (autoStart || pendingBootRef.current || isSessionReconnectRef.current) && !sessionBootedRef.current;
           
           if (shouldBoot) {
             sessionBootedRef.current = true;
@@ -653,7 +680,9 @@ const OracleConversation = forwardRef(
                 onSeekerIdentifiedRef.current?.(identity.name ?? null, identity.handles ?? []);
               }
               if (score) {
-                logStep(`ORACLE SCORE: ${score.sessionPhase} / ${score.alignment} / +${score.coinAward}c`, 'ok');
+                // Phase + totem motion in the live log so dress rehearsals can confirm
+                // real runs actually progress claim→evidence→cost→mirror, not just stall.
+                logStep(`ORACLE SCORE: ${score.sessionPhase} / ${score.alignment} / +${score.coinAward}c / totem ${score.totemLevel} (${score.totemAdvancement})`, 'ok');
                 if (score.coinAward > 0) {
                   onCoinsEarnedRef.current?.(score.coinAward);
                   sessionCoinsRef.current += score.coinAward;
@@ -687,6 +716,9 @@ const OracleConversation = forwardRef(
 
                 // Dispatch archetype title for Artifact Card display
                 if (score.archetypeTitle) {
+                  // The climax. Logged explicitly so we can verify the payoff is reached
+                  // in rehearsal — the whole ritual exists to arrive here.
+                  logStep(`✦ MIRROR REACHED — archetype: ${score.archetypeTitle}`, 'ok');
                   window.dispatchEvent(new CustomEvent('oracle:artifact', { detail: { archetypeTitle: score.archetypeTitle } }));
                 }
 
@@ -749,14 +781,14 @@ const OracleConversation = forwardRef(
             // before Gemini actually drops the wire — eliminates the cold-gap
             // the user would feel if we waited for onclose to trigger reconnect.
             logStep(`GEMINI GOAWAY (${msg.timeLeft}) — pre-emptive reconnect`, 'warn');
-            if (!userInitiatedCloseRef.current && sessionBootedRef.current && reconnectAttemptsRef.current < 3) {
+            if (!userInitiatedCloseRef.current && sessionBootedRef.current && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
               reconnectAttemptsRef.current++;
               isSessionReconnectRef.current = true;
               sessionBootedRef.current = false;
-              userInitiatedCloseRef.current = true; // suppress the onclose reconnect path
-              logStep(`SESSION REFRESH via GOAWAY (attempt ${reconnectAttemptsRef.current}/3)`, 'warn');
+              goawayReconnectRef.current = true; // tell onclose this path already owns the reconnect
+              logStep(`SESSION REFRESH via GOAWAY (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`, 'warn');
               setTimeout(() => {
-                userInitiatedCloseRef.current = false; // re-arm for future drops
+                goawayReconnectRef.current = false;
                 connectToGeminiRef.current();
               }, 200);
             }
@@ -784,15 +816,25 @@ const OracleConversation = forwardRef(
 
         // Reconnect on ANY close that wasn't triggered by the user (code 1000 covers
         // both clean user closes AND Gemini context-limit / session-timeout drops).
-        // Use userInitiatedCloseRef to tell the two apart.
+        // userInitiatedCloseRef = real user exit; goawayReconnectRef = GOAWAY already
+        // owns the reconnect (don't double-fire it here).
         const wasActive = sessionBootedRef.current;
-        if (!userInitiatedCloseRef.current && wasActive && reconnectAttemptsRef.current < 3) {
-          reconnectAttemptsRef.current++;
-          isSessionReconnectRef.current = true;
-          sessionBootedRef.current = false; // allow re-boot on new session
-          const delay = reconnectAttemptsRef.current * 1500;
-          logStep(`SESSION REFRESH (attempt ${reconnectAttemptsRef.current}/3)`, 'warn');
-          setTimeout(() => connectToGeminiRef.current(), delay);
+        if (!userInitiatedCloseRef.current && !goawayReconnectRef.current && wasActive) {
+          if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttemptsRef.current++;
+            isSessionReconnectRef.current = true;
+            sessionBootedRef.current = false; // allow re-boot on new session
+            setReconnecting(true);
+            // Linear backoff capped at 6s so a flaky room doesn't hammer the proxy.
+            const delay = Math.min(reconnectAttemptsRef.current * 1500, 6000);
+            logStep(`SESSION REFRESH (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`, 'warn');
+            setTimeout(() => connectToGeminiRef.current(), delay);
+          } else {
+            // Out of automatic attempts — surface a manual retry rather than dying silently.
+            setReconnecting(false);
+            setReconnectExhausted(true);
+            logStep('RECONNECT EXHAUSTED — manual retry surfaced', 'err');
+          }
         }
         userInitiatedCloseRef.current = false;
       };
@@ -878,11 +920,29 @@ const OracleConversation = forwardRef(
           const chunk: VADFrame = { data: base64, mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}` };
           const result = vadRef.current.processFrame(resampled, chunk);
           
-          if (result.vadScore < 0.001 && debugInfo.current.audioChunksSent % 100 === 0) {
-            console.warn('[Mic] Signal extremely low/silent:', result.vadScore.toFixed(6));
-          }
           vadScoreRef.current = result.vadScore;
           debugInfo.current.lastVadRms = result.vadScore;
+
+          // Silent-mic watchdog — only meaningful while listening and the Oracle isn't
+          // speaking (Oracle speech bleeds into the mic and keeps RMS above the floor).
+          // On a sustained dead mic we surface a tap-to-reopen affordance rather than
+          // silently auto-restarting (a dead mic is usually mute/permission/hardware —
+          // an automatic getUserMedia rarely fixes it and risks a flicker loop).
+          if (isListeningRef.current && !isOracleSpeakingRef.current) {
+            if (result.vadScore < SILENCE_FLOOR) {
+              if (silentSinceRef.current === null) {
+                silentSinceRef.current = Date.now();
+              } else if (Date.now() - silentSinceRef.current > SILENCE_TIMEOUT_MS && !micSignalLostRef.current) {
+                micSignalLostRef.current = true;
+                setMicSignalLost(true);
+                logStep('MIC SIGNAL LOST — silent 5s, mic likely dead', 'warn');
+              }
+            } else if (silentSinceRef.current !== null) {
+              // Live signal returned — clear the watchdog and any "lost" affordance.
+              silentSinceRef.current = null;
+              if (micSignalLostRef.current) { micSignalLostRef.current = false; setMicSignalLost(false); }
+            }
+          }
           if (result.vadState !== debugInfo.current.lastVadState) {
             debugInfo.current.lastVadState = result.vadState;
             debugInfo.current.recentMessages = [
@@ -939,6 +999,11 @@ const OracleConversation = forwardRef(
         setIsListening(true);
         isListeningRef.current = true;
         micAutoRestartEnabledRef.current = true;
+        // Fresh capture — reset the silent-mic watchdog so a prior dead episode's
+        // affordance/timestamp can't leak into this session.
+        silentSinceRef.current = null;
+        micSignalLostRef.current = false;
+        setMicSignalLost(false);
         onListeningChangeRef.current?.(true);
         logStep('MIC STARTED', 'ok');
       } catch (e) {
@@ -960,11 +1025,28 @@ const OracleConversation = forwardRef(
       isListeningRef.current = false;
       setIsListening(false);
       micAutoRestartEnabledRef.current = false; // Disable auto-restart on manual stop!
+      // Clear the silent-mic watchdog — no mic, no "signal lost" affordance.
+      silentSinceRef.current = null;
+      micSignalLostRef.current = false;
+      setMicSignalLost(false);
       onListeningChangeRef.current?.(false);
       vadRef.current.reset();
       onUserSpeakingChangeRef.current?.(false, 0);
       logStep('MIC STOPPED', 'ok');
     };
+
+    // Manual reconnect — fired from the "tap to reconnect" affordance after the
+    // automatic budget is exhausted. Resets the counter and restores context on the
+    // fresh socket (isSessionReconnectRef) so the conversation continues, not restarts.
+    const manualReconnect = useCallback(() => {
+      reconnectAttemptsRef.current = 0;
+      isSessionReconnectRef.current = true;
+      sessionBootedRef.current = false;
+      setReconnectExhausted(false);
+      setReconnecting(true);
+      logStep('MANUAL RECONNECT', 'warn');
+      connectToGeminiRef.current();
+    }, []);
 
     // Keep ref in sync so ws.onclose can reconnect via the latest instance
     useEffect(() => { connectToGeminiRef.current = connectToGemini; }, [connectToGemini]);
@@ -1174,6 +1256,65 @@ const OracleConversation = forwardRef(
                 </motion.span>
                 <span>READING THE SIGNAL</span>
               </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Silent-mic recovery — surfaces when the mic has gone dead while listening.
+              Tap re-opens the capture (stop + start). The one affordance a solo,
+              unstaffed attendee needs so a dead mic doesn't kill the whole session. */}
+          <AnimatePresence>
+            {micSignalLost && isListening && (
+              <motion.button
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="oc-status-pill"
+                onClick={(e) => { e.stopPropagation(); stopMic(); startMic(); }}
+                style={{
+                  pointerEvents: 'auto', cursor: 'pointer',
+                  color: '#b026ff', borderColor: 'rgba(176,38,255,0.5)',
+                  boxShadow: '0 0 18px rgba(176,38,255,0.45)',
+                }}
+              >
+                <MicOff size={12} />
+                <span>SIGNAL LOST — TAP TO REOPEN MIC</span>
+              </motion.button>
+            )}
+          </AnimatePresence>
+
+          {/* Connection health — automatic reconnect in progress, or exhausted with a
+              manual retry. Without this an expo-Wi-Fi drop reads as the Oracle just
+              going dead for a solo attendee. */}
+          <AnimatePresence>
+            {reconnecting && !reconnectExhausted && (
+              <motion.div
+                key="reconnecting"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: [0.5, 1, 0.5], y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ opacity: { repeat: Infinity, duration: 1.4, ease: 'easeInOut' }, y: { duration: 0.2 } }}
+                className="oc-status-pill"
+                style={{ color: 'rgba(0,255,204,0.85)', borderColor: 'rgba(0,255,204,0.3)' }}
+              >
+                <span>RE-ESTABLISHING SIGNAL…</span>
+              </motion.div>
+            )}
+            {reconnectExhausted && (
+              <motion.button
+                key="reconnect-lost"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="oc-status-pill"
+                onClick={(e) => { e.stopPropagation(); manualReconnect(); }}
+                style={{
+                  pointerEvents: 'auto', cursor: 'pointer',
+                  color: '#b026ff', borderColor: 'rgba(176,38,255,0.5)',
+                  boxShadow: '0 0 18px rgba(176,38,255,0.45)',
+                }}
+              >
+                <span>SIGNAL LOST — TAP TO RECONNECT</span>
+              </motion.button>
             )}
           </AnimatePresence>
         </div>

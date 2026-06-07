@@ -5,7 +5,7 @@
  * Handles phase transitions (dormant -> terminal -> awakened -> oracle)
  * and the ceremonial timings/SFX associated with each step.
  */
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { logStep } from '../components/CodeAuditor';
 import { 
   playActivationSfx, 
@@ -32,15 +32,25 @@ export function useOracleJourney({
 
   const alleyAmbienceStopRef = useRef<(() => void) | null>(null);
 
+  // Authoritative mirror of scenePhase for closure-safe transition guards. Synced from
+  // state, and set immediately on a transition so a same-tick double-call can't slip through.
+  const scenePhaseRef = useRef<ScenePhase>('dormant');
+  useEffect(() => { scenePhaseRef.current = scenePhase; }, [scenePhase]);
+
   const enterTerminal = useCallback(() => {
     if (scenePhase !== 'dormant') return;
     logStep('TAP → TERMINAL', 'ok');
+    scenePhaseRef.current = 'terminal';
     setScenePhase('terminal');
     playActivationSfx();
     alleyAmbienceStopRef.current = startAlleyAmbience();
   }, [scenePhase]);
 
   const awakeFromTerminal = useCallback(() => {
+    // Guard: only terminal→awakened. Blocks a stale lore-completion setTimeout from
+    // regressing the phase backward after the Seeker has already moved to knife/oracle.
+    if (scenePhaseRef.current !== 'terminal') return;
+    scenePhaseRef.current = 'awakened';
     logStep('LORE DONE → AWAKENED', 'ok');
     setScenePhase('awakened');
     

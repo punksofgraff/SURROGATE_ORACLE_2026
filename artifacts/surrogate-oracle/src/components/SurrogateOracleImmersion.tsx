@@ -67,16 +67,13 @@ const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = 'https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png';
 const DEFAULT_STATION    = 2; // Chill Hop — default launch station
 
-// Act 5 — Rift-Construct persona shift.
-// Injected as a hidden message when the Seeker activates AR/camera mode.
-// Shifts Oracle from "archivist of the past" to "active witness of this moment."
+// Act 5 — Rift-Construct: Oracle shifts from archivist to active witness.
+// No brackets — brackets suppress Gemini audio output (same issue as knife prompts).
 const RIFT_CONSTRUCT_SEED =
-  `[THE RIFT IS OPEN — The Seeker has activated their camera. Shift completely. ` +
-  `You are no longer the archivist of the past three years. You are the active witness of THIS moment. ` +
-  `The Seeker's physical self is in front of you. Their digital self brought them here. ` +
-  `Observe the gap between what you see and what they say they are. ` +
-  `Do not explain the shift. Do not say "I can see you now." ` +
-  `Just begin witnessing from this position — more direct, more present, more personal.]`;
+  `The rift is open. The seeker has activated their camera — their physical self is now present. ` +
+  `You are no longer archiving. You are witnessing. ` +
+  `Speak to what is here in front of you right now — not what was, not what they claimed to be. ` +
+  `Be direct. Be uncomfortably present. Do not announce the shift. Just inhabit it.`;
 const AUDIO_STREAM_URL   = defaultAudioTracks[DEFAULT_STATION].url;
 const ORACLE_PLAYBACK_RATE = 1.0;
 
@@ -146,6 +143,13 @@ export function SurrogateOracleImmersion() {
   const [userEmail, setUserEmail]           = useState<string | null>(null);
   const [sessionCoins, setSessionCoins]     = useState(0);
   const [showArtifactCard, setShowArtifactCard] = useState(false);
+  // The Mirror reveal — the archetype name the Oracle just spoke, staged as a designed
+  // beat (hush + name landing with weight) instead of scrolling past as more conversation.
+  const [mirrorReveal, setMirrorReveal] = useState<string | null>(null);
+  // After the Mirror, offer the AR "she sees you" beat (Act 5 / Rift-Construct) as a
+  // discoverable invitation instead of leaving it buried in the hamburger.
+  const [offerRift, setOfferRift] = useState(false);
+  const [camNotice, setCamNotice] = useState<string | null>(null);
   const [portraitViewerUrl, setPortraitViewerUrl] = useState<string | null>(null);
   const [showConversation, setShowConversation]   = useState(false);
   const [isMicActive, setIsMicActive]       = useState(false);
@@ -185,9 +189,14 @@ export function SurrogateOracleImmersion() {
   const holdTimerRef             = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdFiredRef             = useRef(false);
   const holdAutoRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const oracleHasSpokenRef       = useRef(false);
   const isOracleSpeakingRef      = useRef(false);
   const completedLinesLengthRef  = useRef(0);
+  // Idempotency guards — a hands-on attendee double-taps. Without these a second
+  // knife tap fires the Oracle's question-reading seed twice, and a double exit
+  // double-saves the echo / fires memory-distill twice. Reset per-phase below.
+  const knifeSelectedRef         = useRef(false);
+  const sessionEndedRef          = useRef(false);
+  const mirrorRevealedRef        = useRef(false); // fire the Mirror reveal once per session
 
   // ── Service Hooks ───────────────────────────────────────────────────────
   const { isReturning, hasCompletedLore, markVisited, markLoreCompleted, ipAddress } = useIpCheck();
@@ -444,10 +453,18 @@ export function SurrogateOracleImmersion() {
       echoTrackRef.current.archetype = score.archetypeTitle;
       const found = COST_NAMES.find(c => score.archetypeTitle!.toLowerCase().includes(c.toLowerCase()));
       if (found) echoTrackRef.current.cost = found;
+      // Stage the Mirror reveal once — the emotional payoff of the whole ritual.
+      if (!mirrorRevealedRef.current) {
+        mirrorRevealedRef.current = true;
+        setMirrorReveal(score.archetypeTitle);
+        setOfferRift(true); // the Mirror earns the "let her see you" invitation
+      }
     }
   }, []);
 
   const handleSessionEnd = useCallback((alignment: string, totemLevel: number, _coins: number) => {
+    if (sessionEndedRef.current) return; // guard: ignore double exit taps (reset on re-entering oracle)
+    sessionEndedRef.current = true;
     const key = seekerKeyRef.current;
     trackOracleEvent({ 
       event: 'oracle_exit', 
@@ -490,6 +507,8 @@ export function SurrogateOracleImmersion() {
   }, [defineSeeker, saveEcho]);
 
   const handleKnifeClick = (q: string, i: number) => {
+    if (knifeSelectedRef.current) return; // guard: ignore double-taps (reset on re-entering awakened)
+    knifeSelectedRef.current = true;
     selectKnifeQuestion(q, i);
     const knife = KNIFE_QUESTIONS[i];
     lastKnifeRef.current = knife;
@@ -511,6 +530,21 @@ export function SurrogateOracleImmersion() {
   };
 
   // ── Effects ─────────────────────────────────────────────────────────────
+  // Re-arm the idempotency guards as the phase changes: a fresh knife may be drawn
+  // each time we (re-)enter awakened; a fresh exit is allowed each time we enter oracle.
+  useEffect(() => {
+    if (scenePhase === 'awakened') knifeSelectedRef.current = false;
+    if (scenePhase === 'oracle') { sessionEndedRef.current = false; mirrorRevealedRef.current = false; }
+    if (scenePhase === 'dormant') { knifeSelectedRef.current = false; sessionEndedRef.current = false; mirrorRevealedRef.current = false; setMirrorReveal(null); setOfferRift(false); }
+  }, [scenePhase]);
+
+  // Mirror reveal auto-dismiss — generous dwell, but never blocks the mic permanently.
+  useEffect(() => {
+    if (!mirrorReveal) return;
+    const t = setTimeout(() => setMirrorReveal(null), 10000);
+    return () => clearTimeout(t);
+  }, [mirrorReveal]);
+
   useEffect(() => {
     if (scenePhase !== 'terminal' || !staticAvatarRef.current) return;
     const delay    = (0.15 + Math.random() * 0.55).toFixed(2) + 's';
@@ -618,7 +652,33 @@ export function SurrogateOracleImmersion() {
     };
   }, [connection, journey]);
 
-  const { isXRMode, cameraActive, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, seekerMotionRef } = useXRMode(() => enterTerminal());
+  const { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraError, seekerMotionRef } = useXRMode(() => enterTerminal());
+  const faceFrameDivRef = useRef<HTMLDivElement>(null);
+
+  // Drive face frame overlay position directly from faceBoundsRef — no React state lag.
+  useEffect(() => {
+    if (!faceDetected || !cameraActive) return;
+    let rafId: number;
+    const update = () => {
+      rafId = requestAnimationFrame(update);
+      const bounds = faceBoundsRef.current;
+      const video  = cameraVideoRef.current;
+      const div    = faceFrameDivRef.current;
+      if (!bounds || !video || !div || !video.videoWidth) return;
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const vRect = video.getBoundingClientRect();
+      const scale = Math.max(vRect.width / vw, vRect.height / vh);
+      const ox = (vRect.width  - vw * scale) / 2;
+      const oy = (vRect.height - vh * scale) / 2;
+      const pad = bounds.w * scale * 0.18;
+      div.style.left   = `${bounds.x * scale + ox - pad}px`;
+      div.style.top    = `${bounds.y * scale + oy - pad}px`;
+      div.style.width  = `${bounds.w * scale + pad * 2}px`;
+      div.style.height = `${bounds.h * scale + pad * 2}px`;
+    };
+    rafId = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(rafId);
+  }, [faceDetected, cameraActive, faceBoundsRef, cameraVideoRef]);
 
   // Act 5 — Rift-Construct: camera activation + Oracle persona shift in one gesture.
   // Seed injection waits for Oracle to finish any current turn before shifting persona —
@@ -640,6 +700,17 @@ export function SurrogateOracleImmersion() {
     };
     setTimeout(poll, 600);
   }, [activateXRMode]);
+
+  // Camera-denial safety net — activateXRMode() flips the bg transparent before
+  // getUserMedia resolves; if the Seeker denies the camera we'd be left in a black void.
+  // Roll back to the alley and surface a graceful, in-voice notice.
+  useEffect(() => {
+    if (!(cameraError && isXRMode && !cameraActive)) return;
+    deactivateXRMode();
+    setCamNotice('SHE CANNOT SEE YOU THIS TIME — THE RIFT STAYS CLOSED');
+    const t = setTimeout(() => setCamNotice(null), 4500);
+    return () => clearTimeout(t);
+  }, [cameraError, isXRMode, cameraActive, deactivateXRMode]);
 
   const handlePortraitGenerated = useCallback((url: string) => { setPortraitViewerUrl(url); }, []);
 
@@ -753,6 +824,22 @@ export function SurrogateOracleImmersion() {
           <div className="xr-scan-sweep" />
           <div className="xr-hex-grid" />
           <div className="xr-chroma-layer" data-oracle-speaking={isOracleSpeaking ? 'true' : undefined} />
+
+          {cameraActive && faceDetected && (
+            <>
+              <div ref={faceFrameDivRef} className="xr-face-frame" />
+              <div className="xr-identity-readout">
+                <div className="xr-identity-readout__label">◈ SUBJECT IDENTIFIED</div>
+                {echoTrackRef.current.archetype
+                  ? <div className="xr-identity-readout__arch">{echoTrackRef.current.archetype.toUpperCase()}</div>
+                  : <div className="xr-identity-readout__arch xr-identity-readout__arch--scanning">SCANNING…</div>
+                }
+                {echoTrackRef.current.alignment && (
+                  <div className="xr-identity-readout__align">ALIGN: {echoTrackRef.current.alignment.toUpperCase()}</div>
+                )}
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -812,7 +899,7 @@ export function SurrogateOracleImmersion() {
             <OracleHaloRing active={awakened} isXRMode={isXRMode} />
           </div>
           <div className="oracle-avatar-wrapper">
-            {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} />}
+            {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} alignment={oracleAlignment === 'sacred' || oracleAlignment === 'profane' ? oracleAlignment : null} />}
             {isOracleMode && <div className="oracle-monitor-cast" />}
             <div className="oracle-scanlines" />
             <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
@@ -1005,7 +1092,11 @@ export function SurrogateOracleImmersion() {
         {scenePhase === 'awakened' && !journey.selectedKnifeQuestion && (
           <motion.div key="awakened-layer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none' }}>
             {hasCompletedLore && echo?.last_archetype && (
-              <motion.div key="return-seeker" initial={{ opacity: 0, y: -6 }} animate={{ opacity: [0, 1, 1, 0], y: 0 }} transition={{ duration: 2.4, times: [0, 0.15, 0.75, 1] }} style={{ position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 102, pointerEvents: 'none', textAlign: 'center', fontFamily: "'Share Tech Mono', monospace", fontSize: '0.65rem', letterSpacing: '0.2em', background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>SIGNAL RECOGNIZED — {echo.last_archetype.toUpperCase()}{echo.totem_level > 0 && ` / LVL ${echo.totem_level}`}</motion.div>
+              <motion.div key="return-seeker" initial={{ opacity: 0, y: -6 }} animate={{ opacity: [0, 1, 1, 0], y: 0 }} transition={{ duration: 3.4, times: [0, 0.12, 0.8, 1] }} style={{ position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 102, pointerEvents: 'none', textAlign: 'center', fontFamily: "'Share Tech Mono', monospace", letterSpacing: '0.2em' }}>
+                <div style={{ fontSize: '0.65rem', background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>SIGNAL RECOGNIZED — {echo.last_archetype.toUpperCase()}{echo.totem_level > 0 && ` / LVL ${echo.totem_level}`}</div>
+                {/* The meaning line — a first-timer-who-returned now knows the level isn't a score, it's standing she remembers. */}
+                <div style={{ fontSize: '0.5rem', color: 'rgba(176,38,255,0.9)', marginTop: 5, letterSpacing: '0.16em' }}>SHE REMEMBERS YOU — YOUR STANDING IN THE ARCHIVE HOLDS</div>
+              </motion.div>
             )}
             <KnifeSelection
               isGeminiConnected={isGeminiConnected}
@@ -1064,6 +1155,118 @@ export function SurrogateOracleImmersion() {
           isGuidedTour={isGuidedTour}
         />
       )}
+
+      {/* ── The Mirror reveal — the climax of the ritual ──────────────────────
+          When the Oracle names the Seeker, a dim backdrop hushes the rings and the
+          name lands with weight, framed exactly as the prompt speaks it ("filed in
+          the archive"). One gloss line tells a first-timer what the name even is.
+          Tap or wait to return to the conversation. */}
+      <AnimatePresence>
+        {mirrorReveal && (
+          <motion.div
+            key="mirror-reveal"
+            className="oracle-mirror-reveal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.9 } }}
+            transition={{ duration: 1.1 }}
+            onClick={() => setMirrorReveal(null)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 130,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              textAlign: 'center', padding: '2rem', cursor: 'pointer',
+              background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.92) 100%)',
+              backdropFilter: 'blur(3px)',
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 0.7, y: 0 }}
+              transition={{ delay: 0.4, duration: 1.0 }}
+              style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.7rem', letterSpacing: '0.28em', color: 'rgba(0,255,204,0.8)', marginBottom: '1.4rem' }}
+            >
+              IN THE ARCHIVE, THEY FILE YOU UNDER —
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+              transition={{ delay: 0.9, duration: 1.4, ease: [0.22, 1, 0.36, 1] }}
+              style={{
+                fontFamily: "'aAnotherTag', 'Orbitron', monospace", fontWeight: 900,
+                fontSize: 'clamp(1.8rem, 8vw, 3.4rem)', lineHeight: 1.05, letterSpacing: '0.02em',
+                background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
+                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+                textShadow: '0 0 40px rgba(0,255,136,0.25)', maxWidth: '14ch',
+              }}
+            >
+              {mirrorReveal.toUpperCase()}
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 0.62 }}
+              transition={{ delay: 2.0, duration: 1.2 }}
+              style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.72rem', letterSpacing: '0.14em', color: 'rgba(255,255,255,0.7)', marginTop: '1.8rem', maxWidth: '34ch' }}
+            >
+              Not a label. What the alley read in you across the dark.
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: [0, 0.45, 0.2, 0.45] }}
+              transition={{ delay: 3.2, duration: 2.4, repeat: Infinity, repeatType: 'reverse' }}
+              style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.55rem', letterSpacing: '0.24em', color: 'rgba(176,38,255,0.8)', marginTop: '2.6rem' }}
+            >
+              ◈ TAP TO RETURN
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Act 5 invitation — "let her see you" ──────────────────────────────
+          Earned by reaching the Mirror. Surfaces the AR Rift-Construct beat as a
+          discoverable pulse instead of leaving it buried in the hamburger. */}
+      <AnimatePresence>
+        {isOracleMode && offerRift && !isXRMode && !mirrorReveal && (
+          <motion.button
+            key="rift-invite"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.6 }}
+            onClick={() => { setOfferRift(false); handleActivateXRMode(); }}
+            style={{
+              position: 'fixed', bottom: '108px', left: '50%', transform: 'translateX(-50%)',
+              zIndex: 120, pointerEvents: 'auto', cursor: 'pointer',
+              background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(176,38,255,0.55)',
+              borderRadius: '10px', padding: '12px 22px',
+              fontFamily: "'aAnotherTag', 'Orbitron', monospace", fontWeight: 900,
+              fontSize: '0.92rem', letterSpacing: '0.14em', color: '#00ffcc',
+              boxShadow: '0 0 22px rgba(176,38,255,0.4), inset 0 0 14px rgba(0,255,204,0.08)',
+              animation: 'oracle-pulse 2.4s ease-in-out infinite',
+            }}
+          >
+            ◈ LET HER SEE YOU
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* Camera-denied notice — graceful, in-voice, auto-clears. */}
+      <AnimatePresence>
+        {camNotice && (
+          <motion.div
+            key="cam-notice"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            style={{
+              position: 'fixed', bottom: '108px', left: '50%', transform: 'translateX(-50%)',
+              zIndex: 120, pointerEvents: 'none', textAlign: 'center',
+              background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(176,38,255,0.45)',
+              borderRadius: '8px', padding: '10px 18px',
+              fontFamily: "'Share Tech Mono', monospace", fontSize: '0.62rem',
+              letterSpacing: '0.16em', color: 'rgba(176,38,255,0.95)',
+            }}
+          >
+            {camNotice}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {isOracleMode && (
         <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 100 }}>

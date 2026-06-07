@@ -180,8 +180,11 @@ async function runSmoke() {
   const skipBtn = await page.$('button:has-text("SKIP"), .oracle-knife-skip, [class*="skip"]');
   record('knife', 'No skip button (must choose frequency)', !skipBtn ? 'pass' : 'fail');
 
-  // Pick card 2 (CONNECTION & DEBT) for interesting themes
-  await knifeCards[1].click();
+  // The carousel auto-cycles and remounts cards (fresh Framer key each cycle), so a
+  // handle grabbed earlier detaches before the click lands. Target the ACTIVE card via
+  // its CTA — only the active card renders .oracle-knife-cta — with a locator that
+  // re-resolves on each retry, then click whichever territory is currently presented.
+  await page.locator('.oracle-knife-card:has(.oracle-knife-cta)').first().click();
   await sleep(500);
 
   const postKnifeState = await page.getAttribute('.oracle-stage', 'data-oracle-state');

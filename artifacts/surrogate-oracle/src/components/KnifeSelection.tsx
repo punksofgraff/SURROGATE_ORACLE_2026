@@ -190,7 +190,7 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
       </div>
       <div className="oracle-knife-subheader">
         <ScrambleFragment
-          texts={['THE ONE ALREADY TRUE. THE EXCAVATION BEGINS THERE.']}
+          texts={['TAP THE ONE ALREADY TRUE. THE EXCAVATION BEGINS THERE.']}
           mode="typewriter"
           revealMs={20}
           holdMs={999999}
@@ -228,10 +228,10 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
                 key={cardKey}
                 className="oracle-knife-card"
                 initial={{
-                  scale: 0.05,
+                  scale: 0.4,
                   opacity: 0,
-                  y: -240,
-                  filter: 'blur(15px) brightness(4) saturate(0)'
+                  y: -120,
+                  filter: 'blur(8px) brightness(1.8) saturate(0.6)'
                 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20, filter: 'blur(4px)', transition: { duration: 0.35 } }}
                 animate={isSelected
@@ -240,14 +240,15 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
                       : { scale: 0.8, opacity: 0, filter: 'blur(10px) brightness(0.5)', x: 0 })
                   : (isThisActive
                       ? {
-                          scale:   [0.05, 0.75, 1.05, 1.00],
-                          opacity: [0,    0.95, 1.00, 0.91],
-                          y:       [-240, -40,  10,   0],
+                          // Softened entrance — settles in ~0.9s with no brightness flash
+                          // or scale overshoot, so the question is readable sooner.
+                          scale:   [0.4, 0.92, 1.0],
+                          opacity: [0,   1,    0.94],
+                          y:       [-120, 0,   0],
                           filter: [
-                            'blur(15px) brightness(4)  saturate(0)',
-                            'blur(5px)  brightness(2.5) saturate(2)',
-                            'blur(0px)  brightness(1.2) saturate(1.2)',
-                            'blur(0px)  brightness(1.0) saturate(1.0)'
+                            'blur(8px) brightness(1.8) saturate(0.6)',
+                            'blur(0px) brightness(1.1) saturate(1.05)',
+                            'blur(0px) brightness(1.0) saturate(1.0)'
                           ],
                           x: 0,
                           zIndex: 10
@@ -264,10 +265,10 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
                 transition={isThisSelected
                   ? { duration: 1.5, ease: [0.4, 0, 1, 1] }
                   : (isThisActive && !isSelected)
-                    ? { 
-                        duration: 1.2, 
+                    ? {
+                        duration: 0.9,
                         ease: [0.23, 1, 0.32, 1],
-                        times: [0, 0.45, 0.65, 1] 
+                        times: [0, 0.6, 1]
                       }
                     : { duration: 0.8, ease: 'easeOut' }
                 }
@@ -358,9 +359,10 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
                   })() : kq.question}
                 </div>
 
-                {/* CTA */}
+                {/* CTA — "DRAW THIS ONE" reads as an unambiguous choice of THIS card
+                    (and nods to drawing the blade), where "SELECT FREQUENCY" read as abstract. */}
                 {!isSelected && isThisActive && (
-                  <div className="oracle-knife-cta">◈ SELECT FREQUENCY</div>
+                  <div className="oracle-knife-cta">◈ DRAW THIS ONE</div>
                 )}
               </motion.div>
             );

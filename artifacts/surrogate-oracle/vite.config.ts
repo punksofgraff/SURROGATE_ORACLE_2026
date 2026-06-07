@@ -62,6 +62,12 @@ export default defineConfig({
     // Injected at build time — use import.meta.env.VITE_BUILD_ID in components
     'import.meta.env.VITE_BUILD_ID': JSON.stringify(BUILD_ID),
   },
+  // Strip console/debugger from production builds — keeps demo diagnostics in `pnpm dev`
+  // but removes ~76 console.* calls (noise + minor cost) from a built/preview deploy.
+  // logStep() (the live HUD relay) is unaffected.
+  esbuild: {
+    drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+  },
   plugins: [
     react(),
     tailwindcss(),

@@ -3278,6 +3278,9 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   text-align: center;
   text-shadow: 0 1px 14px rgba(0, 0, 0, 0.98), 0 0 30px rgba(0, 0, 0, 0.6);
   max-width: 28ch;
+  /* Let taps fall through to the card — a finger (or test) landing on an
+     animating question letter must still select the card, not get intercepted. */
+  pointer-events: none;
 }
 
 /* shimmer replaced by letter-by-letter JS gradient landing */

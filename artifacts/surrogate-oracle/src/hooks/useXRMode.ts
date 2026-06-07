@@ -34,13 +34,22 @@ const THREE_MathUtils = THREE.MathUtils;
 
 export interface SeekerMotion {
   phoneTilt: { x: number; y: number }; // normalized -1 to 1 (DeviceOrientation)
-  facePos:  { x: number; y: number }; // normalized -1 to 1 (Camera-based analysis - placeholder)
+  facePos:  { x: number; y: number }; // normalized -1 to 1 (FaceDetector or skin-tone centroid)
+}
+
+/** Natural-video-pixel bounding box of detected face, for AR overlay positioning. */
+export interface FaceBounds {
+  x: number; y: number; w: number; h: number;
 }
 
 export interface UseXRModeReturn {
   isXRMode: boolean;
   /** Camera passthrough is ACTIVE (user opted in). Separate from isXRMode (context). */
   cameraActive: boolean;
+  /** True when a face was detected in the last ~1.5s. */
+  faceDetected: boolean;
+  /** Latest face bounding box in natural video pixel coords. Read in RAF loops — not state. */
+  faceBoundsRef: React.RefObject<FaceBounds | null>;
   /** Activate full XR mode + camera from hamburger menu. */
   activateXRMode: () => void;
   /** Deactivate XR mode — back to alley. */
@@ -107,64 +116,109 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     return () => window.removeEventListener('deviceorientation', handleOrientation);
   }, [isXRMode, cameraActive]);
 
-  // ── Motion Scoping (Camera-based luminance centroid) ─────────────────────────
-  // Samples a 40×30 thumbnail of the camera frame each tick.
-  // Computes a luminance-weighted centroid — faces are typically the brightest
-  // region in a dark scene.  No ML required; runs at full 60fps on any device.
+  // ── Face Tracking ──────────────────────────────────────────────────────────
+  // Primary: Shape Detection API FaceDetector (Chrome/Android — hardware-accelerated).
+  // Fallback: YCrCb skin-tone centroid on a 60×45 thumbnail. Both beat luminance
+  // centroid which tracks bright lights, not faces.
+  const [faceDetected, setFaceDetected] = useState(false);
+  const faceBoundsRef = useRef<FaceBounds | null>(null);
+  const faceDetectedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (!cameraActive) return;
 
-    // Wait for the video element to be attached and playing
     let rafId: number;
+    let frameCount = 0;
+    let detecting = false;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hasFaceAPI = 'FaceDetector' in window;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const detector = hasFaceAPI ? new (window as any).FaceDetector({ fastMode: true, maxDetectedFaces: 1 }) : null;
+
     const canvas = document.createElement('canvas');
-    canvas.width = 40;
-    canvas.height = 30;
+    canvas.width = 60;
+    canvas.height = 45;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
-    // Smoothed position — prevents jitter on low-contrast frames
     let smoothX = 0;
     let smoothY = 0;
-    const ALPHA = 0.12; // EMA smoothing factor
+    const ALPHA = 0.12;
 
-    const tick = () => {
-      rafId = requestAnimationFrame(tick);
-      const video = cameraVideoRef.current;
-      if (!video || video.readyState < 2 || video.videoWidth === 0) return;
-
-      ctx.drawImage(video, 0, 0, 40, 30);
-      const { data } = ctx.getImageData(0, 0, 40, 30);
-
-      let totalLum = 0, wx = 0, wy = 0;
-      for (let py = 0; py < 30; py++) {
-        for (let px = 0; px < 40; px++) {
-          const idx = (py * 40 + px) * 4;
-          // BT.709 luminance weights
-          const lum = 0.2126 * data[idx] + 0.7152 * data[idx + 1] + 0.0722 * data[idx + 2];
-          totalLum += lum;
-          wx += lum * px;
-          wy += lum * py;
-        }
-      }
-
-      if (totalLum > 0) {
-        // Normalize to -1…1, mirror X because front cam is mirrored
-        const rawX = -(wx / totalLum / 40 * 2 - 1);
-        const rawY =  (wy / totalLum / 30 * 2 - 1);
-        smoothX = smoothX + ALPHA * (rawX - smoothX);
-        smoothY = smoothY + ALPHA * (rawY - smoothY);
-      }
-
+    const updateGaze = (rawX: number, rawY: number) => {
+      smoothX += ALPHA * (rawX - smoothX);
+      smoothY += ALPHA * (rawY - smoothY);
       seekerMotionRef.current.facePos = {
         x: THREE_MathUtils.clamp(smoothX, -1, 1),
         y: THREE_MathUtils.clamp(smoothY, -1, 1),
       };
     };
 
+    const markFaceFound = (bb: { x: number; y: number; width: number; height: number }, vw: number, vh: number) => {
+      faceBoundsRef.current = { x: bb.x, y: bb.y, w: bb.width, h: bb.height };
+      // Mirror X for Oracle gaze: front cam raw coords are un-mirrored in the browser
+      const cx = -(bb.x + bb.width  / 2) / vw * 2 + 1;
+      const cy = -((bb.y + bb.height / 2) / vh * 2 - 1);
+      updateGaze(cx, cy);
+      if (faceDetectedTimerRef.current) clearTimeout(faceDetectedTimerRef.current);
+      setFaceDetected(true);
+      // Hold "detected" for 1.5s after the last confirmed frame to avoid flicker
+      faceDetectedTimerRef.current = setTimeout(() => {
+        faceBoundsRef.current = null;
+        setFaceDetected(false);
+      }, 1500);
+    };
+
+    // YCrCb skin-tone centroid fallback — runs every frame when FaceDetector unavailable.
+    // Peer et al. skin rule: YCrCb thresholds reliably isolate face skin vs. background.
+    const skinCentroidTick = () => {
+      const video = cameraVideoRef.current;
+      if (!video || video.readyState < 2 || video.videoWidth === 0) return;
+      ctx.drawImage(video, 0, 0, 60, 45);
+      const { data } = ctx.getImageData(0, 0, 60, 45);
+      let totalW = 0, wx = 0, wy = 0;
+      for (let py = 0; py < 45; py++) {
+        for (let px = 0; px < 60; px++) {
+          const i = (py * 60 + px) * 4;
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+          const yy  =  0.299 * r + 0.587 * g + 0.114 * b;
+          const cr  = (r - yy) * 0.713 + 128;
+          const cb  = (b - yy) * 0.564 + 128;
+          if (yy > 40 && cr > 133 && cr < 177 && cb > 77 && cb < 127) {
+            totalW += yy; wx += yy * px; wy += yy * py;
+          }
+        }
+      }
+      if (totalW > 800) {
+        const rawX = -(wx / totalW / 60 * 2 - 1);
+        const rawY =  (wy / totalW / 45 * 2 - 1);
+        updateGaze(rawX, rawY);
+      }
+    };
+
+    const tick = () => {
+      rafId = requestAnimationFrame(tick);
+      frameCount++;
+      const video = cameraVideoRef.current;
+      if (!video || video.readyState < 2 || video.videoWidth === 0) return;
+
+      if (detector && frameCount % 4 === 0 && !detecting) {
+        detecting = true;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        detector.detect(video).then((faces: any[]) => {
+          detecting = false;
+          if (faces.length > 0) markFaceFound(faces[0].boundingBox, video.videoWidth, video.videoHeight);
+        }).catch(() => { detecting = false; skinCentroidTick(); });
+      } else if (!detector) {
+        skinCentroidTick();
+      }
+    };
+
     rafId = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(rafId);
-      ctx.clearRect(0, 0, 40, 30);
+      if (faceDetectedTimerRef.current) clearTimeout(faceDetectedTimerRef.current);
     };
   }, [cameraActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -323,5 +377,5 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     try { window.parent.postMessage({ type: 'oracle:camera-ready' }, '*'); } catch {}
   }, [isXRMode, cameraReady]);
 
-  return { isXRMode, cameraActive, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraReady, cameraError, markerActive, autoStart, seekerMotionRef };
+  return { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraReady, cameraError, markerActive, autoStart, seekerMotionRef };
 }

@@ -66,9 +66,30 @@ export function useOracleConnection({
         const arrayBuf = await resp.arrayBuffer();
         const audioBuf = await player.getContext().decodeAudioData(arrayBuf);
         const rawData  = audioBuf.getChannelData(0);
-        const int16    = new Int16Array(rawData.length);
-        for (let i = 0; i < rawData.length; i++) {
-          int16[i] = Math.max(-32768, Math.min(32767, rawData[i] * 32768));
+        
+        // Resample the decoded audio data to exactly 24000Hz (the rate expected by PCMPlayer)
+        // to prevent pitch/speed stretching on systems where the AudioContext runs at 44.1kHz or 48kHz.
+        const targetRate = 24000;
+        const sourceRate = audioBuf.sampleRate;
+        let int16: Int16Array;
+        
+        if (sourceRate === targetRate) {
+          int16 = new Int16Array(rawData.length);
+          for (let i = 0; i < rawData.length; i++) {
+            int16[i] = Math.max(-32768, Math.min(32767, rawData[i] * 32768));
+          }
+        } else {
+          const ratio = targetRate / sourceRate;
+          const targetLength = Math.floor(rawData.length * ratio);
+          int16 = new Int16Array(targetLength);
+          for (let i = 0; i < targetLength; i++) {
+            const srcIdx = i / ratio;
+            const lo = Math.floor(srcIdx);
+            const hi = Math.min(lo + 1, rawData.length - 1);
+            const frac = srcIdx - lo;
+            const sample = rawData[lo] * (1 - frac) + rawData[hi] * frac;
+            int16[i] = Math.max(-32768, Math.min(32767, sample * 32768));
+          }
         }
         player.feed(int16);
       } catch (err) {

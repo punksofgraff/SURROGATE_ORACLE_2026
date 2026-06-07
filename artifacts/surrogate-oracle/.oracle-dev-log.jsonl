@@ -7518,3 +7518,25 @@
 {"label":"TAP 1 → ACTIVATING NARRATIVE","status":"ok","_t":1780788784305}
 {"label":"AUDIO HARD MUTE INITIATED (800ms)","status":"ok","_t":1780788784314}
 {"label":"PLAYING ARCHIVE RECORDING","status":"ok","_t":1780788784399}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1780792174709}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1780792174776}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1780792174889}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1780792175168}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1780792175172}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1780792175738}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1780792175796}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1780792176236}
+{"label":"AUDIO SPINE INITIALIZED","status":"ok","_t":1780792176939}
+{"label":"AUDIO CONTEXT STATE: suspended","status":"pending","_t":1780792176946}
+{"label":"TAP → TERMINAL","status":"ok","_t":1780792177687}
+{"label":"SEEKER ECHO LOAD FAILED","status":"warn","_t":1780792177744}
+{"label":"NARRATIVE SIGNAL ACTIVATED","status":"ok","_t":1780792177928}
+{"label":"TAP 1 → ACTIVATING NARRATIVE","status":"ok","_t":1780792177966}
+{"label":"AUDIO HARD MUTE INITIATED (800ms)","status":"ok","_t":1780792178190}
+{"label":"TAP → TERMINAL","status":"ok","_t":1780792178549}
+{"label":"SEEKER ECHO LOAD FAILED","status":"warn","_t":1780792178613}
+{"label":"TAP 1 → ACTIVATING NARRATIVE","status":"ok","_t":1780792178789}
+{"label":"NARRATIVE SIGNAL ACTIVATED","status":"ok","_t":1780792178849}
+{"label":"PLAYING ARCHIVE RECORDING","status":"ok","_t":1780792179089}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1780792179138}
+{"label":"PLAYING ARCHIVE RECORDING","status":"ok","_t":1780792179289}

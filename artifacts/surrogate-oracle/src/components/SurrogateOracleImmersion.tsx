@@ -330,6 +330,10 @@ export function SurrogateOracleImmersion() {
       const check = await fetch(LORE_AUDIO_URL, { method: 'HEAD' });
       if (check.ok && check.headers.get('content-type')?.includes('audio')) {
         logStep('PLAYING ARCHIVE RECORDING', 'ok');
+        // Pass a flag to handleOracleResponse or just let it fetch
+        // Actually, handleOracleResponse is in useOracleConnection. We should abort if scenePhase changed.
+        // The safest way is to just let useOracleConnection handle it, but connection doesn't know about scenePhase.
+        // Let's implement an abort controller or check if lore is still active.
         connection.handleOracleResponse(LORE_AUDIO_URL);
         return;
       }
@@ -1014,7 +1018,7 @@ export function SurrogateOracleImmersion() {
                 // to be flushed and the responses to collide (fast-forward).
                 if (isOracleSpeaking) return;
                 connection.setTransmissionQ(12, 0);
-                oracleConversationRef.current?.sendTextMessage(`[SIGNAL TRANSMISSION — speak: "${question}". Speak ONLY these exact words verbatim, with absolutely no preamble, no commentary, and no other text. Speak with high vocal resonance, slowly (20% slower than normal), as a transmission filter.]`, true);
+                oracleConversationRef.current?.sendTextMessage(`You are transmitting a signal. You must say the following exact words out loud: "${question}". Speak ONLY these exact words, with no preamble.`, true);
               }}
               onQuestionProgress={(charCount, total) => { const progress = Math.min(charCount / total, 1); const q = 12 * (1 - progress) + 0.1 * progress; connection.setTransmissionQ(q, 54); }}
               onStartTracking={connection.startQuestionTracking}

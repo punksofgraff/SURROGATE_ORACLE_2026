@@ -77,6 +77,21 @@ const RIFT_CONSTRUCT_SEED =
 const AUDIO_STREAM_URL   = defaultAudioTracks[DEFAULT_STATION].url;
 const ORACLE_PLAYBACK_RATE = 1.0;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const PORTRAIT_REVEAL_VARIANTS: Record<string, any> = {
+  hidden:  { opacity: 0, scaleX: 1, scaleY: 0.06, filter: 'brightness(8) saturate(0) blur(0px)' },
+  scanIn:  { opacity: 1, scaleX: 1, scaleY: 0.06, filter: 'brightness(8) saturate(0) blur(0px)',
+             transition: { duration: 0.08 } },
+  unfurl:  { opacity: 1, scaleX: 1, scaleY: 1,    filter: 'brightness(3) saturate(0.3) blur(4px)',
+             transition: { duration: 0.35, ease: [0.22, 1, 0.36, 1] } },
+  phosphor:{ opacity: 1, scaleX: 1, scaleY: 1,    filter: 'brightness(1.4) saturate(1) blur(0px)',
+             transition: { duration: 0.5, ease: 'easeOut' } },
+  settled: { opacity: 1, scaleX: 1, scaleY: 1,    filter: 'brightness(1) saturate(1) blur(0px)',
+             transition: { duration: 0.8, ease: 'easeOut' } },
+  exit:    { opacity: 0, scale: 1.06,
+             transition: { duration: 0.6 } },
+};
+
 const SILENCE_VISEME_STATE: VisemeState = { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
 
 const DEBRIS = [
@@ -151,6 +166,7 @@ export function SurrogateOracleImmersion() {
   const [offerRift, setOfferRift] = useState(false);
   const [camNotice, setCamNotice] = useState<string | null>(null);
   const [portraitViewerUrl, setPortraitViewerUrl] = useState<string | null>(null);
+  const [portraitRevealPhase, setPortraitRevealPhase] = useState<'hidden'|'scanIn'|'unfurl'|'phosphor'|'settled'>('hidden');
   const [showConversation, setShowConversation]   = useState(false);
   const [isMicActive, setIsMicActive]       = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
@@ -197,6 +213,7 @@ export function SurrogateOracleImmersion() {
   const knifeSelectedRef         = useRef(false);
   const sessionEndedRef          = useRef(false);
   const mirrorRevealedRef        = useRef(false); // fire the Mirror reveal once per session
+  const portraitTriggeredRef     = useRef(false); // fire portrait generation once per session
 
   // ── Service Hooks ───────────────────────────────────────────────────────
   const { isReturning, hasCompletedLore, markVisited, markLoreCompleted, ipAddress } = useIpCheck();
@@ -213,8 +230,6 @@ export function SurrogateOracleImmersion() {
       if (el) {
         el.dataset.viseme = state.viseme;
         el.dataset.amplitude = state.amplitude.toFixed(3);
-        if (state.amplitude < 0.01) el.style.opacity = '0.98';
-        else el.style.opacity = '1.0';
       }
     }
   }, []);
@@ -534,8 +549,8 @@ export function SurrogateOracleImmersion() {
   // each time we (re-)enter awakened; a fresh exit is allowed each time we enter oracle.
   useEffect(() => {
     if (scenePhase === 'awakened') knifeSelectedRef.current = false;
-    if (scenePhase === 'oracle') { sessionEndedRef.current = false; mirrorRevealedRef.current = false; }
-    if (scenePhase === 'dormant') { knifeSelectedRef.current = false; sessionEndedRef.current = false; mirrorRevealedRef.current = false; setMirrorReveal(null); setOfferRift(false); }
+    if (scenePhase === 'oracle') { sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; }
+    if (scenePhase === 'dormant') { knifeSelectedRef.current = false; sessionEndedRef.current = false; mirrorRevealedRef.current = false; setMirrorReveal(null); setOfferRift(false); portraitTriggeredRef.current = false; }
   }, [scenePhase]);
 
   // Mirror reveal auto-dismiss — generous dwell, but never blocks the mic permanently.
@@ -727,6 +742,17 @@ export function SurrogateOracleImmersion() {
   const portraitRef = useRef(portrait);
   useEffect(() => { portraitRef.current = portrait; }, [portrait]);
 
+  // Holographic reveal sequence — fires when portraitViewerUrl is set
+  useEffect(() => {
+    if (!portraitViewerUrl) { setPortraitRevealPhase('hidden'); return; }
+    if (prefersReducedMotion) { setPortraitRevealPhase('settled'); return; }
+    setPortraitRevealPhase('scanIn');
+    const t1 = setTimeout(() => setPortraitRevealPhase('unfurl'),   80);
+    const t2 = setTimeout(() => setPortraitRevealPhase('phosphor'), 430);
+    const t3 = setTimeout(() => setPortraitRevealPhase('settled'),  930);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [portraitViewerUrl, prefersReducedMotion]);
+
   useEffect(() => {
     logStep('NEURAL LINK AWAKENING', 'ok');
     (window as any).__session_start = Date.now();
@@ -745,7 +771,10 @@ export function SurrogateOracleImmersion() {
     window.addEventListener('oracle:auth:trigger', handleAuthTrigger);
     const handleOracleUnlock = (e: any) => {
       const { trigger, themes } = e.detail || {};
-      if (trigger === 'portrait_unlock') portraitRef.current.generatePortrait(themes || portraitRef.current.getThemes());
+      if (trigger === 'portrait_unlock') {
+        portraitTriggeredRef.current = true;
+        portraitRef.current.generatePortrait(themes || portraitRef.current.getThemes());
+      }
     };
     window.addEventListener('oracle:unlock', handleOracleUnlock);
     const handleAlignmentShift = (e: Event) => {
@@ -914,12 +943,22 @@ export function SurrogateOracleImmersion() {
                   <div style={{ color: '#00ff88', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', textShadow: '0 0 10px rgba(0,255,136,0.6)' }}>SYNTHESIZING YOUR SIGNAL…</div>
                 </motion.div>
               ) : portraitViewerUrl ? (
-                <motion.div key="portrait-face" className="oracle-avatar-container" initial={{ opacity: 0, scale: 0.9, filter: 'brightness(2) blur(10px)' }} animate={{ opacity: 1, scale: 1, filter: 'brightness(1) blur(0px)' }} exit={{ opacity: 0, scale: 1.1 }} style={{ zIndex: 11, position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-                  <img src={portraitViewerUrl} alt="Portrait" className="oracle-avatar-canvas" style={{ objectFit: 'cover' }} />
-                  <div className="oracle-synthesis-success">
-                    <div className="oracle-synthesis-success-badge">SYNTHESIS COMPLETE</div>
-                    <button className="oracle-synthesis-close" onClick={() => setPortraitViewerUrl(null)}><X size={14} /> RETURN TO SIGNAL</button>
-                  </div>
+                <motion.div
+                  key="portrait-face"
+                  className="oracle-avatar-container oracle-portrait-hologram"
+                  variants={PORTRAIT_REVEAL_VARIANTS}
+                  initial="hidden"
+                  animate={portraitRevealPhase}
+                  exit="exit"
+                  style={{ zIndex: 11, position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                >
+                  <img src={portraitViewerUrl} alt="Portrait" className="oracle-avatar-canvas oracle-portrait-hologram__img" style={{ objectFit: 'cover' }} />
+                  {portraitRevealPhase === 'settled' && (
+                    <div className="oracle-synthesis-success">
+                      <div className="oracle-synthesis-success-badge">SIGNAL CAPTURED</div>
+                      <button className="oracle-synthesis-close" onClick={() => setPortraitViewerUrl(null)}><X size={14} /> RETURN TO SIGNAL</button>
+                    </div>
+                  )}
                 </motion.div>
               ) : isOracleMode ? (
                 <motion.div
@@ -1127,7 +1166,18 @@ export function SurrogateOracleImmersion() {
           onOracleResponse={connection.handleOracleResponse}
           onCoinsEarned={(amt) => setSessionCoins(s => s + amt)}
           onSessionEnd={handleSessionEnd}
-          onTurnComplete={(turn, score, themes) => { if (themes.length) portrait.addThemes(themes); handleTurnComplete(turn, score); }}
+          onTurnComplete={(turn, score, themes) => {
+            if (themes.length) portrait.addThemes(themes);
+            handleTurnComplete(turn, score);
+            if (turn >= 20 && !portraitTriggeredRef.current && !portrait.isGenerating && !portraitViewerUrl) {
+              portraitTriggeredRef.current = true;
+              portrait.generatePortrait(portrait.getThemes());
+              oracleConversationRef.current?.sendTextMessage(
+                `[SYSTEM: The archive just locked in a frequency impression of the Seeker. In your very next response, open with a single short line — no more than two sentences — that acknowledges something crystallized in the signal. Do not call it a portrait. Do not explain. Speak it the way the alley witnesses something become permanent. Then continue naturally.]`,
+                true
+              );
+            }
+          }}
           onSeekerIdentified={handleSeekerIdentified}
           initialTotemLevel={echo?.totem_level ?? 0}
           onConnected={() => setIsGeminiConnected(true)}

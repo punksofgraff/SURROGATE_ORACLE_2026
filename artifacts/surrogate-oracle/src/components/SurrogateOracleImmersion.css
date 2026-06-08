@@ -4438,6 +4438,54 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   transform: translateY(-1px);
 }
 
+/* ── Portrait holographic materialization ────────────────────────────────── */
+.oracle-portrait-hologram {
+  transform-origin: center center;
+}
+
+.oracle-portrait-hologram__img {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.oracle-portrait-hologram::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 3px,
+    rgba(0, 255, 136, 0.04) 3px,
+    rgba(0, 255, 136, 0.04) 4px
+  );
+  mix-blend-mode: screen;
+}
+
+.oracle-portrait-hologram::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(135deg,
+    rgba(0, 255, 136, 0.06) 0%,
+    transparent 50%,
+    rgba(0, 204, 255, 0.04) 100%
+  );
+  animation: portrait-phosphor-glow 3s ease-in-out infinite alternate;
+}
+
+@keyframes portrait-phosphor-glow {
+  0%   { opacity: 0.6; }
+  100% { opacity: 1.0; }
+}
+
 /* ════════════════════════════════════════════════════════════════════════════
    ORACLE LIVE STATE — IMMERSIVE ALLEY OVERHAUL
    The cabinet becomes a frameless window. The alley is the world.
@@ -4779,9 +4827,9 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 }
 
 /* Oracle phase: full presence + Max Headroom glitch — unconditional, every session.
-   10s delay: entrance resolves at 12s, 2s grace, then glitch loop begins.
-   First dropout fires at 10s + (57% × 14s) ≈ 18s after oracle entry —
-   the Seeker has been in conversation for ~6s when they first see the signal break. */
+   2s delay: entrance animation (oracle-phase-manifest) lasts 1.5s; 0.5s grace, then glitch loop begins.
+   First dropout fires at 2s + (57% × 14s) ≈ 10s after oracle entry —
+   the Seeker has been in conversation for ~4s when the first signal break hits. */
 @keyframes oracle-phase-manifest {
   0%   { opacity: 0; transform: scale(0.95); filter: blur(10px) brightness(0.6); }
   10%  { opacity: 1; transform: scale(1.05) skewX(10deg); filter: brightness(3) saturate(0) drop-shadow(8px 0 0 rgba(255,0,80,0.9)) drop-shadow(-8px 0 0 rgba(0,180,255,0.9)); }
@@ -4800,7 +4848,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   transition: opacity 1s ease, filter 1s ease;
   animation: 
     oracle-phase-manifest 1.5s cubic-bezier(0.19, 1, 0.22, 1) both,
-    oracle-headroom-phase 14s linear 10s infinite;
+    oracle-headroom-phase 14s linear 2s infinite;
 }
 
 

@@ -40,9 +40,17 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
   private readonly bufferCapacity: number = sampleRate * 60;
 
   private smoothed: VisemeState = { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
-  
+
   private lastUpdate: number = 0;
-  private readonly UPDATE_INTERVAL: number = 1 / 60; 
+  private readonly UPDATE_INTERVAL: number = 1 / 60;
+
+  // Debounce natural drain detection — fires 'ended' only after 300ms of sustained
+  // silence so inter-chunk network gaps don't trigger premature isOracleSpeaking=false.
+  // On desktop (higher AudioContext sample rate = smaller frame duration), the worklet
+  // burns through the buffer between chunks before the next chunk arrives from Gemini,
+  // causing false positives that stacked duplicate 3-second advance timers in KnifeSelection.
+  private silentFrames: number = 0;
+  private readonly DRAIN_THRESHOLD: number = Math.ceil(sampleRate * 0.300 / 128);
 
   constructor() {
     super();
@@ -115,6 +123,7 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
     this.head = 0;
     this.tail = 0;
     this.size = 0;
+    this.silentFrames = 0;
     this.buffer.fill(0);
     this.smoothed = { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
   }
@@ -126,8 +135,19 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
     const prevSize = this.size;
     this.dequeue(output.length, output);
 
-    if (prevSize > 0 && this.size === 0) {
-      this.port.postMessage({ type: 'ended' });
+    // Debounced 'ended': only fire after DRAIN_THRESHOLD consecutive silent frames.
+    // A single-frame drain fires when the worklet burns through the buffer between
+    // Gemini PCM chunks — firing 'ended' there queues duplicate advance timers.
+    if (this.size > 0) {
+      this.silentFrames = 0;
+    } else if (prevSize > 0) {
+      this.silentFrames = 1;
+    } else if (this.silentFrames > 0) {
+      this.silentFrames++;
+      if (this.silentFrames >= this.DRAIN_THRESHOLD) {
+        this.silentFrames = 0;
+        this.port.postMessage({ type: 'ended' });
+      }
     }
 
     const state = this.analyze(output);

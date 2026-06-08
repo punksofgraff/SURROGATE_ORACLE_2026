@@ -35,7 +35,6 @@ import { KnifeSelection, KNIFE_QUESTIONS } from './KnifeSelection';
 import { OracleHaloRing } from './OracleHaloRing';
 import { Canvas } from '@react-three/fiber';
 import { OracleAvatar3D } from './OracleAvatar3D';
-import { PortraitGalleryDashboard } from './PortraitGalleryDashboard';
 
 // Hooks
 import { useIpCheck } from '../hooks/useIpCheck';
@@ -177,7 +176,7 @@ export function SurrogateOracleImmersion() {
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
   const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
   const [isGuidedTour, setIsGuidedTour]     = useState(false);
-  const [showPortraitGallery, setShowPortraitGallery] = useState(false);
+  const [showChainFuelz, setShowChainFuelz] = useState(false);
   const [loreStarted, setLoreStarted]       = useState(false);
   const [targetVol, setTargetVol]           = useState(0.028);
   const [currentStation, setCurrentStation] = useState(DEFAULT_STATION);
@@ -1015,9 +1014,9 @@ export function SurrogateOracleImmersion() {
       {isOracleMode && (
         <div className="oracle-bottom-bar">
           <GraffPunksRadio isPlaying={isAudioPlaying} onToggle={() => setIsAudioPlaying(!isAudioPlaying)} stations={defaultAudioTracks} currentStation={currentStation} onStationChange={switchStation} />
-          <motion.div onPointerDown={() => startHold('NEURAL PRINTS', 'Your portraits.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => { if (!consumeHold()) setShowPortraitGallery(true); }} className="oracle-bottom-btn oracle-bottom-btn--active">
-            <img src="/portrait-btn.png" alt="Portraits" className="oracle-bottom-btn__img" />
-            <span className="oracle-bottom-btn__label">PORTRAITS</span>
+          <motion.div onPointerDown={() => startHold('CHAIN FUELZ', 'Your wallet.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => { if (!consumeHold()) setShowChainFuelz(true); }} className="oracle-bottom-btn oracle-bottom-btn--active">
+            <img src="/portrait-btn.png" alt="Chain Fuelz" className="oracle-bottom-btn__img" />
+            <span className="oracle-bottom-btn__label">CHAIN FUELZ</span>
           </motion.div>
           <motion.div onPointerDown={() => startHold('ENCULTURATE CRATE', 'Settings.')} onPointerUp={endHold} onPointerLeave={endHold}>
             <EnculturateCrate onClick={() => { if (!consumeHold()) setDebugMode(true); }} isActive={isAlive} />
@@ -1030,9 +1029,20 @@ export function SurrogateOracleImmersion() {
       )}
 
       <AnimatePresence>
-        {showPortraitGallery && (
-          <motion.div key="portrait-gallery-overlay" style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)', padding: 40, overflow: 'hidden' }}>
-            <PortraitGalleryDashboard userId={currentUserId || undefined} userEmail={userEmail || undefined} sessionId={currentSessionId} onClose={() => setShowPortraitGallery(false)} />
+        {showChainFuelz && (
+          <motion.div
+            key="chainfuelz-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(10px)', display: 'flex', flexDirection: 'column' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid rgba(0,255,136,0.2)', flexShrink: 0 }}>
+              <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.2em', color: '#00ff88' }}>CHAIN FUELZ</span>
+              <button onClick={() => setShowChainFuelz(false)} style={{ background: 'none', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', padding: '4px 10px', cursor: 'pointer', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', borderRadius: 4 }}>✕ CLOSE</button>
+            </div>
+            <iframe src="https://wallet.thesurrogate.me" style={{ flex: 1, border: 'none', width: '100%' }} allow="camera; microphone; clipboard-write" title="Chain Fuelz Wallet" />
           </motion.div>
         )}
       </AnimatePresence>

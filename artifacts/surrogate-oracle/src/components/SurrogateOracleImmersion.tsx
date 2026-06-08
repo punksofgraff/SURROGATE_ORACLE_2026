@@ -213,6 +213,8 @@ export function SurrogateOracleImmersion() {
   const sessionEndedRef          = useRef(false);
   const mirrorRevealedRef        = useRef(false); // fire the Mirror reveal once per session
   const portraitTriggeredRef     = useRef(false); // fire portrait generation once per session
+  const pendingPortraitUrlRef    = useRef<string | null>(null); // staged portrait URL — released at turn-complete
+  const chainFuelzIframeRef      = useRef<HTMLIFrameElement | null>(null);
 
   // ── Service Hooks ───────────────────────────────────────────────────────
   const { isReturning, hasCompletedLore, markVisited, markLoreCompleted, ipAddress } = useIpCheck();
@@ -548,8 +550,8 @@ export function SurrogateOracleImmersion() {
   // each time we (re-)enter awakened; a fresh exit is allowed each time we enter oracle.
   useEffect(() => {
     if (scenePhase === 'awakened') knifeSelectedRef.current = false;
-    if (scenePhase === 'oracle') { sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; }
-    if (scenePhase === 'dormant') { knifeSelectedRef.current = false; sessionEndedRef.current = false; mirrorRevealedRef.current = false; setMirrorReveal(null); setOfferRift(false); portraitTriggeredRef.current = false; }
+    if (scenePhase === 'oracle') { sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; pendingPortraitUrlRef.current = null; }
+    if (scenePhase === 'dormant') { knifeSelectedRef.current = false; sessionEndedRef.current = false; mirrorRevealedRef.current = false; setMirrorReveal(null); setOfferRift(false); portraitTriggeredRef.current = false; pendingPortraitUrlRef.current = null; }
   }, [scenePhase]);
 
   // Mirror reveal auto-dismiss — generous dwell, but never blocks the mic permanently.
@@ -627,6 +629,7 @@ export function SurrogateOracleImmersion() {
   }, [isAudioPlaying]);
 
   useEffect(() => {
+    let prewarmTimer: ReturnType<typeof setTimeout> | null = null;
     if (scenePhase === 'awakened') {
       connection.flushPlayback(); // Stop any leftover lore narration/ambient sounds before knife selection
       connection.initializePCMPlayer();
@@ -637,7 +640,9 @@ export function SurrogateOracleImmersion() {
       // while it glitches in on screen, not cold when the Seeker draws their blade.
       // The standby message establishes read-verbatim mode so knife card voiceovers
       // land correctly instead of Oracle treating the question as a prompt to answer.
-      setTimeout(() => {
+      // Guard: if the Seeker taps a knife within 600ms, the effect cleanup fires and
+      // cancels this timer before it runs — preventing double-boot into knife startSession.
+      prewarmTimer = setTimeout(() => {
         oracleConversationRef.current?.startSession(
           `[STANDBY — you are not yet manifested. The knife frequencies are cycling on the screen. When a territory question arrives, speak it exactly word for word — nothing before or after, delivered slowly. Do not answer. Do not comment. Only the words, as if the alley walls are transmitting through static. Wait until the Seeker draws their blade to fully manifest.]`
         );
@@ -647,6 +652,9 @@ export function SurrogateOracleImmersion() {
     if (scenePhase === 'oracle') {
       connection.setTransmissionQ(0.01, 200);
     }
+    return () => {
+      if (prewarmTimer !== null) clearTimeout(prewarmTimer);
+    };
   }, [scenePhase, connection]);
 
   useEffect(() => {
@@ -730,12 +738,14 @@ export function SurrogateOracleImmersion() {
   useEffect(() => {
     if (!(cameraError && isXRMode && !cameraActive)) return;
     deactivateXRMode();
-    setCamNotice('CANNOT SEE YOU — CAMERA ACCESS REQUIRED TO OPEN THE RIFT');
+    setCamNotice('THE RIFT HOLDS CLOSED — CAMERA ACCESS REQUIRED');
     const t = setTimeout(() => setCamNotice(null), 4500);
     return () => clearTimeout(t);
   }, [cameraError, isXRMode, cameraActive, deactivateXRMode]);
 
-  const handlePortraitGenerated = useCallback((url: string) => { setPortraitViewerUrl(url); }, []);
+  // Stage portrait URL — released in onTurnComplete so reveal fires after Oracle finishes speaking,
+  // not mid-turn as an interrupt.
+  const handlePortraitGenerated = useCallback((url: string) => { pendingPortraitUrlRef.current = url; }, []);
 
   const portrait = usePortraitPipeline({ currentUserId, userEmail, currentSessionId, onPortraitGenerated: handlePortraitGenerated });
 
@@ -760,6 +770,17 @@ export function SurrogateOracleImmersion() {
     const t3 = setTimeout(() => setPortraitRevealPhase('settled'),  930);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [portraitViewerUrl, prefersReducedMotion]);
+
+  // Wire portrait URL to ChainFuelz iframe once the holographic reveal settles.
+  // The iframe catches this and pre-populates the mint flow without requiring the
+  // Seeker to manually navigate to their portrait.
+  useEffect(() => {
+    if (portraitRevealPhase !== 'settled' || !portraitViewerUrl) return;
+    chainFuelzIframeRef.current?.contentWindow?.postMessage(
+      { type: 'portrait_ready', url: portraitViewerUrl },
+      'https://wallet.thesurrogate.me'
+    );
+  }, [portraitRevealPhase, portraitViewerUrl]);
 
   useEffect(() => {
     logStep('NEURAL LINK AWAKENING', 'ok');
@@ -1051,7 +1072,7 @@ export function SurrogateOracleImmersion() {
               <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.2em', color: '#00ff88' }}>CHAIN FUELZ</span>
               <button onClick={() => setShowChainFuelz(false)} style={{ background: 'none', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', padding: '4px 10px', cursor: 'pointer', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', borderRadius: 4 }}>✕ CLOSE</button>
             </div>
-            <iframe src="https://wallet.thesurrogate.me" style={{ flex: 1, border: 'none', width: '100%' }} allow="camera; microphone; clipboard-write" title="Chain Fuelz Wallet" />
+            <iframe ref={chainFuelzIframeRef} src="https://wallet.thesurrogate.me" style={{ flex: 1, border: 'none', width: '100%' }} allow="camera; microphone; clipboard-write" title="Chain Fuelz Wallet" />
           </motion.div>
         )}
       </AnimatePresence>
@@ -1197,6 +1218,12 @@ export function SurrogateOracleImmersion() {
                 `[SYSTEM: The archive just locked in a frequency impression of the Seeker. In your very next response, open with a single short line — no more than two sentences — that acknowledges something crystallized in the signal. Do not call it a portrait. Do not explain. Speak it the way the alley witnesses something become permanent. Then continue naturally.]`,
                 true
               );
+            }
+            // Flush staged portrait URL now that the Oracle has finished this turn —
+            // portrait reveal fires as a beat between turns, not as a mid-speech interrupt.
+            if (pendingPortraitUrlRef.current && !portraitViewerUrl) {
+              setPortraitViewerUrl(pendingPortraitUrlRef.current);
+              pendingPortraitUrlRef.current = null;
             }
           }}
           onSeekerIdentified={handleSeekerIdentified}

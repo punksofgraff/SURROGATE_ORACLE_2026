@@ -50,7 +50,7 @@ class OracleAudioProcessor extends AudioWorkletProcessor {
   // burns through the buffer between chunks before the next chunk arrives from Gemini,
   // causing false positives that stacked duplicate 3-second advance timers in KnifeSelection.
   private silentFrames: number = 0;
-  private readonly DRAIN_THRESHOLD: number = Math.ceil(sampleRate * 0.300 / 128);
+  private readonly DRAIN_THRESHOLD: number = Math.ceil(sampleRate * 0.600 / 128);
 
   constructor() {
     super();

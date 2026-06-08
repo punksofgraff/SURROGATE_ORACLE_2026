@@ -228,6 +228,7 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
 
   const startCamera = useCallback(async () => {
     if (streamRef.current) return; // already running
+    setCameraError(null); // clear any previous error so the retry safety-net doesn't fire immediately
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {

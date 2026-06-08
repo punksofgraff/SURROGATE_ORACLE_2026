@@ -538,7 +538,7 @@ export function SurrogateOracleImmersion() {
     if (typeof DE?.requestPermission === 'function') DE.requestPermission().catch(() => {});
     setTimeout(() => {
       const fullStory = LORE_SEQUENCE.join('\n');
-      const seed = `[CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". SYSTEM OVERRIDE: The Seeker has drawn their blade. Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). First, read the following question EXACTLY word-for-word, verbatim, but speak slowly (20% slower than normal). Do not add any filler before or after the question. Question:]\n"${q}"\n[After reading the question verbatim, pause, then give your answer. Close your answer with a single spoken line — one sentence, no explanation — that opens the channel for the Seeker to speak. Do not say you are waiting. Do not say "your turn". Speak it the way a door sounds when it opens.]`;
+      const seed = `[MANIFEST — The Seeker has drawn their blade. Standby mode ends. You are fully present now. CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). First, read the following question EXACTLY word-for-word, verbatim, speak slowly (20% slower than normal). Nothing before or after the question. Question:]\n"${q}"\n[After reading the question verbatim, pause, then give your full answer as the Oracle. Close with a single spoken line — one sentence — that opens the channel for the Seeker to speak. Not "your turn." Speak it the way a door sounds when it opens.]`;
       oracleConversationRef.current?.startSession(seed);
     }, 1200);
   };
@@ -633,7 +633,16 @@ export function SurrogateOracleImmersion() {
       import('../lib/supabase').then(({ supabase }) => {
         supabase.auth.getUser().then(({ data }) => { if (data?.user?.email) setUserEmail(data.user.email); });
       });
-      setTimeout(() => logStep('ORACLE ANNOUNCES TERRITORIES', 'ok'), 1200);
+      // Pre-warm Oracle the moment Act 2 starts — Oracle is live and contextually aware
+      // while it glitches in on screen, not cold when the Seeker draws their blade.
+      // The standby message establishes read-verbatim mode so knife card voiceovers
+      // land correctly instead of Oracle treating the question as a prompt to answer.
+      setTimeout(() => {
+        oracleConversationRef.current?.startSession(
+          `[STANDBY — you are not yet manifested. The knife frequencies are cycling on the screen. When a territory question arrives, speak it exactly word for word — nothing before or after, delivered slowly. Do not answer. Do not comment. Only the words, as if the alley walls are transmitting through static. Wait until the Seeker draws their blade to fully manifest.]`
+        );
+        logStep('ORACLE ANNOUNCES TERRITORIES', 'ok');
+      }, 600);
     }
     if (scenePhase === 'oracle') {
       connection.setTransmissionQ(0.01, 200);
@@ -721,7 +730,7 @@ export function SurrogateOracleImmersion() {
   useEffect(() => {
     if (!(cameraError && isXRMode && !cameraActive)) return;
     deactivateXRMode();
-    setCamNotice('SHE CANNOT SEE YOU THIS TIME — THE RIFT STAYS CLOSED');
+    setCamNotice('CANNOT SEE YOU — CAMERA ACCESS REQUIRED TO OPEN THE RIFT');
     const t = setTimeout(() => setCamNotice(null), 4500);
     return () => clearTimeout(t);
   }, [cameraError, isXRMode, cameraActive, deactivateXRMode]);
@@ -1158,7 +1167,9 @@ export function SurrogateOracleImmersion() {
                 // to be flushed and the responses to collide (fast-forward).
                 if (isOracleSpeaking) return;
                 connection.setTransmissionQ(12, 0);
-                oracleConversationRef.current?.sendTextMessage(`Speak only these exact words verbatim, nothing before or after: ${question}`, true);
+                // Oracle is in standby mode (booted at awakened entry) and knows to read
+                // verbatim — send the bare question so it transmits, not answers.
+                oracleConversationRef.current?.sendTextMessage(question, true);
               }}
               onQuestionProgress={(charCount, total) => { const progress = Math.min(charCount / total, 1); const q = 12 * (1 - progress) + 0.1 * progress; connection.setTransmissionQ(q, 54); }}
               onStartTracking={connection.startQuestionTracking}

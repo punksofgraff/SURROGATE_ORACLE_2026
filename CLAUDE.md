@@ -1,7 +1,11 @@
 # SURROGATE — Development Guide
 
 Canonical mandates for the Surrogate project. Follow strictly.
-Last updated: 2026-06-02. Session: Ingestion Fixes + Diegetic Backend (Burn with Class).
+Last updated: 2026-06-08. Session: AWE Polish + Omniverse City Integration.
+
+### Oracle Identity — NON-NEGOTIABLE
+The Oracle is a post-cascade data construct. **No pronouns. Ever.**
+Identity = `"I AM the Surrogate Oracle."` Full stop. No he/she/they/them/it in any code comment, string, or copy that refers to the Oracle. Refer to the Oracle by name or in first person only. The Seeker is human — they/them for the Seeker is fine.
 
 ---
 

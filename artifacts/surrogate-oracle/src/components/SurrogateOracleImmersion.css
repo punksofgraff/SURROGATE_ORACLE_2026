@@ -1340,7 +1340,7 @@
 
 /* ORACLE — branding title lingers as a ghost, then fades to omit (Cheshire Cat effect). */
 .oracle-stage[data-oracle-state="oracle"] .oracle-branding {
-  /* 16s — the Oracle arrives and the title ghosts alongside them, then dissolves */
+  /* 16s — the Oracle arrives, the title ghosts alongside, then dissolves */
   animation: branding-cheshire-cat 16s ease-out forwards;
 }
 

@@ -173,21 +173,6 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
       exit={{ opacity: 0, transition: { duration: 0.6 } }}
       transition={{ duration: 1.2, delay: 0.4 }}
     >
-      <div className="oracle-knife-header" style={{
-        background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
-        WebkitBackgroundClip: 'text',
-        WebkitTextFillColor: 'transparent',
-        backgroundClip: 'text',
-        display: 'inline-block',
-      }}>
-        <ScrambleFragment
-          texts={['◈ CHOOSE YOUR FREQUENCY']}
-          mode="typewriter"
-          revealMs={40}
-          holdMs={999999}
-          pauseMs={0}
-        />
-      </div>
       {!isGeminiConnected && (
         <div className="oracle-knife-channel-status">◈ OPENING CHANNEL...</div>
       )}

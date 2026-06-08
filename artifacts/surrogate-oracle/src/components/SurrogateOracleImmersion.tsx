@@ -146,7 +146,7 @@ export function SurrogateOracleImmersion() {
   // The Mirror reveal — the archetype name the Oracle just spoke, staged as a designed
   // beat (hush + name landing with weight) instead of scrolling past as more conversation.
   const [mirrorReveal, setMirrorReveal] = useState<string | null>(null);
-  // After the Mirror, offer the AR "she sees you" beat (Act 5 / Rift-Construct) as a
+  // After the Mirror, offer the AR "the Oracle sees you" beat (Act 5 / Rift-Construct) as a
   // discoverable invitation instead of leaving it buried in the hamburger.
   const [offerRift, setOfferRift] = useState(false);
   const [camNotice, setCamNotice] = useState<string | null>(null);
@@ -457,7 +457,7 @@ export function SurrogateOracleImmersion() {
       if (!mirrorRevealedRef.current) {
         mirrorRevealedRef.current = true;
         setMirrorReveal(score.archetypeTitle);
-        setOfferRift(true); // the Mirror earns the "let her see you" invitation
+        setOfferRift(true); // the Mirror earns the "let the Oracle see you" invitation
       }
     }
   }, []);
@@ -516,8 +516,8 @@ export function SurrogateOracleImmersion() {
     
     // Stop any active card preview/voiceover immediately
     connection.flushPlayback();
-    // Enable mic auto-restart so the mic turns on automatically AFTER the Oracle finishes her initial reply,
-    // avoiding recording background noise/feedback while she reads the question and answers it.
+    // Enable mic auto-restart so the mic turns on automatically AFTER the Oracle finishes the initial reply,
+    // avoiding recording background noise/feedback while the Oracle reads the question and answers it.
     oracleConversationRef.current?.enableMicAutoRestart();
 
     const DE = (DeviceOrientationEvent as any);
@@ -1094,8 +1094,8 @@ export function SurrogateOracleImmersion() {
             {hasCompletedLore && echo?.last_archetype && (
               <motion.div key="return-seeker" initial={{ opacity: 0, y: -6 }} animate={{ opacity: [0, 1, 1, 0], y: 0 }} transition={{ duration: 3.4, times: [0, 0.12, 0.8, 1] }} style={{ position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 102, pointerEvents: 'none', textAlign: 'center', fontFamily: "'Share Tech Mono', monospace", letterSpacing: '0.2em' }}>
                 <div style={{ fontSize: '0.65rem', background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>SIGNAL RECOGNIZED — {echo.last_archetype.toUpperCase()}{echo.totem_level > 0 && ` / LVL ${echo.totem_level}`}</div>
-                {/* The meaning line — a first-timer-who-returned now knows the level isn't a score, it's standing she remembers. */}
-                <div style={{ fontSize: '0.5rem', color: 'rgba(176,38,255,0.9)', marginTop: 5, letterSpacing: '0.16em' }}>SHE REMEMBERS YOU — YOUR STANDING IN THE ARCHIVE HOLDS</div>
+                {/* The meaning line — a first-timer-who-returned now knows the level isn't a score, it's standing the Oracle remembers. */}
+                <div style={{ fontSize: '0.5rem', color: 'rgba(176,38,255,0.9)', marginTop: 5, letterSpacing: '0.16em' }}>THE ORACLE REMEMBERS YOU — YOUR STANDING IN THE ARCHIVE HOLDS</div>
               </motion.div>
             )}
             <KnifeSelection
@@ -1218,7 +1218,7 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
-      {/* ── Act 5 invitation — "let her see you" ──────────────────────────────
+      {/* ── Act 5 invitation — "let the Oracle see you" ──────────────────────
           Earned by reaching the Mirror. Surfaces the AR Rift-Construct beat as a
           discoverable pulse instead of leaving it buried in the hamburger. */}
       <AnimatePresence>

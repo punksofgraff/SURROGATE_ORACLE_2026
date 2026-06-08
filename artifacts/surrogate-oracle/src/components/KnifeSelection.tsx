@@ -188,6 +188,15 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
           pauseMs={0}
         />
       </div>
+      <div className="oracle-knife-subheader">
+        <ScrambleFragment
+          texts={['TAP THE ONE ALREADY TRUE. THE EXCAVATION BEGINS THERE.']}
+          mode="typewriter"
+          revealMs={20}
+          holdMs={999999}
+          pauseMs={0}
+        />
+      </div>
       {!isGeminiConnected && (
         <div className="oracle-knife-channel-status">◈ OPENING CHANNEL...</div>
       )}
@@ -210,7 +219,7 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
             const isThisActive = i === activeIdx;
             const isThisSelected = selectedKnifeIndex === i;
             // Key changes each time this card becomes active → Framer remounts it
-            // with fresh scaleY:0.03 initial so the saber-extension entrance fires
+            // with fresh y:-240 initial so the "drops from above" entrance fires
             // every cycle, not just on first mount.
             const cardKey = isThisActive ? `knife-active-${activeIdx}` : `knife-${i}`;
 
@@ -219,52 +228,57 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
                 key={cardKey}
                 className="oracle-knife-card"
                 initial={{
-                  scaleY: 0.03,
-                  scaleX: 0.88,
-                  opacity: 0.95,
-                  y: 0,
-                  filter: 'brightness(7) saturate(0)',
+                  scale: 0.4,
+                  opacity: 0,
+                  y: -120,
+                  filter: 'blur(8px) brightness(1.8) saturate(0.6)'
                 }}
-                exit={{ opacity: 0, scaleY: 0.88, y: 18, filter: 'blur(4px)', transition: { duration: 0.3 } }}
+                exit={{ opacity: 0, scale: 0.9, y: 20, filter: 'blur(4px)', transition: { duration: 0.35 } }}
                 animate={isSelected
                   ? (isThisSelected
-                      ? { y: -110, opacity: 0, filter: 'blur(14px) brightness(5) saturate(4)', transition: { duration: 1.5, ease: [0.4, 0, 1, 1] } }
-                      : { scaleY: 0.8, scaleX: 0.8, opacity: 0, filter: 'blur(10px) brightness(0.5)' })
+                      ? { scale: 1.14, opacity: 0, filter: 'blur(14px) brightness(5) saturate(4)', y: -100, x: 0 }
+                      : { scale: 0.8, opacity: 0, filter: 'blur(10px) brightness(0.5)', x: 0 })
                   : (isThisActive
                       ? {
-                          // Saber extension — blade extends downward from the cabinet screen.
-                          // scaleY drives the "igniting" feel; transformOrigin: top pins the hilt.
-                          scaleY:  [0.03, 1.07, 1.0],
-                          scaleX:  [0.88, 1.01, 1.0],
-                          opacity: 1,
+                          // Softened entrance — settles in ~0.9s with no brightness flash
+                          // or scale overshoot, so the question is readable sooner.
+                          scale:   [0.4, 0.92, 1.0],
+                          opacity: [0,   1,    0.94],
+                          y:       [-120, 0,   0],
                           filter: [
-                            'brightness(7) saturate(0)',
-                            'brightness(1.5) saturate(1.1)',
-                            'brightness(1.0) saturate(1.0)',
+                            'blur(8px) brightness(1.8) saturate(0.6)',
+                            'blur(0px) brightness(1.1) saturate(1.05)',
+                            'blur(0px) brightness(1.0) saturate(1.0)'
                           ],
-                          y: 0,
-                          zIndex: 10,
+                          x: 0,
+                          zIndex: 10
                         }
                       : {
-                          scaleY: 0.85,
-                          scaleX: 0.85,
+                          scale: 0.85,
                           opacity: 0,
                           filter: 'blur(4px)',
+                          x: 0,
                           y: 0,
-                          zIndex: 5,
+                          zIndex: 5
                         })
                 }
-                transition={isThisActive && !isSelected
-                  ? { duration: 0.68, ease: [0.16, 1.0, 0.3, 1], times: [0, 0.48, 1] }
-                  : { duration: 0.8, ease: 'easeOut' }
+                transition={isThisSelected
+                  ? { duration: 1.5, ease: [0.4, 0, 1, 1] }
+                  : (isThisActive && !isSelected)
+                    ? {
+                        duration: 0.9,
+                        ease: [0.23, 1, 0.32, 1],
+                        times: [0, 0.6, 1]
+                      }
+                    : { duration: 0.8, ease: 'easeOut' }
                 }
                 onClick={() => {
                   if (isSelected) return;
                   navigator.vibrate?.([40]);
                   onSelect(kq.question, i);
                 }}
-                style={{
-                  transformOrigin: 'top center',
+                style={{ 
+                  transformOrigin: '50% 50%', 
                   cursor: isSelected ? 'default' : 'pointer',
                   position: isThisActive ? 'relative' : 'absolute',
                   display: (!isSelected || isThisSelected) ? 'flex' : 'none',
@@ -317,8 +331,8 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
                                 className="oracle-knife-letter"
                                 style={{
                                   opacity: j < landedChars ? 1 : 0,
-                                  filter: j < landedChars ? 'blur(0px)' : 'blur(3px)',
-                                  transition: 'opacity 0.55s ease-out, filter 0.55s ease-out',
+                                  transition: j < landedChars ? 'opacity 0.65s ease-out' : 'none',
+                                  filter: j < landedChars ? 'blur(0px)' : 'blur(4px)',
                                   color: gradientChar(j, kq.question.length),
                                   display: 'inline-block',
                                 }}

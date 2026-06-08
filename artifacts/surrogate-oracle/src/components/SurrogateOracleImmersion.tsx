@@ -1190,9 +1190,14 @@ export function SurrogateOracleImmersion() {
                 // to be flushed and the responses to collide (fast-forward).
                 if (isOracleSpeaking) return;
                 connection.setTransmissionQ(12, 0);
-                // Oracle is in standby mode (booted at awakened entry) and knows to read
-                // verbatim — send the bare question so it transmits, not answers.
-                oracleConversationRef.current?.sendTextMessage(question, true);
+                // Use the [KNIFE PREVIEW — speak verbatim:] format defined in the system prompt.
+                // The system prompt rule is load-bearing — Oracle always knows this format means
+                // "transmit only, do not answer." Bare questions caused Oracle to revert to its
+                // default instinct (answer the question) on each new turn.
+                oracleConversationRef.current?.sendTextMessage(
+                  `[KNIFE PREVIEW — speak verbatim:] "${question}"`,
+                  true
+                );
               }}
               onQuestionProgress={(charCount, total) => { const progress = Math.min(charCount / total, 1); const q = 12 * (1 - progress) + 0.1 * progress; connection.setTransmissionQ(q, 54); }}
               onStartTracking={connection.startQuestionTracking}

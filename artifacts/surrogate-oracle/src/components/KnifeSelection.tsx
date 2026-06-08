@@ -99,8 +99,8 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
   }, [activeIdx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Question text: letter-by-letter reveal driven by actual PCM playback position.
-  // Typewriter runs at fixed 54ms/char; Oracle is triggered at 2/3 of chars revealed.
-  // appears proportionally to how far through the audio Oracle has spoken — word-perfect.
+  // Typewriter runs at fixed 54ms/char; Oracle is triggered before typing starts to
+  // absorb Gemini's ~3s response latency — voice arrives mid-type.
   // Falls back to fixed 54ms/char interval when hooks are absent.
   const question = KNIFE_QUESTIONS[activeIdx].question;
   useEffect(() => {
@@ -109,14 +109,22 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
       return;
     }
 
+    // spokenQuestionRef is set inside startDelay (not before) so a cancelled delay
+    // doesn't block the retry when Oracle finishes speaking.
     if (spokenQuestionRef.current === question) return;
 
+    // Card changed or Oracle finished — wipe state and any leftover interval.
+    // IMPORTANT: interval is cleared HERE (on card/state change), NOT in the cleanup
+    // function. Clearing in cleanup was killing the running typewriter every time
+    // isOracleSpeaking toggled true mid-type.
     setLandedChars(0);
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
 
     onActiveCardChange?.();
 
-    // Wait for any ongoing Oracle speech (e.g. territories announcement on first card)
+    // Wait for any ongoing Oracle speech (e.g. territories announcement on first card).
+    // isOracleSpeaking in deps means this re-runs when Oracle finishes, retrying automatically.
     if (isOracleSpeaking) return;
 
     const total = question.length;
@@ -124,11 +132,13 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
 
     // Fire Oracle immediately (before typing starts) to absorb Gemini's ~3s response latency.
     // Voice arrives mid-type rather than seconds after the card finishes.
-    spokenQuestionRef.current = question;
     onStartTracking?.();
     onSpeakQuestion?.(question);
 
     const startDelay = setTimeout(() => {
+      // Mark spoken here — inside the delay — so a cancelled startDelay doesn't prevent
+      // the retry path from calling onSpeakQuestion again when Oracle finishes speaking.
+      spokenQuestionRef.current = question;
       intervalRef.current = setInterval(() => {
         count++;
         setLandedChars(count);
@@ -142,7 +152,11 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
 
     return () => {
       clearTimeout(startDelay);
-      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      // DO NOT clear intervalRef here. The running typewriter must survive
+      // isOracleSpeaking changes — the cleanup fires on every dep change, and
+      // clearing the interval here is what caused the text to stop mid-word.
+      // Interval lifecycle: started in startDelay above, cleared in effect body
+      // above on card change, auto-stopped when count >= total.
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
   }, [activeIdx, selectedKnifeIndex, question, isOracleSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps

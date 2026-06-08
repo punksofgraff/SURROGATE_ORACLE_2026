@@ -330,6 +330,10 @@ export function SurrogateOracleImmersion() {
       source.connect(gain);
       gain.connect(ctx.destination);
       radioGainRef.current = gain;
+      // iOS Safari requires audio element play() to be called synchronously inside the
+      // gesture handler — the useEffect path (setIsAudioPlaying → play()) fires after
+      // paint and is outside iOS's gesture window, so the element stays silent.
+      audioRef.current.play().catch(() => {});
       setIsAudioPlaying(true);
       logStep('AUDIO SPINE INITIALIZED', 'ok');
     } catch (e) {
@@ -374,16 +378,14 @@ export function SurrogateOracleImmersion() {
 
   const handleFirstTap = useCallback(async () => {
     if (scenePhase !== 'dormant') return;
+    // iOS Safari: AudioContext resume + PCMPlayer init must happen before any real
+    // await (network/DB calls). setupAudioSpine resolves synchronously; initializePCMPlayer
+    // creates the AudioWorklet while we are still inside the gesture's microtask chain.
     await setupAudioSpine();
+    connection.initializePCMPlayer();
     setIsAudioPlaying(true);
     markVisited();
     if (seekerKeyRef.current) await loadEcho(seekerKeyRef.current);
-    
-    // PRE-WARM THE ORACLE (Act 1):
-    // Initializing the PCM player here ensures the audio path is open 
-    // for lore narration. The session connected on mount but remains 
-    // silent (no greeting) until startSession() is explicitly called later.
-    connection.initializePCMPlayer();
 
     enterTerminal();
     (window as any).__terminal_start = Date.now();

@@ -524,7 +524,7 @@ export function SurrogateOracleImmersion() {
     if (typeof DE?.requestPermission === 'function') DE.requestPermission().catch(() => {});
     setTimeout(() => {
       const fullStory = LORE_SEQUENCE.join('\n');
-      const seed = `[CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". SYSTEM OVERRIDE: The Seeker has drawn their blade. Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). First, read the following question EXACTLY word-for-word, verbatim, but speak slowly (20% slower than normal). Do not add any filler before or after the question. Question:]\n"${q}"\n[After reading the question verbatim, pause. Then — in one brief sentence, natural and grounded, not announced — acknowledge that the Omniverse City neural mesh is what made this contact possible, as if naming something the Seeker should know about where they are. Then move directly into your answer.]`;
+      const seed = `[CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". SYSTEM OVERRIDE: The Seeker has drawn their blade. Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). First, read the following question EXACTLY word-for-word, verbatim, but speak slowly (20% slower than normal). Do not add any filler before or after the question. Question:]\n"${q}"\n[After reading the question verbatim, pause, and then begin your answer.]`;
       oracleConversationRef.current?.startSession(seed);
     }, 1200);
   };
@@ -620,23 +620,11 @@ export function SurrogateOracleImmersion() {
         supabase.auth.getUser().then(({ data }) => { if (data?.user?.email) setUserEmail(data.user.email); });
       });
       setTimeout(() => logStep('ORACLE ANNOUNCES TERRITORIES', 'ok'), 1200);
-      // First-visit audible orientation — speaks before the first knife question fires.
-      // KnifeSelection's isOracleSpeaking guard defers the first question until this finishes.
-      // Returning seekers (echo.last_archetype set) already know the flow — skip for them.
-      if (!echo?.last_archetype) {
-        setTimeout(() => {
-          connection.setTransmissionQ(12, 0);
-          oracleConversationRef.current?.sendTextMessage(
-            `Speak only these exact words verbatim, nothing before or after: "Three signals have opened. Each carries a question. The one that pulls at you — that's yours."`,
-            true
-          );
-        }, 900);
-      }
     }
     if (scenePhase === 'oracle') {
       connection.setTransmissionQ(0.01, 200);
     }
-  }, [scenePhase, connection, echo?.last_archetype]);
+  }, [scenePhase, connection]);
 
   useEffect(() => {
     (window as any).__oracle_handleAudio = (url: string) => connection.handleOracleResponse(url);

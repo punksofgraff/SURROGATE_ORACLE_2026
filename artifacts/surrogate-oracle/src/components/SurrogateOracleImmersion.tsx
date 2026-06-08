@@ -524,7 +524,7 @@ export function SurrogateOracleImmersion() {
     if (typeof DE?.requestPermission === 'function') DE.requestPermission().catch(() => {});
     setTimeout(() => {
       const fullStory = LORE_SEQUENCE.join('\n');
-      const seed = `[CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". SYSTEM OVERRIDE: The Seeker has drawn their blade. Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). First, read the following question EXACTLY word-for-word, verbatim, but speak slowly (20% slower than normal). Do not add any filler before or after the question. Question:]\n"${q}"\n[After reading the question verbatim, pause, and then begin your answer.]`;
+      const seed = `[CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". SYSTEM OVERRIDE: The Seeker has drawn their blade. Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). First, read the following question EXACTLY word-for-word, verbatim, but speak slowly (20% slower than normal). Do not add any filler before or after the question. Question:]\n"${q}"\n[After reading the question verbatim, pause, then give your answer. Close your answer with a single spoken line — one sentence, no explanation — that opens the channel for the Seeker to speak. Do not say you are waiting. Do not say "your turn". Speak it the way a door sounds when it opens.]`;
       oracleConversationRef.current?.startSession(seed);
     }, 1200);
   };

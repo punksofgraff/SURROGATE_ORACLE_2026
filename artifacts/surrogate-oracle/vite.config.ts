@@ -4,7 +4,11 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import fs from "fs";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import basicSsl from "@vitejs/plugin-basic-ssl";
 
+const LOG_FILEStr = path.resolve(import.meta.dirname, ".oracle-dev-log.jsonl");
+
+// Use the correct LOG_FILE path name (avoid shadowing if needed, keeping LOG_FILE)
 const LOG_FILE = path.resolve(import.meta.dirname, ".oracle-dev-log.jsonl");
 
 function oracleLogRelayPlugin() {
@@ -104,6 +108,7 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
+    https: true, // Force local HTTPS to authorize cross-origin secure cookies in iframe
     fs: {
       strict: true,
     },

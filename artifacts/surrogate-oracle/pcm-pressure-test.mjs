@@ -132,10 +132,13 @@ async function run() {
       '--disable-dev-shm-usage',
       '--autoplay-policy=no-user-gesture-required',
       '--enable-features=WebRTC,AudioServiceOutOfProcess',
+      '--ignore-certificate-errors',
+      '--ignore-ssl-errors',
+      '--allow-insecure-localhost',
     ],
   });
 
-  const ctx = await browser.newContext({ permissions: [] });
+  const ctx = await browser.newContext({ permissions: [], ignoreHTTPSErrors: true });
   const page = await ctx.newPage();
 
   // Load the app so the worklet URL is served from the same origin

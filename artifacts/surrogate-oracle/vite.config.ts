@@ -108,7 +108,6 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
-    https: true, // Force local HTTPS to authorize cross-origin secure cookies in iframe
     fs: {
       strict: true,
     },

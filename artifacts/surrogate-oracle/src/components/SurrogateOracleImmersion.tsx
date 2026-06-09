@@ -1104,7 +1104,7 @@ export function SurrogateOracleImmersion() {
               ref={walletIframeRef} 
               src="https://wallet.thesurrogate.me" 
               style={{ flex: 1, border: 'none', width: '100%' }} 
-              allow="camera; microphone; clipboard-write; publickey-credentials-get; payment; web-share" 
+              allow="camera; microphone; clipboard-write; publickey-credentials-get; publickey-credentials-create; payment; web-share" 
               title="Wallet" 
             />
           </motion.div>

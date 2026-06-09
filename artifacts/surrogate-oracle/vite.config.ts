@@ -115,6 +115,7 @@ export default defineConfig({
       'Cache-Control': 'no-store, no-cache, must-revalidate',
       'Pragma': 'no-cache',
       'Expires': '0',
+      'Permissions-Policy': 'publickey-credentials-get=(self "https://wallet.thesurrogate.me"), publickey-credentials-create=(self "https://wallet.thesurrogate.me")',
     },
   },
   preview: {

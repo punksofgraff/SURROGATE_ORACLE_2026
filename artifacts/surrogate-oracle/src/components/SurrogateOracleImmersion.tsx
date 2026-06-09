@@ -183,6 +183,7 @@ export function SurrogateOracleImmersion() {
   const [currentStation, setCurrentStation] = useState(DEFAULT_STATION);
   const [holdTooltip, setHoldTooltip]       = useState<{ title: string; body: string } | null>(null);
   const [hamburgerOpen, setHamburgerOpen]   = useState(false);
+  const [mintUrl, setMintUrl]               = useState<string | null>(null);
 
   // ── Refs ────────────────────────────────────────────────────────────────
   const visemeStateRef = useRef<VisemeState>(SILENCE_VISEME_STATE);
@@ -800,6 +801,21 @@ export function SurrogateOracleImmersion() {
     );
   }, [portraitRevealPhase, portraitViewerUrl]);
 
+  // Generate the encrypted NFT Claim link once the portrait holographic reveal settles.
+  useEffect(() => {
+    if (portraitRevealPhase === 'settled' && portraitViewerUrl) {
+      import('../lib/nftMinting').then(({ generateMintLink }) => {
+        generateMintLink(portraitViewerUrl, echo?.last_archetype || 'Surrogate Portrait')
+          .then(url => {
+            setMintUrl(url);
+            logStep('NFT CLAIM REDIRECTION PREPARED', 'ok');
+          });
+      });
+    } else {
+      setMintUrl(null);
+    }
+  }, [portraitRevealPhase, portraitViewerUrl, echo?.last_archetype]);
+
   useEffect(() => {
     logStep('NEURAL LINK AWAKENING', 'ok');
     (window as any).__session_start = Date.now();
@@ -1003,7 +1019,39 @@ export function SurrogateOracleImmersion() {
                   {portraitRevealPhase === 'settled' && (
                     <div className="oracle-synthesis-success">
                       <div className="oracle-synthesis-success-badge">SIGNAL CAPTURED</div>
-                      <button className="oracle-synthesis-close" onClick={() => setPortraitViewerUrl(null)}><X size={14} /> RETURN TO SIGNAL</button>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', alignItems: 'center', marginTop: '10px' }}>
+                        {mintUrl && (
+                          <button
+                            onClick={() => window.open(mintUrl, '_blank', 'noopener,noreferrer')}
+                            className="oracle-synthesis-mint-btn"
+                            style={{
+                              background: 'linear-gradient(135deg, #cc00ff 0%, #b026ff 100%)',
+                              color: '#fff',
+                              border: 'none',
+                              padding: '8px 16px',
+                              fontFamily: "'PhillySans', monospace",
+                              fontSize: '0.7rem',
+                              fontWeight: 'bold',
+                              letterSpacing: '0.12em',
+                              cursor: 'pointer',
+                              borderRadius: 4,
+                              boxShadow: '0 0 10px rgba(176, 38, 255, 0.45)',
+                              textTransform: 'uppercase',
+                              width: '100%',
+                              maxWidth: '180px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            CLAIM AS NFT
+                          </button>
+                        )}
+                        <button className="oracle-synthesis-close" onClick={() => setPortraitViewerUrl(null)} style={{ width: '100%', maxWidth: '180px', justifyContent: 'center' }}>
+                          <X size={14} /> RETURN TO SIGNAL
+                        </button>
+                      </div>
                     </div>
                   )}
                 </motion.div>
@@ -1167,7 +1215,7 @@ export function SurrogateOracleImmersion() {
                         fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em'
                       }}
                     >
-                      CONNECT WALLET
+                      CONNECT SURROGATE
                     </a>
                     <button
                       onClick={() => handleAwakeTransition()}

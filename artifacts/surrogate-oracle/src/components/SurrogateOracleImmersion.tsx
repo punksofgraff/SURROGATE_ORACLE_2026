@@ -545,7 +545,7 @@ export function SurrogateOracleImmersion() {
     if (typeof DE?.requestPermission === 'function') DE.requestPermission().catch(() => {});
     setTimeout(() => {
       const fullStory = LORE_SEQUENCE.join('\n');
-      const seed = `[MANIFEST — The Seeker has drawn their blade. Standby mode ends. You are fully present now. CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). First, read the following question EXACTLY word-for-word, verbatim, speak slowly (20% slower than normal). Nothing before or after the question. Question:]\n"${q}"\n[After reading the question verbatim, pause, then give your full answer as the Oracle. Close with a single spoken line — one sentence — that opens the channel for the Seeker to speak. Not "your turn." Speak it the way a door sounds when it opens.]`;
+      const seed = `[MANIFEST — The Seeker has drawn their blade. Standby mode ends. You are fully present now. CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). Reply directly to the Seeker's drawn question with your deep Oracle insight: "${q}". Speak with weight and presence, deliver slowly (10% slower than normal). Do NOT repeat the question back to them. Pause naturally, give your full answer, then close with a single spoken line — one sentence — that opens the channel for the Seeker to speak. Not "your turn." Speak it the way a door sounds when it opens.]`;
       oracleConversationRef.current?.startSession(seed);
     }, 1200);
   };

@@ -176,6 +176,7 @@ export function SurrogateOracleImmersion() {
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
   const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
+  const [showWallet, setShowWallet]             = useState(false);
   const [isGuidedTour, setIsGuidedTour]     = useState(false);
   const [loreStarted, setLoreStarted]       = useState(false);
   const [targetVol, setTargetVol]           = useState(0.028);
@@ -190,6 +191,7 @@ export function SurrogateOracleImmersion() {
   const atmosphereCanvasRef      = useRef<HTMLCanvasElement | null>(null);
   const staticAvatarRef          = useRef<HTMLImageElement | null>(null);
   const audioRef                 = useRef<HTMLAudioElement | null>(null);
+  const walletIframeRef          = useRef<HTMLIFrameElement | null>(null);
   const radioGainRef             = useRef<GainNode | null>(null);
   const seekerKeyRef             = useRef<string | null>(null);
   const lastKnifeRef             = useRef<typeof KNIFE_QUESTIONS[number] | null>(null);
@@ -789,6 +791,15 @@ export function SurrogateOracleImmersion() {
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [portraitViewerUrl, prefersReducedMotion]);
 
+  // Wire portrait URL to Wallet iframe once the holographic reveal settles.
+  useEffect(() => {
+    if (portraitRevealPhase !== 'settled' || !portraitViewerUrl) return;
+    walletIframeRef.current?.contentWindow?.postMessage(
+      { type: 'portrait_ready', url: portraitViewerUrl },
+      'https://wallet.thesurrogate.me'
+    );
+  }, [portraitRevealPhase, portraitViewerUrl]);
+
   useEffect(() => {
     logStep('NEURAL LINK AWAKENING', 'ok');
     (window as any).__session_start = Date.now();
@@ -1061,7 +1072,7 @@ export function SurrogateOracleImmersion() {
       {isOracleMode && (
         <div className="oracle-bottom-bar">
           <GraffPunksRadio isPlaying={isAudioPlaying} onToggle={() => setIsAudioPlaying(!isAudioPlaying)} stations={defaultAudioTracks} currentStation={currentStation} onStationChange={switchStation} />
-          <motion.div onPointerDown={() => startHold('WALLET', 'Your wallet.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => { if (!consumeHold()) window.open('https://wallet.thesurrogate.me', '_blank', 'noopener,noreferrer'); }} className="oracle-bottom-btn oracle-bottom-btn--active">
+          <motion.div onPointerDown={() => startHold('WALLET', 'Your wallet.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => { if (!consumeHold()) setShowWallet(true); }} className="oracle-bottom-btn oracle-bottom-btn--active">
             <img src="/portrait-btn.png" alt="Wallet" className="oracle-bottom-btn__img" />
             <span className="oracle-bottom-btn__label">WALLET</span>
           </motion.div>
@@ -1074,6 +1085,31 @@ export function SurrogateOracleImmersion() {
           </motion.div>
         </div>
       )}
+
+      <AnimatePresence>
+        {showWallet && (
+          <motion.div
+            key="wallet-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(10px)', display: 'flex', flexDirection: 'column' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid rgba(0,255,136,0.2)', flexShrink: 0 }}>
+              <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.2em', color: '#00ff88' }}>WALLET</span>
+              <button onClick={() => setShowWallet(false)} style={{ background: 'none', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', padding: '4px 10px', cursor: 'pointer', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', borderRadius: 4 }}>✕ CLOSE</button>
+            </div>
+            <iframe 
+              ref={walletIframeRef} 
+              src="https://wallet.thesurrogate.me" 
+              style={{ flex: 1, border: 'none', width: '100%' }} 
+              allow="camera; microphone; clipboard-write; publickey-credentials-get; payment; web-share" 
+              title="Wallet" 
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {awakened && (
         <motion.div key="awakening-flash" initial={{ opacity: 0.85 }} animate={{ opacity: 0 }} transition={{ duration: 1.0 }} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 40, background: 'radial-gradient(ellipse 70% 55% at 50% 44%, rgba(0,255,136,0.55) 0%, transparent 72%)' }} />

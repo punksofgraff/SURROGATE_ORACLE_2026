@@ -19,7 +19,7 @@ import { createVADProcessor, type VADFrame } from '../hooks/useVAD';
 import { motion, AnimatePresence } from 'framer-motion';
 import { logStep } from './CodeAuditor';
 import { trackOracleEvent } from '../lib/analytics';
-import { Mic, MicOff, Send, X, Zap } from 'lucide-react';
+import { Mic, MicOff, Send, Terminal, X, Zap } from 'lucide-react';
 import { getAudioContext } from '../lib/oracleSfx';
 import {
   ARCHETYPE_SYNTHESIS_BLOCK,
@@ -1360,6 +1360,14 @@ const OracleConversation = forwardRef(
 
         {/* Signal pad — opened via hamburger menu TYPE MODE button */}
         <div className={`oc-signal-pad ${showSignalPad ? 'oc-signal-pad--open' : ''}`}>
+          <button 
+            className="oc-signal-pad-toggle" 
+            onClick={() => setShowSignalPad(prev => !prev)}
+            style={{ pointerEvents: 'auto' }}
+          >
+            <Terminal size={14} />
+            <span>{showSignalPad ? 'CLOSE PAD' : 'TYPE SIGNAL'}</span>
+          </button>
 
           <AnimatePresence>
             {showSignalPad && (

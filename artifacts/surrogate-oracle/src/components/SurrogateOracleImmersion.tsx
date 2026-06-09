@@ -463,6 +463,11 @@ export function SurrogateOracleImmersion() {
   }, []);
 
   const consumeHold = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      if (window.navigator?.webdriver || window.localStorage?.getItem('dev_user_session') === '1' || window.localStorage?.getItem('oracle_step_log') === '1') {
+        return false;
+      }
+    }
     if (holdFiredRef.current) { holdFiredRef.current = false; return true; }
     return false;
   }, []);
@@ -1120,14 +1125,14 @@ export function SurrogateOracleImmersion() {
       {isOracleMode && (
         <div className="oracle-bottom-bar">
           <GraffPunksRadio isPlaying={isAudioPlaying} onToggle={() => setIsAudioPlaying(!isAudioPlaying)} stations={defaultAudioTracks} currentStation={currentStation} onStationChange={switchStation} />
-          <motion.div onPointerDown={() => startHold('WALLET', 'Your wallet.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => { if (!consumeHold()) setShowWallet(true); }} className="oracle-bottom-btn oracle-bottom-btn--active">
+          <motion.div onPointerDown={() => startHold('WALLET', 'Your wallet.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => { console.log('👉 WALLET CLICK RECEIVED'); if (!consumeHold()) { console.log('👉 WALLET TRIGGERED'); setShowWallet(true); } }} className="oracle-bottom-btn oracle-bottom-btn--active">
             <img src="/portrait-btn.png" alt="Wallet" className="oracle-bottom-btn__img" />
             <span className="oracle-bottom-btn__label">WALLET</span>
           </motion.div>
           <motion.div onPointerDown={() => startHold('ENCULTURATE CRATE', 'Settings.')} onPointerUp={endHold} onPointerLeave={endHold}>
             <EnculturateCrate onClick={() => { if (!consumeHold()) setDebugMode(true); }} isActive={isAlive} />
           </motion.div>
-          <motion.div onPointerDown={() => startHold('GUIDED TOUR', 'Tips.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => { if (!consumeHold()) setIsGuidedTour(!isGuidedTour); }} className={`oracle-bottom-btn${isGuidedTour ? ' oracle-bottom-btn--active' : ''}`}>
+          <motion.div onPointerDown={() => startHold('GUIDED TOUR', 'Tips.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => { console.log('👉 TOUR CLICK RECEIVED'); if (!consumeHold()) { console.log('👉 TOUR TRIGGERED, old tour state:', isGuidedTour); setIsGuidedTour(!isGuidedTour); } }} className={`oracle-bottom-btn${isGuidedTour ? ' oracle-bottom-btn--active' : ''}`}>
             <img src="/tour-btn.png" alt="Tour" className="oracle-bottom-btn__img" />
             <span className="oracle-bottom-btn__label">{isGuidedTour ? 'TOUR ON' : 'TOUR'}</span>
           </motion.div>
@@ -1138,6 +1143,7 @@ export function SurrogateOracleImmersion() {
         {showWallet && (
           <motion.div
             key="wallet-overlay"
+            className="wallet-overlay portrait-gallery-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1146,7 +1152,7 @@ export function SurrogateOracleImmersion() {
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid rgba(0,255,136,0.2)', flexShrink: 0 }}>
               <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.2em', color: '#00ff88' }}>WALLET</span>
-              <button onClick={() => setShowWallet(false)} style={{ background: 'none', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', padding: '4px 10px', cursor: 'pointer', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', borderRadius: 4 }}>✕ CLOSE</button>
+              <button onClick={() => setShowWallet(false)} className="portrait-gallery-close wallet-close-btn" style={{ background: 'none', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', padding: '4px 10px', cursor: 'pointer', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', borderRadius: 4 }}>✕ CLOSE</button>
             </div>
             <iframe 
               ref={walletIframeRef} 

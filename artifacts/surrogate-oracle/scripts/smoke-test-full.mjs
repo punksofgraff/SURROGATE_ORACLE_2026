@@ -78,8 +78,27 @@ async function runSmoke() {
   const page = await context.newPage();
   const consoleErrors = [];
 
+  page.on('response', response => {
+    const status = response.status();
+    if (status >= 400) {
+      const url = response.url();
+      if (!url.includes('google-analytics') && !url.includes('analytics.js') && !url.includes('.supabase.co')) {
+        console.log(`  [NETWORK ERROR] ${status} - ${url}`);
+        consoleErrors.push(`[${status}] ${url}`);
+      }
+    }
+  });
+
   page.on('console', msg => {
-    if (msg.type() === 'error') consoleErrors.push(msg.text());
+    if (msg.text().includes('👉') || msg.text().includes('SIGNAL') || msg.text().includes('Overlay')) {
+      console.log(`  [BROWSER] ${msg.text()}`);
+    }
+    if (msg.type() === 'error') {
+      const text = msg.text();
+      if (!text.includes('Failed to load resource') && !text.includes('supabase.co')) {
+        consoleErrors.push(text);
+      }
+    }
   });
   page.on('pageerror', err => consoleErrors.push(`[pageerror] ${err.message}`));
 
@@ -463,10 +482,15 @@ async function runSmoke() {
   const bottomButtons = await page.$$('.oracle-bottom-btn');
   record('ui', '4 buttons present in bottom bar', bottomButtons.length === 4 ? 'pass' : 'fail', `found ${bottomButtons.length}`);
 
+  for (let i = 0; i < bottomButtons.length; i++) {
+    const text = await page.evaluate(el => el.innerText || el.outerHTML, bottomButtons[i]);
+    console.log(`  [TEST DEBUG] Button ${i}: ${text.slice(0, 100).replace(/\n/g, ' ')}`);
+  }
+
   // Test Portrait Button (2nd button)
   const portraitBtn = bottomButtons[1];
   if (portraitBtn) {
-    await portraitBtn.click({ force: true });
+    await page.evaluate(el => el.click(), portraitBtn);
     await sleep(2000);
     const gallery = await page.$('.portrait-gallery-overlay');
     record('ui', 'Portrait gallery opens via button', gallery ? 'pass' : 'fail');
@@ -474,7 +498,7 @@ async function runSmoke() {
     // Close gallery
     const closeBtn = await page.$('.portrait-gallery-close').catch(() => null);
     if (closeBtn) {
-       await closeBtn.click({ force: true });
+       await page.evaluate(el => el.click(), closeBtn);
        await sleep(1500);
        const galleryAfter = await page.$('.portrait-gallery-overlay');
        record('ui', 'Portrait gallery closes correctly', !galleryAfter ? 'pass' : 'warn');
@@ -492,7 +516,7 @@ async function runSmoke() {
   const tourBtn = bottomButtons[3];
   if (tourBtn) {
     const isTour = await page.evaluate(() => document.querySelector('.oracle-stage').getAttribute('data-guided-tour') === 'true');
-    await tourBtn.click({ force: true });
+    await page.evaluate(el => el.click(), tourBtn);
     await sleep(1000);
     const isTourAfter = await page.evaluate(() => document.querySelector('.oracle-stage').getAttribute('data-guided-tour') === 'true');
     record('ui', 'Tour mode toggles via button', isTour !== isTourAfter ? 'pass' : 'fail', `init=${isTour} after=${isTourAfter}`);

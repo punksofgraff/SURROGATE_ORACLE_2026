@@ -197,6 +197,13 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     doubleAt: 0,
   });
 
+  // Saccade state (eye darts) — nextTime triggers a randomized micro eye adjustment
+  const saccadeRef = useRef({
+    x: 0,
+    y: 0,
+    nextTime: 0,
+  });
+
   // ── Start idle animation on mount — 45% slower than source clip ──────────
   useEffect(() => {
     const idle = actions['M_Standing_Idle_001'];
@@ -382,7 +389,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     camera.position.lerp(camTarget.current, CAM_LERP * lerpDt);
     camera.lookAt(0, CAM_Y_CENTER, 0);
 
-    // ── Blinking ──────────────────────────────────────────────────────────
+    // ── Blinking & Saccades ──────────────────────────────────────────────────
     const blink = blinkRef.current;
     const now   = t;
 
@@ -407,8 +414,28 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         blink.speed         = 14;
       }
     }
-    // S-curve: smooth eyelid arc (not a triangle wave)
-    const bInt = Math.sin(blink.intensity * Math.PI);
+
+    // Voice intensity-driven emotional squint (narrowing eyelids when speaking with force)
+    const voiceIntensity = vs?.intensity ?? 0;
+    const squintVal = Math.min(0.24, voiceIntensity * 0.35);
+
+    // Asymmetric blink intensity: left leads right by a tiny offset, mimicking real eyelids
+    const leftBlinkVal = Math.max(squintVal, Math.sin(Math.min(1.0, blink.intensity * 1.05) * Math.PI));
+    const rightBlinkVal = Math.max(squintVal, Math.sin(THREE.MathUtils.clamp((blink.intensity - 0.03) * 1.05, 0, 1) * Math.PI));
+
+    // Saccades (Rapid, randomized micro eye darts representing biological focus)
+    const saccade = saccadeRef.current;
+    if (now >= saccade.nextTime) {
+      if (Math.random() < 0.78) {
+        // Small, subtle biological movements
+        saccade.x = (Math.random() - 0.5) * 0.12;
+        saccade.y = (Math.random() - 0.5) * 0.07;
+      } else {
+        saccade.x = 0;
+        saccade.y = 0;
+      }
+      saccade.nextTime = now + 0.20 + Math.random() * 0.90;
+    }
 
     // ── Gaze & bone animation ─────────────────────────────────────────────
     // Seeker Tracking: Use real motion data if in XR/Camera mode, else use parallax
@@ -425,7 +452,6 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       if (hasTilt || hasFace) {
         if (hasTilt) {
           // Mobile/Tablet: Blend phone tilt (70%) and face position (30%)
-          // phoneTilt provides high-frequency orientation, facePos provides absolute spatial offset
           seekerX = phoneTilt.x * 0.7 + facePos.x * 0.3;
           seekerY = phoneTilt.y * 0.7 + facePos.y * 0.3;
         } else {
@@ -434,48 +460,47 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
           seekerY = facePos.y;
         }
       }
-      // Else: both are zero, keep seekerX/Y as the mouse parallax from cameraStateRef
     }
 
     const gx = Math.max(-1, Math.min(1, seekerX));
     const gy = Math.max(-1, Math.min(1, seekerY));
 
-    // Eye gaze follows seeker
-    const eyeLerpF = lerpDt * 0.22; // Slightly more responsive tracking
+    // Eye gaze follows seeker with active "Mona Lisa" feedback + saccades
+    const eyeLerpF = lerpDt * 0.24;
+    const finalEyeX = gx * 0.62 + saccade.x;
+    const finalEyeY = gy * 0.42 + saccade.y;
+
     if (meshData.leftEyeBone) {
-      meshData.leftEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.y, gx * 0.55, eyeLerpF);
-      meshData.leftEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.x, gy * 0.35, eyeLerpF);
-      meshData.leftEyeBone.scale.y    = 1.0 - bInt * 0.92;
+      meshData.leftEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.y, finalEyeX, eyeLerpF);
+      meshData.leftEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.x, finalEyeY, eyeLerpF);
+      meshData.leftEyeBone.scale.y    = 1.0 - leftBlinkVal * 0.92;
     }
     if (meshData.rightEyeBone) {
-      meshData.rightEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.y, gx * 0.55, eyeLerpF);
-      meshData.rightEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.x, gy * 0.35, eyeLerpF);
-      meshData.rightEyeBone.scale.y    = 1.0 - bInt * 0.92;
+      meshData.rightEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.y, finalEyeX, eyeLerpF);
+      meshData.rightEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.x, finalEyeY, eyeLerpF);
+      meshData.rightEyeBone.scale.y    = 1.0 - rightBlinkVal * 0.92;
     }
 
     // ── Head: organic conversational movement ─────────────────────────────
-    // Amplitudes are in radians. Previous values (0.006, 0.038) were
-    // sub-degree and invisible. Scaled up to clearly visible range.
     if (meshData.headBone) {
       const headLerpF = lerpDt * 0.09;
       const speakAmt  = amp * 1.1;
 
-      // Base parallax gaze from phone tilt / mouse
-      let tx = gx * 0.22;
-      let ty = gy * 0.16;
+      // Base parallax gaze with enhanced lock-on tracking
+      let tx = gx * 0.45;
+      let ty = gy * 0.32;
       let tz = 0;
 
       // Alive idle drift — two incommensurate freqs (~0.11Hz + ~0.18Hz)
-      // ±0.025 rad = ±1.4° — visible, feels like weight and presence
       tx += Math.sin(t * 0.71 + 0.4) * 0.025 + Math.sin(t * 1.13 + 1.7) * 0.016;
       tz += Math.cos(t * 0.57 + 0.9) * 0.020;
 
       if (amp > 0.04) {
-        // Conversational nod at 0.62 Hz — ±0.12 rad = ±6.9° at full amp
+        // Conversational nod at 0.62 Hz
         ty -= Math.sin(t * 3.90) * 0.12 * speakAmt;
-        // Conversational tilt at 0.37 Hz — ±0.12 rad = ±6.9° at full amp
+        // Conversational tilt at 0.37 Hz
         tz += Math.sin(t * 2.30 + 1.2) * 0.12 * speakAmt;
-        // Forward lean into the moment — up to 0.04 rad = 2.3°
+        // Forward lean into the moment — up to 0.04 rad
         ty -= amp * 0.04;
       }
 
@@ -486,20 +511,37 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
 
     // ── Neck: gentle follow ───────────────────────────────────────────────
     if (meshData.neckBone) {
-      const neckLerpF = lerpDt * 0.04;
+      const neckLerpF = lerpDt * 0.05;
       const neckSwayX = Math.sin(t * 0.80) * 0.025 + Math.sin(t * 1.90 + 0.6) * 0.012 * amp;
       const neckSwayZ = Math.cos(t * 0.52 + 1.1) * 0.018;
-      meshData.neckBone.rotation.x = THREE.MathUtils.lerp(meshData.neckBone.rotation.x, gy * 0.05 + neckSwayX, neckLerpF);
+      meshData.neckBone.rotation.y = THREE.MathUtils.lerp(meshData.neckBone.rotation.y, gx * 0.15, neckLerpF);
+      meshData.neckBone.rotation.x = THREE.MathUtils.lerp(meshData.neckBone.rotation.x, gy * 0.12 + neckSwayX, neckLerpF);
       meshData.neckBone.rotation.z = THREE.MathUtils.lerp(meshData.neckBone.rotation.z, neckSwayZ, neckLerpF);
     }
 
-    // ── Breathing — gentle Y drift on the outer group ────────────────────
-    // <Center> handles positioning; we just add a subtle alive movement.
+    // ── Breathing — biological spine chest expansion & Y drift ────────────
+    const breathSpeed = 1.35 + amp * 1.3;
+    const breathCycle = Math.sin(t * breathSpeed);
+
+    if (meshData.spineBone) {
+      const spineLerpF = lerpDt * 0.05;
+      // Rotates spine slightly back/upwards on breathing in
+      const breathRotX = breathCycle * 0.015;
+      // Subtle chest expansion scaling
+      const chestScale = 1.0 + Math.max(0, breathCycle) * 0.005;
+
+      meshData.spineBone.rotation.x = THREE.MathUtils.lerp(meshData.spineBone.rotation.x, breathRotX, spineLerpF);
+      meshData.spineBone.scale.set(
+        THREE.MathUtils.lerp(meshData.spineBone.scale.x, chestScale, spineLerpF),
+        THREE.MathUtils.lerp(meshData.spineBone.scale.y, 1.0, spineLerpF),
+        THREE.MathUtils.lerp(meshData.spineBone.scale.z, chestScale, spineLerpF),
+      );
+    }
+
     if (groupRef.current) {
-      const breathSpeed = 1.4 + amp * 1.5;
       groupRef.current.position.y = THREE.MathUtils.lerp(
         groupRef.current.position.y,
-        Math.sin(t * breathSpeed) * 0.012,
+        breathCycle * 0.012,
         lerpDt * 0.04,
       );
     }
@@ -510,7 +552,10 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     if (meshData.hasMorphs) {
       const targets = new Map<string, number>();
       OVR_NAMES.forEach(n => targets.set(n, 0));
-      BLINK_NAMES.forEach(b => targets.set(b, bInt));
+      BLINK_NAMES.forEach(b => {
+        const isLeft = b.toLowerCase().includes('left');
+        targets.set(b, isLeft ? leftBlinkVal : rightBlinkVal);
+      });
 
       if (amp > 0.005) {
         const dominant = ORACLE_TO_OVR[vs.viseme] ?? ['viseme_sil'];

@@ -35,6 +35,7 @@ import { KnifeSelection, KNIFE_QUESTIONS } from './KnifeSelection';
 import { OracleHaloRing } from './OracleHaloRing';
 import { Canvas } from '@react-three/fiber';
 import { OracleAvatar3D } from './OracleAvatar3D';
+import { EffectComposer, DepthOfField } from '@react-three/postprocessing';
 
 // Hooks
 import { useIpCheck } from '../hooks/useIpCheck';
@@ -176,7 +177,6 @@ export function SurrogateOracleImmersion() {
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
   const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
   const [isGuidedTour, setIsGuidedTour]     = useState(false);
-  const [showChainFuelz, setShowChainFuelz] = useState(false);
   const [loreStarted, setLoreStarted]       = useState(false);
   const [targetVol, setTargetVol]           = useState(0.028);
   const [currentStation, setCurrentStation] = useState(DEFAULT_STATION);
@@ -210,11 +210,11 @@ export function SurrogateOracleImmersion() {
   // knife tap fires the Oracle's question-reading seed twice, and a double exit
   // double-saves the echo / fires memory-distill twice. Reset per-phase below.
   const knifeSelectedRef         = useRef(false);
+  const oracleHasSpokenRef       = useRef(false);
   const sessionEndedRef          = useRef(false);
   const mirrorRevealedRef        = useRef(false); // fire the Mirror reveal once per session
   const portraitTriggeredRef     = useRef(false); // fire portrait generation once per session
   const pendingPortraitUrlRef    = useRef<string | null>(null); // staged portrait URL — released at turn-complete
-  const chainFuelzIframeRef      = useRef<HTMLIFrameElement | null>(null);
 
   // ── Service Hooks ───────────────────────────────────────────────────────
   const { isReturning, hasCompletedLore, markVisited, markLoreCompleted, ipAddress } = useIpCheck();
@@ -551,9 +551,21 @@ export function SurrogateOracleImmersion() {
   // Re-arm the idempotency guards as the phase changes: a fresh knife may be drawn
   // each time we (re-)enter awakened; a fresh exit is allowed each time we enter oracle.
   useEffect(() => {
-    if (scenePhase === 'awakened') knifeSelectedRef.current = false;
+    if (scenePhase === 'awakened') {
+      knifeSelectedRef.current = false;
+      oracleHasSpokenRef.current = false;
+    }
     if (scenePhase === 'oracle') { sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; pendingPortraitUrlRef.current = null; }
-    if (scenePhase === 'dormant') { knifeSelectedRef.current = false; sessionEndedRef.current = false; mirrorRevealedRef.current = false; setMirrorReveal(null); setOfferRift(false); portraitTriggeredRef.current = false; pendingPortraitUrlRef.current = null; }
+    if (scenePhase === 'dormant') {
+      knifeSelectedRef.current = false;
+      oracleHasSpokenRef.current = false;
+      sessionEndedRef.current = false;
+      mirrorRevealedRef.current = false;
+      setMirrorReveal(null);
+      setOfferRift(false);
+      portraitTriggeredRef.current = false;
+      pendingPortraitUrlRef.current = null;
+    }
   }, [scenePhase]);
 
   // Mirror reveal auto-dismiss — generous dwell, but never blocks the mic permanently.
@@ -589,11 +601,17 @@ export function SurrogateOracleImmersion() {
   const MUSIC_LANDING_VOLUME  = 0.0525; // Globally reduced by an additional 25% (was 0.07)
   const MUSIC_LORE_VOLUME     = 0;      // ABSOLUTE SILENCE (Proof Test)
   const MUSIC_KNIFE_VOLUME    = 0.021;  // Globally reduced by an additional 25% (was 0.028)
+  const MUSIC_SESSION_AMBIENT = 0.008;  // Low ambient locked state once Oracle first speaks (prevents noise creep)
   const MUSIC_OFF_VOLUME      = 0;
 
   useEffect(() => {
     let nextTarget: number;
     let rampMs: number | undefined;
+
+    // Track if Oracle has spoken during this session
+    if (isOracleSpeaking) {
+      oracleHasSpokenRef.current = true;
+    }
 
     if (!isAudioPlaying) {
       nextTarget = MUSIC_OFF_VOLUME;
@@ -613,7 +631,8 @@ export function SurrogateOracleImmersion() {
       rampMs = 1500;
     } else if (scenePhase === 'oracle') {
       // Restore music volume when in oracle mode and mic is NOT active!
-      nextTarget = MUSIC_KNIFE_VOLUME;
+      // If Oracle has already spoken, lock to the low ambient state (0.008) to avoid voice clashes
+      nextTarget = oracleHasSpokenRef.current ? MUSIC_SESSION_AMBIENT : MUSIC_KNIFE_VOLUME;
       rampMs = 1500;
     } else {
       nextTarget = MUSIC_OFF_VOLUME;
@@ -638,17 +657,14 @@ export function SurrogateOracleImmersion() {
       import('../lib/supabase').then(({ supabase }) => {
         supabase.auth.getUser().then(({ data }) => { if (data?.user?.email) setUserEmail(data.user.email); });
       });
-      // Pre-warm Oracle the moment Act 2 starts — Oracle is live and contextually aware
-      // while it glitches in on screen, not cold when the Seeker draws their blade.
-      // The standby message establishes read-verbatim mode so knife card voiceovers
-      // land correctly instead of Oracle treating the question as a prompt to answer.
-      // Guard: if the Seeker taps a knife within 600ms, the effect cleanup fires and
-      // cancels this timer before it runs — preventing double-boot into knife startSession.
+      // Pre-warm Oracle WebSocket connection the moment Awakened starts so the session
+      // is ready with zero lag, but do so silently (prewarm()) without sending any
+      // text prompt that would trigger Gemini to voice-greet or speak before a card
+      // voiceover is requested.
+      // Guard: if the Seeker taps a knife within 600ms, the cleanup cancels this prewarm.
       prewarmTimer = setTimeout(() => {
-        oracleConversationRef.current?.startSession(
-          `[STANDBY — you are not yet manifested. The knife frequencies are cycling on the screen. When a territory question arrives, speak it exactly word for word — nothing before or after, delivered slowly. Do not answer. Do not comment. Only the words, as if the alley walls are transmitting through static. Wait until the Seeker draws their blade to fully manifest.]`
-        );
-        logStep('ORACLE ANNOUNCES TERRITORIES', 'ok');
+        oracleConversationRef.current?.prewarm();
+        logStep('ORACLE CONDUIT PRE-WARMED SILENTLY', 'ok');
       }, 600);
     }
     if (scenePhase === 'oracle') {
@@ -772,17 +788,6 @@ export function SurrogateOracleImmersion() {
     const t3 = setTimeout(() => setPortraitRevealPhase('settled'),  930);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [portraitViewerUrl, prefersReducedMotion]);
-
-  // Wire portrait URL to ChainFuelz iframe once the holographic reveal settles.
-  // The iframe catches this and pre-populates the mint flow without requiring the
-  // Seeker to manually navigate to their portrait.
-  useEffect(() => {
-    if (portraitRevealPhase !== 'settled' || !portraitViewerUrl) return;
-    chainFuelzIframeRef.current?.contentWindow?.postMessage(
-      { type: 'portrait_ready', url: portraitViewerUrl },
-      'https://wallet.thesurrogate.me'
-    );
-  }, [portraitRevealPhase, portraitViewerUrl]);
 
   useEffect(() => {
     logStep('NEURAL LINK AWAKENING', 'ok');
@@ -1011,6 +1016,16 @@ export function SurrogateOracleImmersion() {
                           frameloop="always"
                         >
                           <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
+                          {!isDegraded && (
+                            <EffectComposer>
+                              <DepthOfField
+                                focusDistance={0.012}
+                                focalLength={0.022}
+                                bokehScale={2.0}
+                                height={480}
+                              />
+                            </EffectComposer>
+                          )}
                         </Canvas>
                       </Suspense>
                     </OracleErrorBoundary>
@@ -1046,9 +1061,9 @@ export function SurrogateOracleImmersion() {
       {isOracleMode && (
         <div className="oracle-bottom-bar">
           <GraffPunksRadio isPlaying={isAudioPlaying} onToggle={() => setIsAudioPlaying(!isAudioPlaying)} stations={defaultAudioTracks} currentStation={currentStation} onStationChange={switchStation} />
-          <motion.div onPointerDown={() => startHold('CHAIN FUELZ', 'Your wallet.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => { if (!consumeHold()) setShowChainFuelz(true); }} className="oracle-bottom-btn oracle-bottom-btn--active">
-            <img src="/portrait-btn.png" alt="Chain Fuelz" className="oracle-bottom-btn__img" />
-            <span className="oracle-bottom-btn__label">CHAIN FUELZ</span>
+          <motion.div onPointerDown={() => startHold('WALLET', 'Your wallet.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => { if (!consumeHold()) window.open('https://wallet.thesurrogate.me', '_blank', 'noopener,noreferrer'); }} className="oracle-bottom-btn oracle-bottom-btn--active">
+            <img src="/portrait-btn.png" alt="Wallet" className="oracle-bottom-btn__img" />
+            <span className="oracle-bottom-btn__label">WALLET</span>
           </motion.div>
           <motion.div onPointerDown={() => startHold('ENCULTURATE CRATE', 'Settings.')} onPointerUp={endHold} onPointerLeave={endHold}>
             <EnculturateCrate onClick={() => { if (!consumeHold()) setDebugMode(true); }} isActive={isAlive} />
@@ -1059,25 +1074,6 @@ export function SurrogateOracleImmersion() {
           </motion.div>
         </div>
       )}
-
-      <AnimatePresence>
-        {showChainFuelz && (
-          <motion.div
-            key="chainfuelz-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(10px)', display: 'flex', flexDirection: 'column' }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid rgba(0,255,136,0.2)', flexShrink: 0 }}>
-              <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.2em', color: '#00ff88' }}>CHAIN FUELZ</span>
-              <button onClick={() => setShowChainFuelz(false)} style={{ background: 'none', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', padding: '4px 10px', cursor: 'pointer', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', borderRadius: 4 }}>✕ CLOSE</button>
-            </div>
-            <iframe ref={chainFuelzIframeRef} src="https://wallet.thesurrogate.me" style={{ flex: 1, border: 'none', width: '100%' }} allow="camera; microphone; clipboard-write" title="Chain Fuelz Wallet" />
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {awakened && (
         <motion.div key="awakening-flash" initial={{ opacity: 0.85 }} animate={{ opacity: 0 }} transition={{ duration: 1.0 }} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 40, background: 'radial-gradient(ellipse 70% 55% at 50% 44%, rgba(0,255,136,0.55) 0%, transparent 72%)' }} />
@@ -1135,7 +1131,7 @@ export function SurrogateOracleImmersion() {
                         fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em'
                       }}
                     >
-                      CONNECT CHAIN FUELZ
+                      CONNECT WALLET
                     </a>
                     <button
                       onClick={() => handleAwakeTransition()}

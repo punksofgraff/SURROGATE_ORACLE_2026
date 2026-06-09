@@ -179,6 +179,7 @@ export interface OracleConversationHandle {
     recentMessages: string[];
   };
   startSession: (bootMessage?: string, loreOnly?: boolean) => void;
+  prewarm: () => void;
   startMic: () => Promise<void>;
   toggleTypeMode: () => void;
   enableMicAutoRestart: () => void;
@@ -1121,6 +1122,13 @@ const OracleConversation = forwardRef(
 
         recentMessages: debugInfo.current.recentMessages,
       }),
+      prewarm: () => {
+        logStep('prewarm() CALLED — silent pre-warm', 'ok');
+        const wsState = wsRef.current?.readyState;
+        if (wsState !== WebSocket.OPEN && wsState !== WebSocket.CONNECTING) {
+          connectToGemini();
+        }
+      },
       startSession: (bootMessage?: string, loreOnly = false) => {
         logStep('startSession() CALLED', 'ok');
         const wsState = wsRef.current?.readyState;

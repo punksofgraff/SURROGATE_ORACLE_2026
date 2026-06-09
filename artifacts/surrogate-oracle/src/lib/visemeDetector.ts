@@ -13,6 +13,7 @@ export interface VisemeState {
   rounded: number;
   spread: number;
   amplitude: number;
+  intensity?: number; // Voice harshness / spectral focus for stress/emotion expression
 }
 
 const SILENCE_THRESH = 0.05;
@@ -87,7 +88,7 @@ export class VisemeDetector {
 
     const amplitude = Math.min(1, totalE / (bins * 0.2));
     if (amplitude < SILENCE_THRESH) {
-      return { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
+      return { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0, intensity: 0 };
     }
 
     const T = totalE || 1;
@@ -122,7 +123,10 @@ export class VisemeDetector {
       viseme = 'C'; openness = 0.4; rounded = 0.2; spread = 0.3;
     }
 
-    return { viseme, openness, rounded, spread, amplitude: amp };
+    // Intensity calculation represents speech focus and force (0 to 1 range)
+    const intensity = Math.min(1.0, amp * 0.5 + hr * 1.2 + zcrN * 1.8);
+
+    return { viseme, openness, rounded, spread, amplitude: amp, intensity };
   }
 
   private _lerpState(a: VisemeState, b: VisemeState, t: number): VisemeState {
@@ -133,6 +137,7 @@ export class VisemeDetector {
       rounded: lerp(a.rounded, b.rounded),
       spread: lerp(a.spread, b.spread),
       amplitude: lerp(a.amplitude, b.amplitude),
+      intensity: lerp(a.intensity ?? 0, b.intensity ?? 0),
     };
   }
 }

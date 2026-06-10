@@ -477,13 +477,13 @@ const OracleConversation = forwardRef(
     };
 
     const vadRef = useRef(createVADProcessor({
-      rmsThreshold: 0.035,
-      // 35 frames × 42.7ms (1024 samples ÷ 24000 Hz context) ≈ 1.5s of silence.
-      // UI-only VAD — drives the "READING THE SIGNAL" indicator and vadScore ring.
-      // Gemini native VAD (silenceDurationMs:800) is the sole turn-detection authority.
+      rmsThreshold: 0.052,   // raised from 0.035 — filters breathing/ambient noise
       hangoverFrames: 35,
-      onsetFrames: 2,
+      onsetFrames: 4,        // ~1s of sustained speech before local barge-in triggers
     }));
+    // Consecutive-frames counter for Gemini barge-in gate (prevents sneezes from
+    // reaching Gemini's native VAD while Oracle is speaking)
+    const bargeInFramesRef = useRef(0);
 
     const pendingMessagesRef  = useRef<{text: string, isHidden: boolean}[]>([]);
     const wasInterruptedRef   = useRef(false); // tracks barge-in to suppress score-parse warn
@@ -997,11 +997,26 @@ const OracleConversation = forwardRef(
           // Continuous stream: MUST send while Oracle is speaking to enable native Gemini VAD barge-in.
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-          // Stream every chunk continuously — Gemini's native VAD decides when to respond.
+          // Barge-in gate: require 3 consecutive above-threshold frames before sending
+          // audio to Gemini while Oracle speaks. Filters sneezes/breathing (brief bursts)
+          // without meaningfully delaying intentional speech barge-in (~750ms onset).
+          const BARGE_IN_GATE_RMS = 0.065;
+          const BARGE_IN_CONFIRM = 3;
+          if (isOracleSpeakingRef.current) {
+            if (result.vadScore >= BARGE_IN_GATE_RMS) {
+              bargeInFramesRef.current++;
+            } else {
+              bargeInFramesRef.current = 0;
+            }
+            if (bargeInFramesRef.current < BARGE_IN_CONFIRM) return; // gate: wait for sustained speech
+          } else {
+            bargeInFramesRef.current = 0;
+          }
+
           wsRef.current.send(JSON.stringify({
             type: 'client.realtimeInput',
-            realtimeInput: { 
-              media_chunks: [{ data: base64, mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}` }] 
+            realtimeInput: {
+              media_chunks: [{ data: base64, mimeType: `audio/pcm;rate=${SAMPLE_RATE_INPUT}` }]
             }
           }));
           debugInfo.current.audioChunksSent++;
@@ -1272,12 +1287,6 @@ const OracleConversation = forwardRef(
           </motion.button>
           </div>
 
-          {isOracleSpeaking && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="oc-status-pill">
-              <Zap size={12} className="text-green-400 fill-green-400" />
-              <span>ORACLE IS TRANSMITTING</span>
-            </motion.div>
-          )}
 
           {/* Contemplative filler — shown during the gap between Seeker turn-end and Oracle audio */}
           <AnimatePresence>
@@ -1366,6 +1375,23 @@ const OracleConversation = forwardRef(
         <AnimatePresence>
           {showSignalPad && turns.length > 0 && (
             <LogScrollContainer turns={turns} />
+          )}
+        </AnimatePresence>
+
+        {/* Deaf-accessible hint — persists above the terminal when Oracle is transmitting */}
+        <AnimatePresence>
+          {isOracleSpeaking && (
+            <motion.div
+              key="terminal-hint"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.25 }}
+              className="oc-terminal-hint"
+            >
+              <Zap size={10} />
+              <span>ORACLE TRANSMITTING · TYPE VIA TERMINAL ⌨</span>
+            </motion.div>
           )}
         </AnimatePresence>
 

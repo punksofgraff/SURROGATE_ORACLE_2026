@@ -11,7 +11,7 @@
  */
 import { useEffect, useRef } from 'react';
 
-type Phase = 'dormant' | 'terminal' | 'awakened' | 'oracle';
+type Phase = 'dormant' | 'terminal' | 'tour' | 'awakened' | 'oracle';
 type Alignment = 'sacred' | 'profane' | 'neutral' | null;
 type ParticleKind = 'dust' | 'steam' | 'spark';
 
@@ -39,6 +39,7 @@ interface PhaseConfig {
 const PHASE_CONFIGS: Record<Phase, PhaseConfig> = {
   dormant:  { dustCount: 18, steamCount:  8, sparkCount:  0, speedMult: 0.45, masterOpacity: 0.55 },
   terminal: { dustCount: 35, steamCount: 14, sparkCount:  6, speedMult: 0.75, masterOpacity: 0.80 },
+  tour:     { dustCount: 45, steamCount: 16, sparkCount: 14, speedMult: 1.00, masterOpacity: 0.90 },
   awakened: { dustCount: 55, steamCount: 20, sparkCount: 22, speedMult: 1.20, masterOpacity: 1.00 },
   // ORACLE inherits AWAKENED particle counts, same 1.2× speed — entity is fully present
   oracle:   { dustCount: 55, steamCount: 20, sparkCount: 22, speedMult: 1.20, masterOpacity: 1.00 },

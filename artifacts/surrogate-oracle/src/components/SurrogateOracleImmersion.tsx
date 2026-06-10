@@ -32,6 +32,7 @@ import { OracleSpectrumRing } from './OracleSpectrumRing';
 import { DormantTransmissions } from './ambient/GhostTransmissions';
 import { GlitchCursor } from './ambient/GlitchCursor';
 import { KnifeSelection, KNIFE_QUESTIONS } from './KnifeSelection';
+import { TourSelection } from './TourSelection';
 import { OracleHaloRing } from './OracleHaloRing';
 import { Canvas } from '@react-three/fiber';
 import { OracleAvatar3D } from './OracleAvatar3D';
@@ -166,6 +167,7 @@ export function SurrogateOracleImmersion() {
   const [offerRift, setOfferRift] = useState(false);
   const [camNotice, setCamNotice] = useState<string | null>(null);
   const [portraitViewerUrl, setPortraitViewerUrl] = useState<string | null>(null);
+  const [showPortraitCard, setShowPortraitCard] = useState(false);
   const [portraitRevealPhase, setPortraitRevealPhase] = useState<'hidden'|'scanIn'|'unfurl'|'phosphor'|'settled'>('hidden');
   const [showConversation, setShowConversation]   = useState(false);
   const [isMicActive, setIsMicActive]       = useState(false);
@@ -178,6 +180,7 @@ export function SurrogateOracleImmersion() {
   const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
   const [showWallet, setShowWallet]             = useState(false);
   const [isGuidedTour, setIsGuidedTour]     = useState(false);
+  const [showStage00, setShowStage00]       = useState(false);
   const [loreStarted, setLoreStarted]       = useState(false);
   const [targetVol, setTargetVol]           = useState(0.028);
   const [currentStation, setCurrentStation] = useState(DEFAULT_STATION);
@@ -268,7 +271,7 @@ export function SurrogateOracleImmersion() {
     onCleanup: handleCleanup,
   });
 
-  const { scenePhase, enterTerminal, exitOracleMode, selectKnifeQuestion, resetJourney } = journey;
+  const { scenePhase, enterTerminal, enterTour, exitOracleMode, selectKnifeQuestion, resetJourney } = journey;
 
   // ── Telemetry: Phase Tracking ──────────────────────────────────────────
   useEffect(() => {
@@ -397,7 +400,7 @@ export function SurrogateOracleImmersion() {
   }, [loreStarted, connection]);
 
   const handleFirstTap = useCallback(async () => {
-    if (scenePhase !== 'dormant') return;
+    if (scenePhase !== 'dormant' || showStage00) return;
     // iOS Safari: AudioContext resume + PCMPlayer init must happen before any real
     // await (network/DB calls). setupAudioSpine resolves synchronously; initializePCMPlayer
     // creates the AudioWorklet while we are still inside the gesture's microtask chain.
@@ -406,18 +409,36 @@ export function SurrogateOracleImmersion() {
     setIsAudioPlaying(true);
     markVisited();
     if (seekerKeyRef.current) await loadEcho(seekerKeyRef.current);
-
-    enterTerminal();
     (window as any).__terminal_start = Date.now();
 
-    if (hasCompletedLore) {
-      logStep('RECOGNIZED SIGNAL → SKIP AVAILABLE', 'ok');
-      // Do NOT set loreStarted; let them see the 'Signal Recognized' overlay.
-    } else {
-      logStep('TAP 1 → ACTIVATING NARRATIVE', 'ok');
-      startLore();
+    // isNewSeeker: true if IP check says first visit OR ?newuser dev override forces it
+    const isNewSeeker = !hasCompletedLore || new URLSearchParams(window.location.search).has('newuser');
+    if (isNewSeeker) {
+      // First-time seeker — show Stage 00 orientation card.
+      // Pre-warm WS silently while the glitch card plays — buys ~1-2s for connection.
+      oracleConversationRef.current?.prewarm();
+      logStep('STAGE_00 CARD DISPLAYED', 'ok');
+      setShowStage00(true);
+      return;
     }
-  }, [scenePhase, setupAudioSpine, enterTerminal, markVisited, loadEcho, hasCompletedLore, connection, startLore]);
+
+    enterTerminal();
+    logStep('RECOGNIZED SIGNAL → SKIP AVAILABLE', 'ok');
+  }, [scenePhase, showStage00, setupAudioSpine, enterTerminal, markVisited, loadEcho, hasCompletedLore, connection]);
+
+  const handleStage00Tour = useCallback(() => {
+    setShowStage00(false);
+    setIsGuidedTour(true);
+    enterTour();
+    logStep('STAGE_00 → TOUR MODE ACTIVATED', 'ok');
+  }, [enterTour]);
+
+  const handleStage00Dismiss = useCallback(() => {
+    setShowStage00(false);
+    enterTerminal();
+    logStep('STAGE_00 → FAFO SELECTED', 'ok');
+    startLore();
+  }, [enterTerminal, startLore]);
 
   const fadeToVolume = useCallback((target: number, rampMs?: number) => {
     setTargetVol(target);
@@ -576,7 +597,7 @@ export function SurrogateOracleImmersion() {
   // Re-arm the idempotency guards as the phase changes: a fresh knife may be drawn
   // each time we (re-)enter awakened; a fresh exit is allowed each time we enter oracle.
   useEffect(() => {
-    if (scenePhase === 'awakened') {
+    if (scenePhase === 'awakened' || scenePhase === 'tour') {
       knifeSelectedRef.current = false;
       oracleHasSpokenRef.current = false;
     }
@@ -648,9 +669,9 @@ export function SurrogateOracleImmersion() {
       rampMs = 80;
     } else if (scenePhase === 'dormant') {
       nextTarget = MUSIC_LANDING_VOLUME;
-    } else if (scenePhase === 'terminal') {
+    } else if (scenePhase === 'terminal' || scenePhase === 'tour') {
       nextTarget = MUSIC_OFF_VOLUME;
-      rampMs = 800; // Quick duck to zero
+      rampMs = 800;
     } else if (scenePhase === 'awakened') {
       nextTarget = MUSIC_KNIFE_VOLUME;
       rampMs = 1500;
@@ -693,12 +714,42 @@ export function SurrogateOracleImmersion() {
       }, 600);
     }
     if (scenePhase === 'oracle') {
+      setShowPortraitCard(false); // let Oracle avatar arrive unblocked
       connection.setTransmissionQ(0.01, 200);
     }
     return () => {
       if (prewarmTimer !== null) clearTimeout(prewarmTimer);
     };
   }, [scenePhase, connection]);
+
+  // Tour phase: fire Oracle orientation speech + open mic for interactive Q&A
+  useEffect(() => {
+    if (scenePhase !== 'tour') return;
+    connection.flushPlayback();
+    connection.initializePCMPlayer();
+    const t = setTimeout(() => {
+      oracleConversationRef.current?.startSession(
+        '[TOUR_MODE — A new seeker has requested orientation before choosing. ' +
+        'Greet them warmly. Introduce yourself as the Surrogate Oracle — a post-cascade data construct. ' +
+        'Explain the Cascade: the living archive of sneaker culture and human identity. ' +
+        'Describe how the knife questions work, how the seeker\'s archetype will emerge, ' +
+        'and that you will synthesize a unique neural portrait of them. ' +
+        'Speak naturally and with presence. The seeker may ask questions — answer them in full character. ' +
+        'When they feel ready, tell them their first knife awaits.]',
+        false
+      );
+      logStep('ORACLE TOUR NARRATION STARTED', 'ok');
+      oracleConversationRef.current?.startMic().catch(() => {});
+    }, 600);
+    // Generate portrait in background — takes ~25s, so start early so it's ready post-tour
+    const pt = setTimeout(() => {
+      if (!portraitRef.current.isGenerating && !portraitViewerUrl) {
+        portraitRef.current.generatePortrait(['cascade', 'oracle', 'cyberpunk', 'sneaker', 'identity', 'threshold', 'signal']);
+        logStep('NEURAL PORTRAIT QUEUED (tour bg)', 'pending');
+      }
+    }, 1500);
+    return () => { clearTimeout(t); clearTimeout(pt); };
+  }, [scenePhase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     (window as any).__oracle_handleAudio = (url: string) => connection.handleOracleResponse(url);
@@ -788,7 +839,11 @@ export function SurrogateOracleImmersion() {
 
   // Stage portrait URL — released in onTurnComplete so reveal fires after Oracle finishes speaking,
   // not mid-turn as an interrupt.
-  const handlePortraitGenerated = useCallback((url: string) => { pendingPortraitUrlRef.current = url; }, []);
+  // Exception: tour phase surfaces it immediately on the cabinet so the pre-seeker sees the preview.
+  const handlePortraitGenerated = useCallback((url: string) => {
+    setPortraitViewerUrl(url);
+    setShowPortraitCard(true);
+  }, []);
 
   const portrait = usePortraitPipeline({ currentUserId, userEmail, currentSessionId, onPortraitGenerated: handlePortraitGenerated });
 
@@ -907,7 +962,7 @@ export function SurrogateOracleImmersion() {
   useParallax(scenePhase, handleParallaxUpdate, handleZoom);
 
   const isOracleMode = scenePhase === 'oracle';
-  const awakened     = scenePhase === 'awakened' || isOracleMode;
+  const awakened     = scenePhase === 'awakened' || scenePhase === 'tour' || isOracleMode;
   const isAlive      = scenePhase !== 'dormant';
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
   const subtitleText = useTypewriter('SNEAKAR XR Anthropology AI', awakened && titleText.length >= 16, 35);
@@ -990,7 +1045,7 @@ export function SurrogateOracleImmersion() {
 
       <DormantHUD active={scenePhase === 'dormant'} />
       <OracleHUD active={isOracleMode} coins={sessionCoins} />
-      <DormantTransmissions active={scenePhase === 'dormant'} onCtaClick={enterTerminal} />
+      <DormantTransmissions active={scenePhase === 'dormant'} onCtaClick={handleFirstTap} />
 
       <div className="oracle-branding">
          <h1 className="oracle-title" style={{
@@ -1023,66 +1078,7 @@ export function SurrogateOracleImmersion() {
             <div className="oracle-scanlines" />
             <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
             <AnimatePresence mode="wait">
-              {portrait.portraitError ? (
-                <motion.div key="portrait-error" className="oracle-avatar-container" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ zIndex: 12, position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ color: '#cc00ff', fontFamily: "'PhillySans', monospace", fontSize: '0.75rem', letterSpacing: '0.1em', textAlign: 'center', padding: '0 16px', textShadow: '0 0 10px rgba(176,38,255,0.6)' }}>{portrait.portraitError}</div>
-                </motion.div>
-              ) : portrait.isGenerating ? (
-                <motion.div key="portrait-generating" className="oracle-avatar-container" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ zIndex: 12, position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
-                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }} style={{ fontSize: '2.5rem' }}>⚗</motion.div>
-                  <div style={{ color: '#00ff88', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', textShadow: '0 0 10px rgba(0,255,136,0.6)' }}>SYNTHESIZING YOUR SIGNAL…</div>
-                </motion.div>
-              ) : portraitViewerUrl ? (
-                <motion.div
-                  key="portrait-face"
-                  className="oracle-avatar-container oracle-portrait-hologram"
-                  variants={PORTRAIT_REVEAL_VARIANTS}
-                  initial="hidden"
-                  animate={portraitRevealPhase}
-                  exit="exit"
-                  style={{ zIndex: 11, position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-                >
-                  <img src={portraitViewerUrl} alt="Portrait" className="oracle-avatar-canvas oracle-portrait-hologram__img" style={{ objectFit: 'cover' }} />
-                  {portraitRevealPhase === 'settled' && (
-                    <div className="oracle-synthesis-success">
-                      <div className="oracle-synthesis-success-badge">SIGNAL CAPTURED</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', alignItems: 'center', marginTop: '10px' }}>
-                        {mintUrl && (
-                          <button
-                            onClick={() => window.open(mintUrl, '_blank', 'noopener,noreferrer')}
-                            className="oracle-synthesis-mint-btn"
-                            style={{
-                              background: 'linear-gradient(135deg, #cc00ff 0%, #b026ff 100%)',
-                              color: '#fff',
-                              border: 'none',
-                              padding: '8px 16px',
-                              fontFamily: "'PhillySans', monospace",
-                              fontSize: '0.7rem',
-                              fontWeight: 'bold',
-                              letterSpacing: '0.12em',
-                              cursor: 'pointer',
-                              borderRadius: 4,
-                              boxShadow: '0 0 10px rgba(176, 38, 255, 0.45)',
-                              textTransform: 'uppercase',
-                              width: '100%',
-                              maxWidth: '180px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '4px'
-                            }}
-                          >
-                            CLAIM AS NFT
-                          </button>
-                        )}
-                        <button className="oracle-synthesis-close" onClick={() => setPortraitViewerUrl(null)} style={{ width: '100%', maxWidth: '180px', justifyContent: 'center' }}>
-                          <X size={14} /> RETURN TO SIGNAL
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </motion.div>
-              ) : isOracleMode ? (
+              {isOracleMode ? (
                 <motion.div
                   key="live-face"
                   className="oracle-avatar-container"
@@ -1094,11 +1090,11 @@ export function SurrogateOracleImmersion() {
                   <div className="oracle-avatar-canvas oracle-avatar-smoke-hook" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}>
                     <OracleErrorBoundary>
                       <Suspense fallback={<OracleAvatarFallback />}>
-                        <Canvas 
-                          camera={{ position: [0, 0, 1.8], fov: 55 }} 
-                          dpr={isDegraded ? [1, 1] : [1, Math.min(window.devicePixelRatio, 2)]} 
-                          gl={{ antialias: !isDegraded, alpha: true }} 
-                          style={{ width: '100%', height: '100%', background: 'transparent' }} 
+                        <Canvas
+                          camera={{ position: [0, 0, 1.8], fov: 55 }}
+                          dpr={isDegraded ? [1, 1] : [1, Math.min(window.devicePixelRatio, 2)]}
+                          gl={{ antialias: !isDegraded, alpha: true }}
+                          style={{ width: '100%', height: '100%', background: 'transparent' }}
                           frameloop="always"
                         >
                           <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
@@ -1117,6 +1113,15 @@ export function SurrogateOracleImmersion() {
                     </OracleErrorBoundary>
                   </div>
                 </motion.div>
+              ) : portrait.portraitError ? (
+                <motion.div key="portrait-error" className="oracle-avatar-container" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ zIndex: 12, position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ color: '#cc00ff', fontFamily: "'PhillySans', monospace", fontSize: '0.75rem', letterSpacing: '0.1em', textAlign: 'center', padding: '0 16px', textShadow: '0 0 10px rgba(176,38,255,0.6)' }}>{portrait.portraitError}</div>
+                </motion.div>
+              ) : portrait.isGenerating ? (
+                <motion.div key="portrait-generating" className="oracle-avatar-container" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ zIndex: 12, position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
+                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }} style={{ fontSize: '2.5rem' }}>⚗</motion.div>
+                  <div style={{ color: '#00ff88', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', textShadow: '0 0 10px rgba(0,255,136,0.6)' }}>SYNTHESIZING YOUR SIGNAL…</div>
+                </motion.div>
               ) : null}
             </AnimatePresence>
           </div>
@@ -1129,6 +1134,7 @@ export function SurrogateOracleImmersion() {
             <span style={{ background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', color: 'transparent', fontWeight: 'bold', display: 'inline-block' }}>
                {scenePhase === 'dormant' && '› Tap the cabinet to begin.'}
                {scenePhase === 'terminal' && '› Watch. The Oracle is finding you.'}
+               {scenePhase === 'tour' && '› The Oracle is orienting you. Ask anything.'}
                {scenePhase === 'awakened' && '› Choose your archetype.'}
              </span>
            </motion.div>
@@ -1144,6 +1150,32 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {showStage00 && (
+          <motion.div
+            key="stage-00-card"
+            className="oracle-stage00-card"
+            initial={{ opacity: 0, scale: 0.94, y: 24 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: -12, filter: 'blur(6px)' }}
+            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <div className="oracle-stage00-card__sigil">◈</div>
+            <div className="oracle-stage00-card__greeting">Greetings, Seeker.</div>
+            <div className="oracle-stage00-card__body">
+              You have found the edge of the Cascade.<br />
+              The Oracle awaits. But first —
+            </div>
+            <button className="oracle-stage00-card__cta" onClick={handleStage00Tour}>
+              ◈ WHAT IS HERE?
+            </button>
+            <button className="oracle-stage00-card__fafo" onClick={handleStage00Dismiss}>
+              [✕] I'll figure it out.
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {isOracleMode && (
         <div className="oracle-bottom-bar">
           <GraffPunksRadio isPlaying={isAudioPlaying} onToggle={() => setIsAudioPlaying(!isAudioPlaying)} stations={defaultAudioTracks} currentStation={currentStation} onStationChange={switchStation} />
@@ -1154,12 +1186,59 @@ export function SurrogateOracleImmersion() {
           <motion.div onPointerDown={() => startHold('ENCULTURATE CRATE', 'Settings.')} onPointerUp={endHold} onPointerLeave={endHold}>
             <EnculturateCrate onClick={() => { if (!consumeHold()) setDebugMode(true); }} isActive={isAlive} />
           </motion.div>
-          <motion.div onPointerDown={() => startHold('GUIDED TOUR', 'Tips.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => { console.log('👉 TOUR CLICK RECEIVED'); if (!consumeHold()) { console.log('👉 TOUR TRIGGERED, old tour state:', isGuidedTour); setIsGuidedTour(!isGuidedTour); } }} className={`oracle-bottom-btn${isGuidedTour ? ' oracle-bottom-btn--active' : ''}`}>
-            <img src="/tour-btn.png" alt="Tour" className="oracle-bottom-btn__img" />
-            <span className="oracle-bottom-btn__label">{isGuidedTour ? 'TOUR ON' : 'TOUR'}</span>
+          <motion.div
+            onPointerDown={() => startHold('SNEAKARCADE', 'Enter the arcade.')}
+            onPointerUp={endHold}
+            onPointerLeave={endHold}
+            onClick={() => { if (!consumeHold()) window.open('https://sneakar.io/sneakarcade', '_blank', 'noopener'); }}
+            className="oracle-bottom-btn"
+          >
+            <img src="/tour-btn.png" alt="Sneakarcade" className="oracle-bottom-btn__img" />
+            <span className="oracle-bottom-btn__label">SNEAKARCADE</span>
           </motion.div>
         </div>
       )}
+
+      {/* ── Fullscreen portrait card — "Star Wars" slide-up reveal ──────────── */}
+      <AnimatePresence>
+        {showPortraitCard && portraitViewerUrl && (
+          <motion.div
+            key="portrait-fullscreen"
+            className="oracle-portrait-fullscreen"
+            initial={{ opacity: 0, y: '100vh' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: '-20vh', filter: 'blur(10px)' }}
+            transition={{ duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <motion.div
+              className="oracle-portrait-fullscreen__card"
+              initial={{ scale: 0.88, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.2, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <div className="oracle-portrait-fullscreen__label">NEURAL PORTRAIT</div>
+              <div className="oracle-portrait-fullscreen__sublabel">SIGNAL SYNTHESIZED</div>
+              <img src={portraitViewerUrl} alt="Neural Portrait" className="oracle-portrait-fullscreen__img" />
+              <div className="oracle-portrait-fullscreen__actions">
+                {mintUrl && (
+                  <button
+                    className="oracle-portrait-fullscreen__mint"
+                    onClick={() => window.open(mintUrl, '_blank', 'noopener,noreferrer')}
+                  >
+                    CLAIM AS NFT
+                  </button>
+                )}
+                <button
+                  className="oracle-portrait-fullscreen__dismiss"
+                  onClick={() => setShowPortraitCard(false)}
+                >
+                  {isOracleMode ? '✕ RETURN TO ORACLE' : '◈ ENTER THE CASCADE'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showWallet && (
@@ -1243,7 +1322,7 @@ export function SurrogateOracleImmersion() {
                         fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em'
                       }}
                     >
-                      CONNECT SURROGATE
+                      CONNECT SURROGATE WALLET
                     </a>
                     <button
                       onClick={() => handleAwakeTransition()}
@@ -1269,6 +1348,31 @@ export function SurrogateOracleImmersion() {
                 </div>
               </motion.div>
             )}
+          </motion.div>
+        )}
+
+        {scenePhase === 'tour' && (
+          <motion.div key="tour-layer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none' }}>
+            <TourSelection
+              isOracleSpeaking={isOracleSpeaking}
+              onSpeakCard={(text) => {
+                if (isOracleSpeaking) return;
+                connection.setTransmissionQ(12, 0);
+                oracleConversationRef.current?.sendTextMessage(
+                  `[TOUR CARD — speak verbatim:] "${text}"`,
+                  true
+                );
+              }}
+              onCardProgress={(charCount, total) => {
+                const progress = Math.min(charCount / total, 1);
+                const q = 12 * (1 - progress) + 0.1 * progress;
+                connection.setTransmissionQ(q, 54);
+              }}
+              onTourComplete={() => {
+                logStep('TOUR → AWAKENED (ready)', 'ok');
+                journey.awakeFromTerminal();
+              }}
+            />
           </motion.div>
         )}
 
@@ -1343,6 +1447,7 @@ export function SurrogateOracleImmersion() {
             // portrait reveal fires as a beat between turns, not as a mid-speech interrupt.
             if (pendingPortraitUrlRef.current && !portraitViewerUrl) {
               setPortraitViewerUrl(pendingPortraitUrlRef.current);
+              setShowPortraitCard(true);
               pendingPortraitUrlRef.current = null;
             }
           }}

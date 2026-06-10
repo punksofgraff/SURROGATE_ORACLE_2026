@@ -21,7 +21,7 @@
  */
 import { useEffect } from 'react';
 
-type Phase = 'dormant' | 'terminal' | 'awakened' | 'oracle';
+type Phase = 'dormant' | 'terminal' | 'tour' | 'awakened' | 'oracle';
 
 const LERP           = 0.09;
 const GYRO_LERP      = 0.10; // more responsive gyro tracking on phone
@@ -34,6 +34,7 @@ const ZOOM_MAX       = 4.0;
 const PHASE_INTENSITY: Record<Phase, number> = {
   dormant:  0.48,
   terminal: 0.70,
+  tour:     0.85,
   awakened: 1.00,
   oracle:   1.20,
 };

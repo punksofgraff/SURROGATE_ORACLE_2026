@@ -1302,6 +1302,23 @@
 
 /* ── Desktop: buttons breathe — full arcade console presence ─────────────── */
 @media (min-width: 768px) {
+  /* Desktop: title and subtitle scaled down so they coexist without overlapping the cabinet */
+  .oracle-branding {
+    top: 3%;
+    white-space: nowrap;
+  }
+
+  .oracle-title {
+    font-size: clamp(2.8rem, 3.8vw, 5rem);
+    letter-spacing: 0.12em;
+  }
+
+  .oracle-subtitle {
+    font-size: clamp(1rem, 1.6vw, 2rem);
+    letter-spacing: 0.22em;
+    margin-top: 6px;
+  }
+
   .oracle-bottom-bar {
     gap: clamp(20px, 3vw, 48px);
     padding: 14px 28px 16px;
@@ -3697,6 +3714,26 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   letter-spacing: 0.1em;
 }
 
+/* Deaf-accessible terminal hint — sits above the signal input, never hidden in oracle mode */
+.oc-terminal-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 5px 14px;
+  background: rgba(0, 255, 136, 0.07);
+  border: 1px solid rgba(0, 255, 136, 0.22);
+  border-radius: 20px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.63rem;
+  color: rgba(0, 255, 136, 0.75);
+  letter-spacing: 0.1em;
+  width: fit-content;
+  align-self: center;
+  margin-bottom: 6px;
+  pointer-events: none;
+}
+
 .oc-log {
   flex: 1;
   width: 100%;
@@ -4933,4 +4970,211 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 /* Ensure the title is always visible once the journey starts */
 .oracle-stage:not([data-oracle-state="dormant"]) .oracle-branding {
   display: block;
+}
+
+/* ── Stage 00 — First Traversal Orientation Card ─────────────────────── */
+.oracle-stage00-card {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 200;
+  width: clamp(300px, 88vw, 460px);
+  background: linear-gradient(145deg, rgba(0, 8, 16, 0.95) 0%, rgba(0, 15, 10, 0.93) 100%);
+  backdrop-filter: blur(14px) saturate(1.8);
+  border-radius: 16px;
+  padding: 36px 28px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.oracle-stage00-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(160deg, #00ff88 0%, rgba(0, 255, 136, 0.35) 50%, #b026ff 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.oracle-stage00-card__sigil {
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(2rem, 8vw, 3rem);
+  background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: guidestone-pulse 2.4s ease-in-out infinite;
+}
+
+.oracle-stage00-card__greeting {
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(1.6rem, 5vw, 2.1rem);
+  background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 0.08em;
+}
+
+.oracle-stage00-card__body {
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: clamp(0.9rem, 2.5vw, 1.05rem);
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.7;
+  letter-spacing: 0.1em;
+}
+
+.oracle-stage00-card__cta {
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: clamp(0.88rem, 2.2vw, 1.02rem);
+  letter-spacing: 0.15em;
+  color: rgba(0, 255, 136, 0.92);
+  text-shadow: 0 0 12px rgba(0, 255, 136, 0.6), 0 0 28px rgba(0, 255, 136, 0.25);
+  background: none;
+  border: 1px solid rgba(0, 255, 136, 0.35);
+  border-radius: 8px;
+  padding: 12px 24px;
+  cursor: pointer;
+  animation: knife-cta-pulse 1.6s ease-in-out infinite;
+  width: 100%;
+}
+
+.oracle-stage00-card__fafo {
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: clamp(0.72rem, 1.8vw, 0.82rem);
+  letter-spacing: 0.12em;
+  color: rgba(176, 38, 255, 0.65);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  opacity: 0.75;
+  transition: opacity 0.2s;
+}
+
+.oracle-stage00-card__fafo:hover { opacity: 1; }
+
+@keyframes guidestone-pulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.08); }
+}
+
+/* ── Fullscreen portrait card ─────────────────────────────────────────────── */
+.oracle-portrait-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 3, 8, 0.94);
+  backdrop-filter: blur(22px) saturate(1.5);
+}
+
+.oracle-portrait-fullscreen__card {
+  position: relative;
+  width: clamp(260px, 82vw, 460px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  background: linear-gradient(145deg, rgba(0, 8, 18, 0.96) 0%, rgba(0, 14, 10, 0.94) 100%);
+  border-radius: 16px;
+  padding: 32px 24px 28px;
+  text-align: center;
+}
+
+.oracle-portrait-fullscreen__card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(160deg, #00ff88 0%, rgba(0, 255, 136, 0.3) 45%, #b026ff 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.oracle-portrait-fullscreen__label {
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(1.5rem, 4vw, 2.2rem);
+  background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 0.1em;
+  animation: guidestone-pulse 2.8s ease-in-out infinite;
+}
+
+.oracle-portrait-fullscreen__sublabel {
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.25em;
+  color: rgba(0, 255, 136, 0.6);
+  text-transform: uppercase;
+  margin-top: -10px;
+}
+
+.oracle-portrait-fullscreen__img {
+  width: 100%;
+  max-width: 340px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  box-shadow:
+    0 0 40px rgba(0, 255, 136, 0.12),
+    0 0 80px rgba(176, 38, 255, 0.08),
+    0 0 120px rgba(0, 255, 136, 0.05);
+}
+
+.oracle-portrait-fullscreen__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  align-items: center;
+}
+
+.oracle-portrait-fullscreen__mint {
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  background: linear-gradient(135deg, #cc00ff 0%, #b026ff 100%);
+  color: #fff;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 100%;
+  max-width: 240px;
+  text-transform: uppercase;
+  box-shadow: 0 0 14px rgba(176, 38, 255, 0.4);
+}
+
+.oracle-portrait-fullscreen__dismiss {
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  color: rgba(0, 255, 136, 0.85);
+  background: none;
+  border: 1px solid rgba(0, 255, 136, 0.35);
+  padding: 9px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 100%;
+  max-width: 240px;
+  animation: knife-cta-pulse 1.8s ease-in-out infinite;
 }

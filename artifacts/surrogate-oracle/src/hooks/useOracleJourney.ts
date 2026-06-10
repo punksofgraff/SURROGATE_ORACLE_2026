@@ -13,7 +13,7 @@ import {
   playExitTone 
 } from '../lib/oracleSfx';
 
-export type ScenePhase = 'dormant' | 'terminal' | 'awakened' | 'oracle';
+export type ScenePhase = 'dormant' | 'terminal' | 'tour' | 'awakened' | 'oracle';
 
 interface UseOracleJourneyProps {
   onStartSession: () => void;
@@ -46,10 +46,17 @@ export function useOracleJourney({
     alleyAmbienceStopRef.current = startAlleyAmbience();
   }, [scenePhase]);
 
+  const enterTour = useCallback(() => {
+    if (scenePhaseRef.current !== 'dormant') return;
+    logStep('STAGE_00 → TOUR PHASE ENTERED', 'ok');
+    scenePhaseRef.current = 'tour';
+    setScenePhase('tour');
+    playActivationSfx();
+  }, []);
+
   const awakeFromTerminal = useCallback(() => {
-    // Guard: only terminal→awakened. Blocks a stale lore-completion setTimeout from
-    // regressing the phase backward after the Seeker has already moved to knife/oracle.
-    if (scenePhaseRef.current !== 'terminal') return;
+    // Guard: only terminal→awakened or tour→awakened.
+    if (scenePhaseRef.current !== 'terminal' && scenePhaseRef.current !== 'tour') return;
     scenePhaseRef.current = 'awakened';
     logStep('LORE DONE → AWAKENED', 'ok');
     setScenePhase('awakened');
@@ -126,13 +133,14 @@ export function useOracleJourney({
     selectedKnifeIndex,
     setLoreComplete,
     enterTerminal,
+    enterTour,
     awakeFromTerminal,
     selectKnifeQuestion,
     exitOracleMode,
     resetJourney,
   }), [
-    scenePhase, loreComplete, isExiting, selectedKnifeQuestion, 
-    selectedKnifeIndex, enterTerminal, awakeFromTerminal, 
+    scenePhase, loreComplete, isExiting, selectedKnifeQuestion,
+    selectedKnifeIndex, enterTerminal, enterTour, awakeFromTerminal,
     selectKnifeQuestion, exitOracleMode, resetJourney
   ]);
 }

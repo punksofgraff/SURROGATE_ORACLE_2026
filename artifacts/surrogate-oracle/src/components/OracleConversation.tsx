@@ -439,19 +439,25 @@ const OracleConversation = forwardRef(
     const silentSinceRef = useRef<number | null>(null);
 
     const parseScore = (text: string): { clean: string; score: OracleScore | null } => {
-      // [\s\S]*? matches across newlines — Gemini occasionally wraps the JSON
-      const match = text.match(/\[\[ORACLE_SCORE: ([\s\S]*?)\]\]/);
+      // More forgiving regex matching 1 or 2 brackets, and optional colon spacing
+      const match = text.match(/\[+ORACLE_SCORE:?\s*([\s\S]*?)\]+/);
       if (!match) return { clean: text, score: null };
+      
+      let jsonStr = match[1].trim();
+      // Remove markdown JSON code blocks if Gemini hallucinates them inside the brackets
+      jsonStr = jsonStr.replace(/```json/gi, '').replace(/```/g, '').trim();
+
       try {
-        const score = JSON.parse(match[1]);
+        const score = JSON.parse(jsonStr);
         return { clean: text.replace(match[0], '').trim(), score };
       } catch {
         // Gemini sometimes emits schema-notation pipes ("sacred"|"profane") — strip them
         try {
-          const sanitized = match[1].replace(/"([^"]+)"\|"([^"]+)"/g, '"$1"');
+          const sanitized = jsonStr.replace(/"([^"]+)"\|"([^"]+)"/g, '"$1"');
           const score = JSON.parse(sanitized);
           return { clean: text.replace(match[0], '').trim(), score };
-        } catch {
+        } catch (e) {
+          console.warn('SCORE PARSE FAILED (JSON Error):', jsonStr);
           return { clean: text, score: null };
         }
       }

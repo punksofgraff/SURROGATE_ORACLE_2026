@@ -1331,7 +1331,7 @@ export function SurrogateOracleImmersion() {
           onTurnComplete={(turn, score, themes) => {
             if (themes.length) portrait.addThemes(themes);
             handleTurnComplete(turn, score);
-            if (turn >= 20 && !portraitTriggeredRef.current && !portrait.isGenerating && !portraitViewerUrl) {
+            if (turn >= 10 && !portraitTriggeredRef.current && !portrait.isGenerating && !portraitViewerUrl) {
               portraitTriggeredRef.current = true;
               portrait.generatePortrait(portrait.getThemes());
               oracleConversationRef.current?.sendTextMessage(

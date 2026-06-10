@@ -244,6 +244,7 @@ const OracleConversation = forwardRef(
       onSessionEnd, onTurnComplete, onPortraitRequest, onSeekerIdentified,
       onMicWillStart,
       onMicClick,
+      onTypeModeChange,
     } = props;
 
     const [isConnected, setIsConnected] = useState(false);
@@ -1199,7 +1200,11 @@ const OracleConversation = forwardRef(
         }
       },
       toggleTypeMode: () => {
-        setShowSignalPad(prev => !prev);
+        setShowSignalPad(prev => {
+          const nextVal = !prev;
+          onTypeModeChange?.(nextVal);
+          return nextVal;
+        });
       },
       enableMicAutoRestart: () => {
         micAutoRestartEnabledRef.current = true;
@@ -1360,14 +1365,6 @@ const OracleConversation = forwardRef(
 
         {/* Signal pad — opened via hamburger menu TYPE MODE button */}
         <div className={`oc-signal-pad ${showSignalPad ? 'oc-signal-pad--open' : ''}`}>
-          <button 
-            className="oc-signal-pad-toggle" 
-            onClick={() => setShowSignalPad(prev => !prev)}
-            style={{ pointerEvents: 'auto' }}
-          >
-            <Terminal size={14} />
-            <span>{showSignalPad ? 'CLOSE PAD' : 'TYPE SIGNAL'}</span>
-          </button>
 
           <AnimatePresence>
             {showSignalPad && (
@@ -1384,7 +1381,7 @@ const OracleConversation = forwardRef(
                       <button
                         key={p}
                         className="oc-quick-prompt-btn"
-                        onClick={() => { sendText(p); setShowSignalPad(false); }}
+                        onClick={() => { sendText(p); setShowSignalPad(false); onTypeModeChange?.(false); }}
                       >
                         {p}
                       </button>

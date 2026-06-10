@@ -183,7 +183,9 @@ export function SurrogateOracleImmersion() {
   const [currentStation, setCurrentStation] = useState(DEFAULT_STATION);
   const [holdTooltip, setHoldTooltip]       = useState<{ title: string; body: string } | null>(null);
   const [hamburgerOpen, setHamburgerOpen]   = useState(false);
+  const [isTypeMode, setIsTypeMode]         = useState(false);
   const [mintUrl, setMintUrl]               = useState<string | null>(null);
+  const [showArchiveOpen, setShowArchiveOpen] = useState(false);
 
   // ── Refs ────────────────────────────────────────────────────────────────
   const visemeStateRef = useRef<VisemeState>(SILENCE_VISEME_STATE);
@@ -309,6 +311,21 @@ export function SurrogateOracleImmersion() {
   useEffect(() => {
     completedLinesLengthRef.current = completedLines.length;
   }, [completedLines]);
+
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    if (scenePhase === 'awakened' && !journey.selectedKnifeQuestion) {
+      setShowArchiveOpen(true);
+      t = setTimeout(() => {
+        setShowArchiveOpen(false);
+      }, 2000);
+    } else {
+      setShowArchiveOpen(false);
+    }
+    return () => {
+      if (t) clearTimeout(t);
+    };
+  }, [scenePhase, journey.selectedKnifeQuestion]);
 
   const handleAuthSuccess = useCallback((user: { id: string; email: string }) => {
     setCurrentUserId(user.id);
@@ -838,10 +855,15 @@ export function SurrogateOracleImmersion() {
     const handleAuthTrigger = () => setShowAuthOverlay(true);
     window.addEventListener('oracle:auth:trigger', handleAuthTrigger);
     const handleOracleUnlock = (e: any) => {
-      const { trigger, themes } = e.detail || {};
+      const { trigger, userId, sessionId, themes } = e.detail || {};
+      console.log(`[AUDIT] RECEIVED oracle:unlock EVENT in React! trigger=${trigger}`);
       if (trigger === 'portrait_unlock') {
         portraitTriggeredRef.current = true;
         portraitRef.current.generatePortrait(themes || portraitRef.current.getThemes());
+      } else {
+        if (userId) setCurrentUserId(userId);
+        if (sessionId) setCurrentSessionId(sessionId);
+        setShowAuthOverlay(true);
       }
     };
     window.addEventListener('oracle:unlock', handleOracleUnlock);
@@ -1258,6 +1280,11 @@ export function SurrogateOracleImmersion() {
 
         {scenePhase === 'awakened' && !journey.selectedKnifeQuestion && (
           <motion.div key="awakened-layer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none' }}>
+            {showArchiveOpen && (
+              <div style={{ position: 'absolute', inset: 0, zIndex: 105, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                <ScrambleFragment texts={['THE ARCHIVE IS OPEN']} className="oracle-sf--cta" holdMs={600} revealMs={25} />
+              </div>
+            )}
             {hasCompletedLore && echo?.last_archetype && (
               <motion.div key="return-seeker" initial={{ opacity: 0, y: -6 }} animate={{ opacity: [0, 1, 1, 0], y: 0 }} transition={{ duration: 3.4, times: [0, 0.12, 0.8, 1] }} style={{ position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 102, pointerEvents: 'none', textAlign: 'center', fontFamily: "'Share Tech Mono', monospace", letterSpacing: '0.2em' }}>
                 <div style={{ fontSize: '0.65rem', background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>SIGNAL RECOGNIZED — {echo.last_archetype.toUpperCase()}{echo.totem_level > 0 && ` / LVL ${echo.totem_level}`}</div>
@@ -1325,6 +1352,7 @@ export function SurrogateOracleImmersion() {
           onDisconnected={() => setIsGeminiConnected(false)}
           onListeningChange={setIsMicActive}
           onMicWillStart={() => fadeToVolume(0, 80)}
+          onTypeModeChange={setIsTypeMode}
           onMicClick={(willListen) => {
             if (willListen) {
               setIsAudioPlaying(false);
@@ -1470,6 +1498,7 @@ export function SurrogateOracleImmersion() {
               <button onClick={() => { exitOracleMode(echoTrackRef.current.alignment); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>EXIT</button>
               <button onClick={() => { if (confirm('Reset?')) { resetJourney(); setHamburgerOpen(false); } }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>RESET</button>
               <button onClick={() => { if (isXRMode) deactivateXRMode(); else handleActivateXRMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#b026ff', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isXRMode ? '◈ EXIT AR' : '◈ AR MODE'}</button>
+              <button onClick={() => { oracleConversationRef.current?.toggleTypeMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isTypeMode ? 'CLOSE PAD' : 'TYPE SIGNAL'}</button>
             </motion.div>
           )}
           </AnimatePresence>

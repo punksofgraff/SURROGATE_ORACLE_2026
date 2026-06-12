@@ -505,6 +505,10 @@ const OracleConversation = forwardRef(
       if (!isBoot) {
         setTurns(prev => [...prev, { role: 'user', content: text, timestamp: Date.now() }]);
         setInputText('');
+        // Portrait verbal trigger — Seeker asks to see their portrait/image/record
+        if (/portrait|show me|see it|my image|frequency record|signal impression|synthesize|manifest|render me/i.test(text)) {
+          onPortraitRequestRef.current?.();
+        }
       }
     }, []);
 

@@ -1508,7 +1508,13 @@ export function SurrogateOracleImmersion() {
           isVisible={isOracleMode}
           autoStart={false}
           onBargeIn={connection.flushPlayback}
-          onPortraitRequest={() => portrait.generatePortrait(portrait.getThemes())}
+          onPortraitRequest={() => {
+            if (portraitViewerUrl) {
+              setShowPortraitCard(true);   // re-surface existing portrait
+            } else {
+              portrait.generatePortrait(portrait.getThemes()); // generate if not yet
+            }
+          }}
           seekerSummary={(() => {
             if (!echo) return null;
             const lines: string[] = [];

@@ -16608,3 +16608,35 @@
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1781275208949}
 {"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781275209301}
 {"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781275209369}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781275401989}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781275403725}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781275424724}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781275446414}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781275448350}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781275448383}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781275448384}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781275454139}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781275454140}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781275456423}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781275457795}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781275624175}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781275624176}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781275624217}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781275633093}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781275633096}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781275633097}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781275653272}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781275717702}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781275717777}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781275717784}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781275773837}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781275780545}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781275780696}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781275780705}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781275780712}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781275781078}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781275781084}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781275781085}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781275782399}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781275782421}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781275784208}

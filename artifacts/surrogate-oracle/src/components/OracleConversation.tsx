@@ -290,12 +290,66 @@ const OracleConversation = forwardRef(
       }
     }, [turns, sessionId]);
 
+    // Persist turns to Supabase (fire-and-forget, incremental — only new turns)
+    useEffect(() => {
+      if (!sessionId) return;
+      const supaUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supaKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!supaUrl || !supaKey) return;
+      const newTurns = turns.slice(lastSupabaseTurnCountRef.current);
+      if (newTurns.length === 0) return;
+      const startIdx = lastSupabaseTurnCountRef.current;
+      lastSupabaseTurnCountRef.current = turns.length;
+      const rows = newTurns.map((t, i) => ({
+        session_id: sessionId,
+        role: t.role,
+        content: t.content.slice(0, 4000),
+        turn_index: startIdx + i,
+      }));
+      fetch(`${supaUrl}/rest/v1/conversation_turns`, {
+        method: 'POST',
+        headers: {
+          'apikey': supaKey,
+          'Authorization': `Bearer ${supaKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify(rows),
+      }).catch(() => {});
+    }, [turns, sessionId]);
+
+    // Load turns from Supabase on mount when localStorage has nothing (new device / cleared storage)
+    useEffect(() => {
+      if (!sessionId) return;
+      if (turns.length > 0) return; // localStorage already has data — skip
+      const supaUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supaKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!supaUrl || !supaKey) return;
+      fetch(`${supaUrl}/rest/v1/conversation_turns?session_id=eq.${encodeURIComponent(sessionId)}&order=turn_index.asc&limit=30`, {
+        headers: { 'apikey': supaKey, 'Authorization': `Bearer ${supaKey}` },
+      })
+        .then(r => r.json())
+        .then((rows: Array<{ role: string; content: string }>) => {
+          if (!Array.isArray(rows) || rows.length === 0) return;
+          const loaded: Turn[] = rows.map(r => ({
+            role: r.role as 'user' | 'oracle',
+            content: r.content,
+            timestamp: Date.now(),
+          }));
+          setTurns(loaded);
+          lastSupabaseTurnCountRef.current = loaded.length;
+        })
+        .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId]);
+
     // Reset conversational state when session ID rotates (after handleCleanup in parent)
     const mountedSessionIdRef = useRef<string | undefined>(sessionId);
     useEffect(() => {
       if (!sessionId || sessionId === mountedSessionIdRef.current) return;
       mountedSessionIdRef.current = sessionId;
       setTurns([]);
+      lastSupabaseTurnCountRef.current = 0;
       currentResponseText.current = '';
       sessionBootedRef.current = false;
       sessionCoinsRef.current = 0;
@@ -306,6 +360,8 @@ const OracleConversation = forwardRef(
     }, [sessionId]);
 
     const [showSignalPad, setShowSignalPad] = useState(false);
+
+    const lastSupabaseTurnCountRef = useRef(0);
 
     const wsRef = useRef<WebSocket | null>(null);
     const processorRef = useRef<ScriptProcessorNode | null>(null);

@@ -175,6 +175,8 @@ export function SurrogateOracleImmersion() {
   const [isGeminiConnected, setIsGeminiConnected] = useState(false);
   const [debugMode, setDebugMode]           = useState(false);
   const [oracleAlignment, setOracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
+  const [profanePulse, setProfanePulse] = useState(0);
+  const [sacredPulse, setSacredPulse]   = useState(0);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
   const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
@@ -955,7 +957,21 @@ export function SurrogateOracleImmersion() {
     window.addEventListener('oracle:unlock', handleOracleUnlock);
     const handleAlignmentShift = (e: Event) => {
       const { alignment } = (e as CustomEvent).detail || {};
-      if (alignment === 'sacred' || alignment === 'profane') setOracleAlignment(alignment);
+      if (alignment === 'sacred' || alignment === 'profane') {
+        setOracleAlignment(alignment);
+        if (alignment === 'profane') {
+          setProfanePulse(n => n + 1);
+          const el = oracleStageRef.current;
+          if (el) {
+            el.classList.remove('profane-shaking');
+            void el.offsetWidth; // reflow → restart animation
+            el.classList.add('profane-shaking');
+            setTimeout(() => el.classList.remove('profane-shaking'), 700);
+          }
+        } else {
+          setSacredPulse(n => n + 1);
+        }
+      }
     };
     window.addEventListener('oracle:alignment', handleAlignmentShift);
     return () => {
@@ -1011,6 +1027,14 @@ export function SurrogateOracleImmersion() {
       data-xr-mode={isXRMode ? 'true' : undefined}
       data-guided-tour={isGuidedTour ? 'true' : undefined}
     >
+      {/* Alignment flash overlays — keyed by pulse count to re-trigger CSS animation */}
+      {profanePulse > 0 && (
+        <div key={`profane-${profanePulse}`} className="oracle-alignment-flash oracle-alignment-flash--profane" />
+      )}
+      {sacredPulse > 0 && (
+        <div key={`sacred-${sacredPulse}`} className="oracle-alignment-flash oracle-alignment-flash--sacred" />
+      )}
+
       <audio
         ref={audioRef}
         src={AUDIO_STREAM_URL}

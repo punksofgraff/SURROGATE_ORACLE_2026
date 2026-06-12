@@ -5173,3 +5173,86 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   max-width: 240px;
   animation: knife-cta-pulse 1.8s ease-in-out infinite;
 }
+
+/* ── Sacred / Profane Visual Feedback ───────────────────────────────────────── */
+
+@keyframes profane-shake {
+  0%   { transform: translate(0, 0) rotate(0deg); }
+  15%  { transform: translate(-7px,  1px) rotate(-0.45deg); }
+  30%  { transform: translate( 7px, -1px) rotate( 0.45deg); }
+  45%  { transform: translate(-5px,  1px) rotate(-0.28deg); }
+  60%  { transform: translate( 5px, -1px) rotate( 0.28deg); }
+  75%  { transform: translate(-2px,  0px) rotate(-0.1deg); }
+  90%  { transform: translate( 2px,  0px) rotate( 0.1deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+.oracle-stage.profane-shaking {
+  animation: profane-shake 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes profane-flash {
+  0%   { opacity: 0; }
+  8%   { opacity: 0.48; }
+  35%  { opacity: 0.28; }
+  100% { opacity: 0; }
+}
+
+@keyframes sacred-flux {
+  0%   { opacity: 0; transform: scale(1); }
+  15%  { opacity: 0.38; transform: scale(1.009); }
+  55%  { opacity: 0.22; transform: scale(1.016); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+.oracle-alignment-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 8000;
+  animation-fill-mode: both;
+  animation-timing-function: ease-out;
+}
+
+.oracle-alignment-flash--profane {
+  background: radial-gradient(
+    ellipse 80% 60% at 50% 38%,
+    rgba(255, 48, 0, 0.38) 0%,
+    rgba(255, 130, 0, 0.22) 42%,
+    transparent 72%
+  );
+  animation-name: profane-flash;
+  animation-duration: 1.4s;
+}
+
+.oracle-alignment-flash--sacred {
+  background: radial-gradient(
+    ellipse 90% 70% at 50% 38%,
+    rgba(0, 255, 110, 0.24) 0%,
+    rgba(170, 0, 255, 0.2) 50%,
+    transparent 80%
+  );
+  animation-name: sacred-flux;
+  animation-duration: 2.2s;
+}
+
+/* Ambient alley bleed while alignment is held */
+.oracle-stage.alignment-profane .oracle-side-bleeds {
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 40, 0, 0.08) 0%,
+    transparent 50%,
+    rgba(255, 40, 0, 0.08) 100%
+  ) !important;
+  opacity: 1 !important;
+}
+
+.oracle-stage.alignment-sacred .oracle-side-bleeds {
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 200, 80, 0.07) 0%,
+    rgba(130, 0, 220, 0.07) 50%,
+    rgba(0, 200, 80, 0.07) 100%
+  ) !important;
+  opacity: 1 !important;
+}

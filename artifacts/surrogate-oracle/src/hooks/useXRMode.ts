@@ -208,7 +208,11 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         detector.detect(video).then((faces: any[]) => {
           detecting = false;
-          if (faces.length > 0) markFaceFound(faces[0].boundingBox, video.videoWidth, video.videoHeight);
+          if (faces.length > 0) {
+            markFaceFound(faces[0].boundingBox, video.videoWidth, video.videoHeight);
+          } else {
+            skinCentroidTick(); // hardware missed — fall through to skin-tone centroid
+          }
         }).catch(() => { detecting = false; skinCentroidTick(); });
       } else if (!detector) {
         skinCentroidTick();

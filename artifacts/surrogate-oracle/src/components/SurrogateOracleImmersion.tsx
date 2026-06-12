@@ -837,6 +837,15 @@ export function SurrogateOracleImmersion() {
     return () => cancelAnimationFrame(rafId);
   }, [faceDetected, cameraActive, faceBoundsRef, cameraVideoRef]);
 
+  // Kill XR mode when Oracle session ends — placed here so isXRMode / deactivateXRMode are in scope.
+  const prevScenePhaseRef = useRef<string>('');
+  useEffect(() => {
+    if (prevScenePhaseRef.current === 'oracle' && scenePhase === 'dormant' && isXRMode) {
+      deactivateXRMode();
+    }
+    prevScenePhaseRef.current = scenePhase;
+  }, [scenePhase, isXRMode, deactivateXRMode]);
+
   // Act 5 — Rift-Construct: camera activation + Oracle persona shift in one gesture.
   // Seed injection waits for Oracle to finish any current turn before shifting persona —
   // sending mid-turn would trigger 'interrupted', flushing the current response.

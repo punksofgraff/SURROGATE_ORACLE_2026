@@ -1,11 +1,9 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -38,22 +36,22 @@ serve(async (req) => {
       ['encrypt']
     );
 
-    // Encrypt payload
+    // Encrypt — WebCrypto AES-GCM appends 16-byte auth tag at end of output
     const iv = crypto.getRandomValues(new Uint8Array(16));
     const payload = JSON.stringify({ imageUrl, exp: Date.now() + 24 * 60 * 60 * 1000 });
     const cipherBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(payload));
 
-    // AES-GCM in WebCrypto appends the 16-byte auth tag at the end of ciphertext
     const cipherArr = new Uint8Array(cipherBuf);
     const ciphertext = cipherArr.slice(0, -16);
     const authTag    = cipherArr.slice(-16);
 
-    const toHex = (buf: Uint8Array) => Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
-    const raw = `${toHex(iv)}:${toHex(authTag)}:${toHex(ciphertext)}`;
+    const toHex = (buf: Uint8Array) =>
+      Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    // base64url-encode the full "iv:authTag:ciphertext" string
+    // Token format matches wallet spec: base64url(iv:authTag:ciphertext)
+    const raw   = `${toHex(iv)}:${toHex(authTag)}:${toHex(ciphertext)}`;
     const token = btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    const url = `https://wallet.thesurrogate.me/mint?d=${encodeURIComponent(token)}`;
+    const url   = `https://wallet.thesurrogate.me/mint?d=${encodeURIComponent(token)}`;
 
     return new Response(JSON.stringify({ url }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

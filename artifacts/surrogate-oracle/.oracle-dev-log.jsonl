@@ -14973,3 +14973,31 @@
 {"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781263011240}
 {"label":"GEMINI WS ERROR","status":"err","_t":1781263011510}
 {"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781263011527}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781263293322}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781263293967}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781263294733}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781263294765}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781263294785}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781263295363}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781263295506}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781263295541}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781263296076}
+{"label":"AUDIO CONTEXT STATE: running","status":"ok","_t":1781263297758}
+{"label":"AUDIO SPINE INITIALIZED","status":"ok","_t":1781263297760}
+{"label":"SEEKER ECHO LOAD FAILED","status":"warn","_t":1781263297910}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1781263297912}
+{"label":"STAGE_00 CARD DISPLAYED","status":"ok","_t":1781263297931}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781263348886}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781263348974}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781263349810}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781263349819}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781263349864}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781263350307}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781263350334}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781263350393}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781263350575}
+{"label":"AUDIO CONTEXT STATE: running","status":"ok","_t":1781263353121}
+{"label":"AUDIO SPINE INITIALIZED","status":"ok","_t":1781263353130}
+{"label":"SEEKER ECHO LOAD FAILED","status":"warn","_t":1781263353282}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1781263353290}
+{"label":"STAGE_00 CARD DISPLAYED","status":"ok","_t":1781263353307}

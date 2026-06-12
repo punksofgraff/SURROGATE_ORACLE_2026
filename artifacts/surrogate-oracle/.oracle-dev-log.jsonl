@@ -16872,3 +16872,19 @@
 {"label":"NFT CLAIM REDIRECTION PREPARED","status":"ok","_t":1781283265115}
 {"label":"ORACLE AUDIO START","status":"ok","_t":1781283268871}
 {"label":"AUDIO HARD MUTE INITIATED (400ms)","status":"ok","_t":1781283269010}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781283303068}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1781283303069}
+{"label":"AUDIO HARD MUTE INITIATED (80ms)","status":"ok","_t":1781283304907}
+{"label":"MIC STARTED","status":"ok","_t":1781283306359}
+{"label":"MIC SOURCE ACTIVE: rate=48000Hz","status":"ok","_t":1781283306361}
+{"label":"AUDIO HARD MUTE INITIATED (80ms)","status":"ok","_t":1781283306453}
+{"label":"ORACLE INTERRUPTED (barge-in)","status":"warn","_t":1781283307336}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781283307394}
+{"label":"MIC→GEMINI: 150 chunks sent | vad=speaking rms=0.891 | speaking=false","status":"ok","_t":1781283312909}
+{"label":"MIC→GEMINI: 300 chunks sent | vad=silence rms=0.018 | speaking=false","status":"ok","_t":1781283319259}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781283320049}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283338403}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283339759}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283340524}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283340565}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283340918}

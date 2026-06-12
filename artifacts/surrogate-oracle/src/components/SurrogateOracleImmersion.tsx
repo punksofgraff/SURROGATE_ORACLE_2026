@@ -599,12 +599,6 @@ export function SurrogateOracleImmersion() {
     const knife = KNIFE_QUESTIONS[i];
     lastKnifeRef.current = knife;
     portrait.addThemes(knife.themes);
-    // Start portrait generation now — the seeker has just named their frequency, themes are set.
-    // Takes ~25s, so it surfaces naturally mid-conversation after the Oracle's opening reply.
-    if (!portrait.isGenerating && !portraitViewerUrl) {
-      portrait.generatePortrait(portrait.getThemes());
-      logStep('NEURAL PORTRAIT QUEUED (knife selection)', 'pending');
-    }
 
     // Stop any active card preview/voiceover immediately
     connection.flushPlayback();
@@ -1500,7 +1494,7 @@ export function SurrogateOracleImmersion() {
           onTurnComplete={(turn, score, themes) => {
             if (themes.length) portrait.addThemes(themes);
             handleTurnComplete(turn, score);
-            if (turn >= 10 && !portraitTriggeredRef.current && !portrait.isGenerating && !portraitViewerUrl) {
+            if (turn >= 20 && !portraitTriggeredRef.current && !portrait.isGenerating && !portraitViewerUrl) {
               portraitTriggeredRef.current = true;
               portrait.generatePortrait(portrait.getThemes());
               oracleConversationRef.current?.sendTextMessage(

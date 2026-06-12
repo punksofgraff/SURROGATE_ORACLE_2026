@@ -82,6 +82,7 @@ export function useLoreSequence(
   const cancelRef           = useRef(false);
   const completionTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevRatioRef        = useRef(0);
+  const hasEverBeenActiveRef = useRef(false);
 
   useEffect(() => { onCompleteRef.current = onComplete; });
   useEffect(() => { onLineStartRef.current = onLineStart; });
@@ -91,10 +92,14 @@ export function useLoreSequence(
 
   useEffect(() => {
     if (!active) {
-      setCompletedLines(LORE_SEQUENCE);
+      // Only show all lines when lore was running and got interrupted (e.g. barge-through).
+      // On initial mount (never been active) keep the list empty so the terminal doesn't
+      // flash all lore lines for one frame before the sequence resets.
+      if (hasEverBeenActiveRef.current) setCompletedLines(LORE_SEQUENCE);
       setCurrentLine('');
       return;
     }
+    hasEverBeenActiveRef.current = true;
 
     cancelRef.current = false;
     prevRatioRef.current = 0;
@@ -202,7 +207,11 @@ export function useLoreSequence(
         // lore audio still playing — knife phase starts mid-sentence.
         // We MUST also verify that Gemini's turn is actually complete (!audioGateRef.current).
         // Otherwise, a network stall will cause ratio to hit 1.0 prematurely.
-        const isAudioFinished = !audioGateRef.current && (ratio >= 0.99 || (buffMs > 0 && playMs >= buffMs - 150));
+        // buffMs > 25000: require at least 25s of lore buffered before checking
+        // playback-vs-buffer completion. Prevents false firing during Gemini's
+        // natural inter-chunk streaming gaps (which can pause for 1-2s at ~9s mark).
+        // 3000ms margin replaces 150ms — covers the largest expected chunk gap.
+        const isAudioFinished = !audioGateRef.current && (ratio >= 0.99 || (buffMs > 25000 && playMs >= buffMs - 3000));
         if (isAudioFinished && buffMs > 50) {
           if (completionTimerRef.current === null) {
             completionTimerRef.current = setTimeout(() => {

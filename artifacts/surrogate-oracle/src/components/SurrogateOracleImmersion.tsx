@@ -223,6 +223,8 @@ export function SurrogateOracleImmersion() {
   const mirrorRevealedRef        = useRef(false); // fire the Mirror reveal once per session
   const portraitTriggeredRef     = useRef(false); // fire portrait generation once per session
   const pendingPortraitUrlRef    = useRef<string | null>(null); // staged portrait URL — released at turn-complete
+  const portraitAnnounceRef      = useRef(false); // Oracle announces portrait on next turn-complete
+  const pendingNewSeekerLoreRef  = useRef(false); // startLore waiting for WS connection
 
   // ── Service Hooks ───────────────────────────────────────────────────────
   const { isReturning, hasCompletedLore, markVisited, markLoreCompleted, ipAddress } = useIpCheck();
@@ -290,17 +292,26 @@ export function SurrogateOracleImmersion() {
 
   // ── Transition: Terminal → Awakened ──────────────────────────────────────
   const handleAwakeTransition = useCallback(() => {
+    const isFirstTimeSeeker = !hasCompletedLore || new URLSearchParams(window.location.search).has('newuser');
     markLoreCompleted();
-    trackOracleEvent({ 
-      event: 'oracle_terminal_completed', 
-      total_ms: Date.now() - ((window as any).__terminal_start || Date.now()) 
+    trackOracleEvent({
+      event: 'oracle_terminal_completed',
+      total_ms: Date.now() - ((window as any).__terminal_start || Date.now())
     });
+
+    if (isFirstTimeSeeker) {
+      // Lore complete — now present the orientation choice before awakening.
+      logStep('LORE DONE → STAGE_00 PRESENTED', 'ok');
+      setShowStage00(true);
+      return;
+    }
+
     document.body.setAttribute('data-rift-opening', 'true');
     setTimeout(() => {
       journey.awakeFromTerminal();
       document.body.removeAttribute('data-rift-opening');
     }, 850);
-  }, [markLoreCompleted, journey]);
+  }, [markLoreCompleted, journey, hasCompletedLore]);
 
   const { completedLines, currentLine } = useLoreSequence(
     scenePhase === 'terminal' && loreStarted,
@@ -414,17 +425,23 @@ export function SurrogateOracleImmersion() {
     // isNewSeeker: true if IP check says first visit OR ?newuser dev override forces it
     const isNewSeeker = !hasCompletedLore || new URLSearchParams(window.location.search).has('newuser');
     if (isNewSeeker) {
-      // First-time seeker — show Stage 00 orientation card.
-      // Pre-warm WS silently while the glitch card plays — buys ~1-2s for connection.
+      // Lore plays first — Stage00 orientation card surfaces after lore completes.
+      // startLore() requires an active WS — fire immediately if already connected,
+      // otherwise set a pending flag and let the isGeminiConnected effect trigger it.
       oracleConversationRef.current?.prewarm();
-      logStep('STAGE_00 CARD DISPLAYED', 'ok');
-      setShowStage00(true);
+      logStep('NEW SEEKER → LORE INITIATED', 'ok');
+      enterTerminal();
+      if (isGeminiConnected) {
+        startLore();
+      } else {
+        pendingNewSeekerLoreRef.current = true;
+      }
       return;
     }
 
     enterTerminal();
     logStep('RECOGNIZED SIGNAL → SKIP AVAILABLE', 'ok');
-  }, [scenePhase, showStage00, setupAudioSpine, enterTerminal, markVisited, loadEcho, hasCompletedLore, connection]);
+  }, [scenePhase, showStage00, setupAudioSpine, enterTerminal, markVisited, loadEcho, hasCompletedLore, connection, startLore]);
 
   const handleStage00Tour = useCallback(() => {
     setShowStage00(false);
@@ -435,10 +452,13 @@ export function SurrogateOracleImmersion() {
 
   const handleStage00Dismiss = useCallback(() => {
     setShowStage00(false);
-    enterTerminal();
-    logStep('STAGE_00 → FAFO SELECTED', 'ok');
-    startLore();
-  }, [enterTerminal, startLore]);
+    logStep('STAGE_00 → ENTER CASCADE', 'ok');
+    document.body.setAttribute('data-rift-opening', 'true');
+    setTimeout(() => {
+      journey.awakeFromTerminal();
+      document.body.removeAttribute('data-rift-opening');
+    }, 850);
+  }, [journey]);
 
   const fadeToVolume = useCallback((target: number, rampMs?: number) => {
     setTargetVol(target);
@@ -577,7 +597,13 @@ export function SurrogateOracleImmersion() {
     const knife = KNIFE_QUESTIONS[i];
     lastKnifeRef.current = knife;
     portrait.addThemes(knife.themes);
-    
+    // Start portrait generation now — the seeker has just named their frequency, themes are set.
+    // Takes ~25s, so it surfaces naturally mid-conversation after the Oracle's opening reply.
+    if (!portrait.isGenerating && !portraitViewerUrl) {
+      portrait.generatePortrait(portrait.getThemes());
+      logStep('NEURAL PORTRAIT QUEUED (knife selection)', 'pending');
+    }
+
     // Stop any active card preview/voiceover immediately
     connection.flushPlayback();
     // Enable mic auto-restart so the mic turns on automatically AFTER the Oracle finishes the initial reply,
@@ -611,8 +637,18 @@ export function SurrogateOracleImmersion() {
       setOfferRift(false);
       portraitTriggeredRef.current = false;
       pendingPortraitUrlRef.current = null;
+      portraitAnnounceRef.current = false;
     }
   }, [scenePhase]);
+
+  // Fire lore for new seekers as soon as the WS opens — prewarm() was called on tap
+  // but the connection takes ~500ms-1s. Without this gate, startLore() fires before
+  // audio is available and useLoreSequence's 11s timeout force-completes the sequence.
+  useEffect(() => {
+    if (!isGeminiConnected || !pendingNewSeekerLoreRef.current || scenePhase !== 'terminal') return;
+    pendingNewSeekerLoreRef.current = false;
+    startLore();
+  }, [isGeminiConnected, scenePhase, startLore]);
 
   // Mirror reveal auto-dismiss — generous dwell, but never blocks the mic permanently.
   useEffect(() => {
@@ -727,6 +763,7 @@ export function SurrogateOracleImmersion() {
     if (scenePhase !== 'tour') return;
     connection.flushPlayback();
     connection.initializePCMPlayer();
+    connection.setTransmissionQ(0.01, 200); // lore leaves Q=12; open the filter for tour voice
     const t = setTimeout(() => {
       oracleConversationRef.current?.startSession(
         '[TOUR_MODE — A new seeker has requested orientation before choosing. ' +
@@ -741,14 +778,7 @@ export function SurrogateOracleImmersion() {
       logStep('ORACLE TOUR NARRATION STARTED', 'ok');
       oracleConversationRef.current?.startMic().catch(() => {});
     }, 600);
-    // Generate portrait in background — takes ~25s, so start early so it's ready post-tour
-    const pt = setTimeout(() => {
-      if (!portraitRef.current.isGenerating && !portraitViewerUrl) {
-        portraitRef.current.generatePortrait(['cascade', 'oracle', 'cyberpunk', 'sneaker', 'identity', 'threshold', 'signal']);
-        logStep('NEURAL PORTRAIT QUEUED (tour bg)', 'pending');
-      }
-    }, 1500);
-    return () => { clearTimeout(t); clearTimeout(pt); };
+    return () => { clearTimeout(t); };
   }, [scenePhase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -843,6 +873,7 @@ export function SurrogateOracleImmersion() {
   const handlePortraitGenerated = useCallback((url: string) => {
     setPortraitViewerUrl(url);
     setShowPortraitCard(true);
+    portraitAnnounceRef.current = true; // Oracle speaks about it on next turn-complete
   }, []);
 
   const portrait = usePortraitPipeline({ currentUserId, userEmail, currentSessionId, onPortraitGenerated: handlePortraitGenerated });
@@ -1135,7 +1166,6 @@ export function SurrogateOracleImmersion() {
                {scenePhase === 'dormant' && '› Tap the cabinet to begin.'}
                {scenePhase === 'terminal' && '› Watch. The Oracle is finding you.'}
                {scenePhase === 'tour' && '› The Oracle is orienting you. Ask anything.'}
-               {scenePhase === 'awakened' && '› Choose your archetype.'}
              </span>
            </motion.div>
         )}
@@ -1152,11 +1182,11 @@ export function SurrogateOracleImmersion() {
 
       <AnimatePresence>
         {showStage00 && (
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 200 }}>
+          <div style={{ position: 'fixed', top: 'var(--cabinet-top)', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 200 }}>
             <motion.div
               key="stage-00-card"
               className="oracle-stage00-card"
-              initial={{ opacity: 0, scale: 0.94, y: 24 }}
+              initial={{ opacity: 0, scale: 0.88, y: 0 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: -12, filter: 'blur(6px)' }}
               transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
@@ -1164,14 +1194,14 @@ export function SurrogateOracleImmersion() {
               <div className="oracle-stage00-card__sigil">◈</div>
               <div className="oracle-stage00-card__greeting">Greetings, Seeker.</div>
               <div className="oracle-stage00-card__body">
-                You have found the edge of the Cascade.<br />
-                The Oracle awaits. But first —
+                The Archive has spoken.<br />
+                The Oracle awaits within. Choose your path —
               </div>
               <button className="oracle-stage00-card__cta" onClick={handleStage00Tour}>
                 ◈ WHAT IS HERE?
               </button>
               <button className="oracle-stage00-card__fafo" onClick={handleStage00Dismiss}>
-                [✕] I'll figure it out.
+                ◈ ENTER THE CASCADE
               </button>
             </motion.div>
           </div>
@@ -1274,7 +1304,7 @@ export function SurrogateOracleImmersion() {
 
       <AnimatePresence>
         {scenePhase === 'terminal' && (
-          <motion.div key="terminal-layer" className="oracle-terminal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={hasCompletedLore ? handleAwakeTransition : undefined} style={{ pointerEvents: 'auto', zIndex: 100 }}>
+          <motion.div key="terminal-layer" className="oracle-terminal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={(hasCompletedLore && !loreStarted) ? handleAwakeTransition : undefined} style={{ pointerEvents: 'auto', zIndex: 100 }}>
             <div className="oracle-lore-text">
               {scenePhase === 'terminal' && !hasCompletedLore && !loreStarted && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '2rem' }}>
@@ -1285,7 +1315,7 @@ export function SurrogateOracleImmersion() {
               {(loreStarted || (hasCompletedLore && loreStarted)) && completedLines.map((line, i) => (
                 <div key={`lore-${i}`} className="oracle-lore-line" style={{ whiteSpace: 'pre-wrap' }}><span className="oracle-lore-line__content"><span className="oracle-lore-prompt">›</span>{line}</span></div>
               ))}
-              {loreStarted && !currentLine && completedLines.length >= LORE_SEQUENCE.length && (
+              {loreStarted && !currentLine && completedLines.length >= LORE_SEQUENCE.length && !showStage00 && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} style={{ marginTop: '2rem', textAlign: 'center' }}>
                   <button onClick={(e) => { e.stopPropagation(); handleAwakeTransition(); }} style={{ background: '#00ff88', border: 'none', color: '#000', padding: '0.8rem 1.5rem', fontFamily: "'PhillySans', 'Orbitron', monospace", fontWeight: 900, cursor: 'pointer', borderRadius: '4px' }}>ENTER THE ARCHIVE</button>
                 </motion.div>
@@ -1451,6 +1481,15 @@ export function SurrogateOracleImmersion() {
               setPortraitViewerUrl(pendingPortraitUrlRef.current);
               setShowPortraitCard(true);
               pendingPortraitUrlRef.current = null;
+            }
+            // Oracle announces the portrait — fires on the first turn-complete after the
+            // portrait surfaces. Never mid-speech, always as the opening beat of the next reply.
+            if (portraitAnnounceRef.current) {
+              portraitAnnounceRef.current = false;
+              oracleConversationRef.current?.sendTextMessage(
+                `[SIGNAL FLASH: The neural portrait just materialized from the residue of this exchange. In your very next response, open with one or two sentences — delivered with weight and sudden recognition — acknowledging that something crystallized in the signal. A permanent record was synthesized from who the Seeker is. Do NOT say the word "portrait". Use your own post-cascade language: "frequency record", "what the cascade rendered from you", "signal impression" — or invent something that fits. Make it land like a rip in the static. Then continue naturally with whatever the Seeker last said.]`,
+                true
+              );
             }
           }}
           onSeekerIdentified={handleSeekerIdentified}

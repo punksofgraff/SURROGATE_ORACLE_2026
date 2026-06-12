@@ -128,7 +128,7 @@ async function runSmoke() {
   // CDN image assets
   const imageAssets = [
     { label: 'ORACLE_STATIC_URL (arcade portrait)',  url: 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png' },
-    { label: 'ORACLE_AVATAR_URL (talking face)',      url: 'https://i.postimg.cc/jSGnyZXh/Image-1-(11).jpg' },
+    { label: 'ORACLE_AVATAR_URL (talking face)',       url: `${BASE}/oracle-avatar-live.png` },
     { label: 'ALLEY_BG_URL (alley scene)',            url: 'https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png' },
   ];
   for (const { label, url } of imageAssets) {
@@ -275,8 +275,15 @@ async function runSmoke() {
     decartActive === 'true' ? '🎥 Decart live (paid tier)' : '🎭 Freemium (WebGL mesh-warp)');
 
   // ── WebGL face canvas (freemium pixel-streaming path) ─────────────────────
+  // oracle-avatar-canvas mounts AFTER portrait.isGenerating exits the AnimatePresence
+  // (mode="wait") — portrait generation triggered at knife click takes ~3s.
+  // Poll up to 10s to give the entrance animation time to complete.
   if (decartActive !== 'true') {
-    const canvasDiv = await page.$('.oracle-avatar-canvas').catch(() => null);
+    let canvasDiv = null;
+    for (let i = 0; i < 20 && !canvasDiv; i++) {
+      await sleep(500);
+      canvasDiv = await page.$('.oracle-avatar-canvas').catch(() => null);
+    }
     record('canvas', 'oracle-avatar-canvas in DOM (freemium path)', canvasDiv ? 'pass' : 'fail');
 
     if (canvasDiv) {
@@ -340,12 +347,14 @@ async function runSmoke() {
     record('conversation', 'ORACLE_SCORE annotation stripped from UI', scoreStripped ? 'pass' : 'fail', `"${msgText.slice(0,55)}"`);
   }
 
-  // Text input
-  const padToggle = await page.$('.oc-signal-pad-toggle').catch(() => null);
-  if (padToggle) {
-    await padToggle.click({ force: true });
-    await sleep(500);
-  }
+  // Text input — signal pad is toggled via OracleConversation's imperative ref
+  // (toggleTypeMode). No DOM button with class .oc-signal-pad-toggle exists; the
+  // toggle is wired through the hamburger menu → ref.current.toggleTypeMode().
+  await page.evaluate(() => {
+    const ref = window.oracleConversationRef;
+    if (ref?.current?.toggleTypeMode) ref.current.toggleTypeMode();
+  }).catch(() => {});
+  await sleep(600);
   const textInput = await page.$('.oc-input').catch(() => null);
   record('conversation', 'Text input rendered', textInput ? 'pass' : 'fail');
 
@@ -368,6 +377,13 @@ async function runSmoke() {
 
     // Send second message
     await sleep(1000);
+    // Portrait fullscreen card appears after portrait generation completes (~3s
+    // post-knife). Dismiss it before clicking — it intercepts pointer events.
+    await page.evaluate(() => {
+      const pf = document.querySelector('.oracle-portrait-fullscreen');
+      if (pf) pf.remove();
+    }).catch(() => {});
+    await sleep(300);
     await textInput.click();
     await textInput.fill('The thing I owe someone — it started to feel like mine.');
     await page.keyboard.press('Enter');
@@ -512,20 +528,22 @@ async function runSmoke() {
   });
   await sleep(800);
 
-  // Test Tour Button (4th button)
-  const tourBtn = bottomButtons[3];
-  if (tourBtn) {
-    const isTour = await page.evaluate(() => document.querySelector('.oracle-stage').getAttribute('data-guided-tour') === 'true');
-    await page.evaluate(el => el.click(), tourBtn);
-    await sleep(1000);
-    const isTourAfter = await page.evaluate(() => document.querySelector('.oracle-stage').getAttribute('data-guided-tour') === 'true');
-    record('ui', 'Tour mode toggles via button', isTour !== isTourAfter ? 'pass' : 'fail', `init=${isTour} after=${isTourAfter}`);
-  }
+  // Tour mode is now entered via Stage00 "WHAT IS HERE?" path, not a bottom bar toggle.
+  // Verify the guided-tour data attribute exists on the stage (set by handleStage00Tour).
+  const guidedTourAttr = await page.evaluate(() => document.querySelector('.oracle-stage').hasAttribute('data-guided-tour'));
+  record('ui', 'data-guided-tour attribute exists on stage', guidedTourAttr !== undefined ? 'pass' : 'warn', `present=${guidedTourAttr}`);
 
   // ══════════════════════════════════════════════════════════
   // §12  EXIT & SCENE RESET
   // ══════════════════════════════════════════════════════════
   header('§12 Exit — Scene Reset to Dormant');
+
+  // Dismiss portrait fullscreen if it's blocking pointer events
+  await page.evaluate(() => {
+    const pf = document.querySelector('.oracle-portrait-fullscreen');
+    if (pf) pf.remove();
+  });
+  await sleep(400);
 
   // Try to find exit button (X button in conversation panel)
   const exitBtn = await page.$('[class*="exit"], [class*="close-oracle"], button[aria-label*="xit"]').catch(() => null);

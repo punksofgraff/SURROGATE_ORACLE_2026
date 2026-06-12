@@ -47,7 +47,7 @@ export function useOracleJourney({
   }, [scenePhase]);
 
   const enterTour = useCallback(() => {
-    if (scenePhaseRef.current !== 'dormant') return;
+    if (scenePhaseRef.current !== 'dormant' && scenePhaseRef.current !== 'terminal') return;
     logStep('STAGE_00 → TOUR PHASE ENTERED', 'ok');
     scenePhaseRef.current = 'tour';
     setScenePhase('tour');

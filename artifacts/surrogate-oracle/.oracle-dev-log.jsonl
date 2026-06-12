@@ -16582,3 +16582,29 @@
 {"label":"ORACLE INTERRUPTED (barge-in)","status":"warn","_t":1781274115703}
 {"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781274115706}
 {"label":"MIC→GEMINI: 4500 chunks sent | vad=silence rms=0.052 | speaking=false","status":"ok","_t":1781274120578}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781275199333}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781275199905}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781275200411}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781275200414}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781275200414}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781275201000}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781275202355}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781275202742}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781275202743}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781275203108}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781275203109}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781275203195}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781275204049}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781275204413}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781275206107}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781275206268}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781275206268}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781275207191}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781275207192}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781275207193}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781275207377}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781275208145}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781275208161}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781275208949}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781275209301}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781275209369}

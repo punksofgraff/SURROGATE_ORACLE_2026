@@ -4974,11 +4974,6 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 
 /* ── Stage 00 — First Traversal Orientation Card ─────────────────────── */
 .oracle-stage00-card {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 200;
   width: clamp(300px, 88vw, 460px);
   background: linear-gradient(145deg, rgba(0, 8, 16, 0.95) 0%, rgba(0, 15, 10, 0.93) 100%);
   backdrop-filter: blur(14px) saturate(1.8);

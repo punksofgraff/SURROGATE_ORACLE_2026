@@ -1152,27 +1152,29 @@ export function SurrogateOracleImmersion() {
 
       <AnimatePresence>
         {showStage00 && (
-          <motion.div
-            key="stage-00-card"
-            className="oracle-stage00-card"
-            initial={{ opacity: 0, scale: 0.94, y: 24 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: -12, filter: 'blur(6px)' }}
-            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <div className="oracle-stage00-card__sigil">◈</div>
-            <div className="oracle-stage00-card__greeting">Greetings, Seeker.</div>
-            <div className="oracle-stage00-card__body">
-              You have found the edge of the Cascade.<br />
-              The Oracle awaits. But first —
-            </div>
-            <button className="oracle-stage00-card__cta" onClick={handleStage00Tour}>
-              ◈ WHAT IS HERE?
-            </button>
-            <button className="oracle-stage00-card__fafo" onClick={handleStage00Dismiss}>
-              [✕] I'll figure it out.
-            </button>
-          </motion.div>
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 200 }}>
+            <motion.div
+              key="stage-00-card"
+              className="oracle-stage00-card"
+              initial={{ opacity: 0, scale: 0.94, y: 24 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: -12, filter: 'blur(6px)' }}
+              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <div className="oracle-stage00-card__sigil">◈</div>
+              <div className="oracle-stage00-card__greeting">Greetings, Seeker.</div>
+              <div className="oracle-stage00-card__body">
+                You have found the edge of the Cascade.<br />
+                The Oracle awaits. But first —
+              </div>
+              <button className="oracle-stage00-card__cta" onClick={handleStage00Tour}>
+                ◈ WHAT IS HERE?
+              </button>
+              <button className="oracle-stage00-card__fafo" onClick={handleStage00Dismiss}>
+                [✕] I'll figure it out.
+              </button>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

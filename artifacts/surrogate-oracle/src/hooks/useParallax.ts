@@ -112,7 +112,7 @@ export function useParallax(
 
     // ── Touch events (mobile) ─────────────────────────────────────────────────
     const onTouchStart = (e: TouchEvent) => {
-      if (isIOS && e.touches.length === 1) {
+      if (needsPermission && e.touches.length === 1) {
         requestGyroOnTouch();
       }
 

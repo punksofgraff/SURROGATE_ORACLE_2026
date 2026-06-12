@@ -66,7 +66,7 @@ import './SurrogateOracleImmersion.css';
 const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
 const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = 'https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png';
-const DEFAULT_STATION    = 2; // Chill Hop — default launch station
+const DEFAULT_STATION    = 0; // Graff Punks — sole station
 
 // Act 5 — Rift-Construct: Oracle shifts from archivist to active witness.
 // No brackets — brackets suppress Gemini audio output (same issue as knife prompts).

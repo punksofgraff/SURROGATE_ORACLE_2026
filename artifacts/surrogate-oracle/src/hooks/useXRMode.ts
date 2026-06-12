@@ -191,9 +191,21 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
         }
       }
       if (totalW > 800) {
-        const rawX = -(wx / totalW / 60 * 2 - 1);
-        const rawY =  (wy / totalW / 45 * 2 - 1);
-        updateGaze(rawX, rawY);
+        // Centroid in 60×45 thumbnail space → scale to real video pixels
+        const cx = wx / totalW;
+        const cy = wy / totalW;
+        const scaleX = video.videoWidth  / 60;
+        const scaleY = video.videoHeight / 45;
+        // Synthetic bounding box centred on skin centroid.
+        // markFaceFound sets faceDetected=true + faceBoundsRef (drives face-frame overlay)
+        // and calls updateGaze with correct axis signs matching the FaceDetector path.
+        const faceW = video.videoWidth  * 0.35;
+        const faceH = video.videoHeight * 0.45;
+        markFaceFound(
+          { x: cx * scaleX - faceW / 2, y: cy * scaleY - faceH / 2, width: faceW, height: faceH },
+          video.videoWidth,
+          video.videoHeight,
+        );
       }
     };
 

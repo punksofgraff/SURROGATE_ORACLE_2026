@@ -74,26 +74,27 @@ export function useParallax(
       targetY =  beta  / GYRO_MAX_BETA;
     };
 
-    // Auto-register gyro for non-iOS; iOS requests permission on first touch
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    if (!isIOS) {
+    // Capability check — more reliable than UA sniffing (catches iPads in desktop mode,
+    // iOS Chrome, and any future UA changes).
+    const DE = DeviceOrientationEvent as any;
+    const needsPermission = typeof DE?.requestPermission === 'function';
+
+    if (!needsPermission) {
+      // Android / desktop — gyro fires without a permission dialog
       window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
     }
 
-    // iOS: request gyro permission on first touch
+    // Request gyro permission on first touch (iOS Safari requires a user-gesture call)
     const requestGyroOnTouch = async () => {
-      if (!isIOS || gyroActive) return;
-      const DE = DeviceOrientationEvent as any;
-      if (typeof DE?.requestPermission === 'function') {
-        try {
-          const result = await DE.requestPermission();
-          if (result === 'granted') {
-            gyroActive = true;
-            usingGyro = true;
-            window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
-          }
-        } catch {}
-      }
+      if (!needsPermission || gyroActive) return;
+      try {
+        const result = await DE.requestPermission();
+        if (result === 'granted') {
+          gyroActive = true;
+          usingGyro = true;
+          window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
+        }
+      } catch {}
     };
 
     // ── Mouse fallback (desktop) ──────────────────────────────────────────────

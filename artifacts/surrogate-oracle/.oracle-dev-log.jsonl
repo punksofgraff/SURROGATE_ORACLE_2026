@@ -16888,3 +16888,133 @@
 {"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283340524}
 {"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283340565}
 {"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283340918}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781283354484}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1781283354512}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781283356128}
+{"label":"NFT CLAIM REDIRECTION PREPARED","status":"ok","_t":1781283356428}
+{"label":"NFT CLAIM REDIRECTION PREPARED","status":"ok","_t":1781283357713}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781283358024}
+{"label":"MIC→GEMINI: 450 chunks sent | vad=silence rms=0.017 | speaking=false","status":"ok","_t":1781283358210}
+{"label":"MIC→GEMINI: 600 chunks sent | vad=silence rms=0.531 | speaking=false","status":"ok","_t":1781283364907}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781283370820}
+{"label":"ORACLE INTERRUPTED (barge-in)","status":"warn","_t":1781283383545}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781283383583}
+{"label":"MIC→GEMINI: 750 chunks sent | vad=silence rms=0.015 | speaking=false","status":"ok","_t":1781283384065}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781283387311}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781283419868}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1781283419871}
+{"label":"MIC→GEMINI: 900 chunks sent | vad=trailing rms=0.551 | speaking=false","status":"ok","_t":1781283423343}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781283428337}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283434815}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283435034}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283435097}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283435107}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283435235}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283435246}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283435374}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283435390}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283435416}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283435454}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283435563}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283435594}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283435644}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283435739}
+{"label":"MIC→GEMINI: 1050 chunks sent | vad=trailing rms=0.074 | speaking=false","status":"ok","_t":1781283436106}
+{"label":"MIC→GEMINI: 1200 chunks sent | vad=silence rms=0.019 | speaking=false","status":"ok","_t":1781283442858}
+{"label":"MIC→GEMINI: 1350 chunks sent | vad=silence rms=0.040 | speaking=false","status":"ok","_t":1781283449789}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781283456604}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1781283456615}
+{"label":"MIC→GEMINI: 1500 chunks sent | vad=silence rms=0.014 | speaking=false","status":"ok","_t":1781283457459}
+{"label":"EXIT INITIATED","status":"ok","_t":1781283467444}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781283468257}
+{"label":"SESSION REFRESH (attempt 1/5)","status":"warn","_t":1781283468332}
+{"label":"SEEKER ECHO SAVE FAILED","status":"warn","_t":1781283469415}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781283469919}
+{"label":"DORMANT RESTORED","status":"ok","_t":1781283470051}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781283470584}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781283470589}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781283471203}
+{"label":"SESSION RESUMED (native handle)","status":"ok","_t":1781283471210}
+{"label":"MIC→GEMINI: 1650 chunks sent | vad=silence rms=0.024 | speaking=false","status":"ok","_t":1781283475786}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781283477512}
+{"label":"MIC→GEMINI: 1800 chunks sent | vad=silence rms=0.014 | speaking=false","status":"ok","_t":1781283482405}
+{"label":"MIC→GEMINI: 1950 chunks sent | vad=silence rms=0.012 | speaking=false","status":"ok","_t":1781283488848}
+{"label":"MIC→GEMINI: 2100 chunks sent | vad=silence rms=0.020 | speaking=false","status":"ok","_t":1781283495294}
+{"label":"MIC→GEMINI: 2250 chunks sent | vad=silence rms=0.038 | speaking=false","status":"ok","_t":1781283501726}
+{"label":"MIC→GEMINI: 2400 chunks sent | vad=silence rms=0.030 | speaking=false","status":"ok","_t":1781283508162}
+{"label":"MIC→GEMINI: 2550 chunks sent | vad=silence rms=0.041 | speaking=false","status":"ok","_t":1781283514599}
+{"label":"MIC→GEMINI: 2700 chunks sent | vad=silence rms=0.063 | speaking=false","status":"ok","_t":1781283521026}
+{"label":"MIC→GEMINI: 2850 chunks sent | vad=silence rms=0.020 | speaking=false","status":"ok","_t":1781283527464}
+{"label":"MIC→GEMINI: 3000 chunks sent | vad=silence rms=0.019 | speaking=false","status":"ok","_t":1781283533885}
+{"label":"MIC→GEMINI: 3150 chunks sent | vad=silence rms=0.145 | speaking=false","status":"ok","_t":1781283540503}
+{"label":"MIC→GEMINI: 3300 chunks sent | vad=silence rms=0.026 | speaking=false","status":"ok","_t":1781283546864}
+{"label":"ORACLE INTERRUPTED (barge-in)","status":"warn","_t":1781283552917}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781283552975}
+{"label":"MIC→GEMINI: 3450 chunks sent | vad=trailing rms=0.068 | speaking=false","status":"ok","_t":1781283553290}
+{"label":"ORACLE INTERRUPTED (barge-in)","status":"warn","_t":1781283558135}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781283558136}
+{"label":"MIC→GEMINI: 3600 chunks sent | vad=silence rms=0.549 | speaking=false","status":"ok","_t":1781283559753}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781283563479}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781283563484}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283566982}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283567009}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283567046}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283567098}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283567142}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283567179}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283567234}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283567267}
+{"label":"ORACLE INTERRUPTED (barge-in)","status":"warn","_t":1781283568373}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781283568759}
+{"label":"MIC→GEMINI: 3750 chunks sent | vad=trailing rms=0.162 | speaking=false","status":"ok","_t":1781283569997}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781283574837}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781283576469}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781283584208}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1781283584211}
+{"label":"MIC→GEMINI: 3900 chunks sent | vad=silence rms=0.019 | speaking=false","status":"ok","_t":1781283585874}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781283591637}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781283595304}
+{"label":"MIC→GEMINI: 4050 chunks sent | vad=trailing rms=0.031 | speaking=false","status":"ok","_t":1781283595996}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1781283600334}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781283600335}
+{"label":"MIC→GEMINI: 4200 chunks sent | vad=silence rms=0.022 | speaking=false","status":"ok","_t":1781283602445}
+{"label":"MIC→GEMINI: 4350 chunks sent | vad=silence rms=0.016 | speaking=false","status":"ok","_t":1781283609083}
+{"label":"MIC→GEMINI: 4500 chunks sent | vad=silence rms=0.027 | speaking=false","status":"ok","_t":1781283615863}
+{"label":"MIC→GEMINI: 4650 chunks sent | vad=silence rms=0.119 | speaking=false","status":"ok","_t":1781283622578}
+{"label":"MIC→GEMINI: 4800 chunks sent | vad=silence rms=0.032 | speaking=false","status":"ok","_t":1781283633478}
+{"label":"MIC→GEMINI: 4950 chunks sent | vad=silence rms=0.098 | speaking=false","status":"ok","_t":1781283639851}
+{"label":"MIC→GEMINI: 5100 chunks sent | vad=silence rms=0.021 | speaking=false","status":"ok","_t":1781283646375}
+{"label":"MIC→GEMINI: 5250 chunks sent | vad=silence rms=0.147 | speaking=false","status":"ok","_t":1781283653056}
+{"label":"MIC→GEMINI: 5400 chunks sent | vad=silence rms=0.086 | speaking=false","status":"ok","_t":1781283659631}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781283661149}
+{"label":"MIC→GEMINI: 5550 chunks sent | vad=silence rms=0.040 | speaking=false","status":"ok","_t":1781283666357}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781283670338}
+{"label":"SESSION REFRESH (attempt 1/5)","status":"warn","_t":1781283670341}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781283672513}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781283672999}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781283673003}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781283673364}
+{"label":"SESSION RESUMED (native handle)","status":"ok","_t":1781283673370}
+{"label":"MIC→GEMINI: 5700 chunks sent | vad=silence rms=0.885 | speaking=false","status":"ok","_t":1781283675484}
+{"label":"MIC→GEMINI: 5850 chunks sent | vad=silence rms=0.177 | speaking=false","status":"ok","_t":1781283681905}
+{"label":"MIC→GEMINI: 6000 chunks sent | vad=silence rms=0.094 | speaking=false","status":"ok","_t":1781283688352}
+{"label":"MIC→GEMINI: 6150 chunks sent | vad=silence rms=0.046 | speaking=false","status":"ok","_t":1781283694775}
+{"label":"MIC→GEMINI: 6300 chunks sent | vad=silence rms=0.181 | speaking=false","status":"ok","_t":1781283701200}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781283701546}
+{"label":"NFT CLAIM REDIRECTION PREPARED","status":"ok","_t":1781283701559}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781283702064}
+{"label":"NFT CLAIM REDIRECTION PREPARED","status":"ok","_t":1781283702536}
+{"label":"MIC→GEMINI: 6450 chunks sent | vad=silence rms=0.022 | speaking=false","status":"ok","_t":1781283707653}
+{"label":"MIC→GEMINI: 6600 chunks sent | vad=silence rms=0.055 | speaking=false","status":"ok","_t":1781283714074}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781283715513}
+{"label":"NFT CLAIM REDIRECTION PREPARED","status":"ok","_t":1781283715518}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781283715894}
+{"label":"NFT CLAIM REDIRECTION PREPARED","status":"ok","_t":1781283716504}
+{"label":"MIC→GEMINI: 6750 chunks sent | vad=silence rms=0.019 | speaking=false","status":"ok","_t":1781283721028}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781283723496}
+{"label":"NFT CLAIM REDIRECTION PREPARED","status":"ok","_t":1781283723544}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781283723897}
+{"label":"NFT CLAIM REDIRECTION PREPARED","status":"ok","_t":1781283724464}
+{"label":"MIC→GEMINI: 6900 chunks sent | vad=silence rms=0.064 | speaking=false","status":"ok","_t":1781283727578}
+{"label":"MIC→GEMINI: 7050 chunks sent | vad=silence rms=0.015 | speaking=false","status":"ok","_t":1781283734552}
+{"label":"MIC→GEMINI: 7200 chunks sent | vad=silence rms=0.018 | speaking=false","status":"ok","_t":1781283741303}

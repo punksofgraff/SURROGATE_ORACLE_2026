@@ -413,6 +413,11 @@ export function SurrogateOracleImmersion() {
   }, [loreStarted, connection]);
 
   const handleFirstTap = useCallback(async () => {
+    // iOS: fire DeviceOrientation permission on the very first gesture — must be
+    // synchronous (before any await) so iOS recognises it as user-initiated.
+    const _DE = (DeviceOrientationEvent as any);
+    if (typeof _DE?.requestPermission === 'function') _DE.requestPermission().catch(() => {});
+
     if (scenePhase !== 'dormant' || showStage00) return;
     // iOS Safari: AudioContext resume + PCMPlayer init must happen before any real
     // await (network/DB calls). setupAudioSpine resolves synchronously; initializePCMPlayer

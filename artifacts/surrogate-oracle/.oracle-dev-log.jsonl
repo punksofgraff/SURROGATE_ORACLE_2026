@@ -17243,3 +17243,29 @@
 {"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781304071251}
 {"label":"TAB BACKGROUNDED","status":"warn","_t":1781304095451}
 {"label":"TAB BACKGROUNDED","status":"warn","_t":1781304095454}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781304269262}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781304269798}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781304282803}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781304282806}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781304800736}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781304800905}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781304800966}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781304801024}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781304801074}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781304801650}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781304802637}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781304802642}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781304803397}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781364501315}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781364501658}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781364501870}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781364501886}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781364501886}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781364502543}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781364502959}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781364503290}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781364503667}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781364702236}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781364830838}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781364844508}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781364862244}

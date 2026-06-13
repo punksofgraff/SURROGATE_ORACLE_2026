@@ -264,13 +264,13 @@ export class PCMPlayer {
   }
 
   public async feed(data: Int16Array) {
-    // Fire-and-forget resume — never await context.resume() inside feed() because
-    // feed() is called outside gesture handlers (streaming audio callbacks). Awaiting
-    // can hang indefinitely on iOS if no gesture is active. The context is already
-    // unlocked by setupAudioSpine/initializePCMPlayer in the first-tap handler;
-    // this is only a safety net for edge cases (background/foreground transitions).
+    // feed() is called from Gemini audio callbacks (never a gesture handler), so it
+    // is safe to await here. If the context is suspended (e.g. iOS tab switch or
+    // background), we must wait for it to resume before feeding the worklet ring
+    // buffer — otherwise chunks accumulate while the context clock is frozen, the
+    // ring buffer floods, and audio plays with a fast-forward artifact on resume.
     if (this.context.state === 'suspended') {
-      void this.context.resume().catch(() => {});
+      try { await this.context.resume(); } catch { /* ignore */ }
     }
 
     await this.workletReady;

@@ -3,14 +3,14 @@
  * Aesthetic: SURROGATE rift-construct visual language.
  * Frequencies: RESONANCE · SQUAD · PRINTS · CORE_DIAG · SALVAGE · M4NIFST
  */
-import { useState, useEffect, useRef, RefObject } from 'react';
-import { X, Wallet, Cpu } from 'lucide-react';
+import { useState, useEffect, useRef, RefObject, useCallback } from 'react';
+import { X, Wallet, Cpu, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CultureCoinDisplay } from './CultureCoinDisplay';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { PortraitGalleryDashboard } from './PortraitGalleryDashboard';
 import { Learn2EarnInterface } from './Learn2EarnInterface';
-import { supabaseEdgeFunctionHeaders } from '../lib/supabase';
+import { supabase, supabaseEdgeFunctionHeaders } from '../lib/supabase';
 import { useChainFuelz } from '../hooks/useChainFuelz';
 import type { OracleConversationHandle } from './OracleConversation';
 
@@ -286,6 +286,158 @@ function ManifestPanel({ pendingCoins }: { pendingCoins: number }) {
           </div>
         </SignalFragment>
       )}
+    </div>
+  );
+}
+
+// ── ProdLogViewer ─────────────────────────────────────────────────────────────
+type ProdLogRow = { id: number; ts: string; session_id: string | null; event: string; data: Record<string,unknown>; env: string };
+
+function ProdLogViewer() {
+  const [logs, setLogs]       = useState<ProdLogRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter]   = useState('');
+  const [autoRefresh, setAuto]= useState(true);
+  const timerRef              = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('oracle_prod_logs')
+      .select('id,ts,session_id,event,data,env')
+      .order('ts', { ascending: false })
+      .limit(120);
+    if (!error && data) setLogs(data as ProdLogRow[]);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
+
+  useEffect(() => {
+    if (autoRefresh) {
+      timerRef.current = setInterval(fetchLogs, 4000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [autoRefresh, fetchLogs]);
+
+  const filtered = filter
+    ? logs.filter(l => l.event.includes(filter) || l.session_id?.includes(filter) || JSON.stringify(l.data).includes(filter))
+    : logs;
+
+  const levelColor = (event: string) => {
+    if (event.includes('error')) return '#ff4466';
+    if (event.includes('exit') || event.includes('barge')) return T.purple;
+    if (event.includes('portrait') || event.includes('claim')) return T.cyan;
+    return T.green;
+  };
+
+  const fmtTime = (ts: string) => {
+    const d = new Date(ts);
+    return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+  };
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+      {/* toolbar */}
+      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+        <input
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+          placeholder="FILTER_SIGNAL..."
+          style={{
+            flex:1, background:'rgba(0,0,0,0.55)', border:`1px solid rgba(0,255,136,0.18)`,
+            padding:'7px 10px', color:T.green, fontFamily:T.fontData, fontSize:'0.56rem',
+            letterSpacing:'0.1em', outline:'none', borderRadius:2,
+          }}
+        />
+        <motion.button
+          onClick={fetchLogs}
+          whileTap={{ scale:0.9 }}
+          style={{ background:'none', border:`1px solid rgba(0,255,136,0.2)`, color:T.green, cursor:'pointer', padding:'7px 9px', borderRadius:2 }}
+        >
+          <RefreshCw size={11} style={{ display:'block', animation: loading ? 'spin 0.6s linear infinite' : 'none' }} />
+        </motion.button>
+        <motion.button
+          onClick={() => setAuto(a => !a)}
+          style={{
+            background: autoRefresh ? 'rgba(0,255,136,0.1)' : 'none',
+            border:`1px solid ${autoRefresh ? T.green : 'rgba(255,255,255,0.1)'}`,
+            color: autoRefresh ? T.green : 'rgba(255,255,255,0.25)',
+            fontFamily:T.fontUI, fontSize:'0.44rem', letterSpacing:'0.1em', fontWeight:800,
+            cursor:'pointer', padding:'7px 9px', borderRadius:2,
+          }}
+        >AUTO</motion.button>
+      </div>
+
+      {/* count strip */}
+      <div style={{ display:'flex', gap:8, fontFamily:T.fontData, fontSize:'0.46rem', color:'rgba(255,255,255,0.22)', letterSpacing:'0.12em' }}>
+        <span style={{ color:T.cyan }}>{filtered.length}</span> events
+        {filter && <span>· filtered from <span style={{ color:T.green }}>{logs.length}</span></span>}
+        {autoRefresh && <span style={{ marginLeft:'auto', color:'rgba(0,255,136,0.35)' }}>● LIVE</span>}
+      </div>
+
+      {/* log rows */}
+      <div style={{
+        background:'rgba(0,0,0,0.55)', border:`1px solid rgba(0,255,136,0.1)`,
+        borderRadius:'2px 8px 2px 8px', maxHeight:340, overflowY:'auto',
+      }}>
+        {filtered.length === 0 ? (
+          <div style={{ padding:'28px', textAlign:'center', fontFamily:T.fontData, fontSize:'0.52rem', color:'rgba(255,255,255,0.12)', letterSpacing:'0.18em' }}>
+            {loading ? 'SCANNING...' : '— NO_SIGNAL —'}
+          </div>
+        ) : filtered.map(row => (
+          <div key={row.id}>
+            <div
+              onClick={() => setExpanded(expanded === row.id ? null : row.id)}
+              style={{
+                display:'flex', alignItems:'center', gap:8, padding:'6px 10px',
+                borderBottom:`1px solid rgba(0,255,136,0.05)`,
+                cursor:'pointer',
+              }}
+            >
+              <span style={{ fontFamily:T.fontData, fontSize:'0.48rem', color:'rgba(255,255,255,0.22)', flexShrink:0, letterSpacing:'0.04em' }}>
+                {fmtTime(row.ts)}
+              </span>
+              <span style={{
+                fontFamily:T.fontUI, fontSize:'0.5rem', fontWeight:800, letterSpacing:'0.1em',
+                color: levelColor(row.event), flexShrink:0,
+              }}>
+                {row.event.replace('oracle_','').toUpperCase()}
+              </span>
+              {row.session_id && (
+                <span style={{ fontFamily:T.fontData, fontSize:'0.44rem', color:'rgba(255,255,255,0.18)', marginLeft:'auto', letterSpacing:'0.06em' }}>
+                  {row.session_id.slice(-8)}
+                </span>
+              )}
+            </div>
+            <AnimatePresence>
+              {expanded === row.id && (
+                <motion.div
+                  initial={{ height:0, opacity:0 }}
+                  animate={{ height:'auto', opacity:1 }}
+                  exit={{ height:0, opacity:0 }}
+                  transition={{ duration:0.14 }}
+                  style={{ overflow:'hidden' }}
+                >
+                  <pre style={{
+                    margin:0, padding:'8px 12px',
+                    background:'rgba(0,0,0,0.45)',
+                    borderBottom:`1px solid rgba(0,255,136,0.06)`,
+                    fontFamily:T.fontData, fontSize:'0.5rem',
+                    color:'rgba(0,255,204,0.7)', lineHeight:1.65,
+                    whiteSpace:'pre-wrap', wordBreak:'break-all',
+                  }}>{JSON.stringify(row.data, null, 2)}</pre>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -692,6 +844,13 @@ export const BackendControlPanel = ({
                   <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
                     <div style={{ position:'absolute', opacity:0, pointerEvents:'none' }}>SUPABASE CHAINFUELZ EDGE FUNCTION</div>
                     <div style={{ fontFamily:T.fontData, fontSize:'0.62rem', color:T.green, letterSpacing:'0.14em', fontWeight:700 }}>›_ROOT_SHELL_ACTIVE</div>
+
+                    {/* ── Prod Log Bridge ── */}
+                    <SignalFragment glowColor={T.cyan}>
+                      <SectionTitle label="PROD_LOG_BRIDGE" color={T.cyan} icon="⬢" />
+                      <ProdLogViewer />
+                    </SignalFragment>
+
                     <SignalFragment glowColor={T.purple}>
                       <SectionTitle label="SYSTEM_RECOVERY" color={T.purple} />
                       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>

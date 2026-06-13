@@ -8,6 +8,7 @@ export function useIpCheck() {
 
   const [isReturning, setIsReturning] = useState(false);
   const [hasCompletedLore, setHasCompletedLore] = useState(false);
+  const [hasSignedWallet, setHasSignedWallet] = useState(false);
   const [ipAddress, setIpAddress] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(!forceNew);
 
@@ -33,6 +34,11 @@ export function useIpCheck() {
           setHasCompletedLore(true);
         }
 
+        const walletFlag = localStorage.getItem(`oracle_wallet_signed_${ip}`);
+        if (walletFlag) {
+          setHasSignedWallet(true);
+        }
+
         // 3. Optional: check database if we want a hard backend check
         // We do a soft fail here so the experience doesn't block on DB
         const { data: walletData, error } = await supabase
@@ -46,9 +52,14 @@ export function useIpCheck() {
           setIsReturning(true);
           localStorage.setItem(`surrogate_visited_${ip}`, 'true');
           
-          if (walletData.onboarding_status === 'lore_completed') {
+          if (walletData.onboarding_status === 'lore_completed' || walletData.onboarding_status === 'wallet_signed') {
             setHasCompletedLore(true);
             localStorage.setItem(`surrogate_lore_completed_${ip}`, 'true');
+          }
+
+          if (walletData.onboarding_status === 'wallet_signed') {
+            setHasSignedWallet(true);
+            localStorage.setItem(`oracle_wallet_signed_${ip}`, 'true');
           }
           
           logStep('IP CHECK: RETURN TRIP VERIFIED', 'ok');
@@ -100,5 +111,21 @@ export function useIpCheck() {
     }
   };
 
-  return { isReturning, hasCompletedLore, isChecking, ipAddress, markVisited, markLoreCompleted };
+  const markWalletSigned = async () => {
+    if (!ipAddress) return;
+    localStorage.setItem(`oracle_wallet_signed_${ipAddress}`, 'true');
+    localStorage.setItem(`surrogate_lore_completed_${ipAddress}`, 'true');
+    setHasSignedWallet(true);
+    setHasCompletedLore(true);
+    setIsReturning(true);
+    try {
+      await supabase.from('user_wallets').upsert({
+        ip_address: ipAddress,
+        onboarding_status: 'wallet_signed'
+      }, { onConflict: 'ip_address' });
+      logStep('WALLET SIGNED: ALLEY ACCESS PERSISTED', 'ok');
+    } catch (e) { /* ignore */ }
+  };
+
+  return { isReturning, hasCompletedLore, hasSignedWallet, isChecking, ipAddress, markVisited, markLoreCompleted, markWalletSigned };
 }

@@ -229,7 +229,7 @@ export function SurrogateOracleImmersion() {
   const pendingNewSeekerLoreRef  = useRef(false); // startLore waiting for WS connection
 
   // ── Service Hooks ───────────────────────────────────────────────────────
-  const { isReturning, hasCompletedLore, markVisited, markLoreCompleted, ipAddress } = useIpCheck();
+  const { isReturning, hasCompletedLore, hasSignedWallet, markVisited, markLoreCompleted, markWalletSigned, ipAddress } = useIpCheck();
   const { echo, loadEcho, saveEcho } = useSeekerEcho();
   const { defineSeeker } = useSeekerDefine();
 
@@ -275,7 +275,7 @@ export function SurrogateOracleImmersion() {
     onCleanup: handleCleanup,
   });
 
-  const { scenePhase, enterTerminal, enterTour, exitOracleMode, selectKnifeQuestion, resetJourney } = journey;
+  const { scenePhase, enterTerminal, enterTour, awakeFromTerminal, exitOracleMode, selectKnifeQuestion, resetJourney } = journey;
 
   // ── Telemetry: Phase Tracking ──────────────────────────────────────────
   useEffect(() => {
@@ -435,8 +435,17 @@ export function SurrogateOracleImmersion() {
     if (seekerKeyRef.current) await loadEcho(seekerKeyRef.current);
     (window as any).__terminal_start = Date.now();
 
+    // Wallet-signed returning seeker — skip lore + terminal, land straight in the alley.
+    const forceNew = new URLSearchParams(window.location.search).has('newuser');
+    if (hasSignedWallet && !forceNew) {
+      logStep('WALLET SIGNED → DIRECT ALLEY ENTRY', 'ok');
+      enterTerminal();
+      setTimeout(() => awakeFromTerminal(), 300);
+      return;
+    }
+
     // isNewSeeker: true if IP check says first visit OR ?newuser dev override forces it
-    const isNewSeeker = !hasCompletedLore || new URLSearchParams(window.location.search).has('newuser');
+    const isNewSeeker = !hasCompletedLore || forceNew;
     if (isNewSeeker) {
       // Lore plays first — Stage00 orientation card surfaces after lore completes.
       // startLore() requires an active WS — fire immediately if already connected,
@@ -454,7 +463,7 @@ export function SurrogateOracleImmersion() {
 
     enterTerminal();
     logStep('RECOGNIZED SIGNAL → SKIP AVAILABLE', 'ok');
-  }, [scenePhase, showStage00, setupAudioSpine, enterTerminal, markVisited, loadEcho, hasCompletedLore, connection, startLore]);
+  }, [scenePhase, showStage00, setupAudioSpine, enterTerminal, awakeFromTerminal, markVisited, loadEcho, hasCompletedLore, hasSignedWallet, connection, startLore]);
 
   const handleStage00Tour = useCallback(() => {
     setShowStage00(false);
@@ -783,7 +792,9 @@ export function SurrogateOracleImmersion() {
         false
       );
       logStep('ORACLE TOUR NARRATION STARTED', 'ok');
-      oracleConversationRef.current?.startMic().catch(() => {});
+      // Enable mic auto-restart — mic will open automatically AFTER Oracle's first spoken turn,
+      // not before. Never call startMic() here directly (would prompt permissions too early).
+      oracleConversationRef.current?.enableMicAutoRestart();
     }, 600);
     return () => { clearTimeout(t); };
   }, [scenePhase]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -924,6 +935,20 @@ export function SurrogateOracleImmersion() {
       'https://wallet.thesurrogate.me'
     );
   }, [portraitRevealPhase, portraitViewerUrl]);
+
+  // Listen for wallet sign events from the wallet iframe.
+  // When the seeker signs, persist the state so future visits land in the alley directly.
+  useEffect(() => {
+    const handleWalletMessage = (e: MessageEvent) => {
+      if (e.origin !== 'https://wallet.thesurrogate.me') return;
+      if (e.data?.type === 'wallet_signed' || e.data?.type === 'wallet_connected') {
+        markWalletSigned();
+        logStep('WALLET SIGNED — ALLEY RETURN ENABLED', 'ok');
+      }
+    };
+    window.addEventListener('message', handleWalletMessage);
+    return () => window.removeEventListener('message', handleWalletMessage);
+  }, [markWalletSigned]);
 
   // Generate the encrypted NFT Claim link once the portrait holographic reveal settles.
   useEffect(() => {

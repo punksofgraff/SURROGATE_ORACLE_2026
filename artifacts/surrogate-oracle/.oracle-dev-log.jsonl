@@ -17283,3 +17283,13 @@
 {"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781366039257}
 {"label":"DORMANT RESTORED","status":"ok","_t":1781366039644}
 {"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781366237740}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781366724097}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781366724348}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781366724520}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781366724521}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781366724526}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781366725277}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781366725283}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781366725298}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781366725608}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781366728277}

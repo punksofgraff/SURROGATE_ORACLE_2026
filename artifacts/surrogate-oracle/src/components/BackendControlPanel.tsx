@@ -360,7 +360,7 @@ export const BackendControlPanel = ({
             const testId = freq.id==='RESONANCE' ? 'tab-vault' : freq.id==='SQUAD' ? 'tab-squad' : freq.id==='PRINTS' ? 'tab-portraits' : freq.id==='CORE_DIAG' ? 'tab-gemini' : freq.id==='SALVAGE' ? 'tab-dev' : 'tab-manifest';
             return (
               <button key={freq.id} role="tab" aria-selected={isOn} data-testid={testId} className={cls} onClick={() => goTo(i)}>
-                <freq.Icon size={20} className="ec-nav__icon" />
+                <freq.Icon size={20} />
                 <span className="ec-nav__label">{freq.label}</span>
               </button>
             );
@@ -505,7 +505,7 @@ export const BackendControlPanel = ({
                   {geminiInfo ? (
                     <>
                       <div style={{ marginBottom: 22 }}>
-                        <Oscilloscope rms={(geminiInfo as Record<string, number>).lastVadRms ?? 0} />
+                        <Oscilloscope rms={((geminiInfo as unknown as Record<string, unknown>).lastVadRms as number) ?? 0} />
                       </div>
                       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                         {[
@@ -535,7 +535,7 @@ export const BackendControlPanel = ({
                         ['TURNS',     String(geminiInfo.turnCount)],
                         ['AUDIO IN',  String(geminiInfo.audioChunksReceived)],
                         ['AUDIO OUT', String((geminiInfo as Record<string, unknown>).audioChunksSent ?? '—')],
-                        ['VAD RMS',   String((geminiInfo as Record<string, number>).lastVadRms?.toFixed(4) ?? '0.0000')],
+                        ['VAD RMS',   String(((geminiInfo as unknown as Record<string, unknown>).lastVadRms as number | undefined)?.toFixed(4) ?? '0.0000')],
                       ] as [string, string][]).map(([k, v]) => (
                         <div className="ec-metric" key={k}>
                           <div className="ec-metric__label">{k}</div>

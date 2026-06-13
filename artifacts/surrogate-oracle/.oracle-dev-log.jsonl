@@ -18753,3 +18753,159 @@
 {"label":"SCORE PARSE FAILED","status":"warn","_t":1781383810584}
 {"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781384379475}
 {"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781384380325}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781391246992}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781391247100}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781391247766}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781391247776}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781391247777}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781391247923}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781391247924}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781391247928}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781391248154}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781391248166}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781391248198}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781391248446}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781391248758}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781391249638}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781391249641}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781391249896}
+{"label":"SEEKER ECHO LOAD FAILED","status":"warn","_t":1781391251702}
+{"label":"NEW SEEKER → LORE INITIATED","status":"ok","_t":1781391251776}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781391251789}
+{"label":"AUDIO CONTEXT STATE: running","status":"ok","_t":1781391251823}
+{"label":"AUDIO SPINE INITIALIZED","status":"ok","_t":1781391251826}
+{"label":"TAP → TERMINAL","status":"ok","_t":1781391251876}
+{"label":"NARRATIVE SIGNAL ACTIVATED","status":"ok","_t":1781391251887}
+{"label":"AUDIO HARD MUTE INITIATED (800ms)","status":"ok","_t":1781391251926}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1781391251983}
+{"label":"PLAYING ARCHIVE RECORDING","status":"ok","_t":1781391252241}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781391281497}
+{"label":"TAB FOREGROUNDED","status":"ok","_t":1781391281793}
+{"label":"LORE DONE → STAGE_00 PRESENTED","status":"ok","_t":1781391303931}
+{"label":"LORE STATUS: COMPLETED (Persisted)","status":"ok","_t":1781391304218}
+{"label":"STAGE_00 → ENTER CASCADE","status":"ok","_t":1781391308059}
+{"label":"LORE DONE → AWAKENED","status":"ok","_t":1781391308646}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1781391309302}
+{"label":"ORACLE CONDUIT PRE-WARMED SILENTLY","status":"ok","_t":1781391309522}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781391311952}
+{"label":"AUDIO HARD MUTE INITIATED (400ms)","status":"ok","_t":1781391312210}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781391317321}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1781391317556}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781391323044}
+{"label":"AUDIO HARD MUTE INITIATED (400ms)","status":"ok","_t":1781391323282}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781391330596}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1781391330817}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781391335892}
+{"label":"AUDIO HARD MUTE INITIATED (400ms)","status":"ok","_t":1781391336132}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781391344856}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1781391345106}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781391350382}
+{"label":"AUDIO HARD MUTE INITIATED (400ms)","status":"ok","_t":1781391350611}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781391360075}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1781391360299}
+{"label":"KNIFE[3] SELECTED","status":"ok","_t":1781391361888}
+{"label":"ORACLE PHASE ENTERED","status":"ok","_t":1781391362621}
+{"label":"startSession() CALLED","status":"ok","_t":1781391362821}
+{"label":"CUSTOM BOOT path triggered","status":"ok","_t":1781391363045}
+{"label":"AUDIO HARD MUTE INITIATED (80ms)","status":"ok","_t":1781391370048}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781391370261}
+{"label":"MIC SOURCE ACTIVE: rate=48000Hz","status":"ok","_t":1781391372741}
+{"label":"MIC STARTED","status":"ok","_t":1781391372954}
+{"label":"MIC→GEMINI: 150 chunks sent | vad=silence rms=0.085 | speaking=true","status":"ok","_t":1781391381053}
+{"label":"ORACLE INTERRUPTED (barge-in)","status":"warn","_t":1781391385928}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781391386158}
+{"label":"MIC→GEMINI: 300 chunks sent | vad=silence rms=0.143 | speaking=false","status":"ok","_t":1781391387512}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781391389633}
+{"label":"ORACLE INTERRUPTED (barge-in)","status":"warn","_t":1781391393467}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781391393693}
+{"label":"MIC→GEMINI: 450 chunks sent | vad=silence rms=0.088 | speaking=false","status":"ok","_t":1781391393950}
+{"label":"ORACLE INTERRUPTED (barge-in)","status":"warn","_t":1781391397952}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781391398198}
+{"label":"MIC→GEMINI: 600 chunks sent | vad=silence rms=0.095 | speaking=false","status":"ok","_t":1781391400567}
+{"label":"ORACLE INTERRUPTED (barge-in)","status":"warn","_t":1781391405997}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781391406261}
+{"label":"MIC→GEMINI: 750 chunks sent | vad=trailing rms=0.038 | speaking=false","status":"ok","_t":1781391406755}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781391410860}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413414}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413496}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413581}
+{"label":"MIC→GEMINI: 900 chunks sent | vad=speaking rms=1.000 | speaking=false","status":"ok","_t":1781391413658}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413662}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413663}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413665}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413667}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413668}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413743}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413744}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413747}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413748}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413750}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413771}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413820}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413865}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413901}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391413946}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414001}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414143}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414181}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414221}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414241}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414287}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414323}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414376}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414436}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414503}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414554}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414591}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414631}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414681}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414743}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414759}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414825}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414841}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414878}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414921}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391414980}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415041}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415046}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415095}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415145}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415181}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415222}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415289}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415333}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415363}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415404}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415448}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415493}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415528}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415565}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415604}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415648}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415709}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415733}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415788}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415829}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415874}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415913}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415948}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391415988}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391416043}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391416089}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391416134}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391416213}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391416248}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391416293}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391418009}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391418262}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391418271}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391418275}
+{"label":"LOCAL BARGE-IN TRIGGERED","status":"warn","_t":1781391418276}
+{"label":"MIC→GEMINI: 1050 chunks sent | vad=trailing rms=0.395 | speaking=false","status":"ok","_t":1781391419917}
+{"label":"MIC STOPPED","status":"ok","_t":1781391420300}
+{"label":"EXIT INITIATED","status":"ok","_t":1781391422633}
+{"label":"SEEKER ECHO SAVE FAILED","status":"warn","_t":1781391422842}
+{"label":"GEMINI WS ERROR","status":"err","_t":1781391428863}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781391428871}
+{"label":"DORMANT RESTORED","status":"ok","_t":1781391429461}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781391438337}

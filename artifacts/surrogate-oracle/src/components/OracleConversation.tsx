@@ -1072,11 +1072,11 @@ const OracleConversation = forwardRef(
           }
           onUserSpeakingChangeRef.current?.(result.isSpeaking, result.vadScore);
 
-          if (result.isSpeaking && isOracleSpeakingRef.current) {
-            logStep('LOCAL BARGE-IN TRIGGERED', 'warn');
-            onBargeInRef.current?.();
-            setOracleSpeaking(false);
-          }
+          // NOTE: Do NOT call onBargeIn here on raw isSpeaking.
+          // The sustained 3-frame gate below is the correct local flush trigger.
+          // Premature flush here clears the ring buffer on any brief noise (breath,
+          // tap, speaker bleed), causing the Oracle's audio to restart mid-playback —
+          // which sounds like digital fast-forward.
 
           if (result.isTurnEnd) {
             setIsOracleThinking(true);

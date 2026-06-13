@@ -356,9 +356,15 @@ export function SurrogateOracleImmersion() {
 
   // ── Actions ─────────────────────────────────────────────────────────────
   const setupAudioSpine = useCallback(async () => {
+    // Always resume first — iOS Safari creates the AudioContext suspended even inside a
+    // gesture handler. The resume() in getAudioContext() is fire-and-forget; we need to
+    // await it here so the context is confirmed 'running' before PCMPlayer feeds audio.
+    const ctx = getAudioContext();
+    if (ctx.state !== 'running') {
+      try { await ctx.resume(); } catch {}
+    }
     if (radioGainRef.current || !audioRef.current) return;
     try {
-      const ctx    = getAudioContext();
       logStep(`AUDIO CONTEXT STATE: ${ctx.state}`, ctx.state === 'running' ? 'ok' : 'pending');
       const source = ctx.createMediaElementSource(audioRef.current);
       const gain   = ctx.createGain();

@@ -264,8 +264,13 @@ export class PCMPlayer {
   }
 
   public async feed(data: Int16Array) {
+    // Fire-and-forget resume — never await context.resume() inside feed() because
+    // feed() is called outside gesture handlers (streaming audio callbacks). Awaiting
+    // can hang indefinitely on iOS if no gesture is active. The context is already
+    // unlocked by setupAudioSpine/initializePCMPlayer in the first-tap handler;
+    // this is only a safety net for edge cases (background/foreground transitions).
     if (this.context.state === 'suspended') {
-      await this.context.resume();
+      void this.context.resume().catch(() => {});
     }
 
     await this.workletReady;

@@ -170,6 +170,10 @@ interface OracleConversationProps {
   onBargeIn?: () => void;
   onDisconnected?: () => void;
   isGuidedTour?: boolean;
+  /** When false, mic auto-restart after turn-complete is suppressed regardless of
+   *  micAutoRestartEnabledRef state. Set to true only in oracle/tour phases so stale
+   *  refs from prior sessions can never trigger getUserMedia during lore or terminal. */
+  micAutoRestartAllowed?: boolean;
 }
 
 export interface OracleConversationHandle {
@@ -241,6 +245,7 @@ const OracleConversation = forwardRef(
       initialTotemLevel = 0,
       onUserSpeakingChange, onBargeIn, onDisconnected,
       isGuidedTour,
+      micAutoRestartAllowed = false,
       onSessionEnd, onTurnComplete, onPortraitRequest, onSeekerIdentified,
       onMicWillStart,
       onMicClick,
@@ -486,6 +491,12 @@ const OracleConversation = forwardRef(
     // Set true the first time startMic succeeds — gates the turnComplete auto-restart
     // so knife-phase Oracle voice-overs don't trigger mic before oracle phase starts.
     const micAutoRestartEnabledRef = useRef(false);
+    // Phase-level gate: only allow mic auto-restart in oracle/tour phases.
+    // OracleConversation is always mounted, so micAutoRestartEnabledRef can be stale
+    // from a prior session. This ref mirrors the prop and blocks getUserMedia in any
+    // non-oracle phase (terminal/lore, dormant, awakened) regardless of the stale flag.
+    const micAutoRestartAllowedRef = useRef(false);
+    useEffect(() => { micAutoRestartAllowedRef.current = micAutoRestartAllowed; }, [micAutoRestartAllowed]);
 
     // Silent-mic recovery — a hands-on attendee with no staff needs to KNOW the mic
     // died (muted/permission glitch/hardware), not just stare at a "TRANSMITTING" label
@@ -836,10 +847,15 @@ const OracleConversation = forwardRef(
               // Notify parent: turn number, score, any themes the Oracle tagged this turn
               onTurnCompleteRef.current?.(debugInfo.current.turnCount, score ?? null, score?.themes ?? []);
 
-              if (!isListeningRef.current && micAutoRestartEnabledRef.current) {
-                setTimeout(() => startMicRef.current?.().catch((err) => {
-                  logStep(`MIC FAILED: ${(err as Error)?.message ?? err}`, 'err');
-                }), 1800);
+              if (!isListeningRef.current && micAutoRestartEnabledRef.current && micAutoRestartAllowedRef.current) {
+                setTimeout(() => {
+                  // Re-check after 1800ms delay — phase may have changed (e.g. oracle → dormant on reset)
+                  if (micAutoRestartAllowedRef.current) {
+                    startMicRef.current?.().catch((err) => {
+                      logStep(`MIC FAILED: ${(err as Error)?.message ?? err}`, 'err');
+                    });
+                  }
+                }, 1800);
               }
             }
           }

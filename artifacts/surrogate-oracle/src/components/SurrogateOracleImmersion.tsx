@@ -355,16 +355,14 @@ export function SurrogateOracleImmersion() {
   }, [handleAwakeTransition]);
 
   // ── Actions ─────────────────────────────────────────────────────────────
-  const setupAudioSpine = useCallback(async () => {
-    // iOS Safari: AudioContext.resume() can return a promise that never resolves
-    // when called from inside an async function (even within a gesture chain).
-    // Fire it as a non-blocking call and yield one macrotask so iOS can process
-    // the pending audio session change before we build the graph.
+  const setupAudioSpine = useCallback(() => {
+    // Fully synchronous — no await, no setTimeout. iOS Safari requires ALL audio
+    // operations (context creation, play(), graph wiring) to happen synchronously
+    // within the gesture event handler. Any macrotask boundary (setTimeout/await)
+    // after the first tap drops iOS's gesture activation token, leaving the context
+    // suspended. getAudioContext() creates the context (starts running on iOS when
+    // created inside a gesture) and fires a fire-and-forget resume as a fallback.
     const ctx = getAudioContext();
-    if (ctx.state !== 'running') {
-      ctx.resume().catch(() => {});
-      await new Promise<void>(r => setTimeout(r, 0));
-    }
     if (radioGainRef.current || !audioRef.current) return;
     try {
       logStep(`AUDIO CONTEXT STATE: ${ctx.state}`, ctx.state === 'running' ? 'ok' : 'pending');
@@ -427,10 +425,12 @@ export function SurrogateOracleImmersion() {
     if (typeof _DE?.requestPermission === 'function') _DE.requestPermission().catch(() => {});
 
     if (scenePhase !== 'dormant' || showStage00) return;
-    // iOS Safari: AudioContext resume + PCMPlayer init must happen before any real
-    // await (network/DB calls). setupAudioSpine resolves synchronously; initializePCMPlayer
-    // creates the AudioWorklet while we are still inside the gesture's microtask chain.
-    await setupAudioSpine();
+    // iOS Safari: ALL audio operations must be synchronous within the gesture handler.
+    // setupAudioSpine is now fully sync — creates/unlocks AudioContext and wires the
+    // radio graph without any await or setTimeout boundary. initializePCMPlayer must
+    // also run synchronously here so the AudioWorklet is registered while the iOS
+    // gesture activation token is still valid.
+    setupAudioSpine();
     connection.initializePCMPlayer();
     setIsAudioPlaying(true);
     markVisited();
@@ -971,7 +971,10 @@ export function SurrogateOracleImmersion() {
     logStep('NEURAL LINK AWAKENING', 'ok');
     (window as any).__session_start = Date.now();
     setShowConversation(true);
-    connection.initializePCMPlayer();
+    // initializePCMPlayer() intentionally NOT called here — must be called synchronously
+    // inside the first tap gesture handler (handleFirstTap) so the AudioWorklet is
+    // registered while iOS's gesture activation token is still valid. Calling it on
+    // mount creates the AudioContext before any user interaction, leaving it suspended.
 
     // Forced AudioContext resume on any interaction
     const resumeAudio = () => {
@@ -1566,6 +1569,7 @@ export function SurrogateOracleImmersion() {
           onUserSpeakingChange={(speaking) => setIsUserSpeaking(prev => prev !== speaking ? speaking : prev)}
           isVisible={isOracleMode}
           autoStart={false}
+          micAutoRestartAllowed={scenePhase === 'oracle' || scenePhase === 'tour'}
           onBargeIn={connection.flushPlayback}
           onPortraitRequest={() => {
             if (portraitViewerUrl) {

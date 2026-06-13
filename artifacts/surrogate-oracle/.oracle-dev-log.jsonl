@@ -18242,3 +18242,36 @@
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1781381388757}
 {"label":"DORMANT RESTORED","status":"ok","_t":1781381390655}
 {"label":"DORMANT RESTORED","status":"ok","_t":1781381390694}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781381469693}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781381469695}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781381469797}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781381469797}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781381469798}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781381470813}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781381470980}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781381470985}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781381471275}
+{"label":"AUDIO SPINE INITIALIZED","status":"ok","_t":1781381471862}
+{"label":"AUDIO CONTEXT STATE: running","status":"ok","_t":1781381471863}
+{"label":"SEEKER ECHO LOAD FAILED","status":"warn","_t":1781381472001}
+{"label":"RECOGNIZED SIGNAL → SKIP AVAILABLE","status":"ok","_t":1781381472002}
+{"label":"TAP → TERMINAL","status":"ok","_t":1781381472003}
+{"label":"AUDIO HARD MUTE INITIATED (800ms)","status":"ok","_t":1781381472035}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781381511098}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781381511585}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781381511589}
+{"label":"AUDIO CONTEXT STATE: running","status":"ok","_t":1781381512319}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1781381512343}
+{"label":"AUDIO SPINE INITIALIZED","status":"ok","_t":1781381512343}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781381512461}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781381512558}
+{"label":"NEW SEEKER → LORE INITIATED","status":"ok","_t":1781381512558}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781381512733}
+{"label":"TAP → TERMINAL","status":"ok","_t":1781381512734}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781381513970}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781381513972}
+{"label":"NARRATIVE SIGNAL ACTIVATED","status":"ok","_t":1781381513974}
+{"label":"PLAYING ARCHIVE RECORDING","status":"ok","_t":1781381514459}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781381514460}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781381588374}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781381588598}

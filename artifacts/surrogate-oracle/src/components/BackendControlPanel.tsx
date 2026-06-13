@@ -1,11 +1,12 @@
 /**
  * BackendControlPanel — ENCULTURATE CRATE
- * Full-screen overlay · knife-card borders · floating nav · unbroken alley
+ * Full-screen paged layout. Swipe left/right between sections.
+ * One screen = one section. Nothing cramped.
  */
 import './BackendControlPanel.css';
 import { useState, useEffect, useRef, RefObject, useCallback } from 'react';
-import { X, Wallet, Radio, Image, Cpu, Database, Layers, RefreshCw } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { X, Wallet, Radio, Image, Cpu, Database, Layers, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
 import { CultureCoinDisplay } from './CultureCoinDisplay';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { PortraitGalleryDashboard } from './PortraitGalleryDashboard';
@@ -19,7 +20,7 @@ type Frequency = 'RESONANCE' | 'SQUAD' | 'PRINTS' | 'CORE_DIAG' | 'SALVAGE' | 'M
 
 const FREQUENCIES: {
   id: Frequency; label: string; mhz: string;
-  Icon: React.ComponentType<{ size?: number; className?: string }>;
+  Icon: React.ComponentType<{ size?: number }>;
   accent: 'green' | 'cyan' | 'purple';
 }[] = [
   { id: 'RESONANCE', label: 'VAULT',   mhz: '108.4', Icon: Wallet,   accent: 'green'  },
@@ -30,24 +31,19 @@ const FREQUENCIES: {
   { id: 'MANIFEST',  label: 'SIGNAL',  mhz: '188.4', Icon: Layers,   accent: 'cyan'   },
 ];
 
-const ACCENT_COLORS = { green: '#00ff88', cyan: '#00ffcc', purple: '#b026ff' };
+const ACCENT: Record<string, string> = { green: '#00ff88', cyan: '#00ffcc', purple: '#b026ff' };
 
 // ── Oscilloscope ───────────────────────────────────────────────────────────────
 function Oscilloscope({ rms }: { rms: number }) {
-  const pts = 20;
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 30 }}>
-      {Array.from({ length: pts }).map((_, i) => {
-        const h = Math.max(3, rms * 100 * (0.3 + Math.random() * 0.7));
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 36 }}>
+      {Array.from({ length: 22 }).map((_, i) => {
+        const h = Math.max(4, rms * 100 * (0.3 + Math.random() * 0.7));
         return (
           <motion.div key={i}
             animate={{ height: [h * 0.7, h, h * 0.8] }}
-            transition={{ repeat: Infinity, duration: 0.07 + Math.random() * 0.22 }}
-            style={{
-              width: 3, borderRadius: 1,
-              background: i % 3 === 0 ? '#00ff88' : '#00ffcc',
-              opacity: 0.4 + (i / pts) * 0.6,
-            }}
+            transition={{ repeat: Infinity, duration: 0.08 + Math.random() * 0.24 }}
+            style={{ width: 4, borderRadius: 2, background: i % 3 === 0 ? '#00ff88' : '#00ffcc', opacity: 0.4 + (i / 22) * 0.6 }}
           />
         );
       })}
@@ -65,6 +61,7 @@ function ProdLogViewer() {
   const [autoRefresh, setAuto]  = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
   const timerRef                = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scrollRef               = useRef<HTMLDivElement>(null);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -78,10 +75,9 @@ function ProdLogViewer() {
   }, []);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
-
   useEffect(() => {
-    if (autoRefresh) { timerRef.current = setInterval(fetchLogs, 4000); }
-    else { if (timerRef.current) clearInterval(timerRef.current); }
+    if (autoRefresh) timerRef.current = setInterval(fetchLogs, 4000);
+    else if (timerRef.current) clearInterval(timerRef.current);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [autoRefresh, fetchLogs]);
 
@@ -97,64 +93,49 @@ function ProdLogViewer() {
   };
   const fmtTime = (ts: string) => {
     const d = new Date(ts);
-    return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input
-          value={filter} onChange={e => setFilter(e.target.value)}
-          placeholder="FILTER_SIGNAL..."
-          style={{
-            flex: 1, background: 'rgba(0,0,0,0.55)',
-            border: '1px solid rgba(0,255,136,0.18)', borderLeft: '3px solid rgba(0,255,136,0.45)',
-            borderRadius: '2px 8px 2px 8px', padding: '10px 12px',
-            color: '#00ff88', fontFamily: "'Share Tech Mono', monospace", fontSize: '0.62rem',
-            letterSpacing: '0.1em', outline: 'none',
-          }}
-        />
-        <motion.button onClick={fetchLogs} whileTap={{ rotate: 180, scale: 0.88 }}
-          style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)', borderRadius: '2px 8px 2px 8px', color: '#00ff88', cursor: 'pointer', padding: '10px 12px' }}
-        ><RefreshCw size={13} /></motion.button>
-        <motion.button onClick={() => setAuto(a => !a)}
-          style={{
-            background: autoRefresh ? 'rgba(0,255,136,0.1)' : 'rgba(0,0,0,0.4)',
-            border: `1px solid ${autoRefresh ? 'rgba(0,255,136,0.4)' : 'rgba(255,255,255,0.08)'}`,
-            borderRadius: '2px 8px 2px 8px',
-            color: autoRefresh ? '#00ff88' : 'rgba(255,255,255,0.2)',
-            fontFamily: "'PhillySans', monospace", fontSize: '0.5rem', letterSpacing: '0.12em', fontWeight: 800,
-            cursor: 'pointer', padding: '10px 11px', whiteSpace: 'nowrap',
-          }}
-        >{autoRefresh ? '● LIVE' : '○ PAUSE'}</motion.button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', gap: 10 }}>
+        <input className="ec-filter" value={filter} onChange={e => setFilter(e.target.value)} placeholder="FILTER_SIGNAL..." style={{ flex: 1 }} />
+        <motion.button onClick={fetchLogs} whileTap={{ rotate: 180, scale: 0.88 }} style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)', borderRadius: '3px 10px 3px 10px', color: '#00ff88', cursor: 'pointer', padding: '0 16px', minHeight: 48 }}>
+          <RefreshCw size={16} />
+        </motion.button>
+        <motion.button onClick={() => setAuto(a => !a)} whileTap={{ scale: 0.96 }} style={{ background: autoRefresh ? 'rgba(0,255,136,0.1)' : 'rgba(0,0,0,0.4)', border: `1px solid ${autoRefresh ? 'rgba(0,255,136,0.4)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '3px 10px 3px 10px', color: autoRefresh ? '#00ff88' : 'rgba(255,255,255,0.2)', fontFamily: "'PhillySans', monospace", fontSize: '0.68rem', letterSpacing: '0.12em', fontWeight: 800, cursor: 'pointer', padding: '0 14px', minHeight: 48, whiteSpace: 'nowrap' }}>
+          {autoRefresh ? '● LIVE' : '○ PAUSE'}
+        </motion.button>
       </div>
 
-      <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.52rem', color: 'rgba(255,255,255,0.22)', letterSpacing: '0.1em', display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ color: '#00ffcc', fontWeight: 700, fontSize: '0.78rem' }}>{filtered.length}</span>
-        <span>events</span>
-        {filter && <span style={{ color: 'rgba(255,255,255,0.12)' }}>/ {logs.length} total</span>}
+      {/* Count */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+        <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '1.5rem', color: '#00ffcc', fontWeight: 700 }}>{filtered.length}</span>
+        <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.72rem', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.14em', fontWeight: 700 }}>EVENTS</span>
+        {filter && <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.7rem', color: 'rgba(255,255,255,0.14)' }}>/ {logs.length} total</span>}
       </div>
 
-      <div style={{
-        background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(0,255,136,0.08)',
-        borderRadius: '3px 14px 3px 14px', maxHeight: 340, overflowY: 'auto',
-      }}>
+      {/* Log list */}
+      <div ref={scrollRef} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(0,255,136,0.09)', borderRadius: '4px 16px 4px 16px', maxHeight: '42vh', overflowY: 'auto' }}>
         {filtered.length === 0 ? (
           <div className="ec-await">{loading ? 'SCANNING...' : '— NO_SIGNAL —'}</div>
         ) : filtered.map(row => (
           <div key={row.id}>
             <motion.div className="ec-log-row" onClick={() => setExpanded(expanded === row.id ? null : row.id)}>
-              <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.48rem', color: 'rgba(255,255,255,0.18)', flexShrink: 0, minWidth: 44 }}>{fmtTime(row.ts)}</span>
-              <div style={{ width: 3, height: 14, background: levelColor(row.event), flexShrink: 0, borderRadius: 2, boxShadow: `0 0 6px ${levelColor(row.event)}` }} />
-              <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.56rem', fontWeight: 800, letterSpacing: '0.1em', color: levelColor(row.event), flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span className="ec-log__time">{fmtTime(row.ts)}</span>
+              <div style={{ width: 4, height: 18, background: levelColor(row.event), flexShrink: 0, borderRadius: 2, boxShadow: `0 0 7px ${levelColor(row.event)}` }} />
+              <span className="ec-log__event" style={{ color: levelColor(row.event) }}>
                 {row.event.replace('oracle_', '').toUpperCase()}
               </span>
-              {row.session_id && <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.44rem', color: 'rgba(255,255,255,0.14)', flexShrink: 0 }}>{row.session_id.slice(-8)}</span>}
+              {row.session_id && <span className="ec-log__sid">{row.session_id.slice(-8)}</span>}
             </motion.div>
             <AnimatePresence>
               {expanded === row.id && (
-                <motion.pre initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.16 }}
-                  style={{ margin: 0, padding: '10px 14px', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid rgba(0,255,136,0.05)', fontFamily: "'Share Tech Mono', monospace", fontSize: '0.5rem', color: 'rgba(0,255,204,0.72)', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflow: 'hidden' }}
+                <motion.pre
+                  initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                  style={{ margin: 0, padding: '12px 16px', background: 'rgba(0,0,0,0.55)', borderBottom: '1px solid rgba(0,255,136,0.06)', fontFamily: "'Share Tech Mono', monospace", fontSize: '0.68rem', color: 'rgba(0,255,204,0.75)', lineHeight: 1.8, whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflow: 'hidden' }}
                 >{JSON.stringify(row.data, null, 2)}</motion.pre>
               )}
             </AnimatePresence>
@@ -175,10 +156,10 @@ function ManifestPanel({ pendingCoins }: { pendingCoins: number }) {
   const [coins, setCoins]           = useState(pendingCoins);
   useEffect(() => { setCoins(pendingCoins); }, [pendingCoins]);
   useEffect(() => {
-    const onScore    = (e: Event) => { const d = (e as CustomEvent).detail||{}; if (d.sessionPhase) setPhase(d.sessionPhase); if (typeof d.totemLevel==='number') setTotemLevel(d.totemLevel); if (d.archetypeTitle) setArchetype(d.archetypeTitle); if (d.emotionalWeight) setEmo(d.emotionalWeight); };
-    const onAlign    = (e: Event) => { const d = (e as CustomEvent).detail||{}; if (d.alignment) setAlignment(d.alignment); };
-    const onArtifact = (e: Event) => { const d = (e as CustomEvent).detail||{}; if (d.archetypeTitle) setArchetype(d.archetypeTitle); };
-    const onTotem    = (e: Event) => { const d = (e as CustomEvent).detail||{}; if (typeof d.totemLevel==='number') setTotemLevel(d.totemLevel); };
+    const onScore    = (e: Event) => { const d = (e as CustomEvent).detail || {}; if (d.sessionPhase) setPhase(d.sessionPhase); if (typeof d.totemLevel === 'number') setTotemLevel(d.totemLevel); if (d.archetypeTitle) setArchetype(d.archetypeTitle); if (d.emotionalWeight) setEmo(d.emotionalWeight); };
+    const onAlign    = (e: Event) => { const d = (e as CustomEvent).detail || {}; if (d.alignment) setAlignment(d.alignment); };
+    const onArtifact = (e: Event) => { const d = (e as CustomEvent).detail || {}; if (d.archetypeTitle) setArchetype(d.archetypeTitle); };
+    const onTotem    = (e: Event) => { const d = (e as CustomEvent).detail || {}; if (typeof d.totemLevel === 'number') setTotemLevel(d.totemLevel); };
     window.addEventListener('oracle:score',        onScore);
     window.addEventListener('oracle:alignment',    onAlign);
     window.addEventListener('oracle:artifact',     onArtifact);
@@ -197,29 +178,29 @@ function ManifestPanel({ pendingCoins }: { pendingCoins: number }) {
   const phaseMap: Record<string, string> = { claim: 'CLAIM', evidence: 'EVIDENCE', cost: 'COST', mirror: 'MIRROR' };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div className="ec-card ec-card--cyan">
-        <div className="ec-title ec-title--cyan">SESSION MANIFEST</div>
-        <div className="ec-subtitle" style={{ color: '#00ffcc' }}>REAL-TIME SIGNAL ARTIFACTS</div>
+        <div className="ec-h1 ec-h1--cyan">SESSION MANIFEST</div>
+        <div className="ec-sub" style={{ color: '#00ffcc' }}>REAL-TIME SIGNAL ARTIFACTS</div>
         <div className="ec-divider" />
         {!hasData ? (
           <div className="ec-await">AWAITING_ORACLE_SESSION</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {alignment      && <div className="ec-row"><span className="ec-row__label">SIGNAL_ALIGNMENT</span><span className="ec-row__value" style={{ color: alignColor }}>{alignment.toUpperCase()}</span></div>}
-            {archetype      && <div className="ec-row"><span className="ec-row__label">ARCHETYPE_TITLE</span><span className="ec-row__value" style={{ color: '#00ff88' }}>{archetype.toUpperCase()}</span></div>}
-            {totemLevel > 0 && <div className="ec-row"><span className="ec-row__label">TOTEM_LEVEL</span><span className="ec-row__value">{Array(totemLevel).fill('◈').join(' ')}</span></div>}
-            {sessionPhase   && <div className="ec-row"><span className="ec-row__label">RITUAL_PHASE</span><span className="ec-row__value">{(phaseMap[sessionPhase] ?? sessionPhase).toUpperCase()}</span></div>}
-            {emotionalWeight && <div className="ec-row"><span className="ec-row__label">EMOTIONAL_REG</span><span className="ec-row__value" style={{ color: 'rgba(255,255,255,0.5)' }}>{emotionalWeight.toUpperCase()}</span></div>}
-            {coins > 0      && <div className="ec-row"><span className="ec-row__label">CULTURE_COINS</span><span className="ec-row__value" style={{ color: '#00ff88' }}>{`+${coins}c`}</span></div>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {alignment      && <div className="ec-row"><span className="ec-row__label">ALIGNMENT</span><span className="ec-row__value" style={{ color: alignColor }}>{alignment.toUpperCase()}</span></div>}
+            {archetype      && <div className="ec-row"><span className="ec-row__label">ARCHETYPE</span><span className="ec-row__value" style={{ color: '#00ff88' }}>{archetype.toUpperCase()}</span></div>}
+            {totemLevel > 0 && <div className="ec-row"><span className="ec-row__label">TOTEM</span><span className="ec-row__value">{Array(totemLevel).fill('◈').join(' ')}</span></div>}
+            {sessionPhase   && <div className="ec-row"><span className="ec-row__label">PHASE</span><span className="ec-row__value">{(phaseMap[sessionPhase] ?? sessionPhase).toUpperCase()}</span></div>}
+            {emotionalWeight && <div className="ec-row"><span className="ec-row__label">AFFECT</span><span className="ec-row__value" style={{ color: 'rgba(255,255,255,0.5)' }}>{emotionalWeight.toUpperCase()}</span></div>}
+            {coins > 0      && <div className="ec-row"><span className="ec-row__label">COINS</span><span className="ec-row__value" style={{ color: '#00ff88' }}>{`+${coins}c`}</span></div>}
           </div>
         )}
       </div>
 
       {sessionPhase && (
-        <div className="ec-card ec-card--cyan" style={{ padding: '14px 16px' }}>
-          <div style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.5rem', color: 'rgba(0,255,204,0.45)', letterSpacing: '0.2em', marginBottom: 12, fontWeight: 800 }}>RITUAL_PROGRESSION</div>
-          <div style={{ display: 'flex', gap: 4 }}>
+        <div className="ec-card ec-card--cyan" style={{ padding: '18px 18px 16px' }}>
+          <div style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.75rem', color: 'rgba(0,255,204,0.45)', letterSpacing: '0.2em', marginBottom: 14, fontWeight: 800 }}>RITUAL PROGRESSION</div>
+          <div style={{ display: 'flex', gap: 6 }}>
             {phases.map(phase => {
               const cur = phases.indexOf(sessionPhase as typeof phases[number]);
               const idx = phases.indexOf(phase);
@@ -227,15 +208,8 @@ function ManifestPanel({ pendingCoins }: { pendingCoins: number }) {
               const isPast   = idx < cur;
               const c = isActive ? '#00ffcc' : isPast ? '#00ff88' : 'transparent';
               return (
-                <div key={phase} style={{
-                  flex: 1, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: isActive ? 'rgba(0,255,204,0.1)' : isPast ? 'rgba(0,255,136,0.05)' : 'rgba(0,0,0,0.2)',
-                  border: `1px solid ${isActive ? 'rgba(0,255,204,0.3)' : isPast ? 'rgba(0,255,136,0.14)' : 'rgba(255,255,255,0.04)'}`,
-                  borderBottom: `3px solid ${c}`, borderRadius: '2px 8px 2px 8px',
-                }}>
-                  <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.44rem', letterSpacing: '0.1em', fontWeight: 800, color: isActive ? '#00ffcc' : isPast ? 'rgba(0,255,136,0.5)' : 'rgba(255,255,255,0.1)' }}>
-                    {phaseMap[phase]}
-                  </span>
+                <div key={phase} style={{ flex: 1, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isActive ? 'rgba(0,255,204,0.1)' : isPast ? 'rgba(0,255,136,0.05)' : 'rgba(0,0,0,0.2)', border: `1px solid ${isActive ? 'rgba(0,255,204,0.3)' : isPast ? 'rgba(0,255,136,0.14)' : 'rgba(255,255,255,0.04)'}`, borderBottom: `3px solid ${c}`, borderRadius: '2px 8px 2px 8px' }}>
+                  <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.6rem', letterSpacing: '0.1em', fontWeight: 800, color: isActive ? '#00ffcc' : isPast ? 'rgba(0,255,136,0.5)' : 'rgba(255,255,255,0.1)' }}>{phaseMap[phase]}</span>
                 </div>
               );
             })}
@@ -259,42 +233,59 @@ interface BackendControlPanelProps {
   oracleConversationRef?: RefObject<OracleConversationHandle | null>;
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────────
+// ── Main ───────────────────────────────────────────────────────────────────────
 export const BackendControlPanel = ({
   userId, sessionId, isVisible = true, initialTab = 'vault',
   onClose, userEmail, pendingCoins = 0, oracleConversationRef,
 }: BackendControlPanelProps) => {
-  const [activeFreq, setActiveFreq]           = useState<Frequency>(() => (localStorage.getItem('oracle_crate_active_freq') as Frequency) || 'RESONANCE');
-  const [prevIdx, setPrevIdx]                 = useState(0);
-  const [debugPassed, setDebugPassed]         = useState(false);
-  const [debugPw, setDebugPw]                 = useState('');
-  const [testResults, setTestResults]         = useState<Record<string, unknown>>({});
-  const [isLoading, setIsLoading]             = useState(false);
-  const [showUpgrade, setShowUpgrade]         = useState(false);
-  const [geminiInfo, setGeminiInfo]           = useState<ReturnType<OracleConversationHandle['getWsDebugInfo']> | null>(null);
-  const pollRef                               = useRef<ReturnType<typeof setInterval> | null>(null);
-  const supabaseUrl                           = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const chainFuelz                            = useChainFuelz(userEmail, pendingCoins);
+  const [activeIdx, setActiveIdx]       = useState<number>(() => {
+    const saved = localStorage.getItem('oracle_crate_active_freq') as Frequency | null;
+    return Math.max(0, FREQUENCIES.findIndex(f => f.id === saved));
+  });
+  const [prevIdx, setPrevIdx]           = useState(0);
+  const [debugPassed, setDebugPassed]   = useState(false);
+  const [debugPw, setDebugPw]           = useState('');
+  const [testResults, setTestResults]   = useState<Record<string, unknown>>({});
+  const [isLoading, setIsLoading]       = useState(false);
+  const [showUpgrade, setShowUpgrade]   = useState(false);
+  const [geminiInfo, setGeminiInfo]     = useState<ReturnType<OracleConversationHandle['getWsDebugInfo']> | null>(null);
+  const pollRef                         = useRef<ReturnType<typeof setInterval> | null>(null);
+  const supabaseUrl                     = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  const chainFuelz                      = useChainFuelz(userEmail, pendingCoins);
 
-  const switchFreq = (freq: Frequency) => {
-    setPrevIdx(FREQUENCIES.findIndex(f => f.id === activeFreq));
-    setActiveFreq(freq);
-    localStorage.setItem('oracle_crate_active_freq', freq);
+  // Drag gesture for swipe navigation
+  const dragX         = useMotionValue(0);
+  const SWIPE_THRESH  = 72;
+
+  const goTo = (idx: number) => {
+    const clamped = Math.max(0, Math.min(FREQUENCIES.length - 1, idx));
+    setPrevIdx(activeIdx);
+    setActiveIdx(clamped);
+    localStorage.setItem('oracle_crate_active_freq', FREQUENCIES[clamped].id);
+  };
+
+  const handleDragEnd = (_: unknown, info: { offset: { x: number } }) => {
+    if (info.offset.x < -SWIPE_THRESH) goTo(activeIdx + 1);
+    else if (info.offset.x > SWIPE_THRESH) goTo(activeIdx - 1);
+    dragX.set(0);
   };
 
   useEffect(() => {
     const m: Record<string, Frequency> = { vault: 'RESONANCE', coins: 'RESONANCE', gemini: 'CORE_DIAG', debug: 'SALVAGE', dev: 'SALVAGE' };
-    setActiveFreq(m[initialTab] ?? 'RESONANCE');
+    const target = m[initialTab] ?? 'RESONANCE';
+    const idx = FREQUENCIES.findIndex(f => f.id === target);
+    if (idx >= 0) setActiveIdx(idx);
   }, [initialTab]);
 
   useEffect(() => {
+    const activeFreq = FREQUENCIES[activeIdx].id;
     if (activeFreq === 'CORE_DIAG') {
       pollRef.current = setInterval(() => {
         if (oracleConversationRef?.current) setGeminiInfo(oracleConversationRef.current.getWsDebugInfo());
       }, 600);
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [activeFreq, oracleConversationRef]);
+  }, [activeIdx, oracleConversationRef]);
 
   const testEdgeFunction = async (fn: string, payload: Record<string, unknown> = {}) => {
     setIsLoading(true);
@@ -311,148 +302,118 @@ export const BackendControlPanel = ({
 
   if (!isVisible) return null;
 
-  const activeIdx   = FREQUENCIES.findIndex(f => f.id === activeFreq);
-  const slideDir    = activeIdx > prevIdx ? 1 : -1;
-  const activeFreqDef = FREQUENCIES[activeIdx];
-  const accentHex   = ACCENT_COLORS[activeFreqDef.accent];
+  const activeFreq = FREQUENCIES[activeIdx];
+  const accentHex  = ACCENT[activeFreq.accent];
+  const slideDir   = activeIdx > prevIdx ? 1 : -1;
 
   return (
     <>
-      {/* ── Full-screen alley overlay ── */}
       <motion.div
         className="ec-overlay"
-        initial={{ opacity: 0, scale: 0.97, filter: 'blur(8px)' }}
-        animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-        exit={{ opacity: 0, scale: 0.97, filter: 'blur(8px)' }}
-        transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
+        initial={{ opacity: 0, scale: 0.97, filter: 'blur(10px)' }}
+        animate={{ opacity: 1, scale: 1,    filter: 'blur(0px)'  }}
+        exit={   { opacity: 0, scale: 0.97, filter: 'blur(10px)' }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
         data-testid="backend-panel"
       >
-        {/* Alley atmosphere glow layers */}
-        <div className="ec-atmosphere" />
-        <div className="ec-scanlines" />
-
-        {/* ── HEADER ──────────────────────────────────────────────────────── */}
-        <div className="ec-header">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div className="ec-header__brand">ENCULTURATE CRATE</div>
-              <div className="ec-header__sub">
-                SURROGATE:ORACLE · {activeFreqDef.mhz}MHz · {activeFreqDef.label}
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 6 }}>
-              {sessionId && (
-                <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.46rem', color: 'rgba(0,255,204,0.22)', letterSpacing: '0.12em' }}>
-                  SID:{sessionId.slice(-6).toUpperCase()}
-                </span>
-              )}
-              <motion.div
-                animate={{ opacity: [1, 0.15, 1], scale: [1, 1.4, 1] }}
-                transition={{ repeat: Infinity, duration: 1.7 }}
-                style={{ width: 9, height: 9, borderRadius: '50%', background: accentHex, boxShadow: `0 0 12px ${accentHex}` }}
-              />
-              {onClose && (
-                <button className="ec-close" onClick={onClose} aria-label="Close">
-                  <X size={15} />
-                </button>
-              )}
-            </div>
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <div className="ec-hdr">
+          <div>
+            <div className="ec-hdr__brand">ENCULTURATE CRATE</div>
+            <div className="ec-hdr__meta">{activeFreq.mhz}MHz · {activeFreq.label} · SURROGATE:ORACLE</div>
           </div>
-
-          {/* Animated accent bar */}
-          <motion.div
-            key={activeFreq}
-            initial={{ scaleX: 0 }}
-            animate={{ scaleX: 1 }}
-            transition={{ duration: 0.45, ease: 'easeOut' }}
-            style={{
-              height: 2, marginTop: 10,
-              background: `linear-gradient(90deg, transparent, ${accentHex}, transparent)`,
-              filter: `blur(1px)`,
-              transformOrigin: 'left',
-            }}
-          />
+          <div className="ec-hdr__right">
+            {sessionId && (
+              <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.68rem', color: 'rgba(0,255,204,0.25)', letterSpacing: '0.1em' }}>
+                SID:{sessionId.slice(-6).toUpperCase()}
+              </span>
+            )}
+            <motion.div
+              className="ec-hdr__dot"
+              animate={{ scale: [1, 1.5, 1] }}
+              transition={{ repeat: Infinity, duration: 1.7 }}
+              style={{ background: accentHex, boxShadow: `0 0 14px ${accentHex}` }}
+            />
+            {onClose && (
+              <button className="ec-close" onClick={onClose} aria-label="Close">
+                <X size={16} />
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* ── NAV — floating oracle-bottom-btn style ───────────────────────── */}
+        {/* Freq accent bar */}
+        <motion.div
+          key={activeFreq.id}
+          initial={{ scaleX: 0 }} animate={{ scaleX: 1 }}
+          transition={{ duration: 0.4, ease: 'easeOut' }}
+          style={{ height: 2, background: `linear-gradient(90deg, transparent, ${accentHex}, transparent)`, filter: 'blur(1px)', transformOrigin: 'left', flexShrink: 0, zIndex: 10 }}
+        />
+
+        {/* ── Tab nav ─────────────────────────────────────────────────────── */}
         <nav className="ec-nav" role="tablist">
-          {FREQUENCIES.map(freq => {
-            const isActive = activeFreq === freq.id;
-            const isPurple = freq.accent === 'purple';
-            const testId   =
-              freq.id === 'RESONANCE' ? 'tab-vault'
-            : freq.id === 'SQUAD'     ? 'tab-squad'
-            : freq.id === 'PRINTS'    ? 'tab-portraits'
-            : freq.id === 'CORE_DIAG' ? 'tab-gemini'
-            : freq.id === 'SALVAGE'   ? 'tab-dev'
-            : 'tab-manifest';
+          {FREQUENCIES.map((freq, i) => {
+            const isOn = i === activeIdx;
+            const cls  = isOn ? (freq.accent === 'purple' ? 'ec-nav__btn ec-nav__btn--on-purple' : 'ec-nav__btn ec-nav__btn--on') : 'ec-nav__btn';
+            const testId = freq.id==='RESONANCE' ? 'tab-vault' : freq.id==='SQUAD' ? 'tab-squad' : freq.id==='PRINTS' ? 'tab-portraits' : freq.id==='CORE_DIAG' ? 'tab-gemini' : freq.id==='SALVAGE' ? 'tab-dev' : 'tab-manifest';
             return (
-              <button
-                key={freq.id}
-                role="tab"
-                aria-selected={isActive}
-                data-testid={testId}
-                onClick={() => switchFreq(freq.id)}
-                className={`ec-nav__btn${isActive ? (isPurple ? ' ec-nav__btn--active-purple' : ' ec-nav__btn--active') : ''}`}
-              >
-                <freq.Icon size={17} className="ec-nav__icon" />
+              <button key={freq.id} role="tab" aria-selected={isOn} data-testid={testId} className={cls} onClick={() => goTo(i)}>
+                <freq.Icon size={18} className="ec-nav__icon" />
                 <span className="ec-nav__label">{freq.label}</span>
               </button>
             );
           })}
         </nav>
 
-        {/* ── CONTENT ─────────────────────────────────────────────────────── */}
-        <div className="ec-content">
+        {/* Swipe position dots */}
+        <div className="ec-swipe-dots">
+          {FREQUENCIES.map((_, i) => (
+            <div key={i} className={`ec-swipe-dot${i === activeIdx ? ' ec-swipe-dot--on' : ''}`} />
+          ))}
+        </div>
+
+        {/* ── Swipeable page content ───────────────────────────────────────── */}
+        <motion.div
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={{ left: 0.12, right: 0.12 }}
+          onDragEnd={handleDragEnd}
+          style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', cursor: 'grab' }}
+        >
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
-              key={activeFreq}
-              initial={{ x: slideDir * 56, opacity: 0, filter: 'blur(6px)' }}
-              animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
-              exit={{ x: -slideDir * 44, opacity: 0, filter: 'blur(8px)' }}
-              transition={{ type: 'spring', damping: 26, stiffness: 260, mass: 0.85 }}
-              style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+              key={activeFreq.id}
+              className="ec-page"
+              initial={{ x: slideDir * 80, opacity: 0, filter: 'blur(8px)' }}
+              animate={{ x: 0,             opacity: 1, filter: 'blur(0px)' }}
+              exit={{   x: -slideDir * 64, opacity: 0, filter: 'blur(10px)' }}
+              transition={{ type: 'spring', damping: 24, stiffness: 240, mass: 0.9 }}
             >
 
-              {/* ── RESONANCE ─────────────────────────────────────────── */}
-              {activeFreq === 'RESONANCE' && (
+              {/* ── RESONANCE: VAULT ──────────────────────────────────── */}
+              {activeFreq.id === 'RESONANCE' && (
                 userId ? (
                   <>
+                    {/* Big balance hero */}
                     <div className="ec-card">
-                      <CultureCoinDisplay userId={userId} onLevelUp={(l, t) => console.log(`Level ${l}: ${t}`)} />
-                    </div>
-
-                    <div className="ec-card" style={{ filter: chainFuelz.isMinting ? 'hue-rotate(8deg)' : 'none', transition: 'filter 0.15s' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                        <div className="ec-title">NEURAL RESONANCE</div>
-                        <span className={`ec-badge${chainFuelz.isMinting ? '' : ''}`} style={{ borderLeftColor: chainFuelz.isMinting ? '#b026ff' : '#00ff88', color: chainFuelz.isMinting ? '#b026ff' : '#00ff88', background: chainFuelz.isMinting ? 'rgba(176,38,255,0.08)' : 'rgba(0,255,136,0.08)' }}>
-                          <span className="ec-badge__dot" style={{ background: chainFuelz.isMinting ? '#b026ff' : '#00ff88', '--dot-c': chainFuelz.isMinting ? '#b026ff' : '#00ff88' } as React.CSSProperties} />
-                          {chainFuelz.isMinting ? 'SYNCING' : 'STABLE'}
-                        </span>
-                      </div>
-                      <div className="ec-subtitle" style={{ color: '#00ff88' }}>VAULT FREQUENCY</div>
+                      <div className="ec-h1">NEURAL RESONANCE</div>
+                      <div className="ec-sub" style={{ color: '#00ff88' }}>VAULT FREQUENCY</div>
                       <div className="ec-divider" />
 
                       {chainFuelz.isInitialized ? (
                         <>
-                          <div style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.54rem', color: 'rgba(0,255,204,0.5)', letterSpacing: '0.16em', fontWeight: 700, marginBottom: 8 }}>VAULT_SIGNATURE</div>
-                          <div style={{
-                            fontFamily: "'Share Tech Mono', monospace", fontSize: '0.9rem',
-                            color: 'rgba(255,255,255,0.9)', letterSpacing: '0.04em',
-                            background: 'rgba(0,255,136,0.05)', padding: '12px 14px',
-                            border: '1px solid rgba(0,255,136,0.12)', borderLeft: '3px solid rgba(0,255,136,0.45)',
-                            borderRadius: '2px 10px 2px 10px',
-                          }}>{chainFuelz.vaultHandle}</div>
+                          <div className="ec-hero-stat" style={{ marginBottom: 14 }}>
+                            <span className="ec-hero-stat__label">SIGNAL STRENGTH</span>
+                            <span className="ec-hero-stat__value">{chainFuelz.balance}</span>
+                          </div>
 
-                          <div style={{
-                            marginTop: 16, padding: '14px 16px',
-                            background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.04)',
-                            borderRadius: '2px 10px 2px 10px',
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                          }}>
-                            <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.55rem', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.14em', fontWeight: 700 }}>SIGNAL_STRENGTH</span>
-                            <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '1.6rem', color: '#00ff88', fontWeight: 700, textShadow: '0 0 24px rgba(0,255,136,0.8)' }}>
-                              {chainFuelz.balance}
+                          <div style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.75rem', color: 'rgba(0,255,204,0.45)', letterSpacing: '0.16em', fontWeight: 700, marginBottom: 8 }}>VAULT SIGNATURE</div>
+                          <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '1.0rem', color: 'rgba(255,255,255,0.88)', background: 'rgba(0,255,136,0.05)', padding: '14px 16px', border: '1px solid rgba(0,255,136,0.12)', borderLeft: '4px solid rgba(0,255,136,0.45)', borderRadius: '3px 12px 3px 12px', letterSpacing: '0.04em', wordBreak: 'break-all' }}>{chainFuelz.vaultHandle}</div>
+
+                          <div style={{ marginTop: 14 }}>
+                            <span className={`ec-badge${chainFuelz.isMinting ? '' : ''}`} style={{ borderLeftColor: chainFuelz.isMinting ? '#b026ff' : '#00ff88', color: chainFuelz.isMinting ? '#b026ff' : '#00ff88', background: chainFuelz.isMinting ? 'rgba(176,38,255,0.08)' : 'rgba(0,255,136,0.08)' }}>
+                              <span className="ec-badge__dot" style={{ background: chainFuelz.isMinting ? '#b026ff' : '#00ff88', '--pc': chainFuelz.isMinting ? '#b026ff' : '#00ff88' } as React.CSSProperties} />
+                              {chainFuelz.isMinting ? 'SYNCING' : 'STABLE'}
                             </span>
                           </div>
                         </>
@@ -461,39 +422,49 @@ export const BackendControlPanel = ({
                       )}
                     </div>
 
+                    <div className="ec-card">
+                      <CultureCoinDisplay userId={userId} onLevelUp={(l, t) => console.log(`Level ${l}: ${t}`)} />
+                    </div>
+
                     <button className="ec-upgrade-btn" onClick={() => setShowUpgrade(true)}>
                       UPGRADE_CONSCIOUSNESS
                     </button>
                   </>
                 ) : (
                   <div className="ec-card">
-                    <Learn2EarnInterface userId={sessionId || 'anonymous'} navigateToDebug={() => switchFreq('SALVAGE')} />
+                    <Learn2EarnInterface userId={sessionId || 'anonymous'} navigateToDebug={() => goTo(FREQUENCIES.findIndex(f => f.id === 'SALVAGE'))} />
                   </div>
                 )
               )}
 
               {/* ── SQUAD ─────────────────────────────────────────────── */}
-              {activeFreq === 'SQUAD' && (
+              {activeFreq.id === 'SQUAD' && (
                 <div className="ec-card">
-                  <Learn2EarnInterface userId={userId || sessionId || 'anonymous'} navigateToDebug={() => switchFreq('SALVAGE')} />
+                  <div className="ec-h1">SQUAD</div>
+                  <div className="ec-sub" style={{ color: '#00ff88' }}>NETWORK FREQUENCY</div>
+                  <div className="ec-divider" />
+                  <Learn2EarnInterface userId={userId || sessionId || 'anonymous'} navigateToDebug={() => goTo(FREQUENCIES.findIndex(f => f.id === 'SALVAGE'))} />
                 </div>
               )}
 
               {/* ── PRINTS ────────────────────────────────────────────── */}
-              {activeFreq === 'PRINTS' && (
-                <div className="ec-card" style={{ padding: '18px 16px' }}>
+              {activeFreq.id === 'PRINTS' && (
+                <div className="ec-card" style={{ padding: '22px 18px' }}>
+                  <div className="ec-h1">PRINTS</div>
+                  <div className="ec-sub" style={{ color: '#00ff88' }}>PORTRAIT ARCHIVE</div>
+                  <div className="ec-divider" />
                   <PortraitGalleryDashboard userId={userId} userEmail={userEmail} sessionId={sessionId} maxPortraits={20} isBackendCabinetTab />
                 </div>
               )}
 
               {/* ── CORE_DIAG ─────────────────────────────────────────── */}
-              {activeFreq === 'CORE_DIAG' && (
+              {activeFreq.id === 'CORE_DIAG' && (
                 <div className="ec-card ec-card--cyan">
                   <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>WEBSOCKET WS STATE VERTEX</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
-                      <div className="ec-title ec-title--cyan">GEMINI LIVE</div>
-                      <div className="ec-subtitle" style={{ color: '#00ffcc' }}>CORE DIAGNOSTICS</div>
+                      <div className="ec-h1 ec-h1--cyan">GEMINI LIVE</div>
+                      <div className="ec-sub" style={{ color: '#00ffcc' }}>CORE DIAGNOSTICS</div>
                     </div>
                     {geminiInfo && <Oscilloscope rms={(geminiInfo as Record<string, number>).lastVadRms ?? 0} />}
                   </div>
@@ -501,23 +472,24 @@ export const BackendControlPanel = ({
 
                   {geminiInfo ? (
                     <>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-                        <span className="ec-badge" style={{ borderLeftColor: geminiInfo.wsState === 1 ? '#00ff88' : '#ff4466', color: geminiInfo.wsState === 1 ? '#00ff88' : '#ff4466', background: geminiInfo.wsState === 1 ? 'rgba(0,255,136,0.08)' : 'rgba(255,68,102,0.08)' }}>
-                          <span className="ec-badge__dot" style={{ background: geminiInfo.wsState === 1 ? '#00ff88' : '#ff4466', '--dot-c': geminiInfo.wsState === 1 ? '#00ff88' : '#ff4466' } as React.CSSProperties} />
-                          {geminiInfo.wsState === 1 ? 'WS_OPEN' : 'WS_DISRUPTED'}
-                        </span>
-                        <span className="ec-badge" style={{ borderLeftColor: '#b026ff', color: '#b026ff', background: 'rgba(176,38,255,0.08)' }}>
-                          <span className="ec-badge__dot" style={{ background: '#b026ff', '--dot-c': '#b026ff' } as React.CSSProperties} />
-                          FREE_TIER
-                        </span>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
+                        {[
+                          { label: geminiInfo.wsState === 1 ? 'WS_OPEN' : 'WS_DISRUPTED', c: geminiInfo.wsState === 1 ? '#00ff88' : '#ff4466' },
+                          { label: 'FREE_TIER', c: '#b026ff' },
+                        ].map(({ label, c }) => (
+                          <span key={label} className="ec-badge" style={{ borderLeftColor: c, color: c, background: `${c}10` }}>
+                            <span className="ec-badge__dot" style={{ background: c, '--pc': c } as React.CSSProperties} />
+                            {label}
+                          </span>
+                        ))}
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
                         {([
                           ['TURNS',     String(geminiInfo.turnCount)],
-                          ['AUDIO_IN',  String(geminiInfo.audioChunksReceived)],
-                          ['AUDIO_OUT', String((geminiInfo as Record<string, unknown>).audioChunksSent ?? '—')],
-                          ['VAD_RMS',   String((geminiInfo as Record<string, number>).lastVadRms?.toFixed(4) ?? '0.0000')],
+                          ['AUDIO IN',  String(geminiInfo.audioChunksReceived)],
+                          ['AUDIO OUT', String((geminiInfo as Record<string, unknown>).audioChunksSent ?? '—')],
+                          ['VAD RMS',   String((geminiInfo as Record<string, number>).lastVadRms?.toFixed(4) ?? '0.0000')],
                         ] as [string, string][]).map(([k, v]) => (
                           <div className="ec-metric" key={k}>
                             <div className="ec-metric__label">{k}</div>
@@ -526,17 +498,15 @@ export const BackendControlPanel = ({
                         ))}
                       </div>
 
-                      <div style={{ marginTop: 4 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                          <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.52rem', color: '#00ffcc', letterSpacing: '0.18em', fontWeight: 800 }}>SIGNAL_STREAM</span>
-                          <button onClick={() => navigator.clipboard.writeText(geminiInfo.recentMessages.join('\n'))} style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.22)', borderRadius: 3, color: '#00ff88', fontSize: '0.48rem', cursor: 'pointer', padding: '3px 8px', fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em', fontWeight: 800 }}>COPY</button>
-                        </div>
-                        <div className="ec-terminal">
-                          {geminiInfo.recentMessages.length === 0
-                            ? <span style={{ color: 'rgba(255,255,255,0.12)', letterSpacing: '0.16em' }}>— NO_SIGNAL —</span>
-                            : geminiInfo.recentMessages.map((l, i) => <div key={i}>{l}</div>)
-                          }
-                        </div>
+                      <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.75rem', color: '#00ffcc', letterSpacing: '0.16em', fontWeight: 800 }}>SIGNAL STREAM</span>
+                        <button onClick={() => navigator.clipboard.writeText(geminiInfo.recentMessages.join('\n'))} style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.22)', borderRadius: 4, color: '#00ff88', fontSize: '0.65rem', cursor: 'pointer', padding: '4px 10px', fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em', fontWeight: 800 }}>COPY</button>
+                      </div>
+                      <div className="ec-terminal">
+                        {geminiInfo.recentMessages.length === 0
+                          ? <span style={{ color: 'rgba(255,255,255,0.12)', letterSpacing: '0.18em' }}>— NO_SIGNAL —</span>
+                          : geminiInfo.recentMessages.map((l, i) => <div key={i}>{l}</div>)
+                        }
                       </div>
                     </>
                   ) : (
@@ -546,63 +516,57 @@ export const BackendControlPanel = ({
               )}
 
               {/* ── SALVAGE ───────────────────────────────────────────── */}
-              {activeFreq === 'SALVAGE' && (
+              {activeFreq.id === 'SALVAGE' && (
                 !debugPassed ? (
                   <div className="ec-card ec-card--purple">
-                    <div style={{ textAlign: 'center', padding: '36px 8px' }} data-testid="dev-gate-container">
-                      <div className="ec-title ec-title--purple" style={{ textAlign: 'center', fontSize: 'clamp(1.6rem, 6vw, 2.2rem)', marginBottom: 6, filter: 'drop-shadow(0 0 30px rgba(176,38,255,0.5))' }}>
-                        ACCESS_RESTRICTED
+                    <div className="ec-gate" data-testid="dev-gate-container">
+                      <div className="ec-h1 ec-h1--purple" style={{ textAlign: 'center', fontSize: 'clamp(2rem, 8vw, 3rem)', filter: 'drop-shadow(0 0 30px rgba(176,38,255,0.5))' }}>
+                        ACCESS<br />RESTRICTED
                       </div>
-                      <div className="ec-subtitle" style={{ color: '#b026ff', textAlign: 'center', marginBottom: 28 }}>SALVAGE BAY CLEARANCE REQUIRED</div>
-                      <div className="ec-divider" />
+                      <div className="ec-sub" style={{ color: '#b026ff', textAlign: 'center' }}>SALVAGE BAY CLEARANCE REQUIRED</div>
+                      <div className="ec-divider" style={{ width: '60%' }} />
                       <input
                         type="password"
                         value={debugPw}
                         onChange={e => setDebugPw(e.target.value)}
                         onKeyDown={e => e.key === 'Enter' && debugPw === '3nculturate!' && setDebugPassed(true)}
-                        placeholder="INPUT_DECRYPTION_KEY"
+                        placeholder="DECRYPTION KEY"
                         data-testid="debug-password-input"
                         className="ec-gate__input"
                       />
                       <motion.button
                         onClick={() => { if (debugPw === '3nculturate!') setDebugPassed(true); }}
-                        whileHover={{ scale: 1.04, boxShadow: '0 0 36px rgba(176,38,255,0.45)' }}
+                        whileHover={{ scale: 1.04, boxShadow: '0 0 40px rgba(176,38,255,0.5)' }}
                         whileTap={{ scale: 0.97 }}
                         data-testid="debug-access-btn"
-                        style={{
-                          padding: '13px 30px',
-                          background: 'rgba(176,38,255,0.1)',
-                          border: '2px solid #b026ff',
-                          borderRadius: '3px 14px 3px 14px',
-                          color: '#b026ff', cursor: 'pointer',
-                          fontFamily: "'aAnotherTag', sans-serif",
-                          fontSize: '1.1rem', fontWeight: 900, letterSpacing: '0.12em',
-                          boxShadow: '0 0 18px rgba(176,38,255,0.2)',
-                        }}
+                        style={{ padding: '16px 36px', background: 'rgba(176,38,255,0.12)', border: '2px solid #b026ff', borderRadius: '4px 16px 4px 16px', color: '#b026ff', cursor: 'pointer', fontFamily: "'aAnotherTag', sans-serif", fontSize: 'clamp(1.1rem, 4vw, 1.5rem)', fontWeight: 900, letterSpacing: '0.12em', boxShadow: '0 0 20px rgba(176,38,255,0.22)' }}
                       >DECRYPT</motion.button>
                     </div>
                   </div>
                 ) : (
                   <>
                     <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>SUPABASE CHAINFUELZ EDGE FUNCTION</div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.3 }}
-                        style={{ width: 8, height: 8, borderRadius: '50%', background: '#00ff88', boxShadow: '0 0 10px #00ff88' }} />
-                      <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.7rem', color: '#00ff88', letterSpacing: '0.14em', fontWeight: 700 }}>›_ROOT_SHELL_ACTIVE</span>
+
+                    {/* Shell status */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.3 }} style={{ width: 10, height: 10, borderRadius: '50%', background: '#00ff88', boxShadow: '0 0 12px #00ff88', flexShrink: 0 }} />
+                      <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.88rem', color: '#00ff88', letterSpacing: '0.14em', fontWeight: 700 }}>›_ROOT_SHELL_ACTIVE</span>
                     </div>
 
+                    {/* Prod log bridge */}
                     <div className="ec-card ec-card--cyan">
-                      <div className="ec-title ec-title--cyan">PROD LOG BRIDGE</div>
-                      <div className="ec-subtitle" style={{ color: '#00ffcc' }}>LIVE PRODUCTION TELEMETRY</div>
+                      <div className="ec-h2" style={{ backgroundImage: 'linear-gradient(105deg,#00ffcc 0%,#00ff88 100%)' }}>PROD LOG BRIDGE</div>
+                      <div className="ec-sub" style={{ color: '#00ffcc' }}>LIVE PRODUCTION TELEMETRY</div>
                       <div className="ec-divider" />
                       <ProdLogViewer />
                     </div>
 
+                    {/* Edge fn diagnostics */}
                     <div className="ec-card ec-card--purple">
-                      <div className="ec-title ec-title--purple">SYSTEM RECOVERY</div>
-                      <div className="ec-subtitle" style={{ color: '#b026ff' }}>EDGE FUNCTION DIAGNOSTICS</div>
+                      <div className="ec-h2" style={{ backgroundImage: 'linear-gradient(105deg,#b026ff 0%,#d060ff 100%)' }}>SYSTEM RECOVERY</div>
+                      <div className="ec-sub" style={{ color: '#b026ff' }}>EDGE FUNCTION DIAGNOSTICS</div>
                       <div className="ec-divider" />
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                         {[
                           ['RUN_ORACLE_HEALTH', 'oracle-conversation'],
                           ['SYNC_COIN_METRICS', 'culture-coin-manager'],
@@ -610,32 +574,14 @@ export const BackendControlPanel = ({
                           const res = testResults[fn] as { success?: boolean; status?: number; timestamp?: string } | undefined;
                           return (
                             <div key={fn}>
-                              <motion.button
-                                onClick={() => testEdgeFunction(fn)}
-                                whileHover={{ scale: 1.01 }}
-                                whileTap={{ scale: 0.98 }}
-                                style={{
-                                  width: '100%', padding: '13px 14px', textAlign: 'left', cursor: 'pointer',
-                                  background: 'rgba(176,38,255,0.07)',
-                                  border: '1px solid rgba(176,38,255,0.22)', borderLeft: '3px solid rgba(176,38,255,0.55)',
-                                  borderRadius: '2px 10px 2px 10px',
-                                  color: '#b026ff', fontFamily: "'PhillySans', monospace",
-                                  fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em',
-                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                }}
+                              <motion.button onClick={() => testEdgeFunction(fn)} whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
+                                style={{ width: '100%', padding: '15px 16px', textAlign: 'left', cursor: 'pointer', background: 'rgba(176,38,255,0.07)', border: '1px solid rgba(176,38,255,0.22)', borderLeft: '3px solid rgba(176,38,255,0.55)', borderRadius: '2px 12px 2px 12px', color: '#b026ff', fontFamily: "'PhillySans', monospace", fontSize: '0.78rem', fontWeight: 800, letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                               >
                                 <span>{label}</span>
-                                {isLoading && <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}><RefreshCw size={12} /></motion.span>}
+                                {isLoading && <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}><RefreshCw size={14} /></motion.span>}
                               </motion.button>
                               {res && (
-                                <div style={{
-                                  marginTop: 5, padding: '8px 12px',
-                                  background: (res.success ? 'rgba(0,255,136,0.06)' : 'rgba(255,68,102,0.06)'),
-                                  border: `1px solid ${res.success ? 'rgba(0,255,136,0.18)' : 'rgba(255,68,102,0.18)'}`,
-                                  borderRadius: '2px 8px 2px 8px',
-                                  fontFamily: "'Share Tech Mono', monospace", fontSize: '0.54rem',
-                                  color: res.success ? '#00ff88' : '#ff4466', letterSpacing: '0.08em',
-                                }}>
+                                <div style={{ marginTop: 6, padding: '10px 14px', background: (res.success ? 'rgba(0,255,136,0.06)' : 'rgba(255,68,102,0.06)'), border: `1px solid ${res.success ? 'rgba(0,255,136,0.18)' : 'rgba(255,68,102,0.18)'}`, borderRadius: '2px 10px 2px 10px', fontFamily: "'Share Tech Mono', monospace", fontSize: '0.72rem', color: res.success ? '#00ff88' : '#ff4466', letterSpacing: '0.08em' }}>
                                   {res.success ? '✓ ' : '✗ '}STATUS:{res.status} · {res.timestamp?.slice(11, 19)}
                                 </div>
                               )}
@@ -649,23 +595,39 @@ export const BackendControlPanel = ({
               )}
 
               {/* ── MANIFEST ──────────────────────────────────────────── */}
-              {activeFreq === 'MANIFEST' && <ManifestPanel pendingCoins={pendingCoins} />}
+              {activeFreq.id === 'MANIFEST' && <ManifestPanel pendingCoins={pendingCoins} />}
+
+              {/* Swipe affordance arrows */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 4px 0', flexShrink: 0 }}>
+                <motion.button
+                  onClick={() => goTo(activeIdx - 1)}
+                  disabled={activeIdx === 0}
+                  whileTap={{ scale: 0.88 }}
+                  style={{ background: 'none', border: 'none', color: activeIdx === 0 ? 'rgba(255,255,255,0.08)' : 'rgba(0,255,136,0.45)', cursor: activeIdx === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: "'PhillySans', monospace", fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.1em' }}
+                >
+                  <ChevronLeft size={18} />
+                  {activeIdx > 0 && FREQUENCIES[activeIdx - 1].label}
+                </motion.button>
+                <motion.button
+                  onClick={() => goTo(activeIdx + 1)}
+                  disabled={activeIdx === FREQUENCIES.length - 1}
+                  whileTap={{ scale: 0.88 }}
+                  style={{ background: 'none', border: 'none', color: activeIdx === FREQUENCIES.length - 1 ? 'rgba(255,255,255,0.08)' : 'rgba(0,255,136,0.45)', cursor: activeIdx === FREQUENCIES.length - 1 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: "'PhillySans', monospace", fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.1em' }}
+                >
+                  {activeIdx < FREQUENCIES.length - 1 && FREQUENCIES[activeIdx + 1].label}
+                  <ChevronRight size={18} />
+                </motion.button>
+              </div>
 
             </motion.div>
           </AnimatePresence>
-        </div>
+        </motion.div>
 
-        <div className="ec-safe-area" />
+        <div className="ec-safe" />
       </motion.div>
 
       {showUpgrade && userId && (
-        <InlineSubscriptionModal
-          isOpen={showUpgrade}
-          onClose={() => setShowUpgrade(false)}
-          userId={userId}
-          context="engage-further"
-          onUpgradeSuccess={tier => { console.log('Upgraded:', tier); setShowUpgrade(false); }}
-        />
+        <InlineSubscriptionModal isOpen={showUpgrade} onClose={() => setShowUpgrade(false)} userId={userId} context="engage-further" onUpgradeSuccess={tier => { console.log('Upgraded:', tier); setShowUpgrade(false); }} />
       )}
     </>
   );

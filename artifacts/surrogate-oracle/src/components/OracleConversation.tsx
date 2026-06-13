@@ -155,6 +155,7 @@ interface OracleConversationProps {
   onSessionEnd?: (alignment: string, totemLevel: number, coins: number) => void;
   onTurnComplete?: (turnNumber: number, score: OracleScore | null, themes: string[]) => void;
   onPortraitRequest?: () => void;
+  onSeekerProgress?: (count: number, max: number) => void;
   onSeekerIdentified?: (name: string | null, handles: string[]) => void;
   onConnected?: () => void;
   onListeningChange?: (isListening: boolean) => void;
@@ -246,7 +247,7 @@ const OracleConversation = forwardRef(
       onUserSpeakingChange, onBargeIn, onDisconnected,
       isGuidedTour,
       micAutoRestartAllowed = false,
-      onSessionEnd, onTurnComplete, onPortraitRequest, onSeekerIdentified,
+      onSessionEnd, onTurnComplete, onPortraitRequest, onSeekerProgress, onSeekerIdentified,
       onMicWillStart,
       onMicClick,
       onTypeModeChange,
@@ -387,7 +388,11 @@ const OracleConversation = forwardRef(
 
     // Counts visible seeker entries (non-hidden, non-boot user messages).
     // Portrait generation is gated behind >= 5 entries so the exchange has substance first.
+    const SEEKER_MAX = 5;
     const seekerEntryCountRef = useRef(0);
+    const [seekerCount, setSeekerCount] = useState(0);
+    const onSeekerProgressRef = useRef(onSeekerProgress);
+    useEffect(() => { onSeekerProgressRef.current = onSeekerProgress; }, [onSeekerProgress]);
 
     // Debug tracking for BackendControlPanel
     const debugInfo = useRef({
@@ -577,6 +582,8 @@ const OracleConversation = forwardRef(
         setTurns(prev => [...prev, { role: 'user', content: text, timestamp: Date.now() }]);
         setInputText('');
         seekerEntryCountRef.current += 1;
+        setSeekerCount(seekerEntryCountRef.current);
+        onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
 
         // Portrait command detection — fuzzy-match seeker intent after ≥5 entries.
         // Patterns: "manifest", "create [portrait/image/me/it]", "show me [portrait/image]",
@@ -594,6 +601,8 @@ const OracleConversation = forwardRef(
     const connectToGemini = useCallback(() => {
       if (wsRef.current) wsRef.current.close();
       pendingMessagesRef.current = []; // Clear queue on fresh connect
+      seekerEntryCountRef.current = 0;
+      setSeekerCount(0);
 
       // Use environment variable for Supabase URL to avoid hardcoding dev project
       let supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://velmmplevfrtrtrypoch.supabase.co';
@@ -1509,18 +1518,34 @@ const OracleConversation = forwardRef(
                   </div>
                 )}
 
-                {/* Portrait command — appears after 2+ oracle turns */}
-                {turns.filter(t => t.role === 'oracle').length >= 2 && onPortraitRequestRef.current && (
-                  <button
-                    className="oc-portrait-btn"
-                    onClick={() => onPortraitRequestRef.current?.()}
-                    style={isGuidedTour ? {
-                      boxShadow: '0 0 18px rgba(0,255,136,0.6), 0 0 36px rgba(0,255,136,0.3)',
-                      animation: 'oracle-pulse 2s ease-in-out infinite',
-                    } : undefined}
-                  >
-                    ⚗ SUMMON PORTRAIT
-                  </button>
+                {/* Portrait command — appears after 1st oracle turn, locked until seekerCount >= SEEKER_MAX */}
+                {turns.filter(t => t.role === 'oracle').length >= 1 && onPortraitRequestRef.current && (
+                  <div className="oc-portrait-progress-wrap">
+                    <button
+                      className={`oc-portrait-btn ${seekerCount >= SEEKER_MAX ? 'oc-portrait-btn--ready' : 'oc-portrait-btn--locked'}`}
+                      onClick={() => { if (seekerCount >= SEEKER_MAX) onPortraitRequestRef.current?.(); }}
+                      style={seekerCount >= SEEKER_MAX && isGuidedTour ? {
+                        boxShadow: '0 0 18px rgba(0,255,136,0.6), 0 0 36px rgba(0,255,136,0.3)',
+                        animation: 'oracle-pulse 2s ease-in-out infinite',
+                      } : undefined}
+                    >
+                      ⚗ SUMMON PORTRAIT
+                    </button>
+                    <div
+                      className="oc-portrait-progress-bar"
+                      aria-label={`Signal depth: ${seekerCount} of ${SEEKER_MAX}`}
+                    >
+                      <div
+                        className="oc-portrait-progress-fill"
+                        style={{ width: `${Math.min(100, (seekerCount / SEEKER_MAX) * 100)}%` }}
+                      />
+                    </div>
+                    <div className="oc-portrait-progress-label">
+                      {seekerCount >= SEEKER_MAX
+                        ? '◈ SIGNAL LOCKED — READY TO SUMMON'
+                        : `SIGNAL DEPTH  ${seekerCount} / ${SEEKER_MAX}`}
+                    </div>
+                  </div>
                 )}
 
                 {/* Guided Tour Helper — cycles through 3 in-world openers */}

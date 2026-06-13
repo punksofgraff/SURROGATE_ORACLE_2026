@@ -1,12 +1,12 @@
 /**
  * BackendControlPanel — ENCULTURATE CRATE
- * Full-screen paged layout. Swipe left/right between sections.
- * One screen = one section. Nothing cramped.
+ * Domino-card scroll layout. Exact knife/tour-card DNA.
+ * One concept per card. Vertical scroll. No swipe fighting scroll.
  */
 import './BackendControlPanel.css';
 import { useState, useEffect, useRef, RefObject, useCallback } from 'react';
-import { X, Wallet, Radio, Image, Cpu, Database, Layers, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
-import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion';
+import { X, Wallet, Radio, Image, Cpu, Database, Layers, RefreshCw } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { CultureCoinDisplay } from './CultureCoinDisplay';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { PortraitGalleryDashboard } from './PortraitGalleryDashboard';
@@ -36,14 +36,14 @@ const ACCENT: Record<string, string> = { green: '#00ff88', cyan: '#00ffcc', purp
 // ── Oscilloscope ───────────────────────────────────────────────────────────────
 function Oscilloscope({ rms }: { rms: number }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 36 }}>
-      {Array.from({ length: 22 }).map((_, i) => {
-        const h = Math.max(4, rms * 100 * (0.3 + Math.random() * 0.7));
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 44 }}>
+      {Array.from({ length: 24 }).map((_, i) => {
+        const h = Math.max(5, rms * 100 * (0.3 + Math.random() * 0.7));
         return (
           <motion.div key={i}
             animate={{ height: [h * 0.7, h, h * 0.8] }}
             transition={{ repeat: Infinity, duration: 0.08 + Math.random() * 0.24 }}
-            style={{ width: 4, borderRadius: 2, background: i % 3 === 0 ? '#00ff88' : '#00ffcc', opacity: 0.4 + (i / 22) * 0.6 }}
+            style={{ width: 4, borderRadius: 2, background: i % 3 === 0 ? '#00ff88' : '#00ffcc', opacity: 0.4 + (i / 24) * 0.6 }}
           />
         );
       })}
@@ -61,7 +61,6 @@ function ProdLogViewer() {
   const [autoRefresh, setAuto]  = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
   const timerRef                = useRef<ReturnType<typeof setInterval> | null>(null);
-  const scrollRef               = useRef<HTMLDivElement>(null);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -86,7 +85,7 @@ function ProdLogViewer() {
     : logs;
 
   const levelColor = (ev: string) => {
-    if (ev.includes('error')) return '#ff4466';
+    if (ev.includes('error'))                       return '#ff4466';
     if (ev.includes('exit') || ev.includes('barge')) return '#b026ff';
     if (ev.includes('portrait') || ev.includes('claim')) return '#00ffcc';
     return '#00ff88';
@@ -97,34 +96,42 @@ function ProdLogViewer() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: 10 }}>
         <input className="ec-filter" value={filter} onChange={e => setFilter(e.target.value)} placeholder="FILTER_SIGNAL..." style={{ flex: 1 }} />
-        <motion.button onClick={fetchLogs} whileTap={{ rotate: 180, scale: 0.88 }} style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)', borderRadius: '3px 10px 3px 10px', color: '#00ff88', cursor: 'pointer', padding: '0 16px', minHeight: 48 }}>
-          <RefreshCw size={16} />
+        <motion.button
+          onClick={fetchLogs}
+          whileTap={{ rotate: 180, scale: 0.88 }}
+          style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)', borderRadius: '3px 10px 3px 10px', color: '#00ff88', cursor: 'pointer', padding: '0 18px', minHeight: 52 }}
+        >
+          <RefreshCw size={18} />
         </motion.button>
-        <motion.button onClick={() => setAuto(a => !a)} whileTap={{ scale: 0.96 }} style={{ background: autoRefresh ? 'rgba(0,255,136,0.1)' : 'rgba(0,0,0,0.4)', border: `1px solid ${autoRefresh ? 'rgba(0,255,136,0.4)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '3px 10px 3px 10px', color: autoRefresh ? '#00ff88' : 'rgba(255,255,255,0.2)', fontFamily: "'PhillySans', monospace", fontSize: '0.68rem', letterSpacing: '0.12em', fontWeight: 800, cursor: 'pointer', padding: '0 14px', minHeight: 48, whiteSpace: 'nowrap' }}>
+        <motion.button
+          onClick={() => setAuto(a => !a)}
+          whileTap={{ scale: 0.96 }}
+          style={{ background: autoRefresh ? 'rgba(0,255,136,0.1)' : 'rgba(0,0,0,0.4)', border: `1px solid ${autoRefresh ? 'rgba(0,255,136,0.4)' : 'rgba(255,255,255,0.08)'}`, borderRadius: '3px 10px 3px 10px', color: autoRefresh ? '#00ff88' : 'rgba(255,255,255,0.2)', fontFamily: "'PhillySans', monospace", fontSize: '0.82rem', letterSpacing: '0.12em', fontWeight: 800, cursor: 'pointer', padding: '0 16px', minHeight: 52, whiteSpace: 'nowrap' }}
+        >
           {autoRefresh ? '● LIVE' : '○ PAUSE'}
         </motion.button>
       </div>
 
       {/* Count */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
-        <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '1.5rem', color: '#00ffcc', fontWeight: 700 }}>{filtered.length}</span>
-        <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.72rem', color: 'rgba(255,255,255,0.25)', letterSpacing: '0.14em', fontWeight: 700 }}>EVENTS</span>
-        {filter && <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.7rem', color: 'rgba(255,255,255,0.14)' }}>/ {logs.length} total</span>}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+        <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '1.8rem', color: '#00ffcc', fontWeight: 700 }}>{filtered.length}</span>
+        <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.84rem', color: 'rgba(255,255,255,0.28)', letterSpacing: '0.14em', fontWeight: 700 }}>EVENTS</span>
+        {filter && <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.84rem', color: 'rgba(255,255,255,0.18)' }}>/ {logs.length} total</span>}
       </div>
 
       {/* Log list */}
-      <div ref={scrollRef} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(0,255,136,0.09)', borderRadius: '4px 16px 4px 16px', maxHeight: '42vh', overflowY: 'auto' }}>
+      <div className="ec-log-list">
         {filtered.length === 0 ? (
           <div className="ec-await">{loading ? 'SCANNING...' : '— NO_SIGNAL —'}</div>
         ) : filtered.map(row => (
           <div key={row.id}>
             <motion.div className="ec-log-row" onClick={() => setExpanded(expanded === row.id ? null : row.id)}>
               <span className="ec-log__time">{fmtTime(row.ts)}</span>
-              <div style={{ width: 4, height: 18, background: levelColor(row.event), flexShrink: 0, borderRadius: 2, boxShadow: `0 0 7px ${levelColor(row.event)}` }} />
+              <div style={{ width: 4, height: 20, background: levelColor(row.event), flexShrink: 0, borderRadius: 2, boxShadow: `0 0 8px ${levelColor(row.event)}` }} />
               <span className="ec-log__event" style={{ color: levelColor(row.event) }}>
                 {row.event.replace('oracle_', '').toUpperCase()}
               </span>
@@ -135,7 +142,7 @@ function ProdLogViewer() {
                 <motion.pre
                   initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.18 }}
-                  style={{ margin: 0, padding: '12px 16px', background: 'rgba(0,0,0,0.55)', borderBottom: '1px solid rgba(0,255,136,0.06)', fontFamily: "'Share Tech Mono', monospace", fontSize: '0.68rem', color: 'rgba(0,255,204,0.75)', lineHeight: 1.8, whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflow: 'hidden' }}
+                  style={{ margin: 0, padding: '14px 18px', background: 'rgba(0,0,0,0.55)', borderBottom: '1px solid rgba(0,255,136,0.06)', fontFamily: "'Share Tech Mono', monospace", fontSize: '0.8rem', color: 'rgba(0,255,204,0.8)', lineHeight: 1.9, whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflow: 'hidden' }}
                 >{JSON.stringify(row.data, null, 2)}</motion.pre>
               )}
             </AnimatePresence>
@@ -178,45 +185,49 @@ function ManifestPanel({ pendingCoins }: { pendingCoins: number }) {
   const phaseMap: Record<string, string> = { claim: 'CLAIM', evidence: 'EVIDENCE', cost: 'COST', mirror: 'MIRROR' };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <>
+      {/* Card 1 — session manifest */}
       <div className="ec-card ec-card--cyan">
-        <div className="ec-h1 ec-h1--cyan">SESSION MANIFEST</div>
+        <div className="ec-territory ec-territory--cyan">SESSION<br />MANIFEST</div>
         <div className="ec-sub" style={{ color: '#00ffcc' }}>REAL-TIME SIGNAL ARTIFACTS</div>
         <div className="ec-divider" />
         {!hasData ? (
           <div className="ec-await">AWAITING_ORACLE_SESSION</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {alignment      && <div className="ec-row"><span className="ec-row__label">ALIGNMENT</span><span className="ec-row__value" style={{ color: alignColor }}>{alignment.toUpperCase()}</span></div>}
             {archetype      && <div className="ec-row"><span className="ec-row__label">ARCHETYPE</span><span className="ec-row__value" style={{ color: '#00ff88' }}>{archetype.toUpperCase()}</span></div>}
             {totemLevel > 0 && <div className="ec-row"><span className="ec-row__label">TOTEM</span><span className="ec-row__value">{Array(totemLevel).fill('◈').join(' ')}</span></div>}
             {sessionPhase   && <div className="ec-row"><span className="ec-row__label">PHASE</span><span className="ec-row__value">{(phaseMap[sessionPhase] ?? sessionPhase).toUpperCase()}</span></div>}
-            {emotionalWeight && <div className="ec-row"><span className="ec-row__label">AFFECT</span><span className="ec-row__value" style={{ color: 'rgba(255,255,255,0.5)' }}>{emotionalWeight.toUpperCase()}</span></div>}
+            {emotionalWeight && <div className="ec-row"><span className="ec-row__label">AFFECT</span><span className="ec-row__value" style={{ color: 'rgba(255,255,255,0.55)' }}>{emotionalWeight.toUpperCase()}</span></div>}
             {coins > 0      && <div className="ec-row"><span className="ec-row__label">COINS</span><span className="ec-row__value" style={{ color: '#00ff88' }}>{`+${coins}c`}</span></div>}
           </div>
         )}
       </div>
 
+      {/* Card 2 — ritual progression (only when phase exists) */}
       {sessionPhase && (
-        <div className="ec-card ec-card--cyan" style={{ padding: '18px 18px 16px' }}>
-          <div style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.75rem', color: 'rgba(0,255,204,0.45)', letterSpacing: '0.2em', marginBottom: 14, fontWeight: 800 }}>RITUAL PROGRESSION</div>
-          <div style={{ display: 'flex', gap: 6 }}>
+        <div className="ec-card ec-card--cyan">
+          <div className="ec-territory ec-territory--cyan">RITUAL</div>
+          <div className="ec-sub" style={{ color: '#00ffcc' }}>PROGRESSION TRACK</div>
+          <div className="ec-divider" />
+          <div style={{ display: 'flex', gap: 8 }}>
             {phases.map(phase => {
-              const cur = phases.indexOf(sessionPhase as typeof phases[number]);
-              const idx = phases.indexOf(phase);
+              const cur      = phases.indexOf(sessionPhase as typeof phases[number]);
+              const idx      = phases.indexOf(phase);
               const isActive = phase === sessionPhase;
               const isPast   = idx < cur;
               const c = isActive ? '#00ffcc' : isPast ? '#00ff88' : 'transparent';
               return (
-                <div key={phase} style={{ flex: 1, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', background: isActive ? 'rgba(0,255,204,0.1)' : isPast ? 'rgba(0,255,136,0.05)' : 'rgba(0,0,0,0.2)', border: `1px solid ${isActive ? 'rgba(0,255,204,0.3)' : isPast ? 'rgba(0,255,136,0.14)' : 'rgba(255,255,255,0.04)'}`, borderBottom: `3px solid ${c}`, borderRadius: '2px 8px 2px 8px' }}>
-                  <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.6rem', letterSpacing: '0.1em', fontWeight: 800, color: isActive ? '#00ffcc' : isPast ? 'rgba(0,255,136,0.5)' : 'rgba(255,255,255,0.1)' }}>{phaseMap[phase]}</span>
+                <div key={phase} className="ec-phase-pill" style={{ background: isActive ? 'rgba(0,255,204,0.1)' : isPast ? 'rgba(0,255,136,0.05)' : 'rgba(0,0,0,0.2)', border: `1px solid ${isActive ? 'rgba(0,255,204,0.3)' : isPast ? 'rgba(0,255,136,0.14)' : 'rgba(255,255,255,0.04)'}`, borderBottom: `3px solid ${c}` }}>
+                  <span className="ec-phase-pill__label" style={{ color: isActive ? '#00ffcc' : isPast ? 'rgba(0,255,136,0.5)' : 'rgba(255,255,255,0.12)' }}>{phaseMap[phase]}</span>
                 </div>
               );
             })}
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -238,36 +249,26 @@ export const BackendControlPanel = ({
   userId, sessionId, isVisible = true, initialTab = 'vault',
   onClose, userEmail, pendingCoins = 0, oracleConversationRef,
 }: BackendControlPanelProps) => {
-  const [activeIdx, setActiveIdx]       = useState<number>(() => {
+  const [activeIdx, setActiveIdx]     = useState<number>(() => {
     const saved = localStorage.getItem('oracle_crate_active_freq') as Frequency | null;
     return Math.max(0, FREQUENCIES.findIndex(f => f.id === saved));
   });
-  const [prevIdx, setPrevIdx]           = useState(0);
-  const [debugPassed, setDebugPassed]   = useState(false);
-  const [debugPw, setDebugPw]           = useState('');
-  const [testResults, setTestResults]   = useState<Record<string, unknown>>({});
-  const [isLoading, setIsLoading]       = useState(false);
-  const [showUpgrade, setShowUpgrade]   = useState(false);
-  const [geminiInfo, setGeminiInfo]     = useState<ReturnType<OracleConversationHandle['getWsDebugInfo']> | null>(null);
-  const pollRef                         = useRef<ReturnType<typeof setInterval> | null>(null);
-  const supabaseUrl                     = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const chainFuelz                      = useChainFuelz(userEmail, pendingCoins);
-
-  // Drag gesture for swipe navigation
-  const dragX         = useMotionValue(0);
-  const SWIPE_THRESH  = 72;
+  const [prevIdx, setPrevIdx]         = useState(0);
+  const [debugPassed, setDebugPassed] = useState(false);
+  const [debugPw, setDebugPw]         = useState('');
+  const [testResults, setTestResults] = useState<Record<string, unknown>>({});
+  const [isLoading, setIsLoading]     = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [geminiInfo, setGeminiInfo]   = useState<ReturnType<OracleConversationHandle['getWsDebugInfo']> | null>(null);
+  const pollRef                       = useRef<ReturnType<typeof setInterval> | null>(null);
+  const supabaseUrl                   = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  const chainFuelz                    = useChainFuelz(userEmail, pendingCoins);
 
   const goTo = (idx: number) => {
     const clamped = Math.max(0, Math.min(FREQUENCIES.length - 1, idx));
     setPrevIdx(activeIdx);
     setActiveIdx(clamped);
     localStorage.setItem('oracle_crate_active_freq', FREQUENCIES[clamped].id);
-  };
-
-  const handleDragEnd = (_: unknown, info: { offset: { x: number } }) => {
-    if (info.offset.x < -SWIPE_THRESH) goTo(activeIdx + 1);
-    else if (info.offset.x > SWIPE_THRESH) goTo(activeIdx - 1);
-    dragX.set(0);
   };
 
   useEffect(() => {
@@ -324,7 +325,7 @@ export const BackendControlPanel = ({
           </div>
           <div className="ec-hdr__right">
             {sessionId && (
-              <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.68rem', color: 'rgba(0,255,204,0.25)', letterSpacing: '0.1em' }}>
+              <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.72rem', color: 'rgba(0,255,204,0.25)', letterSpacing: '0.1em' }}>
                 SID:{sessionId.slice(-6).toUpperCase()}
               </span>
             )}
@@ -336,7 +337,7 @@ export const BackendControlPanel = ({
             />
             {onClose && (
               <button className="ec-close" onClick={onClose} aria-label="Close">
-                <X size={16} />
+                <X size={17} />
               </button>
             )}
           </div>
@@ -347,132 +348,166 @@ export const BackendControlPanel = ({
           key={activeFreq.id}
           initial={{ scaleX: 0 }} animate={{ scaleX: 1 }}
           transition={{ duration: 0.4, ease: 'easeOut' }}
-          style={{ height: 2, background: `linear-gradient(90deg, transparent, ${accentHex}, transparent)`, filter: 'blur(1px)', transformOrigin: 'left', flexShrink: 0, zIndex: 10 }}
+          style={{ height: 2, background: `linear-gradient(90deg, transparent, ${accentHex}, transparent)`, filter: 'blur(1px)', transformOrigin: 'left', flexShrink: 0 }}
         />
 
         {/* ── Tab nav ─────────────────────────────────────────────────────── */}
         <nav className="ec-nav" role="tablist">
           {FREQUENCIES.map((freq, i) => {
             const isOn = i === activeIdx;
-            const cls  = isOn ? (freq.accent === 'purple' ? 'ec-nav__btn ec-nav__btn--on-purple' : 'ec-nav__btn ec-nav__btn--on') : 'ec-nav__btn';
+            let cls = 'ec-nav__btn';
+            if (isOn) cls += freq.accent === 'purple' ? ' ec-nav__btn--on-purple' : freq.accent === 'cyan' ? ' ec-nav__btn--on-cyan' : ' ec-nav__btn--on';
             const testId = freq.id==='RESONANCE' ? 'tab-vault' : freq.id==='SQUAD' ? 'tab-squad' : freq.id==='PRINTS' ? 'tab-portraits' : freq.id==='CORE_DIAG' ? 'tab-gemini' : freq.id==='SALVAGE' ? 'tab-dev' : 'tab-manifest';
             return (
               <button key={freq.id} role="tab" aria-selected={isOn} data-testid={testId} className={cls} onClick={() => goTo(i)}>
-                <freq.Icon size={18} className="ec-nav__icon" />
+                <freq.Icon size={20} className="ec-nav__icon" />
                 <span className="ec-nav__label">{freq.label}</span>
               </button>
             );
           })}
         </nav>
 
-        {/* Swipe position dots */}
-        <div className="ec-swipe-dots">
-          {FREQUENCIES.map((_, i) => (
-            <div key={i} className={`ec-swipe-dot${i === activeIdx ? ' ec-swipe-dot--on' : ''}`} />
-          ))}
-        </div>
+        {/* ── Page content — domino card scroll ───────────────────────────── */}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={activeFreq.id}
+            className="ec-page"
+            initial={{ x: slideDir * 60, opacity: 0, filter: 'blur(6px)' }}
+            animate={{ x: 0,             opacity: 1, filter: 'blur(0px)' }}
+            exit={{   x: -slideDir * 48, opacity: 0, filter: 'blur(8px)' }}
+            transition={{ type: 'spring', damping: 26, stiffness: 260, mass: 0.85 }}
+          >
 
-        {/* ── Swipeable page content ───────────────────────────────────────── */}
-        <motion.div
-          drag="x"
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={{ left: 0.12, right: 0.12 }}
-          onDragEnd={handleDragEnd}
-          style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', cursor: 'grab' }}
-        >
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={activeFreq.id}
-              className="ec-page"
-              initial={{ x: slideDir * 80, opacity: 0, filter: 'blur(8px)' }}
-              animate={{ x: 0,             opacity: 1, filter: 'blur(0px)' }}
-              exit={{   x: -slideDir * 64, opacity: 0, filter: 'blur(10px)' }}
-              transition={{ type: 'spring', damping: 24, stiffness: 240, mass: 0.9 }}
-            >
+            {/* ════════════════════════════════════════════════════════════
+                RESONANCE — VAULT
+                Card 1: Balance hero
+                Card 2: Vault handle/address
+                Card 3: Tier status + upgrade
+            ════════════════════════════════════════════════════════════ */}
+            {activeFreq.id === 'RESONANCE' && (
+              userId ? (
+                <>
+                  {/* Card 1 — balance hero */}
+                  <div className="ec-card">
+                    <div className="ec-territory">NEURAL<br />RESONANCE</div>
+                    <div className="ec-sub" style={{ color: '#00ff88' }}>VAULT FREQUENCY · {activeFreq.mhz}MHz</div>
+                    <div className="ec-divider" />
+                    {chainFuelz.isInitialized ? (
+                      <div className="ec-hero-stat">
+                        <span className="ec-hero-stat__label">SIGNAL STRENGTH</span>
+                        <span className="ec-hero-stat__value">{chainFuelz.balance}</span>
+                      </div>
+                    ) : (
+                      <div className="ec-await">RECOVERING VAULT FREQUENCY...</div>
+                    )}
+                  </div>
 
-              {/* ── RESONANCE: VAULT ──────────────────────────────────── */}
-              {activeFreq.id === 'RESONANCE' && (
-                userId ? (
-                  <>
-                    {/* Big balance hero */}
+                  {/* Card 2 — vault handle */}
+                  {chainFuelz.isInitialized && (
                     <div className="ec-card">
-                      <div className="ec-h1">NEURAL RESONANCE</div>
-                      <div className="ec-sub" style={{ color: '#00ff88' }}>VAULT FREQUENCY</div>
+                      <div className="ec-territory">VAULT<br />SIGNATURE</div>
+                      <div className="ec-sub" style={{ color: '#00ff88' }}>YOUR ON-CHAIN HANDLE</div>
                       <div className="ec-divider" />
-
-                      {chainFuelz.isInitialized ? (
-                        <>
-                          <div className="ec-hero-stat" style={{ marginBottom: 14 }}>
-                            <span className="ec-hero-stat__label">SIGNAL STRENGTH</span>
-                            <span className="ec-hero-stat__value">{chainFuelz.balance}</span>
-                          </div>
-
-                          <div style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.75rem', color: 'rgba(0,255,204,0.45)', letterSpacing: '0.16em', fontWeight: 700, marginBottom: 8 }}>VAULT SIGNATURE</div>
-                          <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '1.0rem', color: 'rgba(255,255,255,0.88)', background: 'rgba(0,255,136,0.05)', padding: '14px 16px', border: '1px solid rgba(0,255,136,0.12)', borderLeft: '4px solid rgba(0,255,136,0.45)', borderRadius: '3px 12px 3px 12px', letterSpacing: '0.04em', wordBreak: 'break-all' }}>{chainFuelz.vaultHandle}</div>
-
-                          <div style={{ marginTop: 14 }}>
-                            <span className={`ec-badge${chainFuelz.isMinting ? '' : ''}`} style={{ borderLeftColor: chainFuelz.isMinting ? '#b026ff' : '#00ff88', color: chainFuelz.isMinting ? '#b026ff' : '#00ff88', background: chainFuelz.isMinting ? 'rgba(176,38,255,0.08)' : 'rgba(0,255,136,0.08)' }}>
-                              <span className="ec-badge__dot" style={{ background: chainFuelz.isMinting ? '#b026ff' : '#00ff88', '--pc': chainFuelz.isMinting ? '#b026ff' : '#00ff88' } as React.CSSProperties} />
-                              {chainFuelz.isMinting ? 'SYNCING' : 'STABLE'}
-                            </span>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="ec-await">RECOVERING VAULT FREQUENCY...</div>
-                      )}
+                      <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: 'clamp(0.9rem, 3vw, 1.1rem)', color: 'rgba(255,255,255,0.88)', background: 'rgba(0,255,136,0.05)', padding: '18px 20px', border: '1px solid rgba(0,255,136,0.12)', borderLeft: '4px solid rgba(0,255,136,0.5)', borderRadius: '3px 14px 3px 14px', letterSpacing: '0.04em', wordBreak: 'break-all', lineHeight: 1.6 }}>
+                        {chainFuelz.vaultHandle}
+                      </div>
+                      <div style={{ marginTop: 18 }}>
+                        <span className="ec-badge" style={{ borderLeftColor: chainFuelz.isMinting ? '#b026ff' : '#00ff88', color: chainFuelz.isMinting ? '#b026ff' : '#00ff88', background: chainFuelz.isMinting ? 'rgba(176,38,255,0.08)' : 'rgba(0,255,136,0.08)' }}>
+                          <span className="ec-badge__dot" style={{ background: chainFuelz.isMinting ? '#b026ff' : '#00ff88', '--pc': chainFuelz.isMinting ? '#b026ff' : '#00ff88' } as React.CSSProperties} />
+                          {chainFuelz.isMinting ? 'SYNCING' : 'STABLE'}
+                        </span>
+                      </div>
                     </div>
+                  )}
 
-                    <div className="ec-card">
-                      <CultureCoinDisplay userId={userId} onLevelUp={(l, t) => console.log(`Level ${l}: ${t}`)} />
-                    </div>
+                  {/* Card 3 — culture coin display */}
+                  <div className="ec-card">
+                    <div className="ec-territory">CULTURE<br />COINS</div>
+                    <div className="ec-sub" style={{ color: '#00ff88' }}>EARNED FREQUENCY</div>
+                    <div className="ec-divider" />
+                    <CultureCoinDisplay userId={userId} onLevelUp={(l, t) => console.log(`Level ${l}: ${t}`)} />
+                  </div>
 
+                  {/* Card 4 — upgrade */}
+                  <div className="ec-card" style={{ background: 'linear-gradient(158deg, rgba(176,38,255,0.08) 0%, rgba(0,0,0,0.03) 48%, rgba(0,255,136,0.06) 100%)' }}>
+                    <div className="ec-territory ec-territory--purple">UPGRADE<br />CONSCIOUSNESS</div>
+                    <div className="ec-sub" style={{ color: '#b026ff' }}>EXPAND YOUR ACCESS</div>
+                    <div className="ec-divider" />
                     <button className="ec-upgrade-btn" onClick={() => setShowUpgrade(true)}>
                       UPGRADE_CONSCIOUSNESS
                     </button>
-                  </>
-                ) : (
-                  <div className="ec-card">
-                    <Learn2EarnInterface userId={sessionId || 'anonymous'} navigateToDebug={() => goTo(FREQUENCIES.findIndex(f => f.id === 'SALVAGE'))} />
                   </div>
-                )
-              )}
-
-              {/* ── SQUAD ─────────────────────────────────────────────── */}
-              {activeFreq.id === 'SQUAD' && (
+                </>
+              ) : (
                 <div className="ec-card">
-                  <div className="ec-h1">SQUAD</div>
-                  <div className="ec-sub" style={{ color: '#00ff88' }}>NETWORK FREQUENCY</div>
+                  <div className="ec-territory">CONNECT<br />WALLET</div>
+                  <div className="ec-sub" style={{ color: '#00ff88' }}>VAULT ACCESS REQUIRED</div>
                   <div className="ec-divider" />
-                  <Learn2EarnInterface userId={userId || sessionId || 'anonymous'} navigateToDebug={() => goTo(FREQUENCIES.findIndex(f => f.id === 'SALVAGE'))} />
+                  <Learn2EarnInterface userId={sessionId || 'anonymous'} navigateToDebug={() => goTo(FREQUENCIES.findIndex(f => f.id === 'SALVAGE'))} />
                 </div>
-              )}
+              )
+            )}
 
-              {/* ── PRINTS ────────────────────────────────────────────── */}
-              {activeFreq.id === 'PRINTS' && (
-                <div className="ec-card" style={{ padding: '22px 18px' }}>
-                  <div className="ec-h1">PRINTS</div>
-                  <div className="ec-sub" style={{ color: '#00ff88' }}>PORTRAIT ARCHIVE</div>
+            {/* ════════════════════════════════════════════════════════════
+                SQUAD — network + learn2earn
+            ════════════════════════════════════════════════════════════ */}
+            {activeFreq.id === 'SQUAD' && (
+              <>
+                <div className="ec-card">
+                  <div className="ec-territory">SQUAD</div>
+                  <div className="ec-sub" style={{ color: '#00ff88' }}>NETWORK FREQUENCY · {activeFreq.mhz}MHz</div>
                   <div className="ec-divider" />
-                  <PortraitGalleryDashboard userId={userId} userEmail={userEmail} sessionId={sessionId} maxPortraits={20} isBackendCabinetTab />
+                  <Learn2EarnInterface
+                    userId={userId || sessionId || 'anonymous'}
+                    navigateToDebug={() => goTo(FREQUENCIES.findIndex(f => f.id === 'SALVAGE'))}
+                  />
                 </div>
-              )}
+              </>
+            )}
 
-              {/* ── CORE_DIAG ─────────────────────────────────────────── */}
-              {activeFreq.id === 'CORE_DIAG' && (
+            {/* ════════════════════════════════════════════════════════════
+                PRINTS — portrait archive (full-bleed, no nested wrapper)
+            ════════════════════════════════════════════════════════════ */}
+            {activeFreq.id === 'PRINTS' && (
+              <>
+                <div className="ec-card">
+                  <div className="ec-territory">PRINTS</div>
+                  <div className="ec-sub" style={{ color: '#00ff88' }}>PORTRAIT ARCHIVE · {activeFreq.mhz}MHz</div>
+                  <div className="ec-divider" />
+                  <PortraitGalleryDashboard
+                    userId={userId}
+                    userEmail={userEmail}
+                    sessionId={sessionId}
+                    maxPortraits={20}
+                    isBackendCabinetTab
+                  />
+                </div>
+              </>
+            )}
+
+            {/* ════════════════════════════════════════════════════════════
+                CORE_DIAG — Gemini live diagnostics
+                Card 1: Status + badges
+                Card 2: Metric 2×2 grid
+                Card 3: Signal stream terminal
+            ════════════════════════════════════════════════════════════ */}
+            {activeFreq.id === 'CORE_DIAG' && (
+              <>
+                {/* invisible test hook */}
+                <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>WEBSOCKET WS STATE VERTEX</div>
+
+                {/* Card 1 — status */}
                 <div className="ec-card ec-card--cyan">
-                  <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>WEBSOCKET WS STATE VERTEX</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <div className="ec-h1 ec-h1--cyan">GEMINI LIVE</div>
-                      <div className="ec-sub" style={{ color: '#00ffcc' }}>CORE DIAGNOSTICS</div>
-                    </div>
-                    {geminiInfo && <Oscilloscope rms={(geminiInfo as Record<string, number>).lastVadRms ?? 0} />}
-                  </div>
+                  <div className="ec-territory ec-territory--cyan">GEMINI<br />LIVE</div>
+                  <div className="ec-sub" style={{ color: '#00ffcc' }}>CORE DIAGNOSTICS · {activeFreq.mhz}MHz</div>
                   <div className="ec-divider" />
 
                   {geminiInfo ? (
                     <>
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
+                      <div style={{ marginBottom: 22 }}>
+                        <Oscilloscope rms={(geminiInfo as Record<string, number>).lastVadRms ?? 0} />
+                      </div>
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                         {[
                           { label: geminiInfo.wsState === 1 ? 'WS_OPEN' : 'WS_DISRUPTED', c: geminiInfo.wsState === 1 ? '#00ff88' : '#ff4466' },
                           { label: 'FREE_TIER', c: '#b026ff' },
@@ -483,151 +518,177 @@ export const BackendControlPanel = ({
                           </span>
                         ))}
                       </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-                        {([
-                          ['TURNS',     String(geminiInfo.turnCount)],
-                          ['AUDIO IN',  String(geminiInfo.audioChunksReceived)],
-                          ['AUDIO OUT', String((geminiInfo as Record<string, unknown>).audioChunksSent ?? '—')],
-                          ['VAD RMS',   String((geminiInfo as Record<string, number>).lastVadRms?.toFixed(4) ?? '0.0000')],
-                        ] as [string, string][]).map(([k, v]) => (
-                          <div className="ec-metric" key={k}>
-                            <div className="ec-metric__label">{k}</div>
-                            <div className="ec-metric__value">{v}</div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.75rem', color: '#00ffcc', letterSpacing: '0.16em', fontWeight: 800 }}>SIGNAL STREAM</span>
-                        <button onClick={() => navigator.clipboard.writeText(geminiInfo.recentMessages.join('\n'))} style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.22)', borderRadius: 4, color: '#00ff88', fontSize: '0.65rem', cursor: 'pointer', padding: '4px 10px', fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em', fontWeight: 800 }}>COPY</button>
-                      </div>
-                      <div className="ec-terminal">
-                        {geminiInfo.recentMessages.length === 0
-                          ? <span style={{ color: 'rgba(255,255,255,0.12)', letterSpacing: '0.18em' }}>— NO_SIGNAL —</span>
-                          : geminiInfo.recentMessages.map((l, i) => <div key={i}>{l}</div>)
-                        }
-                      </div>
                     </>
                   ) : (
                     <div className="ec-await">WAITING FOR CORE UPLINK...</div>
                   )}
                 </div>
-              )}
 
-              {/* ── SALVAGE ───────────────────────────────────────────── */}
-              {activeFreq.id === 'SALVAGE' && (
-                !debugPassed ? (
-                  <div className="ec-card ec-card--purple">
-                    <div className="ec-gate" data-testid="dev-gate-container">
-                      <div className="ec-h1 ec-h1--purple" style={{ textAlign: 'center', fontSize: 'clamp(2rem, 8vw, 3rem)', filter: 'drop-shadow(0 0 30px rgba(176,38,255,0.5))' }}>
-                        ACCESS<br />RESTRICTED
-                      </div>
-                      <div className="ec-sub" style={{ color: '#b026ff', textAlign: 'center' }}>SALVAGE BAY CLEARANCE REQUIRED</div>
-                      <div className="ec-divider" style={{ width: '60%' }} />
-                      <input
-                        type="password"
-                        value={debugPw}
-                        onChange={e => setDebugPw(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && debugPw === '3nculturate!' && setDebugPassed(true)}
-                        placeholder="DECRYPTION KEY"
-                        data-testid="debug-password-input"
-                        className="ec-gate__input"
-                      />
-                      <motion.button
-                        onClick={() => { if (debugPw === '3nculturate!') setDebugPassed(true); }}
-                        whileHover={{ scale: 1.04, boxShadow: '0 0 40px rgba(176,38,255,0.5)' }}
-                        whileTap={{ scale: 0.97 }}
-                        data-testid="debug-access-btn"
-                        style={{ padding: '16px 36px', background: 'rgba(176,38,255,0.12)', border: '2px solid #b026ff', borderRadius: '4px 16px 4px 16px', color: '#b026ff', cursor: 'pointer', fontFamily: "'aAnotherTag', sans-serif", fontSize: 'clamp(1.1rem, 4vw, 1.5rem)', fontWeight: 900, letterSpacing: '0.12em', boxShadow: '0 0 20px rgba(176,38,255,0.22)' }}
-                      >DECRYPT</motion.button>
+                {/* Card 2 — metrics grid */}
+                {geminiInfo && (
+                  <div className="ec-card ec-card--cyan">
+                    <div className="ec-territory ec-territory--cyan">SIGNAL<br />METRICS</div>
+                    <div className="ec-sub" style={{ color: '#00ffcc' }}>LIVE COUNTERS</div>
+                    <div className="ec-divider" />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      {([
+                        ['TURNS',     String(geminiInfo.turnCount)],
+                        ['AUDIO IN',  String(geminiInfo.audioChunksReceived)],
+                        ['AUDIO OUT', String((geminiInfo as Record<string, unknown>).audioChunksSent ?? '—')],
+                        ['VAD RMS',   String((geminiInfo as Record<string, number>).lastVadRms?.toFixed(4) ?? '0.0000')],
+                      ] as [string, string][]).map(([k, v]) => (
+                        <div className="ec-metric" key={k}>
+                          <div className="ec-metric__label">{k}</div>
+                          <div className="ec-metric__value">{v}</div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ) : (
-                  <>
-                    <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>SUPABASE CHAINFUELZ EDGE FUNCTION</div>
+                )}
 
-                    {/* Shell status */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.3 }} style={{ width: 10, height: 10, borderRadius: '50%', background: '#00ff88', boxShadow: '0 0 12px #00ff88', flexShrink: 0 }} />
-                      <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.88rem', color: '#00ff88', letterSpacing: '0.14em', fontWeight: 700 }}>›_ROOT_SHELL_ACTIVE</span>
-                    </div>
-
-                    {/* Prod log bridge */}
-                    <div className="ec-card ec-card--cyan">
-                      <div className="ec-h2" style={{ backgroundImage: 'linear-gradient(105deg,#00ffcc 0%,#00ff88 100%)' }}>PROD LOG BRIDGE</div>
-                      <div className="ec-sub" style={{ color: '#00ffcc' }}>LIVE PRODUCTION TELEMETRY</div>
-                      <div className="ec-divider" />
-                      <ProdLogViewer />
-                    </div>
-
-                    {/* Edge fn diagnostics */}
-                    <div className="ec-card ec-card--purple">
-                      <div className="ec-h2" style={{ backgroundImage: 'linear-gradient(105deg,#b026ff 0%,#d060ff 100%)' }}>SYSTEM RECOVERY</div>
-                      <div className="ec-sub" style={{ color: '#b026ff' }}>EDGE FUNCTION DIAGNOSTICS</div>
-                      <div className="ec-divider" />
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {[
-                          ['RUN_ORACLE_HEALTH', 'oracle-conversation'],
-                          ['SYNC_COIN_METRICS', 'culture-coin-manager'],
-                        ].map(([label, fn]) => {
-                          const res = testResults[fn] as { success?: boolean; status?: number; timestamp?: string } | undefined;
-                          return (
-                            <div key={fn}>
-                              <motion.button onClick={() => testEdgeFunction(fn)} whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
-                                style={{ width: '100%', padding: '15px 16px', textAlign: 'left', cursor: 'pointer', background: 'rgba(176,38,255,0.07)', border: '1px solid rgba(176,38,255,0.22)', borderLeft: '3px solid rgba(176,38,255,0.55)', borderRadius: '2px 12px 2px 12px', color: '#b026ff', fontFamily: "'PhillySans', monospace", fontSize: '0.78rem', fontWeight: 800, letterSpacing: '0.1em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                              >
-                                <span>{label}</span>
-                                {isLoading && <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}><RefreshCw size={14} /></motion.span>}
-                              </motion.button>
-                              {res && (
-                                <div style={{ marginTop: 6, padding: '10px 14px', background: (res.success ? 'rgba(0,255,136,0.06)' : 'rgba(255,68,102,0.06)'), border: `1px solid ${res.success ? 'rgba(0,255,136,0.18)' : 'rgba(255,68,102,0.18)'}`, borderRadius: '2px 10px 2px 10px', fontFamily: "'Share Tech Mono', monospace", fontSize: '0.72rem', color: res.success ? '#00ff88' : '#ff4466', letterSpacing: '0.08em' }}>
-                                  {res.success ? '✓ ' : '✗ '}STATUS:{res.status} · {res.timestamp?.slice(11, 19)}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                {/* Card 3 — signal stream */}
+                {geminiInfo && (
+                  <div className="ec-card ec-card--cyan">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+                      <div>
+                        <div className="ec-territory ec-territory--cyan">SIGNAL<br />STREAM</div>
+                        <div className="ec-sub" style={{ color: '#00ffcc', marginBottom: 0 }}>RECENT MESSAGES</div>
                       </div>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(geminiInfo.recentMessages.join('\n'))}
+                        style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.22)', borderRadius: '3px 10px 3px 10px', color: '#00ff88', fontSize: '0.82rem', cursor: 'pointer', padding: '8px 16px', fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em', fontWeight: 800, flexShrink: 0 }}
+                      >
+                        COPY
+                      </button>
                     </div>
-                  </>
-                )
-              )}
+                    <div className="ec-terminal">
+                      {geminiInfo.recentMessages.length === 0
+                        ? <span style={{ color: 'rgba(255,255,255,0.12)', letterSpacing: '0.18em' }}>— NO_SIGNAL —</span>
+                        : geminiInfo.recentMessages.map((l, i) => <div key={i}>{l}</div>)
+                      }
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
 
-              {/* ── MANIFEST ──────────────────────────────────────────── */}
-              {activeFreq.id === 'MANIFEST' && <ManifestPanel pendingCoins={pendingCoins} />}
+            {/* ════════════════════════════════════════════════════════════
+                SALVAGE — prod logs + edge fn diagnostics
+                Gated behind password.
+            ════════════════════════════════════════════════════════════ */}
+            {activeFreq.id === 'SALVAGE' && (
+              !debugPassed ? (
+                /* Gate card */
+                <div className="ec-card ec-card--purple">
+                  <div className="ec-gate" data-testid="dev-gate-container">
+                    <div className="ec-territory ec-territory--purple" style={{ textAlign: 'center', fontSize: 'clamp(2rem, 8vw, 3rem)', filter: 'drop-shadow(0 0 30px rgba(176,38,255,0.5))' }}>
+                      ACCESS<br />RESTRICTED
+                    </div>
+                    <div className="ec-sub" style={{ color: '#b026ff', textAlign: 'center', marginBottom: 0 }}>SALVAGE BAY CLEARANCE REQUIRED</div>
+                    <div className="ec-divider" style={{ width: '60%', marginBottom: 0 }} />
+                    <input
+                      type="password"
+                      value={debugPw}
+                      onChange={e => setDebugPw(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && debugPw === '3nculturate!' && setDebugPassed(true)}
+                      placeholder="DECRYPTION KEY"
+                      data-testid="debug-password-input"
+                      className="ec-gate__input"
+                    />
+                    <motion.button
+                      onClick={() => { if (debugPw === '3nculturate!') setDebugPassed(true); }}
+                      whileHover={{ scale: 1.04, boxShadow: '0 0 44px rgba(176,38,255,0.5)' }}
+                      whileTap={{ scale: 0.97 }}
+                      data-testid="debug-access-btn"
+                      style={{ padding: '18px 40px', background: 'rgba(176,38,255,0.12)', border: '2px solid #b026ff', borderRadius: '4px 18px 4px 18px', color: '#b026ff', cursor: 'pointer', fontFamily: "'aAnotherTag', sans-serif", fontSize: 'clamp(1.2rem, 4vw, 1.6rem)', fontWeight: 900, letterSpacing: '0.12em', boxShadow: '0 0 22px rgba(176,38,255,0.24)' }}
+                    >
+                      DECRYPT
+                    </motion.button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* invisible test hook */}
+                  <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>SUPABASE CHAINFUELZ EDGE FUNCTION</div>
 
-              {/* Swipe affordance arrows */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 4px 0', flexShrink: 0 }}>
-                <motion.button
-                  onClick={() => goTo(activeIdx - 1)}
-                  disabled={activeIdx === 0}
-                  whileTap={{ scale: 0.88 }}
-                  style={{ background: 'none', border: 'none', color: activeIdx === 0 ? 'rgba(255,255,255,0.08)' : 'rgba(0,255,136,0.45)', cursor: activeIdx === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: "'PhillySans', monospace", fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.1em' }}
-                >
-                  <ChevronLeft size={18} />
-                  {activeIdx > 0 && FREQUENCIES[activeIdx - 1].label}
-                </motion.button>
-                <motion.button
-                  onClick={() => goTo(activeIdx + 1)}
-                  disabled={activeIdx === FREQUENCIES.length - 1}
-                  whileTap={{ scale: 0.88 }}
-                  style={{ background: 'none', border: 'none', color: activeIdx === FREQUENCIES.length - 1 ? 'rgba(255,255,255,0.08)' : 'rgba(0,255,136,0.45)', cursor: activeIdx === FREQUENCIES.length - 1 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: "'PhillySans', monospace", fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.1em' }}
-                >
-                  {activeIdx < FREQUENCIES.length - 1 && FREQUENCIES[activeIdx + 1].label}
-                  <ChevronRight size={18} />
-                </motion.button>
-              </div>
+                  {/* Card 1 — shell active status */}
+                  <div className="ec-card">
+                    <div className="ec-territory ec-territory--purple">ROOT<br />SHELL</div>
+                    <div className="ec-sub" style={{ color: '#b026ff' }}>SALVAGE BAY · {activeFreq.mhz}MHz</div>
+                    <div className="ec-divider" />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', background: 'rgba(0,0,0,0.45)', borderLeft: '4px solid #00ff88', borderRadius: '3px 14px 3px 14px' }}>
+                      <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.3 }} style={{ width: 10, height: 10, borderRadius: '50%', background: '#00ff88', boxShadow: '0 0 14px #00ff88', flexShrink: 0 }} />
+                      <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '1.0rem', color: '#00ff88', letterSpacing: '0.14em', fontWeight: 700 }}>›_ROOT_SHELL_ACTIVE</span>
+                    </div>
+                  </div>
 
-            </motion.div>
-          </AnimatePresence>
-        </motion.div>
+                  {/* Card 2 — prod log bridge */}
+                  <div className="ec-card ec-card--cyan">
+                    <div className="ec-territory ec-territory--cyan">PROD LOG<br />BRIDGE</div>
+                    <div className="ec-sub" style={{ color: '#00ffcc' }}>LIVE PRODUCTION TELEMETRY</div>
+                    <div className="ec-divider" />
+                    <ProdLogViewer />
+                  </div>
+
+                  {/* Card 3 — edge fn diagnostics */}
+                  <div className="ec-card ec-card--purple">
+                    <div className="ec-territory ec-territory--purple">SYSTEM<br />RECOVERY</div>
+                    <div className="ec-sub" style={{ color: '#b026ff' }}>EDGE FUNCTION DIAGNOSTICS</div>
+                    <div className="ec-divider" />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      {([
+                        ['RUN_ORACLE_HEALTH', 'oracle-conversation'],
+                        ['SYNC_COIN_METRICS', 'culture-coin-manager'],
+                      ] as [string, string][]).map(([label, fn]) => {
+                        const res = testResults[fn] as { success?: boolean; status?: number; timestamp?: string } | undefined;
+                        return (
+                          <div key={fn}>
+                            <motion.button
+                              className="ec-fn-btn"
+                              onClick={() => testEdgeFunction(fn)}
+                              whileHover={{ scale: 1.01 }}
+                              whileTap={{ scale: 0.98 }}
+                            >
+                              <span>{label}</span>
+                              {isLoading && (
+                                <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}>
+                                  <RefreshCw size={16} />
+                                </motion.span>
+                              )}
+                            </motion.button>
+                            {res && (
+                              <div style={{ marginTop: 8, padding: '12px 16px', background: (res.success ? 'rgba(0,255,136,0.06)' : 'rgba(255,68,102,0.06)'), border: `1px solid ${res.success ? 'rgba(0,255,136,0.18)' : 'rgba(255,68,102,0.18)'}`, borderRadius: '2px 12px 2px 12px', fontFamily: "'Share Tech Mono', monospace", fontSize: '0.84rem', color: res.success ? '#00ff88' : '#ff4466', letterSpacing: '0.08em' }}>
+                                {res.success ? '✓ ' : '✗ '}STATUS:{res.status} · {res.timestamp?.slice(11, 19)}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )
+            )}
+
+            {/* ════════════════════════════════════════════════════════════
+                MANIFEST — session signal + ritual progression
+            ════════════════════════════════════════════════════════════ */}
+            {activeFreq.id === 'MANIFEST' && <ManifestPanel pendingCoins={pendingCoins} />}
+
+          </motion.div>
+        </AnimatePresence>
 
         <div className="ec-safe" />
       </motion.div>
 
       {showUpgrade && userId && (
-        <InlineSubscriptionModal isOpen={showUpgrade} onClose={() => setShowUpgrade(false)} userId={userId} context="engage-further" onUpgradeSuccess={tier => { console.log('Upgraded:', tier); setShowUpgrade(false); }} />
+        <InlineSubscriptionModal
+          isOpen={showUpgrade}
+          onClose={() => setShowUpgrade(false)}
+          userId={userId}
+          context="engage-further"
+          onUpgradeSuccess={tier => { console.log('Upgraded:', tier); setShowUpgrade(false); }}
+        />
       )}
     </>
   );

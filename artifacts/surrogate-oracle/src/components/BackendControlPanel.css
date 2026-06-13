@@ -1,6 +1,6 @@
 /* BackendControlPanel — ENCULTURATE CRATE
-   Full-screen paged layout. One section = one screen. Swipe to navigate.
-   All fonts scaled for mobile legibility — nothing under 0.75rem.           */
+   Domino-card scroll layout. Exact knife/tour-card DNA throughout.
+   Font floor: 0.82rem. One concept per card. Nothing alien.       */
 
 /* ── Animations ──────────────────────────────────────────────────────────── */
 @keyframes ec-noise-jitter {
@@ -15,12 +15,8 @@
   to   { background-position: 0 40px; }
 }
 @keyframes ec-pulse {
-  0%,100% { opacity:1;    box-shadow: 0 0 10px var(--pc); }
-  50%     { opacity:0.25; box-shadow: 0 0 4px  var(--pc); }
-}
-@keyframes ec-float {
-  0%,100% { transform: translateY(0);   }
-  50%     { transform: translateY(-4px); }
+  0%,100% { opacity:1;    box-shadow: 0 0 10px var(--pc, #00ff88); }
+  50%     { opacity:0.25; box-shadow: 0 0 4px  var(--pc, #00ff88); }
 }
 @keyframes ec-await-blink {
   0%,100% { opacity: 0.18; }
@@ -36,14 +32,14 @@
   flex-direction: column;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 0%,   rgba(0,255,136,0.06)  0%, transparent 55%),
-    radial-gradient(circle at 0%  100%, rgba(176,38,255,0.05) 0%, transparent 50%),
-    rgba(0, 1, 8, 0.94);
+    radial-gradient(circle at 50% 0%,   rgba(0,255,136,0.07)  0%, transparent 55%),
+    radial-gradient(circle at 0%  100%, rgba(176,38,255,0.06) 0%, transparent 50%),
+    rgba(0, 1, 8, 0.96);
   backdrop-filter: blur(36px) saturate(1.9);
   -webkit-backdrop-filter: blur(36px) saturate(1.9);
 }
 
-/* Film grain — same as oracle stage */
+/* Film grain — same token as oracle stage */
 .ec-overlay::after {
   content: "";
   position: absolute;
@@ -65,7 +61,7 @@
   z-index: 199;
   background: repeating-linear-gradient(
     0deg, transparent, transparent 3px,
-    rgba(0,255,136,0.009) 3px, rgba(0,255,136,0.009) 4px
+    rgba(0,255,136,0.008) 3px, rgba(0,255,136,0.008) 4px
   );
   animation: ec-scanline-drift 16s linear infinite;
 }
@@ -78,8 +74,9 @@
   justify-content: space-between;
   padding: 18px 22px 14px;
   border-bottom: 1px solid rgba(0,255,136,0.08);
-  background: rgba(0,0,6,0.5);
+  background: rgba(0,0,6,0.6);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   position: relative;
   z-index: 10;
 }
@@ -125,8 +122,8 @@
   border-radius: 50%;
   color: rgba(255,255,255,0.4);
   cursor: pointer;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -141,154 +138,141 @@
   flex-shrink: 0;
   display: flex;
   align-items: stretch;
-  background: rgba(0,0,4,0.6);
+  background: rgba(0,0,4,0.7);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(0,255,136,0.07);
   overflow-x: auto;
   scrollbar-width: none;
   z-index: 9;
+  position: relative;
 }
 .ec-nav::-webkit-scrollbar { display: none; }
 
 .ec-nav__btn {
   flex: 1;
-  min-width: 68px;
+  min-width: 60px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 14px 8px 12px;
+  padding: 13px 8px 11px;
   border: none;
   border-bottom: 3px solid transparent;
   background: transparent;
-  color: rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.22);
   cursor: pointer;
   touch-action: manipulation;
   transition: color 0.18s, background 0.18s, border-color 0.18s;
-  animation: ec-float 3.5s ease-in-out infinite;
   position: relative;
 }
-.ec-nav__btn:nth-child(1) { animation-delay: 0s;   }
-.ec-nav__btn:nth-child(2) { animation-delay: 0.4s; }
-.ec-nav__btn:nth-child(3) { animation-delay: 0.8s; }
-.ec-nav__btn:nth-child(4) { animation-delay: 1.2s; }
-.ec-nav__btn:nth-child(5) { animation-delay: 1.6s; }
-.ec-nav__btn:nth-child(6) { animation-delay: 2.0s; }
-.ec-nav__btn:active { transform: scale(0.91) !important; animation-play-state: paused; }
+.ec-nav__btn:active { transform: scale(0.91); }
 
 .ec-nav__btn--on {
   color: #00ff88;
   border-bottom-color: #00ff88;
-  background: rgba(0,255,136,0.05);
+  background: rgba(0,255,136,0.06);
   box-shadow: inset 0 -2px 12px rgba(0,255,136,0.08);
 }
 .ec-nav__btn--on-purple {
   color: #b026ff;
   border-bottom-color: #b026ff;
-  background: rgba(176,38,255,0.05);
+  background: rgba(176,38,255,0.06);
   box-shadow: inset 0 -2px 12px rgba(176,38,255,0.08);
+}
+.ec-nav__btn--on-cyan {
+  color: #00ffcc;
+  border-bottom-color: #00ffcc;
+  background: rgba(0,255,204,0.06);
+  box-shadow: inset 0 -2px 12px rgba(0,255,204,0.08);
 }
 
 .ec-nav__icon {
-  opacity: 0.22;
+  opacity: 0.25;
   transition: opacity 0.18s, filter 0.18s;
 }
-.ec-nav__btn--on .ec-nav__icon        { opacity: 1; filter: drop-shadow(0 0 7px #00ff88); }
+.ec-nav__btn--on        .ec-nav__icon { opacity: 1; filter: drop-shadow(0 0 7px #00ff88); }
 .ec-nav__btn--on-purple .ec-nav__icon { opacity: 1; filter: drop-shadow(0 0 7px #b026ff); }
+.ec-nav__btn--on-cyan   .ec-nav__icon { opacity: 1; filter: drop-shadow(0 0 7px #00ffcc); }
 
 .ec-nav__label {
   font-family: 'PhillySans', monospace;
-  font-size: 0.56rem;
+  font-size: 0.6rem;
   font-weight: 800;
   letter-spacing: 0.12em;
   line-height: 1;
-  opacity: 0.22;
+  opacity: 0.25;
   white-space: nowrap;
   transition: opacity 0.18s;
 }
-.ec-nav__btn--on .ec-nav__label        { opacity: 1; text-shadow: 0 0 10px rgba(0,255,136,0.65); }
+.ec-nav__btn--on        .ec-nav__label { opacity: 1; text-shadow: 0 0 10px rgba(0,255,136,0.65); }
 .ec-nav__btn--on-purple .ec-nav__label { opacity: 1; text-shadow: 0 0 10px rgba(176,38,255,0.65); }
+.ec-nav__btn--on-cyan   .ec-nav__label { opacity: 1; text-shadow: 0 0 10px rgba(0,255,204,0.65); }
 
-/* Swipe hint dot row */
-.ec-swipe-dots {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 0 2px;
-  flex-shrink: 0;
-}
-.ec-swipe-dot {
-  width: 5px; height: 5px;
-  border-radius: 50%;
-  background: rgba(0,255,136,0.18);
-  transition: background 0.2s, transform 0.2s;
-}
-.ec-swipe-dot--on {
-  background: #00ff88;
-  transform: scale(1.5);
-  box-shadow: 0 0 8px #00ff88;
-}
-
-/* ── Page content ────────────────────────────────────────────────────────── */
+/* ── Page — scrollable domino column ─────────────────────────────────────── */
 .ec-page {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  padding: 28px 20px 32px;
+  padding: 26px 18px 56px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
   position: relative;
   z-index: 5;
   overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,255,136,0.14) transparent;
 }
+.ec-page::-webkit-scrollbar { width: 3px; }
+.ec-page::-webkit-scrollbar-thumb { background: rgba(0,255,136,0.18); border-radius: 2px; }
 
-/* ── Card — knife border gradient ────────────────────────────────────────── */
+/* ── Domino card — exact knife-card spec ─────────────────────────────────── */
 .ec-card {
   position: relative;
   background: linear-gradient(
     158deg,
     rgba(0,255,136,0.06) 0%,
-    rgba(0,0,0,0.04)     48%,
+    rgba(0,0,0,0.03)     48%,
     rgba(176,38,255,0.06) 100%
   );
-  backdrop-filter: blur(18px) saturate(2.0);
-  -webkit-backdrop-filter: blur(18px) saturate(2.0);
+  backdrop-filter: blur(4px) saturate(1.9);
+  -webkit-backdrop-filter: blur(4px) saturate(1.9);
   border-radius: 18px;
-  padding: 28px 22px 24px;
+  padding: 32px 26px 28px;
   overflow: visible;
 }
+
+/* Gradient border — knife card mask trick */
 .ec-card::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: 18px;
   padding: 1.5px;
-  background: linear-gradient(to bottom, #00ff88 0%, rgba(0,255,136,0.28) 38%, rgba(176,38,255,0.28) 62%, #b026ff 100%);
+  background: linear-gradient(to bottom, #00ff88 0%, rgba(0,255,136,0.3) 38%, rgba(176,38,255,0.3) 62%, #b026ff 100%);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
-  opacity: 0.65;
-  transition: opacity 0.3s ease;
+  opacity: 0.6;
+  transition: opacity 0.3s;
 }
 .ec-card:hover::before { opacity: 0.9; }
 
 .ec-card--cyan::before {
-  background: linear-gradient(to bottom, #00ffcc 0%, rgba(0,255,204,0.28) 38%, rgba(0,255,136,0.28) 62%, #00ff88 100%);
+  background: linear-gradient(to bottom, #00ffcc 0%, rgba(0,255,204,0.3) 38%, rgba(0,255,136,0.3) 62%, #00ff88 100%);
 }
 .ec-card--purple::before {
-  background: linear-gradient(to bottom, #b026ff 0%, rgba(176,38,255,0.28) 38%, rgba(0,255,136,0.28) 62%, #00ff88 100%);
+  background: linear-gradient(to bottom, #b026ff 0%, rgba(176,38,255,0.3) 38%, rgba(0,255,136,0.3) 62%, #00ff88 100%);
 }
 
-/* ── Typography scale ────────────────────────────────────────────────────── */
-
-/* Knife-card territory size — big, commanding */
-.ec-h1 {
-  font-family: 'aAnotherTag', sans-serif;
-  font-size: clamp(2.0rem, 7.5vw, 3.2rem);
+/* ── Territory title — knife card scale ──────────────────────────────────── */
+.ec-territory {
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(2.0rem, 6.5vw, 2.9rem);
   font-weight: 900;
   letter-spacing: 0.05em;
   line-height: 1.0;
@@ -298,28 +282,16 @@
   background-clip: text;
   margin-bottom: 6px;
 }
-.ec-h1--cyan   { background-image: linear-gradient(105deg, #00ffcc 0%, #00ff88 100%); }
-.ec-h1--purple { background-image: linear-gradient(105deg, #b026ff 0%, #d060ff 100%); }
+.ec-territory--cyan   { background-image: linear-gradient(105deg, #00ffcc 0%, #00ff88 100%); }
+.ec-territory--purple { background-image: linear-gradient(105deg, #b026ff 0%, #d060ff 100%); }
 
-.ec-h2 {
-  font-family: 'aAnotherTag', sans-serif;
-  font-size: clamp(1.4rem, 5vw, 2.2rem);
-  font-weight: 900;
-  letter-spacing: 0.05em;
-  line-height: 1.05;
-  background: linear-gradient(105deg, #00ff88 0%, #00ffcc 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin-bottom: 4px;
-}
-
+/* ── Sub-label ───────────────────────────────────────────────────────────── */
 .ec-sub {
   font-family: 'PhillySans', monospace;
-  font-size: 0.78rem;
+  font-size: 0.84rem;
   font-weight: 800;
   letter-spacing: 0.2em;
-  color: rgba(0,255,204,0.38);
+  color: rgba(0,255,204,0.42);
   text-transform: uppercase;
   margin-bottom: 22px;
 }
@@ -328,7 +300,7 @@
 .ec-divider {
   width: 70%;
   height: 1px;
-  margin: 0 auto 22px;
+  margin: 0 auto 26px;
   background: linear-gradient(90deg, transparent 0%, rgba(0,255,136,0.4) 30%, rgba(176,38,255,0.4) 70%, transparent 100%);
 }
 
@@ -337,27 +309,27 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
-  padding: 20px 18px;
-  background: rgba(0,0,0,0.45);
+  gap: 6px;
+  padding: 24px 22px;
+  background: rgba(0,0,0,0.48);
   border-left: 4px solid #00ff88;
-  border-radius: 2px 14px 2px 14px;
+  border-radius: 3px 16px 3px 16px;
 }
 .ec-hero-stat__label {
   font-family: 'PhillySans', monospace;
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   font-weight: 800;
   letter-spacing: 0.2em;
-  color: rgba(0,255,136,0.5);
+  color: rgba(0,255,136,0.52);
   text-transform: uppercase;
 }
 .ec-hero-stat__value {
   font-family: 'Share Tech Mono', monospace;
-  font-size: clamp(2.4rem, 9vw, 3.8rem);
+  font-size: clamp(2.8rem, 11vw, 4.4rem);
   font-weight: 700;
   color: #00ff88;
   line-height: 1.0;
-  text-shadow: 0 0 32px rgba(0,255,136,0.75);
+  text-shadow: 0 0 44px rgba(0,255,136,0.85);
   letter-spacing: -0.01em;
 }
 
@@ -365,52 +337,54 @@
 .ec-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 15px 18px;
-  margin-bottom: 8px;
-  background: rgba(0,0,0,0.42);
+  align-items: flex-start;
+  padding: 16px 18px;
+  margin-bottom: 10px;
+  background: rgba(0,0,0,0.44);
   border-left: 3px solid rgba(0,255,136,0.5);
   border-radius: 2px 12px 2px 12px;
   gap: 16px;
 }
 .ec-row__label {
   font-family: 'PhillySans', monospace;
-  font-size: 0.75rem;
+  font-size: 0.84rem;
   font-weight: 700;
-  color: rgba(255,255,255,0.32);
+  color: rgba(255,255,255,0.35);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   flex-shrink: 0;
+  padding-top: 2px;
 }
 .ec-row__value {
   font-family: 'Share Tech Mono', monospace;
-  font-size: 1.0rem;
+  font-size: 1.08rem;
   color: #00ffcc;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   text-align: right;
   word-break: break-all;
+  line-height: 1.4;
 }
 
-/* ── Metric card ─────────────────────────────────────────────────────────── */
+/* ── Metric grid cell ────────────────────────────────────────────────────── */
 .ec-metric {
-  background: rgba(0,0,0,0.5);
-  border-bottom: 3px solid rgba(0,255,204,0.4);
+  background: rgba(0,0,0,0.52);
+  border-bottom: 3px solid rgba(0,255,204,0.35);
   border-radius: 3px 12px 3px 12px;
-  padding: 16px 16px 14px;
+  padding: 18px 16px 16px;
 }
 .ec-metric__label {
   font-family: 'PhillySans', monospace;
-  font-size: 0.65rem;
+  font-size: 0.8rem;
   letter-spacing: 0.16em;
   font-weight: 800;
-  color: rgba(0,255,204,0.5);
+  color: rgba(0,255,204,0.52);
   text-transform: uppercase;
-  margin-bottom: 7px;
+  margin-bottom: 8px;
 }
 .ec-metric__value {
   font-family: 'Share Tech Mono', monospace;
-  font-size: clamp(1.4rem, 5vw, 2.0rem);
+  font-size: clamp(1.55rem, 5.5vw, 2.3rem);
   font-weight: 700;
   color: rgba(255,255,255,0.95);
   line-height: 1.0;
@@ -421,13 +395,13 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 14px;
+  padding: 9px 16px;
   background: rgba(0,255,136,0.08);
-  border: 1px solid rgba(0,255,136,0.28);
+  border: 1px solid rgba(0,255,136,0.25);
   border-left: 3px solid #00ff88;
   border-radius: 2px 10px 2px 10px;
   font-family: 'PhillySans', monospace;
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   font-weight: 800;
   letter-spacing: 0.14em;
   color: #00ff88;
@@ -442,16 +416,16 @@
   flex-shrink: 0;
 }
 
-/* ── Terminal ────────────────────────────────────────────────────────────── */
+/* ── Terminal stream ─────────────────────────────────────────────────────── */
 .ec-terminal {
   background: rgba(0,0,0,0.6);
   border: 1px solid rgba(0,255,136,0.1);
-  border-radius: 4px 12px 4px 12px;
-  padding: 14px 14px;
-  max-height: 200px;
+  border-radius: 4px 14px 4px 14px;
+  padding: 16px;
+  max-height: 230px;
   overflow-y: auto;
   font-family: 'Share Tech Mono', monospace;
-  font-size: 0.78rem;
+  font-size: 0.86rem;
   color: #00ff88;
   line-height: 2.0;
   scrollbar-width: thin;
@@ -463,32 +437,32 @@
   padding: 50px 0;
   text-align: center;
   font-family: 'Share Tech Mono', monospace;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   letter-spacing: 0.2em;
   color: #00ffcc;
   animation: ec-await-blink 2.8s ease-in-out infinite;
 }
 
-/* ── Gate password ───────────────────────────────────────────────────────── */
+/* ── Gate — password protect ─────────────────────────────────────────────── */
 .ec-gate {
-  padding: 40px 16px;
+  padding: 44px 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 22px;
 }
 .ec-gate__input {
   width: 100%;
-  max-width: 340px;
+  max-width: 360px;
   box-sizing: border-box;
   background: rgba(0,0,0,0.55);
   border: 1px solid rgba(176,38,255,0.28);
   border-left: 4px solid rgba(176,38,255,0.6);
-  border-radius: 3px 12px 3px 12px;
-  padding: 16px 18px;
+  border-radius: 3px 14px 3px 14px;
+  padding: 18px 20px;
   color: #b026ff;
   font-family: 'Share Tech Mono', monospace;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   text-align: center;
   outline: none;
   letter-spacing: 0.22em;
@@ -496,44 +470,75 @@
 }
 .ec-gate__input:focus {
   border-color: rgba(176,38,255,0.6);
-  box-shadow: 0 0 24px rgba(176,38,255,0.2);
+  box-shadow: 0 0 28px rgba(176,38,255,0.22);
 }
 
 /* ── Upgrade button ──────────────────────────────────────────────────────── */
 .ec-upgrade-btn {
   width: 100%;
-  padding: 20px 22px;
+  padding: 22px 24px;
   background: linear-gradient(135deg, rgba(22,0,50,0.92), rgba(176,38,255,0.65));
   border: 1px solid rgba(176,38,255,0.4);
   border-left: 4px solid #b026ff;
   border-radius: 4px 20px 4px 20px;
   color: rgba(255,255,255,0.93);
   font-family: 'aAnotherTag', sans-serif;
-  font-size: clamp(1.1rem, 4vw, 1.5rem);
+  font-size: clamp(1.2rem, 4vw, 1.6rem);
   font-weight: 900;
   letter-spacing: 0.1em;
   cursor: pointer;
   transition: box-shadow 0.2s, transform 0.15s;
   box-shadow: 0 4px 28px rgba(0,0,0,0.6), 0 0 22px rgba(176,38,255,0.14);
+  text-align: center;
 }
 .ec-upgrade-btn:hover  { box-shadow: 0 4px 44px rgba(0,0,0,0.7), 0 0 44px rgba(176,38,255,0.4); transform: scale(1.016); }
 .ec-upgrade-btn:active { transform: scale(0.985); }
 
 /* ── Log viewer ──────────────────────────────────────────────────────────── */
+.ec-log-list {
+  background: rgba(0,0,0,0.52);
+  border: 1px solid rgba(0,255,136,0.08);
+  border-radius: 4px 16px 4px 16px;
+  max-height: 48vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,255,136,0.15) transparent;
+}
+
 .ec-log-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-bottom: 1px solid rgba(0,255,136,0.05);
   cursor: pointer;
   transition: background 0.12s;
 }
 .ec-log-row:hover { background: rgba(0,255,136,0.04); }
 
-.ec-log__time  { font-family: 'Share Tech Mono', monospace; font-size: 0.68rem; color: rgba(255,255,255,0.2); flex-shrink: 0; min-width: 52px; }
-.ec-log__event { font-family: 'PhillySans', monospace; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.08em; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ec-log__sid   { font-family: 'Share Tech Mono', monospace; font-size: 0.6rem; color: rgba(255,255,255,0.14); flex-shrink: 0; }
+.ec-log__time  {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.84rem;
+  color: rgba(255,255,255,0.25);
+  flex-shrink: 0;
+  min-width: 60px;
+}
+.ec-log__event {
+  font-family: 'PhillySans', monospace;
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ec-log__sid {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.74rem;
+  color: rgba(255,255,255,0.18);
+  flex-shrink: 0;
+}
 
 /* Filter input */
 .ec-filter {
@@ -542,19 +547,58 @@
   background: rgba(0,0,0,0.55);
   border: 1px solid rgba(0,255,136,0.18);
   border-left: 3px solid rgba(0,255,136,0.45);
-  border-radius: 3px 10px 3px 10px;
-  padding: 13px 16px;
+  border-radius: 3px 12px 3px 12px;
+  padding: 15px 18px;
   color: #00ff88;
   font-family: 'Share Tech Mono', monospace;
-  font-size: 0.82rem;
+  font-size: 0.92rem;
   outline: none;
   letter-spacing: 0.08em;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .ec-filter:focus {
   border-color: rgba(0,255,136,0.45);
-  box-shadow: 0 0 16px rgba(0,255,136,0.12);
+  box-shadow: 0 0 18px rgba(0,255,136,0.12);
 }
 
-/* ── Bottom safe area ────────────────────────────────────────────────────── */
-.ec-safe { height: env(safe-area-inset-bottom, 0px); background: rgba(0,1,8,0.5); flex-shrink: 0; }
+/* ── Edge fn test button ─────────────────────────────────────────────────── */
+.ec-fn-btn {
+  width: 100%;
+  padding: 18px 20px;
+  text-align: left;
+  cursor: pointer;
+  background: rgba(176,38,255,0.07);
+  border: 1px solid rgba(176,38,255,0.22);
+  border-left: 4px solid rgba(176,38,255,0.55);
+  border-radius: 2px 14px 2px 14px;
+  color: #b026ff;
+  font-family: 'PhillySans', monospace;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.ec-fn-btn:hover  { background: rgba(176,38,255,0.12); box-shadow: 0 0 20px rgba(176,38,255,0.2); }
+.ec-fn-btn:active { transform: scale(0.98); }
+
+/* ── Phase pill ──────────────────────────────────────────────────────────── */
+.ec-phase-pill {
+  flex: 1;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px 10px 2px 10px;
+}
+.ec-phase-pill__label {
+  font-family: 'PhillySans', monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.1em;
+  font-weight: 800;
+}
+
+/* ── Safe area ───────────────────────────────────────────────────────────── */
+.ec-safe { height: env(safe-area-inset-bottom, 0px); background: rgba(0,1,8,0.6); flex-shrink: 0; }

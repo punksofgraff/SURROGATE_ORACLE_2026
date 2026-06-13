@@ -1,0 +1,528 @@
+/* BackendControlPanel — ENCULTURATE CRATE
+   Visual DNA pulled directly from the alley / knife-card experience.
+   Every class here is prefixed .ec- to avoid collisions.                     */
+
+/* ── Noise jitter (same as oracle-stage::after) ──────────────────────────── */
+@keyframes ec-noise-jitter {
+  0%   { transform: translate(0,    0   ) }
+  25%  { transform: translate(-2px, 1px ) }
+  50%  { transform: translate(1px,  -2px) }
+  75%  { transform: translate(2px,  0px ) }
+  100% { transform: translate(0,    0   ) }
+}
+
+@keyframes ec-btn-float {
+  0%,100% { transform: translateY(0px);   }
+  50%     { transform: translateY(-5px);  }
+}
+
+@keyframes ec-pulse-dot {
+  0%,100% { opacity: 1;    box-shadow: 0 0 8px var(--dot-c);  }
+  50%     { opacity: 0.35; box-shadow: 0 0 4px var(--dot-c);  }
+}
+
+/* ── Panel overlay — full screen, alley bleeds through ───────────────────── */
+.ec-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Same dark wash as oracle-stage background */
+  background:
+    radial-gradient(circle at center, transparent 30%, rgba(0,0,0,0.6) 100%),
+    rgba(0, 1, 8, 0.91);
+  backdrop-filter: blur(32px) saturate(1.8);
+  -webkit-backdrop-filter: blur(32px) saturate(1.8);
+}
+
+/* Grain noise overlay — identical to oracle-stage::after */
+.ec-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.045;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  animation: ec-noise-jitter 0.22s steps(2) infinite;
+  z-index: 200;
+}
+
+/* Radial alley atmosphere glow — mirrors oracle-stage atmosphere layers */
+.ec-atmosphere {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 35% at 50% 100%, rgba(0,255,136,0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 55% 25% at 0% 50%,   rgba(0,255,136,0.04) 0%, transparent 55%),
+    radial-gradient(ellipse 55% 25% at 100% 50%, rgba(176,38,255,0.04) 0%, transparent 55%);
+  z-index: 1;
+}
+
+/* Scanline drift — same as .oracle-scanlines */
+.ec-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 255, 136, 0.012) 2px,
+    rgba(0, 255, 136, 0.012) 4px
+  );
+  animation: ec-scanline-drift 14s linear infinite;
+}
+@keyframes ec-scanline-drift {
+  from { background-position: 0 0; }
+  to   { background-position: 0 40px; }
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+.ec-header {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  padding: 22px 20px 0;
+  background: rgba(0,1,8,0.45);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(0,255,136,0.07);
+}
+
+.ec-header__brand {
+  font-family: 'aAnotherTag', sans-serif;
+  font-size: clamp(1.9rem, 7vw, 2.6rem);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1.0;
+  background: linear-gradient(100deg, #00ff88 0%, #00ffcc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 28px rgba(0,255,136,0.35));
+}
+
+.ec-header__sub {
+  font-family: 'PhillySans', monospace;
+  font-size: 0.52rem;
+  font-weight: 800;
+  color: rgba(0,255,204,0.35);
+  letter-spacing: 0.26em;
+  margin-top: 5px;
+}
+
+.ec-header__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 12px;
+  border-top: 1px solid rgba(0,255,136,0.06);
+  margin-top: 10px;
+}
+
+/* ── Freq nav — floating bottom-bar style ──────────────────────────────────── */
+.ec-nav {
+  display: flex;
+  flex-shrink: 0;
+  background: rgba(0,0,4,0.55);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(0,255,136,0.06);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  z-index: 9;
+  padding: 0 6px;
+  gap: 2px;
+}
+.ec-nav::-webkit-scrollbar { display: none; }
+
+.ec-nav__btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 13px 11px 10px;
+  border-radius: 14px;
+  border: 1.5px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  min-width: 60px;
+  flex-shrink: 0;
+  touch-action: manipulation;
+  user-select: none;
+  transition: transform 0.14s ease, border-color 0.18s ease;
+  animation: ec-btn-float 3.2s ease-in-out infinite;
+  color: rgba(255,255,255,0.22);
+}
+
+.ec-nav__btn:nth-child(1) { animation-delay: 0s;    }
+.ec-nav__btn:nth-child(2) { animation-delay: 0.4s;  }
+.ec-nav__btn:nth-child(3) { animation-delay: 0.8s;  }
+.ec-nav__btn:nth-child(4) { animation-delay: 1.2s;  }
+.ec-nav__btn:nth-child(5) { animation-delay: 1.6s;  }
+.ec-nav__btn:nth-child(6) { animation-delay: 2.0s;  }
+
+.ec-nav__btn:active {
+  transform: scale(0.92) !important;
+  animation-play-state: paused;
+}
+
+.ec-nav__btn--active {
+  border-color: rgba(0,255,136,0.28);
+  color: #00ff88;
+  box-shadow:
+    0 4px 20px rgba(0,0,0,0.55),
+    0 0 20px rgba(0,255,136,0.18),
+    inset 0 1px 0 rgba(0,255,136,0.1);
+}
+
+.ec-nav__btn--active-purple {
+  border-color: rgba(176,38,255,0.35);
+  color: #b026ff;
+  box-shadow:
+    0 4px 20px rgba(0,0,0,0.55),
+    0 0 20px rgba(176,38,255,0.22),
+    inset 0 1px 0 rgba(176,38,255,0.1);
+}
+
+.ec-nav__icon {
+  transition: filter 0.18s ease, opacity 0.18s ease;
+  opacity: 0.22;
+}
+.ec-nav__btn--active     .ec-nav__icon { opacity: 1; filter: drop-shadow(0 0 6px #00ff88); }
+.ec-nav__btn--active-purple .ec-nav__icon { opacity: 1; filter: drop-shadow(0 0 6px #b026ff); }
+
+.ec-nav__label {
+  font-family: 'PhillySans', monospace;
+  font-size: 0.46rem;
+  letter-spacing: 0.12em;
+  font-weight: 800;
+  opacity: 0.28;
+  white-space: nowrap;
+  line-height: 1;
+  transition: opacity 0.18s ease, text-shadow 0.18s ease;
+}
+.ec-nav__btn--active     .ec-nav__label { opacity: 0.9; text-shadow: 0 0 8px rgba(0,255,136,0.6); }
+.ec-nav__btn--active-purple .ec-nav__label { opacity: 0.9; text-shadow: 0 0 8px rgba(176,38,255,0.6); }
+
+/* Active glow underline */
+.ec-nav__btn--active::after,
+.ec-nav__btn--active-purple::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 10%; right: 10%;
+  height: 2px;
+  border-radius: 2px;
+  filter: blur(2px);
+}
+.ec-nav__btn--active::after       { background: linear-gradient(90deg, transparent, #00ff88, transparent); }
+.ec-nav__btn--active-purple::after { background: linear-gradient(90deg, transparent, #b026ff, transparent); }
+
+/* ── Content scroll area ─────────────────────────────────────────────────── */
+.ec-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 20px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+  z-index: 5;
+}
+
+/* ── Knife-card identical glass card ────────────────────────────────────────
+   Exact same gradient-border mask trick as .oracle-knife-card::before        */
+.ec-card {
+  position: relative;
+  /* same diagonal brand wash as knife card */
+  background: linear-gradient(
+    158deg,
+    rgba(0,255,136,0.055) 0%,
+    rgba(0,0,0,0.04)      48%,
+    rgba(176,38,255,0.055) 100%
+  );
+  backdrop-filter: blur(18px) saturate(2.0);
+  -webkit-backdrop-filter: blur(18px) saturate(2.0);
+  border-radius: 16px;
+  padding: 26px 22px 22px;
+  overflow: visible;
+}
+
+/* Gradient border — green top → purple bottom, exactly knife-card::before */
+.ec-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  padding: 1.5px;
+  background: linear-gradient(
+    to bottom,
+    #00ff88                   0%,
+    rgba(0,255,136,0.30)     38%,
+    rgba(176,38,255,0.30)    62%,
+    #b026ff                  100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.68;
+  transition: opacity 0.3s ease;
+}
+.ec-card:hover::before { opacity: 0.92; }
+
+/* Color variants */
+.ec-card--cyan::before {
+  background: linear-gradient(
+    to bottom,
+    #00ffcc                   0%,
+    rgba(0,255,204,0.30)     38%,
+    rgba(0,255,136,0.30)     62%,
+    #00ff88                  100%
+  );
+}
+.ec-card--purple::before {
+  background: linear-gradient(
+    to bottom,
+    #b026ff                   0%,
+    rgba(176,38,255,0.30)    38%,
+    rgba(0,255,136,0.30)     62%,
+    #00ff88                  100%
+  );
+}
+
+/* ── Knife-style section divider ─────────────────────────────────────────── */
+.ec-divider {
+  width: 72%;
+  height: 1px;
+  margin: 0 auto 18px;
+  background: linear-gradient(
+    90deg,
+    transparent              0%,
+    rgba(0,255,136,0.4)     30%,
+    rgba(176,38,255,0.4)    70%,
+    transparent             100%
+  );
+}
+
+/* ── Territory-scale title (knife card DNA) ──────────────────────────────── */
+.ec-title {
+  font-family: 'aAnotherTag', sans-serif;
+  font-size: clamp(1.4rem, 5vw, 2.0rem);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 1.05;
+  background: linear-gradient(110deg, #00ff88 0%, #00ffcc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 4px;
+}
+.ec-title--cyan   { background-image: linear-gradient(110deg, #00ffcc 0%, #00ff88 100%); }
+.ec-title--purple { background-image: linear-gradient(110deg, #b026ff 0%, #d060ff 100%); }
+
+.ec-subtitle {
+  font-family: 'PhillySans', monospace;
+  font-size: 0.52rem;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  opacity: 0.38;
+  margin-bottom: 20px;
+  text-transform: uppercase;
+}
+
+/* ── Data row — same structure as knife territory row ────────────────────── */
+.ec-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  margin-bottom: 6px;
+  background: rgba(0,0,0,0.45);
+  border-left: 3px solid rgba(0,255,136,0.5);
+  border-radius: 2px 10px 2px 10px;
+  transition: background 0.15s ease;
+}
+.ec-row:hover { background: rgba(0,255,136,0.04); }
+.ec-row__label {
+  font-family: 'PhillySans', monospace;
+  font-size: 0.54rem;
+  color: rgba(255,255,255,0.32);
+  letter-spacing: 0.16em;
+  font-weight: 700;
+}
+.ec-row__value {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.9rem;
+  color: #00ffcc;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+/* ── Metric block ────────────────────────────────────────────────────────── */
+.ec-metric {
+  background: rgba(0,0,0,0.5);
+  border-bottom: 3px solid rgba(0,255,204,0.4);
+  border-radius: 2px 10px 2px 10px;
+  padding: 14px 14px 12px;
+}
+.ec-metric__label {
+  font-family: 'PhillySans', monospace;
+  font-size: 0.5rem;
+  letter-spacing: 0.18em;
+  font-weight: 800;
+  color: rgba(0,255,204,0.55);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.ec-metric__value {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.95);
+}
+
+/* ── Badge ───────────────────────────────────────────────────────────────── */
+.ec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: rgba(0,255,136,0.08);
+  border: 1px solid rgba(0,255,136,0.28);
+  border-left: 3px solid #00ff88;
+  border-radius: 1px 8px 1px 8px;
+  font-family: 'PhillySans', monospace;
+  font-size: 0.54rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #00ff88;
+}
+.ec-badge__dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: #00ff88;
+  box-shadow: 0 0 6px #00ff88;
+  --dot-c: #00ff88;
+  animation: ec-pulse-dot 1.6s ease-in-out infinite;
+}
+
+/* ── Terminal stream ─────────────────────────────────────────────────────── */
+.ec-terminal {
+  background: rgba(0,0,0,0.6);
+  border: 1px solid rgba(0,255,136,0.1);
+  border-radius: 3px 10px 3px 10px;
+  padding: 10px 12px;
+  max-height: 150px;
+  overflow-y: auto;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  color: #00ff88;
+  line-height: 1.9;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,255,136,0.2) transparent;
+}
+
+/* ── Password gate ───────────────────────────────────────────────────────── */
+.ec-gate__input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(176,38,255,0.28);
+  border-left: 3px solid rgba(176,38,255,0.6);
+  border-radius: 2px 10px 2px 10px;
+  padding: 14px 16px;
+  color: #b026ff;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.95rem;
+  text-align: center;
+  outline: none;
+  letter-spacing: 0.2em;
+  margin-bottom: 16px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.ec-gate__input:focus {
+  border-color: rgba(176,38,255,0.6);
+  box-shadow: 0 0 20px rgba(176,38,255,0.18);
+}
+
+/* ── Log viewer rows ─────────────────────────────────────────────────────── */
+.ec-log-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(0,255,136,0.04);
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+.ec-log-row:hover { background: rgba(0,255,136,0.04); }
+
+/* ── Bottom safe area ────────────────────────────────────────────────────── */
+.ec-safe-area {
+  height: env(safe-area-inset-bottom, 0px);
+  flex-shrink: 0;
+  background: rgba(0,1,8,0.4);
+}
+
+/* ── Close button ────────────────────────────────────────────────────────── */
+.ec-close {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 50%;
+  color: rgba(255,255,255,0.38);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s, transform 0.15s;
+}
+.ec-close:hover  { color: #00ff88; background: rgba(0,255,136,0.08); }
+.ec-close:active { transform: scale(0.9); }
+
+/* ── Upgrade button ──────────────────────────────────────────────────────── */
+.ec-upgrade-btn {
+  width: 100%;
+  padding: 17px 20px;
+  background: linear-gradient(135deg, rgba(22,0,50,0.93), rgba(176,38,255,0.62));
+  border: 1px solid rgba(176,38,255,0.4);
+  border-left: 3px solid #b026ff;
+  border-radius: 3px 18px 3px 18px;
+  color: rgba(255,255,255,0.93);
+  font-family: 'aAnotherTag', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
+  box-shadow: 0 4px 28px rgba(0,0,0,0.6), 0 0 24px rgba(176,38,255,0.14);
+  backdrop-filter: blur(10px);
+}
+.ec-upgrade-btn:hover  { box-shadow: 0 4px 40px rgba(0,0,0,0.7), 0 0 40px rgba(176,38,255,0.35); transform: scale(1.015); }
+.ec-upgrade-btn:active { transform: scale(0.985); }
+
+/* ── Awaiting signal placeholder ─────────────────────────────────────────── */
+@keyframes ec-await-pulse {
+  0%,100% { opacity: 0.2; }
+  50%     { opacity: 0.7; }
+}
+.ec-await {
+  padding: 36px 0;
+  text-align: center;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.22em;
+  color: #00ffcc;
+  animation: ec-await-pulse 2.8s ease-in-out infinite;
+}

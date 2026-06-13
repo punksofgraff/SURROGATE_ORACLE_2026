@@ -1,9 +1,10 @@
 /**
  * BackendControlPanel — ENCULTURATE CRATE
- * Redesigned: mobile-first · glassmorphism · domino cards · glide transitions
+ * Full-screen overlay · knife-card borders · floating nav · unbroken alley
  */
+import './BackendControlPanel.css';
 import { useState, useEffect, useRef, RefObject, useCallback } from 'react';
-import { X, Wallet, Cpu, RefreshCw, Radio, Image, Zap, Database, Layers } from 'lucide-react';
+import { X, Wallet, Radio, Image, Cpu, Database, Layers, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CultureCoinDisplay } from './CultureCoinDisplay';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
@@ -13,179 +14,40 @@ import { supabase, supabaseEdgeFunctionHeaders } from '../lib/supabase';
 import { useChainFuelz } from '../hooks/useChainFuelz';
 import type { OracleConversationHandle } from './OracleConversation';
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// ── Frequencies ────────────────────────────────────────────────────────────────
 type Frequency = 'RESONANCE' | 'SQUAD' | 'PRINTS' | 'CORE_DIAG' | 'SALVAGE' | 'MANIFEST';
 
-const FREQUENCIES: { id: Frequency; label: string; mhz: string; Icon: React.ComponentType<{size?:number}> }[] = [
-  { id: 'RESONANCE', label: 'VAULT',    mhz: '108.4', Icon: Wallet  },
-  { id: 'SQUAD',     label: 'SQUAD',    mhz: '112.8', Icon: Radio   },
-  { id: 'PRINTS',    label: 'PRINTS',   mhz: '124.2', Icon: Image   },
-  { id: 'CORE_DIAG', label: 'DIAG',     mhz: '142.0', Icon: Cpu     },
-  { id: 'SALVAGE',   label: 'SALVAGE',  mhz: '158.6', Icon: Database},
-  { id: 'MANIFEST',  label: 'SIGNAL',   mhz: '188.4', Icon: Layers  },
+const FREQUENCIES: {
+  id: Frequency; label: string; mhz: string;
+  Icon: React.ComponentType<{ size?: number; className?: string }>;
+  accent: 'green' | 'cyan' | 'purple';
+}[] = [
+  { id: 'RESONANCE', label: 'VAULT',   mhz: '108.4', Icon: Wallet,   accent: 'green'  },
+  { id: 'SQUAD',     label: 'SQUAD',   mhz: '112.8', Icon: Radio,    accent: 'green'  },
+  { id: 'PRINTS',    label: 'PRINTS',  mhz: '124.2', Icon: Image,    accent: 'green'  },
+  { id: 'CORE_DIAG', label: 'DIAG',    mhz: '142.0', Icon: Cpu,      accent: 'cyan'   },
+  { id: 'SALVAGE',   label: 'SALVAGE', mhz: '158.6', Icon: Database, accent: 'purple' },
+  { id: 'MANIFEST',  label: 'SIGNAL',  mhz: '188.4', Icon: Layers,   accent: 'cyan'   },
 ];
 
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const T = {
-  green:      '#00ff88',
-  cyan:       '#00ffcc',
-  purple:     '#b026ff',
-  red:        '#ff4466',
-  fontHeader: "'aAnotherTag', sans-serif",
-  fontUI:     "'PhillySans', monospace",
-  fontData:   "'Share Tech Mono', monospace",
-  glass:      'rgba(0,3,18,0.68)',
-  glassDark:  'rgba(0,1,10,0.82)',
-  panelBg:    'rgba(0,2,14,0.96)',
-  glassCard:  (c: string) => `rgba(0,3,18,0.65)`,
-  border:     (c: string) => `1px solid ${c}20`,
-  borderL:    (c: string) => `3px solid ${c}`,
-  glow:       (c: string) => `0 8px 56px rgba(0,0,0,0.85), 0 0 40px ${c}14, inset 0 0 48px ${c}05`,
-  glowStrong: (c: string) => `0 0 60px ${c}28, 0 0 16px ${c}22`,
-} as const;
-
-// ── GlassCard — domino-style card, knife aesthetic ─────────────────────────────
-function GlassCard({
-  children, color = T.green, style, glitchy = false, noPad = false,
-}: {
-  children: React.ReactNode; color?: string; style?: React.CSSProperties;
-  glitchy?: boolean; noPad?: boolean;
-}) {
-  return (
-    <motion.div
-      animate={glitchy ? {
-        x: [0, -2, 2, -1, 0],
-        filter: ['none', 'hue-rotate(12deg) brightness(1.1)', 'none'],
-      } : {}}
-      transition={glitchy ? { repeat: Infinity, duration: 0.18, repeatDelay: 4.2 } : {}}
-      style={{
-        position: 'relative',
-        background: T.glass,
-        backdropFilter: 'blur(28px) saturate(2.2)',
-        WebkitBackdropFilter: 'blur(28px) saturate(2.2)',
-        border: T.border(color),
-        borderLeft: T.borderL(color),
-        borderRadius: '3px 18px 3px 18px',
-        boxShadow: T.glow(color),
-        padding: noPad ? 0 : '20px 18px',
-        overflow: 'hidden',
-        ...style,
-      }}
-    >
-      {/* Scanline overlay */}
-      <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0, borderRadius: 'inherit',
-        backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(255,255,255,0.008) 3px, rgba(255,255,255,0.008) 4px)',
-      }} />
-      {/* Corner ticks */}
-      <div style={{ position:'absolute', top:7, left:7, width:12, height:2, background:color, opacity:0.6, pointerEvents:'none', zIndex:1 }} />
-      <div style={{ position:'absolute', top:7, left:7, width:2, height:12, background:color, opacity:0.6, pointerEvents:'none', zIndex:1 }} />
-      <div style={{ position:'absolute', bottom:7, right:7, width:10, height:2, background:color, opacity:0.3, pointerEvents:'none', zIndex:1 }} />
-      <div style={{ position:'absolute', bottom:7, right:7, width:2, height:10, background:color, opacity:0.3, pointerEvents:'none', zIndex:1 }} />
-      {/* Content */}
-      <div style={{ position: 'relative', zIndex: 2 }}>{children}</div>
-    </motion.div>
-  );
-}
-
-// ── CardTitle ──────────────────────────────────────────────────────────────────
-function CardTitle({ label, color = T.green, sub }: { label: string; color?: string; sub?: string }) {
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{
-        fontFamily: T.fontHeader,
-        fontSize: '1.35rem',
-        fontWeight: 900,
-        letterSpacing: '0.05em',
-        lineHeight: 1.05,
-        background: `linear-gradient(110deg, ${color} 0%, ${color === T.purple ? '#d060ff' : T.cyan} 100%)`,
-        WebkitBackgroundClip: 'text',
-        WebkitTextFillColor: 'transparent',
-        backgroundClip: 'text',
-      }}>{label}</div>
-      {sub && (
-        <div style={{
-          fontFamily: T.fontUI,
-          fontSize: '0.58rem',
-          letterSpacing: '0.2em',
-          color: `${color}55`,
-          marginTop: 4,
-          fontWeight: 800,
-        }}>{sub}</div>
-      )}
-    </div>
-  );
-}
-
-// ── StatBadge ──────────────────────────────────────────────────────────────────
-function StatBadge({ label, ok, warn }: { label: string; ok: boolean; warn?: boolean }) {
-  const c = warn ? T.purple : ok ? T.green : T.cyan;
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 5,
-      padding: '5px 11px',
-      background: `${c}10`,
-      border: `1px solid ${c}35`,
-      borderLeft: `3px solid ${c}`,
-      fontSize: '0.55rem', letterSpacing: '0.16em', color: c,
-      fontFamily: T.fontUI, fontWeight: 800,
-      borderRadius: '1px 8px 1px 8px',
-    }}>
-      <motion.span
-        animate={{ opacity: [1, 0.4, 1] }}
-        transition={{ repeat: Infinity, duration: 1.6 }}
-        style={{ width: 5, height: 5, borderRadius: '50%', background: c, display: 'inline-block', flexShrink: 0, boxShadow: `0 0 6px ${c}` }}
-      />
-      {label}
-    </span>
-  );
-}
-
-// ── MetricBlock ────────────────────────────────────────────────────────────────
-function MetricBlock({ label, value, color = T.cyan }: { label: string; value: string; color?: string }) {
-  return (
-    <div style={{
-      background: T.glassDark,
-      border: `1px solid ${color}15`,
-      borderBottom: `3px solid ${color}40`,
-      padding: '14px 14px 12px',
-      borderRadius: '2px 10px 2px 10px',
-    }}>
-      <div style={{ fontFamily:T.fontUI, color:`${color}80`, fontSize:'0.5rem', letterSpacing:'0.18em', marginBottom:6, fontWeight:800, textTransform:'uppercase' }}>{label}</div>
-      <div style={{ fontFamily:T.fontData, color:'rgba(255,255,255,0.95)', fontSize:'1.05rem', fontWeight:700, letterSpacing:'0.04em' }}>{value}</div>
-    </div>
-  );
-}
-
-// ── DataRow ────────────────────────────────────────────────────────────────────
-function DataRow({ label, value, color = T.cyan }: { label: string; value: string; color?: string }) {
-  return (
-    <div style={{
-      display:'flex', justifyContent:'space-between', alignItems:'center',
-      padding: '11px 14px', marginBottom: 6,
-      background: T.glassDark,
-      border: `1px solid ${color}12`,
-      borderLeft: `3px solid ${color}50`,
-      borderRadius: '2px 10px 2px 10px',
-    }}>
-      <span style={{ fontFamily:T.fontUI, fontSize:'0.52rem', color:'rgba(255,255,255,0.35)', letterSpacing:'0.15em', fontWeight:700 }}>{label}</span>
-      <span style={{ fontFamily:T.fontData, fontSize:'0.82rem', color, fontWeight:700, letterSpacing:'0.06em' }}>{value}</span>
-    </div>
-  );
-}
+const ACCENT_COLORS = { green: '#00ff88', cyan: '#00ffcc', purple: '#b026ff' };
 
 // ── Oscilloscope ───────────────────────────────────────────────────────────────
 function Oscilloscope({ rms }: { rms: number }) {
-  const pts = 18;
+  const pts = 20;
   return (
-    <div style={{ display:'flex', alignItems:'flex-end', gap:2, height:28, padding:'0 2px' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 30 }}>
       {Array.from({ length: pts }).map((_, i) => {
-        const h = Math.max(3, rms * 100 * (0.35 + Math.random() * 0.65));
+        const h = Math.max(3, rms * 100 * (0.3 + Math.random() * 0.7));
         return (
           <motion.div key={i}
-            animate={{ height:[h*0.75, h, h*0.8] }}
-            transition={{ repeat:Infinity, duration:0.07 + Math.random()*0.22 }}
-            style={{ width: 4, background: i % 3 === 0 ? T.green : T.cyan, opacity: 0.45 + (i/pts)*0.55, borderRadius: 1 }}
+            animate={{ height: [h * 0.7, h, h * 0.8] }}
+            transition={{ repeat: Infinity, duration: 0.07 + Math.random() * 0.22 }}
+            style={{
+              width: 3, borderRadius: 1,
+              background: i % 3 === 0 ? '#00ff88' : '#00ffcc',
+              opacity: 0.4 + (i / pts) * 0.6,
+            }}
           />
         );
       })}
@@ -193,39 +55,8 @@ function Oscilloscope({ rms }: { rms: number }) {
   );
 }
 
-// ── TerminalStream ─────────────────────────────────────────────────────────────
-function TerminalStream({ lines, label }: { lines: string[]; label: string }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [lines]);
-  return (
-    <div style={{ marginTop: 12 }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-        <span style={{ fontFamily:T.fontUI, fontSize:'0.52rem', color:T.cyan, letterSpacing:'0.18em', fontWeight:800 }}>{label}</span>
-        <button
-          onClick={() => navigator.clipboard.writeText(lines.join('\n'))}
-          style={{ background:`${T.green}12`, border:`1px solid ${T.green}30`, borderRadius:3, color:T.green, fontSize:'0.48rem', cursor:'pointer', padding:'3px 8px', fontFamily:T.fontUI, letterSpacing:'0.1em', fontWeight:800 }}
-        >COPY</button>
-      </div>
-      <div ref={scrollRef} style={{
-        background: T.glassDark,
-        border: `1px solid rgba(0,255,136,0.1)`,
-        borderRadius: '3px 10px 3px 10px',
-        padding: '10px 12px', maxHeight: 150, overflowY: 'auto',
-        fontFamily: T.fontData, fontSize: '0.62rem', color: T.green, lineHeight: 1.9,
-      }}>
-        {lines.length === 0
-          ? <span style={{ color:'rgba(255,255,255,0.12)', letterSpacing:'0.15em' }}>— NO_SIGNAL —</span>
-          : lines.map((l,i) => <div key={i} style={{ opacity: 0.7 + (i/lines.length)*0.3 }}>{l}</div>)
-        }
-      </div>
-    </div>
-  );
-}
-
 // ── ProdLogViewer ──────────────────────────────────────────────────────────────
-type ProdLogRow = { id: number; ts: string; session_id: string | null; event: string; data: Record<string,unknown>; env: string };
+type ProdLogRow = { id: number; ts: string; session_id: string | null; event: string; data: Record<string, unknown>; env: string };
 
 function ProdLogViewer() {
   const [logs, setLogs]         = useState<ProdLogRow[]>([]);
@@ -249,11 +80,8 @@ function ProdLogViewer() {
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
   useEffect(() => {
-    if (autoRefresh) {
-      timerRef.current = setInterval(fetchLogs, 4000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
+    if (autoRefresh) { timerRef.current = setInterval(fetchLogs, 4000); }
+    else { if (timerRef.current) clearInterval(timerRef.current); }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [autoRefresh, fetchLogs]);
 
@@ -262,107 +90,71 @@ function ProdLogViewer() {
     : logs;
 
   const levelColor = (ev: string) => {
-    if (ev.includes('error')) return T.red;
-    if (ev.includes('exit') || ev.includes('barge')) return T.purple;
-    if (ev.includes('portrait') || ev.includes('claim')) return T.cyan;
-    return T.green;
+    if (ev.includes('error')) return '#ff4466';
+    if (ev.includes('exit') || ev.includes('barge')) return '#b026ff';
+    if (ev.includes('portrait') || ev.includes('claim')) return '#00ffcc';
+    return '#00ff88';
   };
-
   const fmtTime = (ts: string) => {
     const d = new Date(ts);
     return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`;
   };
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-      {/* toolbar */}
-      <div style={{ display:'flex', gap:8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 8 }}>
         <input
           value={filter} onChange={e => setFilter(e.target.value)}
           placeholder="FILTER_SIGNAL..."
           style={{
-            flex:1, background:T.glassDark, border:`1px solid ${T.green}25`,
-            borderLeft:`3px solid ${T.green}60`, borderRadius:'2px 8px 2px 8px',
-            padding:'10px 12px', color:T.green, fontFamily:T.fontData, fontSize:'0.62rem',
-            letterSpacing:'0.1em', outline:'none',
+            flex: 1, background: 'rgba(0,0,0,0.55)',
+            border: '1px solid rgba(0,255,136,0.18)', borderLeft: '3px solid rgba(0,255,136,0.45)',
+            borderRadius: '2px 8px 2px 8px', padding: '10px 12px',
+            color: '#00ff88', fontFamily: "'Share Tech Mono', monospace", fontSize: '0.62rem',
+            letterSpacing: '0.1em', outline: 'none',
           }}
         />
-        <motion.button onClick={fetchLogs} whileTap={{ scale:0.88, rotate:180 }}
-          style={{ background:`${T.green}10`, border:`1px solid ${T.green}30`, borderRadius:'2px 8px 2px 8px', color:T.green, cursor:'pointer', padding:'10px 12px' }}
-        >
-          <RefreshCw size={13} />
-        </motion.button>
+        <motion.button onClick={fetchLogs} whileTap={{ rotate: 180, scale: 0.88 }}
+          style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.25)', borderRadius: '2px 8px 2px 8px', color: '#00ff88', cursor: 'pointer', padding: '10px 12px' }}
+        ><RefreshCw size={13} /></motion.button>
         <motion.button onClick={() => setAuto(a => !a)}
           style={{
-            background: autoRefresh ? `${T.green}15` : T.glassDark,
-            border:`1px solid ${autoRefresh ? T.green : 'rgba(255,255,255,0.08)'}`,
-            borderRadius:'2px 8px 2px 8px',
-            color: autoRefresh ? T.green : 'rgba(255,255,255,0.2)',
-            fontFamily:T.fontUI, fontSize:'0.5rem', letterSpacing:'0.12em', fontWeight:800,
-            cursor:'pointer', padding:'10px 11px',
+            background: autoRefresh ? 'rgba(0,255,136,0.1)' : 'rgba(0,0,0,0.4)',
+            border: `1px solid ${autoRefresh ? 'rgba(0,255,136,0.4)' : 'rgba(255,255,255,0.08)'}`,
+            borderRadius: '2px 8px 2px 8px',
+            color: autoRefresh ? '#00ff88' : 'rgba(255,255,255,0.2)',
+            fontFamily: "'PhillySans', monospace", fontSize: '0.5rem', letterSpacing: '0.12em', fontWeight: 800,
+            cursor: 'pointer', padding: '10px 11px', whiteSpace: 'nowrap',
           }}
-        >
-          {autoRefresh ? '● LIVE' : '○ PAUSE'}
-        </motion.button>
+        >{autoRefresh ? '● LIVE' : '○ PAUSE'}</motion.button>
       </div>
 
-      {/* count strip */}
-      <div style={{ display:'flex', gap:8, fontFamily:T.fontData, fontSize:'0.52rem', color:'rgba(255,255,255,0.25)', letterSpacing:'0.1em', alignItems:'center' }}>
-        <span style={{ color:T.cyan, fontWeight:700, fontSize:'0.72rem' }}>{filtered.length}</span>
+      <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.52rem', color: 'rgba(255,255,255,0.22)', letterSpacing: '0.1em', display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ color: '#00ffcc', fontWeight: 700, fontSize: '0.78rem' }}>{filtered.length}</span>
         <span>events</span>
-        {filter && <span style={{ color:'rgba(255,255,255,0.15)' }}>/ {logs.length} total</span>}
+        {filter && <span style={{ color: 'rgba(255,255,255,0.12)' }}>/ {logs.length} total</span>}
       </div>
 
-      {/* log rows */}
       <div style={{
-        background:T.glassDark, border:`1px solid rgba(0,255,136,0.1)`,
-        borderRadius:'3px 14px 3px 14px', maxHeight:360, overflowY:'auto',
+        background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(0,255,136,0.08)',
+        borderRadius: '3px 14px 3px 14px', maxHeight: 340, overflowY: 'auto',
       }}>
         {filtered.length === 0 ? (
-          <div style={{ padding:36, textAlign:'center', fontFamily:T.fontData, fontSize:'0.58rem', color:'rgba(255,255,255,0.1)', letterSpacing:'0.2em' }}>
-            {loading ? 'SCANNING...' : '— NO_SIGNAL —'}
-          </div>
+          <div className="ec-await">{loading ? 'SCANNING...' : '— NO_SIGNAL —'}</div>
         ) : filtered.map(row => (
           <div key={row.id}>
-            <motion.div
-              onClick={() => setExpanded(expanded === row.id ? null : row.id)}
-              whileHover={{ backgroundColor:'rgba(0,255,136,0.04)' }}
-              style={{
-                display:'flex', alignItems:'center', gap:10, padding:'9px 12px',
-                borderBottom:`1px solid rgba(0,255,136,0.04)`, cursor:'pointer',
-              }}
-            >
-              <span style={{ fontFamily:T.fontData, fontSize:'0.5rem', color:'rgba(255,255,255,0.2)', flexShrink:0, minWidth:46 }}>
-                {fmtTime(row.ts)}
+            <motion.div className="ec-log-row" onClick={() => setExpanded(expanded === row.id ? null : row.id)}>
+              <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.48rem', color: 'rgba(255,255,255,0.18)', flexShrink: 0, minWidth: 44 }}>{fmtTime(row.ts)}</span>
+              <div style={{ width: 3, height: 14, background: levelColor(row.event), flexShrink: 0, borderRadius: 2, boxShadow: `0 0 6px ${levelColor(row.event)}` }} />
+              <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.56rem', fontWeight: 800, letterSpacing: '0.1em', color: levelColor(row.event), flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {row.event.replace('oracle_', '').toUpperCase()}
               </span>
-              <div style={{
-                width: 3, height: 14, background:levelColor(row.event),
-                flexShrink:0, borderRadius:2, boxShadow:`0 0 6px ${levelColor(row.event)}`,
-              }} />
-              <span style={{ fontFamily:T.fontUI, fontSize:'0.56rem', fontWeight:800, letterSpacing:'0.1em', color:levelColor(row.event), flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                {row.event.replace('oracle_','').toUpperCase()}
-              </span>
-              {row.session_id && (
-                <span style={{ fontFamily:T.fontData, fontSize:'0.44rem', color:'rgba(255,255,255,0.15)', letterSpacing:'0.06em', flexShrink:0 }}>
-                  {row.session_id.slice(-8)}
-                </span>
-              )}
+              {row.session_id && <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.44rem', color: 'rgba(255,255,255,0.14)', flexShrink: 0 }}>{row.session_id.slice(-8)}</span>}
             </motion.div>
             <AnimatePresence>
               {expanded === row.id && (
-                <motion.pre
-                  initial={{ height:0, opacity:0 }}
-                  animate={{ height:'auto', opacity:1 }}
-                  exit={{ height:0, opacity:0 }}
-                  transition={{ duration:0.16 }}
-                  style={{
-                    margin:0, padding:'10px 14px',
-                    background:'rgba(0,0,0,0.5)',
-                    borderBottom:`1px solid rgba(0,255,136,0.06)`,
-                    fontFamily:T.fontData, fontSize:'0.52rem',
-                    color:'rgba(0,255,204,0.75)', lineHeight:1.7,
-                    whiteSpace:'pre-wrap', wordBreak:'break-all', overflow:'hidden',
-                  }}
+                <motion.pre initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.16 }}
+                  style={{ margin: 0, padding: '10px 14px', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid rgba(0,255,136,0.05)', fontFamily: "'Share Tech Mono', monospace", fontSize: '0.5rem', color: 'rgba(0,255,204,0.72)', lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflow: 'hidden' }}
                 >{JSON.stringify(row.data, null, 2)}</motion.pre>
               )}
             </AnimatePresence>
@@ -375,15 +167,13 @@ function ProdLogViewer() {
 
 // ── ManifestPanel ──────────────────────────────────────────────────────────────
 function ManifestPanel({ pendingCoins }: { pendingCoins: number }) {
-  const [alignment, setAlignment]     = useState<string | null>(null);
-  const [archetype, setArchetype]     = useState<string | null>(null);
-  const [totemLevel, setTotemLevel]   = useState(0);
-  const [sessionPhase, setPhase]      = useState<string | null>(null);
-  const [emotionalWeight, setEmo]     = useState<string | null>(null);
-  const [coins, setCoins]             = useState(pendingCoins);
-
+  const [alignment, setAlignment]   = useState<string | null>(null);
+  const [archetype, setArchetype]   = useState<string | null>(null);
+  const [totemLevel, setTotemLevel] = useState(0);
+  const [sessionPhase, setPhase]    = useState<string | null>(null);
+  const [emotionalWeight, setEmo]   = useState<string | null>(null);
+  const [coins, setCoins]           = useState(pendingCoins);
   useEffect(() => { setCoins(pendingCoins); }, [pendingCoins]);
-
   useEffect(() => {
     const onScore    = (e: Event) => { const d = (e as CustomEvent).detail||{}; if (d.sessionPhase) setPhase(d.sessionPhase); if (typeof d.totemLevel==='number') setTotemLevel(d.totemLevel); if (d.archetypeTitle) setArchetype(d.archetypeTitle); if (d.emotionalWeight) setEmo(d.emotionalWeight); };
     const onAlign    = (e: Event) => { const d = (e as CustomEvent).detail||{}; if (d.alignment) setAlignment(d.alignment); };
@@ -401,65 +191,56 @@ function ManifestPanel({ pendingCoins }: { pendingCoins: number }) {
     };
   }, []);
 
-  const alignColor = alignment === 'sacred' ? T.green : alignment === 'profane' ? T.purple : T.cyan;
-  const hasData = alignment || archetype || totemLevel > 0 || sessionPhase;
-  const phases = ['claim','evidence','cost','mirror'] as const;
-  const phaseMap: Record<string,string> = { claim:'CLAIM', evidence:'EVIDENCE', cost:'COST', mirror:'MIRROR' };
+  const alignColor = alignment === 'sacred' ? '#00ff88' : alignment === 'profane' ? '#b026ff' : '#00ffcc';
+  const hasData    = alignment || archetype || totemLevel > 0 || sessionPhase;
+  const phases     = ['claim', 'evidence', 'cost', 'mirror'] as const;
+  const phaseMap: Record<string, string> = { claim: 'CLAIM', evidence: 'EVIDENCE', cost: 'COST', mirror: 'MIRROR' };
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-      <GlassCard color={T.cyan}>
-        <CardTitle label="SESSION MANIFEST" color={T.cyan} sub="REAL-TIME SIGNAL ARTIFACTS" />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="ec-card ec-card--cyan">
+        <div className="ec-title ec-title--cyan">SESSION MANIFEST</div>
+        <div className="ec-subtitle" style={{ color: '#00ffcc' }}>REAL-TIME SIGNAL ARTIFACTS</div>
+        <div className="ec-divider" />
         {!hasData ? (
-          <div style={{ padding:'32px 0', textAlign:'center' }}>
-            <motion.div animate={{ opacity:[0.2,0.7,0.2] }} transition={{ repeat:Infinity, duration:2.8 }}
-              style={{ fontFamily:T.fontData, fontSize:'0.65rem', color:T.cyan, letterSpacing:'0.22em' }}>
-              AWAITING_ORACLE_SESSION
-            </motion.div>
-            <div style={{ marginTop:10, fontFamily:T.fontUI, fontSize:'0.5rem', color:`${T.cyan}25`, letterSpacing:'0.16em' }}>
-              ARTIFACTS ACCUMULATE AS THE RITUAL UNFOLDS
-            </div>
-          </div>
+          <div className="ec-await">AWAITING_ORACLE_SESSION</div>
         ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-            {alignment     && <DataRow label="SIGNAL_ALIGNMENT" value={alignment.toUpperCase()} color={alignColor} />}
-            {archetype     && <DataRow label="ARCHETYPE_TITLE"  value={archetype.toUpperCase()} color={T.green} />}
-            {totemLevel > 0 && <DataRow label="TOTEM_LEVEL"    value={Array(totemLevel).fill('◈').join(' ')} color={T.cyan} />}
-            {sessionPhase  && <DataRow label="RITUAL_PHASE"    value={phaseMap[sessionPhase] ?? sessionPhase.toUpperCase()} color={T.cyan} />}
-            {emotionalWeight && <DataRow label="EMOTIONAL_REG" value={emotionalWeight.toUpperCase()} color="rgba(255,255,255,0.4)" />}
-            {coins > 0     && <DataRow label="CULTURE_COINS"   value={`+${coins}c`} color={T.green} />}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {alignment      && <div className="ec-row"><span className="ec-row__label">SIGNAL_ALIGNMENT</span><span className="ec-row__value" style={{ color: alignColor }}>{alignment.toUpperCase()}</span></div>}
+            {archetype      && <div className="ec-row"><span className="ec-row__label">ARCHETYPE_TITLE</span><span className="ec-row__value" style={{ color: '#00ff88' }}>{archetype.toUpperCase()}</span></div>}
+            {totemLevel > 0 && <div className="ec-row"><span className="ec-row__label">TOTEM_LEVEL</span><span className="ec-row__value">{Array(totemLevel).fill('◈').join(' ')}</span></div>}
+            {sessionPhase   && <div className="ec-row"><span className="ec-row__label">RITUAL_PHASE</span><span className="ec-row__value">{(phaseMap[sessionPhase] ?? sessionPhase).toUpperCase()}</span></div>}
+            {emotionalWeight && <div className="ec-row"><span className="ec-row__label">EMOTIONAL_REG</span><span className="ec-row__value" style={{ color: 'rgba(255,255,255,0.5)' }}>{emotionalWeight.toUpperCase()}</span></div>}
+            {coins > 0      && <div className="ec-row"><span className="ec-row__label">CULTURE_COINS</span><span className="ec-row__value" style={{ color: '#00ff88' }}>{`+${coins}c`}</span></div>}
           </div>
         )}
-      </GlassCard>
+      </div>
 
       {sessionPhase && (
-        <GlassCard color={T.cyan} noPad>
-          <div style={{ padding:'14px 16px 12px' }}>
-            <div style={{ fontFamily:T.fontUI, fontSize:'0.5rem', color:`${T.cyan}50`, letterSpacing:'0.18em', marginBottom:12, fontWeight:800 }}>RITUAL_PROGRESSION</div>
-            <div style={{ display:'flex', gap:4 }}>
-              {phases.map(phase => {
-                const cur = phases.indexOf(sessionPhase as typeof phases[number]);
-                const idx = phases.indexOf(phase);
-                const isActive = phase === sessionPhase;
-                const isPast   = idx < cur;
-                const c = isActive ? T.cyan : isPast ? T.green : 'transparent';
-                return (
-                  <div key={phase} style={{
-                    flex:1, height:36, display:'flex', flexDirection:'column',
-                    alignItems:'center', justifyContent:'center', gap:3,
-                    background: isActive ? `${T.cyan}12` : isPast ? `${T.green}06` : 'rgba(0,0,0,0.2)',
-                    border:`1px solid ${isActive ? `${T.cyan}35` : isPast ? `${T.green}18` : 'rgba(255,255,255,0.04)'}`,
-                    borderBottom:`3px solid ${c}`,
-                  }}>
-                    <span style={{ fontFamily:T.fontUI, fontSize:'0.44rem', letterSpacing:'0.1em', color: isActive ? T.cyan : isPast ? `${T.green}60` : 'rgba(255,255,255,0.1)', fontWeight:800 }}>
-                      {phaseMap[phase]}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+        <div className="ec-card ec-card--cyan" style={{ padding: '14px 16px' }}>
+          <div style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.5rem', color: 'rgba(0,255,204,0.45)', letterSpacing: '0.2em', marginBottom: 12, fontWeight: 800 }}>RITUAL_PROGRESSION</div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {phases.map(phase => {
+              const cur = phases.indexOf(sessionPhase as typeof phases[number]);
+              const idx = phases.indexOf(phase);
+              const isActive = phase === sessionPhase;
+              const isPast   = idx < cur;
+              const c = isActive ? '#00ffcc' : isPast ? '#00ff88' : 'transparent';
+              return (
+                <div key={phase} style={{
+                  flex: 1, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: isActive ? 'rgba(0,255,204,0.1)' : isPast ? 'rgba(0,255,136,0.05)' : 'rgba(0,0,0,0.2)',
+                  border: `1px solid ${isActive ? 'rgba(0,255,204,0.3)' : isPast ? 'rgba(0,255,136,0.14)' : 'rgba(255,255,255,0.04)'}`,
+                  borderBottom: `3px solid ${c}`, borderRadius: '2px 8px 2px 8px',
+                }}>
+                  <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.44rem', letterSpacing: '0.1em', fontWeight: 800, color: isActive ? '#00ffcc' : isPast ? 'rgba(0,255,136,0.5)' : 'rgba(255,255,255,0.1)' }}>
+                    {phaseMap[phase]}
+                  </span>
+                </div>
+              );
+            })}
           </div>
-        </GlassCard>
+        </div>
       )}
     </div>
   );
@@ -481,33 +262,29 @@ interface BackendControlPanelProps {
 // ── Main Component ─────────────────────────────────────────────────────────────
 export const BackendControlPanel = ({
   userId, sessionId, isVisible = true, initialTab = 'vault',
-  onClose, isAuthenticated = false, userEmail, pendingCoins = 0, oracleConversationRef,
+  onClose, userEmail, pendingCoins = 0, oracleConversationRef,
 }: BackendControlPanelProps) => {
-  const [activeFreq, setActiveFreq] = useState<Frequency>(() => {
-    const s = localStorage.getItem('oracle_crate_active_freq');
-    return (s as Frequency) || 'RESONANCE';
-  });
-  const [prevFreqIdx, setPrevFreqIdx]         = useState(0);
-  const [debugPasswordEntered, setDebugPassed]= useState(false);
-  const [debugPassword, setDebugPw]           = useState('');
+  const [activeFreq, setActiveFreq]           = useState<Frequency>(() => (localStorage.getItem('oracle_crate_active_freq') as Frequency) || 'RESONANCE');
+  const [prevIdx, setPrevIdx]                 = useState(0);
+  const [debugPassed, setDebugPassed]         = useState(false);
+  const [debugPw, setDebugPw]                 = useState('');
   const [testResults, setTestResults]         = useState<Record<string, unknown>>({});
   const [isLoading, setIsLoading]             = useState(false);
-  const [showUpgradeModal, setShowUpgrade]    = useState(false);
+  const [showUpgrade, setShowUpgrade]         = useState(false);
   const [geminiInfo, setGeminiInfo]           = useState<ReturnType<OracleConversationHandle['getWsDebugInfo']> | null>(null);
   const pollRef                               = useRef<ReturnType<typeof setInterval> | null>(null);
-  const supabaseUrl                           = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseUrl                           = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const chainFuelz                            = useChainFuelz(userEmail, pendingCoins);
 
   const switchFreq = (freq: Frequency) => {
-    const prevIdx = FREQUENCIES.findIndex(f => f.id === activeFreq);
-    setPrevFreqIdx(prevIdx);
+    setPrevIdx(FREQUENCIES.findIndex(f => f.id === activeFreq));
     setActiveFreq(freq);
     localStorage.setItem('oracle_crate_active_freq', freq);
   };
 
   useEffect(() => {
-    const m: Record<string,Frequency> = { vault:'RESONANCE', coins:'RESONANCE', gemini:'CORE_DIAG', debug:'SALVAGE', dev:'SALVAGE' };
-    setActiveFreq(m[initialTab as string] ?? 'RESONANCE');
+    const m: Record<string, Frequency> = { vault: 'RESONANCE', coins: 'RESONANCE', gemini: 'CORE_DIAG', debug: 'SALVAGE', dev: 'SALVAGE' };
+    setActiveFreq(m[initialTab] ?? 'RESONANCE');
   }, [initialTab]);
 
   useEffect(() => {
@@ -523,11 +300,11 @@ export const BackendControlPanel = ({
     setIsLoading(true);
     try {
       if (!supabaseUrl) throw new Error('Supabase not configured');
-      const res  = await fetch(`${supabaseUrl}/functions/v1/${fn}`, { method:'POST', headers:supabaseEdgeFunctionHeaders, body:JSON.stringify(payload) });
+      const res  = await fetch(`${supabaseUrl}/functions/v1/${fn}`, { method: 'POST', headers: supabaseEdgeFunctionHeaders, body: JSON.stringify(payload) });
       const data = await res.json();
-      setTestResults(p => ({ ...p, [fn]: { success:res.ok, data, status:res.status, timestamp:new Date().toISOString() } }));
+      setTestResults(p => ({ ...p, [fn]: { success: res.ok, data, status: res.status, timestamp: new Date().toISOString() } }));
     } catch (err: unknown) {
-      setTestResults(p => ({ ...p, [fn]: { success:false, error:(err as Error).message, timestamp:new Date().toISOString() } }));
+      setTestResults(p => ({ ...p, [fn]: { success: false, error: (err as Error).message, timestamp: new Date().toISOString() } }));
     }
     setIsLoading(false);
   };
@@ -535,365 +312,297 @@ export const BackendControlPanel = ({
   if (!isVisible) return null;
 
   const activeIdx   = FREQUENCIES.findIndex(f => f.id === activeFreq);
-  const slideDir    = activeIdx > prevFreqIdx ? 1 : -1;
-  const activeColor = activeFreq === 'CORE_DIAG' ? T.cyan : activeFreq === 'SALVAGE' ? T.purple : activeFreq === 'MANIFEST' ? T.cyan : T.green;
+  const slideDir    = activeIdx > prevIdx ? 1 : -1;
+  const activeFreqDef = FREQUENCIES[activeIdx];
+  const accentHex   = ACCENT_COLORS[activeFreqDef.accent];
 
   return (
     <>
+      {/* ── Full-screen alley overlay ── */}
       <motion.div
-        key="enculturate-panel"
-        initial={{ x: '100%', opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        exit={{ x: '100%', opacity: 0 }}
-        transition={{ type: 'spring', damping: 26, stiffness: 220, mass: 0.9 }}
-        style={{
-          position: 'fixed',
-          right: 0,
-          top: 0,
-          bottom: 0,
-          width: 'min(440px, 100vw)',
-          background: T.panelBg,
-          backdropFilter: 'blur(40px)',
-          WebkitBackdropFilter: 'blur(40px)',
-          borderLeft: `1px solid rgba(0,255,136,0.14)`,
-          boxShadow: '-40px 0 100px rgba(0,0,0,0.92), inset 1px 0 0 rgba(0,255,136,0.06)',
-          zIndex: 150,
-          display: 'flex',
-          flexDirection: 'column',
-          fontFamily: T.fontUI,
-          overflow: 'hidden',
-        }}
+        className="ec-overlay"
+        initial={{ opacity: 0, scale: 0.97, filter: 'blur(8px)' }}
+        animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+        exit={{ opacity: 0, scale: 0.97, filter: 'blur(8px)' }}
+        transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }}
         data-testid="backend-panel"
       >
-        {/* Background dot field */}
-        <motion.div
-          animate={{ opacity:[0.05,0.11,0.05] }}
-          transition={{ repeat:Infinity, duration:6, ease:'easeInOut' }}
-          style={{
-            position:'absolute', inset:0, pointerEvents:'none', zIndex:0,
-            backgroundImage:`radial-gradient(circle at 2px 2px, rgba(0,255,136,0.2) 1px, transparent 0)`,
-            backgroundSize:'24px 24px',
-          }}
-        />
+        {/* Alley atmosphere glow layers */}
+        <div className="ec-atmosphere" />
+        <div className="ec-scanlines" />
 
-        {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div style={{
-          padding: '20px 20px 0',
-          flexShrink: 0, zIndex: 5, position: 'relative',
-          background: 'rgba(0,1,10,0.55)',
-          backdropFilter: 'blur(20px)',
-        }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
+        {/* ── HEADER ──────────────────────────────────────────────────────── */}
+        <div className="ec-header">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{
-                fontFamily: T.fontHeader, fontSize:'1.7rem', fontWeight:900,
-                letterSpacing:'0.04em', lineHeight:1.0,
-                background:`linear-gradient(100deg, ${T.green} 0%, ${T.cyan} 100%)`,
-                WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', backgroundClip:'text',
-              }}>SURROGATE:ORACLE</div>
-              <div style={{
-                fontFamily:T.fontUI, fontSize:'0.52rem', fontWeight:800,
-                color:'rgba(0,255,204,0.38)', letterSpacing:'0.24em', marginTop:5,
-              }}>ENCULTURATE CRATE · {FREQUENCIES.find(f=>f.id===activeFreq)?.mhz}MHz</div>
+              <div className="ec-header__brand">ENCULTURATE CRATE</div>
+              <div className="ec-header__sub">
+                SURROGATE:ORACLE · {activeFreqDef.mhz}MHz · {activeFreqDef.label}
+              </div>
             </div>
-
-            <div style={{ display:'flex', alignItems:'center', gap:10, paddingTop:4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 6 }}>
               {sessionId && (
-                <div style={{ fontFamily:T.fontData, fontSize:'0.46rem', color:'rgba(0,255,204,0.25)', letterSpacing:'0.12em' }}>
+                <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.46rem', color: 'rgba(0,255,204,0.22)', letterSpacing: '0.12em' }}>
                   SID:{sessionId.slice(-6).toUpperCase()}
-                </div>
+                </span>
               )}
               <motion.div
-                animate={{ opacity:[1,0.2,1], scale:[1,1.3,1] }}
-                transition={{ repeat:Infinity, duration:1.6 }}
-                style={{ width:8, height:8, borderRadius:'50%', background:T.green, boxShadow:`0 0 10px ${T.green}` }}
+                animate={{ opacity: [1, 0.15, 1], scale: [1, 1.4, 1] }}
+                transition={{ repeat: Infinity, duration: 1.7 }}
+                style={{ width: 9, height: 9, borderRadius: '50%', background: accentHex, boxShadow: `0 0 12px ${accentHex}` }}
               />
               {onClose && (
-                <motion.button
-                  onClick={onClose}
-                  whileHover={{ scale:1.2 }} whileTap={{ scale:0.9 }}
-                  style={{
-                    background:`rgba(255,255,255,0.04)`, border:`1px solid rgba(255,255,255,0.1)`,
-                    borderRadius:'50%', color:'rgba(255,255,255,0.4)', cursor:'pointer',
-                    padding:'7px', display:'flex', alignItems:'center', justifyContent:'center',
-                  }}
-                >
-                  <X size={14} />
-                </motion.button>
+                <button className="ec-close" onClick={onClose} aria-label="Close">
+                  <X size={15} />
+                </button>
               )}
             </div>
           </div>
 
-          {/* Active freq glow bar */}
+          {/* Animated accent bar */}
           <motion.div
             key={activeFreq}
-            initial={{ scaleX:0 }}
-            animate={{ scaleX:1 }}
+            initial={{ scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
             style={{
-              height:2, background:`linear-gradient(90deg, transparent, ${activeColor}, transparent)`,
-              marginBottom:0, transformOrigin:'left',
+              height: 2, marginTop: 10,
+              background: `linear-gradient(90deg, transparent, ${accentHex}, transparent)`,
+              filter: `blur(1px)`,
+              transformOrigin: 'left',
             }}
-            transition={{ duration:0.4, ease:'easeOut' }}
           />
         </div>
 
-        {/* ── Frequency Nav (bottom of header) ────────────────────────────── */}
-        <div style={{
-          display:'flex',
-          background:'rgba(0,0,6,0.6)',
-          backdropFilter:'blur(16px)',
-          borderBottom:`1px solid rgba(0,255,136,0.07)`,
-          overflowX:'auto', scrollbarWidth:'none',
-          zIndex:4, flexShrink:0,
-          padding:'0 4px',
-        }}>
-          {FREQUENCIES.map((freq) => {
+        {/* ── NAV — floating oracle-bottom-btn style ───────────────────────── */}
+        <nav className="ec-nav" role="tablist">
+          {FREQUENCIES.map(freq => {
             const isActive = activeFreq === freq.id;
-            const c = freq.id === 'CORE_DIAG' ? T.cyan : freq.id === 'SALVAGE' ? T.purple : freq.id === 'MANIFEST' ? T.cyan : T.green;
-            const testId =
-                freq.id==='RESONANCE' ? 'tab-vault'
-              : freq.id==='SQUAD'     ? 'tab-squad'
-              : freq.id==='PRINTS'    ? 'tab-portraits'
-              : freq.id==='CORE_DIAG' ? 'tab-gemini'
-              : freq.id==='SALVAGE'   ? 'tab-dev'
-              : 'tab-manifest';
+            const isPurple = freq.accent === 'purple';
+            const testId   =
+              freq.id === 'RESONANCE' ? 'tab-vault'
+            : freq.id === 'SQUAD'     ? 'tab-squad'
+            : freq.id === 'PRINTS'    ? 'tab-portraits'
+            : freq.id === 'CORE_DIAG' ? 'tab-gemini'
+            : freq.id === 'SALVAGE'   ? 'tab-dev'
+            : 'tab-manifest';
             return (
-              <motion.button
+              <button
                 key={freq.id}
+                role="tab"
+                aria-selected={isActive}
                 data-testid={testId}
                 onClick={() => switchFreq(freq.id)}
-                whileHover={{ backgroundColor:`${c}06` }}
-                whileTap={{ scale:0.94 }}
-                style={{
-                  padding: '12px 10px 10px',
-                  background: isActive ? `${c}08` : 'none',
-                  border: 'none',
-                  borderBottom: `3px solid ${isActive ? c : 'transparent'}`,
-                  color: isActive ? c : 'rgba(255,255,255,0.18)',
-                  cursor: 'pointer',
-                  display: 'flex', flexDirection:'column', alignItems:'center', gap:4,
-                  minWidth: '62px', flexShrink: 0,
-                  transition: 'color 0.15s, background 0.15s',
-                  position: 'relative',
-                }}
+                className={`ec-nav__btn${isActive ? (isPurple ? ' ec-nav__btn--active-purple' : ' ec-nav__btn--active') : ''}`}
               >
-                {isActive && (
-                  <motion.div
-                    layoutId="freq-glow"
-                    style={{
-                      position:'absolute', bottom:-1, left:'10%', right:'10%', height:3,
-                      background:`linear-gradient(90deg, transparent, ${c}, transparent)`,
-                      filter:`blur(3px)`,
-                    }}
-                    transition={{ type:'spring', damping:30, stiffness:300 }}
-                  />
-                )}
-                <freq.Icon size={16} style={{ opacity: isActive ? 1 : 0.22, filter: isActive ? `drop-shadow(0 0 6px ${c})` : 'none' }} />
-                <span style={{ fontFamily:T.fontUI, fontSize:'0.44rem', letterSpacing:'0.1em', fontWeight:800, opacity: isActive ? 0.9 : 0.28 }}>
-                  {freq.label}
-                </span>
-              </motion.button>
+                <freq.Icon size={17} className="ec-nav__icon" />
+                <span className="ec-nav__label">{freq.label}</span>
+              </button>
             );
           })}
-        </div>
+        </nav>
 
-        {/* ── Content pane ────────────────────────────────────────────────── */}
-        <div style={{ flex:1, overflowY:'auto', overflowX:'hidden', position:'relative', zIndex:3 }}>
+        {/* ── CONTENT ─────────────────────────────────────────────────────── */}
+        <div className="ec-content">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={activeFreq}
-              initial={{ x: slideDir * 48, opacity: 0, filter:'blur(4px)' }}
-              animate={{ x: 0, opacity: 1, filter:'blur(0px)' }}
-              exit={{ x: -slideDir * 40, opacity: 0, filter:'blur(6px)' }}
-              transition={{ type:'spring', damping:28, stiffness:280, mass:0.8 }}
-              style={{ padding:'18px 16px', display:'flex', flexDirection:'column', gap:14 }}
+              initial={{ x: slideDir * 56, opacity: 0, filter: 'blur(6px)' }}
+              animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
+              exit={{ x: -slideDir * 44, opacity: 0, filter: 'blur(8px)' }}
+              transition={{ type: 'spring', damping: 26, stiffness: 260, mass: 0.85 }}
+              style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
             >
 
               {/* ── RESONANCE ─────────────────────────────────────────── */}
               {activeFreq === 'RESONANCE' && (
                 userId ? (
                   <>
-                    <GlassCard color={T.green}>
-                      <CultureCoinDisplay userId={userId} onLevelUp={(l,t) => console.log(`Level ${l}: ${t}`)} />
-                    </GlassCard>
+                    <div className="ec-card">
+                      <CultureCoinDisplay userId={userId} onLevelUp={(l, t) => console.log(`Level ${l}: ${t}`)} />
+                    </div>
 
-                    <GlassCard color={T.green} glitchy={chainFuelz.isMinting}>
-                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:18 }}>
-                        <CardTitle label="NEURAL RESONANCE" color={T.green} sub="VAULT FREQUENCY" />
-                        <StatBadge label={chainFuelz.isMinting ? 'SYNCING' : 'STABLE'} ok={!chainFuelz.isMinting} warn={chainFuelz.isMinting} />
+                    <div className="ec-card" style={{ filter: chainFuelz.isMinting ? 'hue-rotate(8deg)' : 'none', transition: 'filter 0.15s' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                        <div className="ec-title">NEURAL RESONANCE</div>
+                        <span className={`ec-badge${chainFuelz.isMinting ? '' : ''}`} style={{ borderLeftColor: chainFuelz.isMinting ? '#b026ff' : '#00ff88', color: chainFuelz.isMinting ? '#b026ff' : '#00ff88', background: chainFuelz.isMinting ? 'rgba(176,38,255,0.08)' : 'rgba(0,255,136,0.08)' }}>
+                          <span className="ec-badge__dot" style={{ background: chainFuelz.isMinting ? '#b026ff' : '#00ff88', '--dot-c': chainFuelz.isMinting ? '#b026ff' : '#00ff88' } as React.CSSProperties} />
+                          {chainFuelz.isMinting ? 'SYNCING' : 'STABLE'}
+                        </span>
                       </div>
+                      <div className="ec-subtitle" style={{ color: '#00ff88' }}>VAULT FREQUENCY</div>
+                      <div className="ec-divider" />
 
                       {chainFuelz.isInitialized ? (
                         <>
-                          <div style={{ fontFamily:T.fontUI, fontSize:'0.52rem', color:`${T.cyan}60`, marginBottom:8, letterSpacing:'0.14em', fontWeight:700 }}>VAULT_SIGNATURE</div>
+                          <div style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.54rem', color: 'rgba(0,255,204,0.5)', letterSpacing: '0.16em', fontWeight: 700, marginBottom: 8 }}>VAULT_SIGNATURE</div>
                           <div style={{
-                            fontFamily:T.fontData, fontSize:'0.88rem', color:'rgba(255,255,255,0.9)',
-                            background:`${T.green}06`, padding:'12px 14px',
-                            border:`1px solid ${T.green}15`, borderLeft:`3px solid ${T.green}50`,
-                            borderRadius:'2px 10px 2px 10px',
-                            letterSpacing:'0.04em',
+                            fontFamily: "'Share Tech Mono', monospace", fontSize: '0.9rem',
+                            color: 'rgba(255,255,255,0.9)', letterSpacing: '0.04em',
+                            background: 'rgba(0,255,136,0.05)', padding: '12px 14px',
+                            border: '1px solid rgba(0,255,136,0.12)', borderLeft: '3px solid rgba(0,255,136,0.45)',
+                            borderRadius: '2px 10px 2px 10px',
                           }}>{chainFuelz.vaultHandle}</div>
+
                           <div style={{
-                            marginTop:16, padding:'14px 16px',
-                            background:T.glassDark,
-                            border:`1px solid rgba(255,255,255,0.04)`,
-                            borderRadius:'2px 10px 2px 10px',
-                            display:'flex', justifyContent:'space-between', alignItems:'center',
+                            marginTop: 16, padding: '14px 16px',
+                            background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.04)',
+                            borderRadius: '2px 10px 2px 10px',
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                           }}>
-                            <span style={{ fontFamily:T.fontUI, fontSize:'0.55rem', color:'rgba(255,255,255,0.35)', letterSpacing:'0.12em', fontWeight:700 }}>SIGNAL_STRENGTH</span>
-                            <span style={{ fontFamily:T.fontData, fontSize:'1.4rem', color:T.green, fontWeight:700, textShadow:`0 0 20px ${T.green}` }}>{chainFuelz.balance}</span>
+                            <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.55rem', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.14em', fontWeight: 700 }}>SIGNAL_STRENGTH</span>
+                            <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '1.6rem', color: '#00ff88', fontWeight: 700, textShadow: '0 0 24px rgba(0,255,136,0.8)' }}>
+                              {chainFuelz.balance}
+                            </span>
                           </div>
                         </>
                       ) : (
-                        <div style={{ padding:'28px 0', textAlign:'center', fontFamily:T.fontUI, color:T.cyan, fontSize:'0.65rem', opacity:0.4 }}>
-                          RECOVERING VAULT FREQUENCY...
-                        </div>
+                        <div className="ec-await">RECOVERING VAULT FREQUENCY...</div>
                       )}
-                    </GlassCard>
+                    </div>
 
-                    <motion.button
-                      onClick={() => setShowUpgrade(true)}
-                      whileHover={{ scale:1.02, boxShadow:`0 0 40px ${T.purple}40` }}
-                      whileTap={{ scale:0.98 }}
-                      style={{
-                        padding:'16px 18px',
-                        background:`linear-gradient(135deg, rgba(22,0,50,0.92), rgba(176,38,255,0.6))`,
-                        border:`1px solid ${T.purple}40`,
-                        borderLeft:`3px solid ${T.purple}`,
-                        borderRadius:'3px 18px 3px 18px',
-                        color:'rgba(255,255,255,0.92)',
-                        fontFamily:T.fontHeader, fontSize:'1rem', fontWeight:900, letterSpacing:'0.1em',
-                        cursor:'pointer',
-                        boxShadow:`0 4px 28px rgba(0,0,0,0.6), 0 0 30px ${T.purple}18`,
-                        backdropFilter:'blur(12px)',
-                      }}
-                    >UPGRADE_CONSCIOUSNESS</motion.button>
+                    <button className="ec-upgrade-btn" onClick={() => setShowUpgrade(true)}>
+                      UPGRADE_CONSCIOUSNESS
+                    </button>
                   </>
                 ) : (
-                  <GlassCard color={T.green}>
-                    <Learn2EarnInterface userId={sessionId||'anonymous'} navigateToDebug={() => switchFreq('SALVAGE')} />
-                  </GlassCard>
+                  <div className="ec-card">
+                    <Learn2EarnInterface userId={sessionId || 'anonymous'} navigateToDebug={() => switchFreq('SALVAGE')} />
+                  </div>
                 )
               )}
 
               {/* ── SQUAD ─────────────────────────────────────────────── */}
               {activeFreq === 'SQUAD' && (
-                <GlassCard color={T.green}>
-                  <Learn2EarnInterface userId={userId||sessionId||'anonymous'} navigateToDebug={() => switchFreq('SALVAGE')} />
-                </GlassCard>
+                <div className="ec-card">
+                  <Learn2EarnInterface userId={userId || sessionId || 'anonymous'} navigateToDebug={() => switchFreq('SALVAGE')} />
+                </div>
               )}
 
               {/* ── PRINTS ────────────────────────────────────────────── */}
               {activeFreq === 'PRINTS' && (
-                <GlassCard color={T.cyan} noPad>
-                  <div style={{ padding:'18px 16px' }}>
-                    <PortraitGalleryDashboard userId={userId} userEmail={userEmail} sessionId={sessionId} maxPortraits={20} isBackendCabinetTab />
-                  </div>
-                </GlassCard>
+                <div className="ec-card" style={{ padding: '18px 16px' }}>
+                  <PortraitGalleryDashboard userId={userId} userEmail={userEmail} sessionId={sessionId} maxPortraits={20} isBackendCabinetTab />
+                </div>
               )}
 
               {/* ── CORE_DIAG ─────────────────────────────────────────── */}
               {activeFreq === 'CORE_DIAG' && (
-                <GlassCard color={T.cyan}>
-                  <div style={{ position:'absolute', opacity:0, pointerEvents:'none' }}>WEBSOCKET WS STATE VERTEX</div>
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:18 }}>
-                    <CardTitle label="GEMINI LIVE" color={T.cyan} sub="CORE DIAGNOSTICS" />
-                    {geminiInfo && <Oscilloscope rms={(geminiInfo as Record<string,number>).lastVadRms ?? 0} />}
+                <div className="ec-card ec-card--cyan">
+                  <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>WEBSOCKET WS STATE VERTEX</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                    <div>
+                      <div className="ec-title ec-title--cyan">GEMINI LIVE</div>
+                      <div className="ec-subtitle" style={{ color: '#00ffcc' }}>CORE DIAGNOSTICS</div>
+                    </div>
+                    {geminiInfo && <Oscilloscope rms={(geminiInfo as Record<string, number>).lastVadRms ?? 0} />}
                   </div>
+                  <div className="ec-divider" />
 
                   {geminiInfo ? (
                     <>
-                      <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap', marginBottom:16 }}>
-                        <StatBadge label={geminiInfo.wsState===1 ? 'WS_OPEN' : 'WS_DISRUPTED'} ok={geminiInfo.wsState===1} />
-                        <StatBadge label="FREE_TIER" ok={false} warn />
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                        <span className="ec-badge" style={{ borderLeftColor: geminiInfo.wsState === 1 ? '#00ff88' : '#ff4466', color: geminiInfo.wsState === 1 ? '#00ff88' : '#ff4466', background: geminiInfo.wsState === 1 ? 'rgba(0,255,136,0.08)' : 'rgba(255,68,102,0.08)' }}>
+                          <span className="ec-badge__dot" style={{ background: geminiInfo.wsState === 1 ? '#00ff88' : '#ff4466', '--dot-c': geminiInfo.wsState === 1 ? '#00ff88' : '#ff4466' } as React.CSSProperties} />
+                          {geminiInfo.wsState === 1 ? 'WS_OPEN' : 'WS_DISRUPTED'}
+                        </span>
+                        <span className="ec-badge" style={{ borderLeftColor: '#b026ff', color: '#b026ff', background: 'rgba(176,38,255,0.08)' }}>
+                          <span className="ec-badge__dot" style={{ background: '#b026ff', '--dot-c': '#b026ff' } as React.CSSProperties} />
+                          FREE_TIER
+                        </span>
                       </div>
 
-                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
                         {([
                           ['TURNS',     String(geminiInfo.turnCount)],
                           ['AUDIO_IN',  String(geminiInfo.audioChunksReceived)],
-                          ['AUDIO_OUT', String((geminiInfo as Record<string,unknown>).audioChunksSent ?? '—')],
-                          ['VAD_RMS',   String((geminiInfo as Record<string,number>).lastVadRms?.toFixed(4) ?? '0.0000')],
-                        ] as [string,string][]).map(([k,v]) => <MetricBlock key={k} label={k} value={v} />)}
+                          ['AUDIO_OUT', String((geminiInfo as Record<string, unknown>).audioChunksSent ?? '—')],
+                          ['VAD_RMS',   String((geminiInfo as Record<string, number>).lastVadRms?.toFixed(4) ?? '0.0000')],
+                        ] as [string, string][]).map(([k, v]) => (
+                          <div className="ec-metric" key={k}>
+                            <div className="ec-metric__label">{k}</div>
+                            <div className="ec-metric__value">{v}</div>
+                          </div>
+                        ))}
                       </div>
 
-                      <TerminalStream lines={geminiInfo.recentMessages} label="SIGNAL_STREAM" />
+                      <div style={{ marginTop: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.52rem', color: '#00ffcc', letterSpacing: '0.18em', fontWeight: 800 }}>SIGNAL_STREAM</span>
+                          <button onClick={() => navigator.clipboard.writeText(geminiInfo.recentMessages.join('\n'))} style={{ background: 'rgba(0,255,136,0.08)', border: '1px solid rgba(0,255,136,0.22)', borderRadius: 3, color: '#00ff88', fontSize: '0.48rem', cursor: 'pointer', padding: '3px 8px', fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em', fontWeight: 800 }}>COPY</button>
+                        </div>
+                        <div className="ec-terminal">
+                          {geminiInfo.recentMessages.length === 0
+                            ? <span style={{ color: 'rgba(255,255,255,0.12)', letterSpacing: '0.16em' }}>— NO_SIGNAL —</span>
+                            : geminiInfo.recentMessages.map((l, i) => <div key={i}>{l}</div>)
+                          }
+                        </div>
+                      </div>
                     </>
                   ) : (
-                    <div style={{ padding:'50px 0', textAlign:'center', fontFamily:T.fontUI, color:'rgba(255,255,255,0.12)', fontSize:'0.68rem', letterSpacing:'0.2em' }}>
-                      WAITING FOR CORE UPLINK...
-                    </div>
+                    <div className="ec-await">WAITING FOR CORE UPLINK...</div>
                   )}
-                </GlassCard>
+                </div>
               )}
 
               {/* ── SALVAGE ───────────────────────────────────────────── */}
               {activeFreq === 'SALVAGE' && (
-                !debugPasswordEntered ? (
-                  <GlassCard color={T.purple}>
-                    <div style={{ textAlign:'center', padding:'32px 0' }} data-testid="dev-gate-container">
-                      <div style={{
-                        fontFamily:T.fontHeader, fontSize:'1.2rem', color:T.purple,
-                        marginBottom:8, letterSpacing:'0.16em',
-                        textShadow:`0 0 30px ${T.purple}`,
-                      }}>ACCESS_RESTRICTED</div>
-                      <div style={{ fontFamily:T.fontUI, fontSize:'0.52rem', color:`${T.purple}50`, letterSpacing:'0.18em', marginBottom:24 }}>
-                        SALVAGE BAY CLEARANCE REQUIRED
+                !debugPassed ? (
+                  <div className="ec-card ec-card--purple">
+                    <div style={{ textAlign: 'center', padding: '36px 8px' }} data-testid="dev-gate-container">
+                      <div className="ec-title ec-title--purple" style={{ textAlign: 'center', fontSize: 'clamp(1.6rem, 6vw, 2.2rem)', marginBottom: 6, filter: 'drop-shadow(0 0 30px rgba(176,38,255,0.5))' }}>
+                        ACCESS_RESTRICTED
                       </div>
+                      <div className="ec-subtitle" style={{ color: '#b026ff', textAlign: 'center', marginBottom: 28 }}>SALVAGE BAY CLEARANCE REQUIRED</div>
+                      <div className="ec-divider" />
                       <input
                         type="password"
-                        value={debugPassword}
+                        value={debugPw}
                         onChange={e => setDebugPw(e.target.value)}
-                        onKeyDown={e => e.key==='Enter' && (debugPassword==='3nculturate!' ? setDebugPassed(true) : null)}
+                        onKeyDown={e => e.key === 'Enter' && debugPw === '3nculturate!' && setDebugPassed(true)}
                         placeholder="INPUT_DECRYPTION_KEY"
                         data-testid="debug-password-input"
-                        style={{
-                          width:'100%', background:T.glassDark, boxSizing:'border-box',
-                          border:`1px solid ${T.purple}30`, borderLeft:`3px solid ${T.purple}60`,
-                          borderRadius:'2px 10px 2px 10px',
-                          padding:'13px 14px', color:T.purple,
-                          fontFamily:T.fontData, fontSize:'0.9rem',
-                          textAlign:'center', marginBottom:16, outline:'none',
-                          letterSpacing:'0.18em',
-                        }}
+                        className="ec-gate__input"
                       />
                       <motion.button
-                        onClick={() => { if (debugPassword==='3nculturate!') setDebugPassed(true); }}
-                        whileHover={{ scale:1.04, boxShadow:`0 0 30px ${T.purple}40` }}
-                        whileTap={{ scale:0.97 }}
+                        onClick={() => { if (debugPw === '3nculturate!') setDebugPassed(true); }}
+                        whileHover={{ scale: 1.04, boxShadow: '0 0 36px rgba(176,38,255,0.45)' }}
+                        whileTap={{ scale: 0.97 }}
                         data-testid="debug-access-btn"
                         style={{
-                          padding:'13px 28px',
-                          background:`${T.purple}12`,
-                          border:`2px solid ${T.purple}`,
-                          borderRadius:'3px 14px 3px 14px',
-                          color:T.purple, cursor:'pointer',
-                          fontFamily:T.fontHeader, fontSize:'1rem', fontWeight:900, letterSpacing:'0.12em',
-                          boxShadow:`0 0 20px ${T.purple}20`,
+                          padding: '13px 30px',
+                          background: 'rgba(176,38,255,0.1)',
+                          border: '2px solid #b026ff',
+                          borderRadius: '3px 14px 3px 14px',
+                          color: '#b026ff', cursor: 'pointer',
+                          fontFamily: "'aAnotherTag', sans-serif",
+                          fontSize: '1.1rem', fontWeight: 900, letterSpacing: '0.12em',
+                          boxShadow: '0 0 18px rgba(176,38,255,0.2)',
                         }}
                       >DECRYPT</motion.button>
                     </div>
-                  </GlassCard>
+                  </div>
                 ) : (
-                  <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
-                    <div style={{ position:'absolute', opacity:0, pointerEvents:'none' }}>SUPABASE CHAINFUELZ EDGE FUNCTION</div>
-
-                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                      <motion.div animate={{ opacity:[0.5,1,0.5] }} transition={{ repeat:Infinity, duration:1.2 }}
-                        style={{ width:7, height:7, borderRadius:'50%', background:T.green, boxShadow:`0 0 8px ${T.green}` }} />
-                      <span style={{ fontFamily:T.fontData, fontSize:'0.68rem', color:T.green, letterSpacing:'0.14em', fontWeight:700 }}>›_ROOT_SHELL_ACTIVE</span>
+                  <>
+                    <div style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}>SUPABASE CHAINFUELZ EDGE FUNCTION</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.3 }}
+                        style={{ width: 8, height: 8, borderRadius: '50%', background: '#00ff88', boxShadow: '0 0 10px #00ff88' }} />
+                      <span style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.7rem', color: '#00ff88', letterSpacing: '0.14em', fontWeight: 700 }}>›_ROOT_SHELL_ACTIVE</span>
                     </div>
 
-                    {/* Prod Log Bridge */}
-                    <GlassCard color={T.cyan}>
-                      <CardTitle label="PROD LOG BRIDGE" color={T.cyan} sub="LIVE PRODUCTION TELEMETRY" />
+                    <div className="ec-card ec-card--cyan">
+                      <div className="ec-title ec-title--cyan">PROD LOG BRIDGE</div>
+                      <div className="ec-subtitle" style={{ color: '#00ffcc' }}>LIVE PRODUCTION TELEMETRY</div>
+                      <div className="ec-divider" />
                       <ProdLogViewer />
-                    </GlassCard>
+                    </div>
 
-                    {/* System recovery */}
-                    <GlassCard color={T.purple}>
-                      <CardTitle label="SYSTEM RECOVERY" color={T.purple} sub="EDGE FUNCTION DIAGNOSTICS" />
-                      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    <div className="ec-card ec-card--purple">
+                      <div className="ec-title ec-title--purple">SYSTEM RECOVERY</div>
+                      <div className="ec-subtitle" style={{ color: '#b026ff' }}>EDGE FUNCTION DIAGNOSTICS</div>
+                      <div className="ec-divider" />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {[
                           ['RUN_ORACLE_HEALTH', 'oracle-conversation'],
                           ['SYNC_COIN_METRICS', 'culture-coin-manager'],
@@ -903,40 +612,39 @@ export const BackendControlPanel = ({
                             <div key={fn}>
                               <motion.button
                                 onClick={() => testEdgeFunction(fn)}
-                                whileHover={{ backgroundColor:`${T.purple}14`, scale:1.01 }}
-                                whileTap={{ scale:0.98 }}
+                                whileHover={{ scale: 1.01 }}
+                                whileTap={{ scale: 0.98 }}
                                 style={{
-                                  width:'100%', padding:'13px 14px', textAlign:'left', cursor:'pointer',
-                                  background:`${T.purple}08`,
-                                  border:`1px solid ${T.purple}25`, borderLeft:`3px solid ${T.purple}60`,
-                                  borderRadius:'2px 10px 2px 10px',
-                                  color: T.purple,
-                                  fontFamily:T.fontUI, fontSize:'0.62rem', fontWeight:800, letterSpacing:'0.1em',
-                                  display:'flex', alignItems:'center', justifyContent:'space-between',
+                                  width: '100%', padding: '13px 14px', textAlign: 'left', cursor: 'pointer',
+                                  background: 'rgba(176,38,255,0.07)',
+                                  border: '1px solid rgba(176,38,255,0.22)', borderLeft: '3px solid rgba(176,38,255,0.55)',
+                                  borderRadius: '2px 10px 2px 10px',
+                                  color: '#b026ff', fontFamily: "'PhillySans', monospace",
+                                  fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.1em',
+                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                 }}
                               >
                                 <span>{label}</span>
-                                {isLoading && <motion.div animate={{ rotate:360 }} transition={{ repeat:Infinity, duration:0.8, ease:'linear' }}><RefreshCw size={11} /></motion.div>}
+                                {isLoading && <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}><RefreshCw size={12} /></motion.span>}
                               </motion.button>
                               {res && (
                                 <div style={{
-                                  marginTop:5, padding:'8px 12px',
-                                  background:`${res.success ? T.green : T.red}08`,
-                                  border:`1px solid ${res.success ? T.green : T.red}20`,
-                                  borderRadius:'2px 8px 2px 8px',
-                                  fontFamily:T.fontData, fontSize:'0.54rem',
-                                  color: res.success ? T.green : T.red,
-                                  letterSpacing:'0.08em',
+                                  marginTop: 5, padding: '8px 12px',
+                                  background: (res.success ? 'rgba(0,255,136,0.06)' : 'rgba(255,68,102,0.06)'),
+                                  border: `1px solid ${res.success ? 'rgba(0,255,136,0.18)' : 'rgba(255,68,102,0.18)'}`,
+                                  borderRadius: '2px 8px 2px 8px',
+                                  fontFamily: "'Share Tech Mono', monospace", fontSize: '0.54rem',
+                                  color: res.success ? '#00ff88' : '#ff4466', letterSpacing: '0.08em',
                                 }}>
-                                  {res.success ? '✓ ' : '✗ '}STATUS:{res.status} · {res.timestamp?.slice(11,19)}
+                                  {res.success ? '✓ ' : '✗ '}STATUS:{res.status} · {res.timestamp?.slice(11, 19)}
                                 </div>
                               )}
                             </div>
                           );
                         })}
                       </div>
-                    </GlassCard>
-                  </div>
+                    </div>
+                  </>
                 )
               )}
 
@@ -947,13 +655,12 @@ export const BackendControlPanel = ({
           </AnimatePresence>
         </div>
 
-        {/* Bottom safe area */}
-        <div style={{ height:'env(safe-area-inset-bottom, 0px)', background:'rgba(0,1,10,0.4)', flexShrink:0 }} />
+        <div className="ec-safe-area" />
       </motion.div>
 
-      {showUpgradeModal && userId && (
+      {showUpgrade && userId && (
         <InlineSubscriptionModal
-          isOpen={showUpgradeModal}
+          isOpen={showUpgrade}
           onClose={() => setShowUpgrade(false)}
           userId={userId}
           context="engage-further"

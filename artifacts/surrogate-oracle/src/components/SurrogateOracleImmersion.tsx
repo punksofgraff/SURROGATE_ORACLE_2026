@@ -1499,14 +1499,8 @@ export function SurrogateOracleImmersion() {
           onTurnComplete={(turn, score, themes) => {
             if (themes.length) portrait.addThemes(themes);
             handleTurnComplete(turn, score);
-            if (turn >= 20 && !portraitTriggeredRef.current && !portrait.isGenerating && !portraitViewerUrl) {
-              portraitTriggeredRef.current = true;
-              portrait.generatePortrait(portrait.getThemes());
-              oracleConversationRef.current?.sendTextMessage(
-                `[SYSTEM: The archive just locked in a frequency impression of the Seeker. In your very next response, open with a single short line — no more than two sentences — that acknowledges something crystallized in the signal. Do not call it a portrait. Do not explain. Speak it the way the alley witnesses something become permanent. Then continue naturally.]`,
-                true
-              );
-            }
+            // Portrait is now seeker-initiated (fuzzy command in OracleConversation) after ≥5 entries.
+            // No auto-trigger here.
             // Flush staged portrait URL now that the Oracle has finished this turn —
             // portrait reveal fires as a beat between turns, not as a mid-speech interrupt.
             if (pendingPortraitUrlRef.current && !portraitViewerUrl) {

@@ -380,6 +380,10 @@ const OracleConversation = forwardRef(
     // Mirror of `turns` state — closure-safe ref for reconnect context injection
     const turnsRef = useRef<Turn[]>([]);
 
+    // Counts visible seeker entries (non-hidden, non-boot user messages).
+    // Portrait generation is gated behind >= 5 entries so the exchange has substance first.
+    const seekerEntryCountRef = useRef(0);
+
     // Debug tracking for BackendControlPanel
     const debugInfo = useRef({
       turnCount: 0,
@@ -561,8 +565,16 @@ const OracleConversation = forwardRef(
       if (!isBoot) {
         setTurns(prev => [...prev, { role: 'user', content: text, timestamp: Date.now() }]);
         setInputText('');
-        // Portrait verbal trigger — Seeker asks to see their portrait/image/record
-        if (/portrait|show me|see it|my image|frequency record|signal impression|synthesize|manifest|render me/i.test(text)) {
+        seekerEntryCountRef.current += 1;
+
+        // Portrait command detection — fuzzy-match seeker intent after ≥5 entries.
+        // Patterns: "manifest", "create [portrait/image/me/it]", "show me [portrait/image]",
+        // "see it/my", "render me", "make [my/portrait/image]", "show portrait",
+        // "procedural portrait", "my portrait", "my image", etc.
+        const PORTRAIT_INTENT =
+          /\b(manifest|portrait|my\s+(image|portrait|picture|record|likeness)|show\s+me|show\s+(image|portrait|picture|me)|create\s+(my|a|it|portrait|image|me|the)|see\s+(it|my|the|portrait|image)|render\s+(me|my|the)|synthesize(\s+me)?|generate\s+(portrait|image|me|my|it)|make\s+(portrait|image|me|my)|procedural|frequency\s+record|signal\s+impression)\b/i;
+
+        if (seekerEntryCountRef.current >= 5 && PORTRAIT_INTENT.test(text)) {
           onPortraitRequestRef.current?.();
         }
       }

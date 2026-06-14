@@ -19286,3 +19286,31 @@
 {"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781457965338}
 {"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781457985159}
 {"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781457985333}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781458133112}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781458133169}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781458133169}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781458133193}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781458133448}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781458133587}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781458133592}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781458133892}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781458134599}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781458134632}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781458134634}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781458134638}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781458134998}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781458134998}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781458135004}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781458135206}
+{"label":"AUDIO CONTEXT STATE: running","status":"ok","_t":1781458153492}
+{"label":"AUDIO SPINE INITIALIZED","status":"ok","_t":1781458153497}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781458153502}
+{"label":"SEEKER ECHO LOAD FAILED","status":"warn","_t":1781458153736}
+{"label":"NEW SEEKER → LORE INITIATED","status":"ok","_t":1781458153744}
+{"label":"NARRATIVE SIGNAL ACTIVATED","status":"ok","_t":1781458153744}
+{"label":"TAP → TERMINAL","status":"ok","_t":1781458153745}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1781458153745}
+{"label":"AUDIO HARD MUTE INITIATED (800ms)","status":"ok","_t":1781458153809}
+{"label":"PLAYING ARCHIVE RECORDING","status":"ok","_t":1781458154255}
+{"label":"GEMINI WS ERROR","status":"err","_t":1781458165254}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781458165431}

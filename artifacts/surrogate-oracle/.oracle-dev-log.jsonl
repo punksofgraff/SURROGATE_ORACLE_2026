@@ -19142,3 +19142,13 @@
 {"label":"DORMANT RESTORED","status":"ok","_t":1781396549192}
 {"label":"GEMINI WS ERROR","status":"err","_t":1781396746848}
 {"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781396747065}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781439616543}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781439616659}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781439616659}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781439616668}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781439617188}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781439617191}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781439617464}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781439617466}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781439617895}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781439626358}

@@ -20090,3 +20090,11 @@
 {"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781478898331}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1781478898471}
 {"label":"TAB BACKGROUNDED","status":"warn","_t":1781478902000}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781479104007}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781479104387}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781479104390}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781479104391}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781479105202}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781479105226}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781479105676}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781479106093}

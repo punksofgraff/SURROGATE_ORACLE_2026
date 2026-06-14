@@ -231,6 +231,8 @@ export function SurrogateOracleImmersion() {
   const portraitAnnounceRef      = useRef(false); // Oracle announces portrait on next turn-complete
   const pendingNewSeekerLoreRef  = useRef(false); // startLore waiting for WS connection
   const pendingWalletGreetingRef = useRef<string | null>(null); // personalized greeting seed for returning wallet seekers
+  const walletReturnHandledRef   = useRef(false); // top-level wallet-return URL (?seeker=) handled once per load
+  const pendingWalletDbSyncRef   = useRef<string | null>(null); // wallet addr awaiting user_wallets upsert once IP resolves
 
   // ── Service Hooks ───────────────────────────────────────────────────────
   const { isReturning, hasCompletedLore, hasSignedWallet, markVisited, markLoreCompleted, markWalletSigned, ipAddress } = useIpCheck();
@@ -1001,75 +1003,137 @@ export function SurrogateOracleImmersion() {
     );
   }, [portraitRevealPhase, portraitViewerUrl]);
 
-  // Listen for wallet sign events from the wallet iframe.
-  // When the seeker signs, persist the state so future visits land in the alley directly.
-  // Capture wallet address from the payload so seeker history is keyed by wallet, not IP.
+  // Shared wallet sign-in handler. Persists the sign so future visits land in the alley
+  // directly, captures the wallet address as the seeker key (so history is keyed by wallet,
+  // not IP), and carries over any IP-keyed echo built before the wallet connected.
+  // Called by BOTH the iframe postMessage path AND the top-level return-URL path below.
+  const processWalletSignIn = useCallback(async (walletAddress?: string) => {
+    // Set signed state FIRST. markWalletSigned writes the agnostic localStorage flag
+    // synchronously, so a seeker who taps immediately after returning still bypasses lore
+    // straight into the alley — even before the async echo load below resolves.
+    if (walletAddress) {
+      localStorage.setItem('oracle_seeker_key', walletAddress);
+      seekerKeyRef.current = walletAddress;
+      setCurrentUserId(walletAddress);
+      logStep(`WALLET ADDRESS CAPTURED — seeker key locked to wallet`, 'ok');
+    }
+    markWalletSigned(walletAddress);
+    logStep('WALLET SIGNED — ALLEY RETURN ENABLED', 'ok');
+
+    if (walletAddress) {
+      // Load echo for this wallet address
+      let finalEcho = await loadEcho(walletAddress);
+
+      // If the wallet has no prior history, try to carry over any IP-keyed echo.
+      // This preserves archetype/alignment/session history built before the seeker
+      // connected a wallet. Guard: only merge if the IP echo was seen within 30 days
+      // (protects against shared-IP collisions on stale records).
+      if (!finalEcho?.session_count && ipAddress && ipAddress !== walletAddress) {
+        try {
+          const { data: ipResult } = await supabase.functions.invoke('seeker-echo', {
+            body: { op: 'read', seekerKey: ipAddress },
+          });
+          const ipEcho = ipResult?.echo ?? null;
+          const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+          const isRecent = ipEcho?.last_seen_at
+            ? Date.now() - new Date(ipEcho.last_seen_at).getTime() < THIRTY_DAYS_MS
+            : false;
+
+          if (ipEcho && isRecent) {
+            logStep('SEEKER ECHO — merging IP history into wallet key', 'ok');
+            finalEcho = await saveEcho({
+              seekerKey: walletAddress,
+              name: ipEcho.name ?? undefined,
+              handles: ipEcho.handles ?? undefined,
+              lastArchetype: ipEcho.last_archetype ?? undefined,
+              totemLevel: ipEcho.totem_level ?? undefined,
+              lastCost: ipEcho.last_cost ?? undefined,
+              alignment: ipEcho.alignment ?? undefined,
+              irlContext: ipEcho.irl_context ?? undefined,
+              sessionSummary: ipEcho.session_summary ?? undefined,
+              lastSessionThemes: ipEcho.last_session_themes ?? undefined,
+            });
+            logStep('SEEKER ECHO MERGED — IP history now under wallet key', 'ok');
+          }
+        } catch (mergeErr) {
+          logStep('SEEKER ECHO MERGE SKIPPED (non-fatal)', 'warn');
+          console.warn('Echo merge error:', mergeErr);
+        }
+      }
+
+      // Prompt for name if still missing after potential merge
+      if (!finalEcho?.name) {
+        setShowNamePrompt(true);
+      }
+    }
+  }, [markWalletSigned, loadEcho, saveEcho, ipAddress]);
+
+  // Build a wallet URL that tells the wallet where to send the seeker back to after a
+  // sign-in or mint completes on its own tab. The wallet appends ?seeker=<address> to this
+  // return_url (see the return handler below + the ChainFuelz contract).
+  const withWalletReturn = useCallback((url: string, event: 'signin' | 'mint') => {
+    try {
+      const u = new URL(url);
+      u.searchParams.set('return_url', window.location.origin + window.location.pathname);
+      u.searchParams.set('event', event);
+      return u.toString();
+    } catch {
+      return url;
+    }
+  }, []);
+
+  // Iframe path: wallet signs inside the embedded card and posts back via postMessage.
   useEffect(() => {
-    const handleWalletMessage = async (e: MessageEvent) => {
+    const handleWalletMessage = (e: MessageEvent) => {
       if (e.origin !== 'https://wallet.thesurrogate.me') return;
       if (e.data?.type === 'wallet_signed' || e.data?.type === 'wallet_connected') {
         const walletAddress: string | undefined =
           e.data.address || e.data.wallet_address || e.data.publicKey || undefined;
-
-        if (walletAddress) {
-          localStorage.setItem('oracle_seeker_key', walletAddress);
-          seekerKeyRef.current = walletAddress;
-          setCurrentUserId(walletAddress);
-          logStep(`WALLET ADDRESS CAPTURED — seeker key locked to wallet`, 'ok');
-
-          // Load echo for this wallet address
-          let finalEcho = await loadEcho(walletAddress);
-
-          // If the wallet has no prior history, try to carry over any IP-keyed echo.
-          // This preserves archetype/alignment/session history built before the seeker
-          // connected a wallet. Guard: only merge if the IP echo was seen within 30 days
-          // (protects against shared-IP collisions on stale records).
-          if (!finalEcho?.session_count && ipAddress && ipAddress !== walletAddress) {
-            try {
-              const { data: ipResult } = await supabase.functions.invoke('seeker-echo', {
-                body: { op: 'read', seekerKey: ipAddress },
-              });
-              const ipEcho = ipResult?.echo ?? null;
-              const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-              const isRecent = ipEcho?.last_seen_at
-                ? Date.now() - new Date(ipEcho.last_seen_at).getTime() < THIRTY_DAYS_MS
-                : false;
-
-              if (ipEcho && isRecent) {
-                logStep('SEEKER ECHO — merging IP history into wallet key', 'ok');
-                finalEcho = await saveEcho({
-                  seekerKey: walletAddress,
-                  name: ipEcho.name ?? undefined,
-                  handles: ipEcho.handles ?? undefined,
-                  lastArchetype: ipEcho.last_archetype ?? undefined,
-                  totemLevel: ipEcho.totem_level ?? undefined,
-                  lastCost: ipEcho.last_cost ?? undefined,
-                  alignment: ipEcho.alignment ?? undefined,
-                  irlContext: ipEcho.irl_context ?? undefined,
-                  sessionSummary: ipEcho.session_summary ?? undefined,
-                  lastSessionThemes: ipEcho.last_session_themes ?? undefined,
-                });
-                logStep('SEEKER ECHO MERGED — IP history now under wallet key', 'ok');
-              }
-            } catch (mergeErr) {
-              logStep('SEEKER ECHO MERGE SKIPPED (non-fatal)', 'warn');
-              console.warn('Echo merge error:', mergeErr);
-            }
-          }
-
-          // Prompt for name if still missing after potential merge
-          if (!finalEcho?.name) {
-            setShowNamePrompt(true);
-          }
-        }
-
-        markWalletSigned(walletAddress);
-        logStep('WALLET SIGNED — ALLEY RETURN ENABLED', 'ok');
+        void processWalletSignIn(walletAddress);
       }
     };
     window.addEventListener('message', handleWalletMessage);
     return () => window.removeEventListener('message', handleWalletMessage);
-  }, [markWalletSigned, loadEcho, saveEcho, ipAddress]);
+  }, [processWalletSignIn]);
+
+  // Top-level return path: when sign-in or minting happens on the wallet's own tab
+  // (wallet.thesurrogate.me), it returns the seeker to the site with
+  //   ?seeker=<walletAddress>[&event=signin|mint]
+  // (aliases accepted: ?wallet=, ?address=). This is what makes a tab sign-in / mint
+  // "return to the experience" instead of dropping the seeker on a fresh home screen and
+  // looping. We route it through the same processWalletSignIn() as the iframe path, then
+  // strip the params so a refresh/share doesn't replay them. Ref-guarded to run once.
+  useEffect(() => {
+    if (walletReturnHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const seeker = params.get('seeker') || params.get('wallet') || params.get('address');
+    if (!seeker) return;
+    walletReturnHandledRef.current = true;
+
+    const event = params.get('event'); // optional: 'signin' | 'mint'
+    logStep(`WALLET RETURN DETECTED${event ? ` (${event})` : ''} — activating seeker`, 'ok');
+    void processWalletSignIn(seeker);
+    // If the IP check hasn't resolved yet, markWalletSigned can't persist to user_wallets.
+    // Queue the backend upsert to flush once the IP is known (see effect below).
+    if (!ipAddress) pendingWalletDbSyncRef.current = seeker;
+
+    // Strip wallet params but preserve any others (e.g. ?devui, ?newuser).
+    params.delete('seeker');
+    params.delete('wallet');
+    params.delete('address');
+    params.delete('event');
+    const qs = params.toString();
+    const newUrl = window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash;
+    window.history.replaceState({}, '', newUrl);
+  }, [processWalletSignIn, ipAddress]);
+
+  // Flush the deferred user_wallets upsert once the IP resolves (return handled IP-first).
+  useEffect(() => {
+    if (ipAddress && pendingWalletDbSyncRef.current) {
+      markWalletSigned(pendingWalletDbSyncRef.current);
+      pendingWalletDbSyncRef.current = null;
+    }
+  }, [ipAddress, markWalletSigned]);
 
   // Generate the encrypted NFT Claim link once the portrait holographic reveal settles.
   useEffect(() => {
@@ -1454,7 +1518,7 @@ export function SurrogateOracleImmersion() {
                 {mintUrl && (
                   <button
                     className="oracle-portrait-fullscreen__mint"
-                    onClick={() => window.open(mintUrl, '_blank', 'noopener,noreferrer')}
+                    onClick={() => window.open(withWalletReturn(mintUrl, 'mint'), '_blank', 'noopener,noreferrer')}
                   >
                     CLAIM AS NFT
                   </button>
@@ -1586,7 +1650,7 @@ export function SurrogateOracleImmersion() {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <a
-                      href="https://wallet.thesurrogate.me"
+                      href={withWalletReturn('https://wallet.thesurrogate.me', 'signin')}
                       target="_blank" rel="noreferrer"
                       style={{
                         background: '#00ff88', color: '#000', padding: '1rem',

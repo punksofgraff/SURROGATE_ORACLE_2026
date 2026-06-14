@@ -20,7 +20,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { logStep } from './CodeAuditor';
 import { trackOracleEvent } from '../lib/analytics';
 import { Mic, MicOff, Send, Terminal, X, Zap } from 'lucide-react';
-import { getAudioContext } from '../lib/oracleSfx';
+import { getAudioContext, playSignalLockedSfx } from '../lib/oracleSfx';
 import {
   ARCHETYPE_SYNTHESIS_BLOCK,
   TOTEM_LADDER_BLOCK,
@@ -585,6 +585,7 @@ const OracleConversation = forwardRef(
         seekerEntryCountRef.current += 1;
         setSeekerCount(seekerEntryCountRef.current);
         onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
+        if (seekerEntryCountRef.current === SEEKER_MAX) playSignalLockedSfx();
 
         // Portrait command detection — fuzzy-match seeker intent after ≥5 entries.
         // Patterns: "manifest", "create [portrait/image/me/it]", "show me [portrait/image]",
@@ -604,6 +605,7 @@ const OracleConversation = forwardRef(
       pendingMessagesRef.current = []; // Clear queue on fresh connect
       seekerEntryCountRef.current = 0;
       setSeekerCount(0);
+      micAutoRestartEnabledRef.current = false; // Don't carry over armed mic from prior session
 
       // Use environment variable for Supabase URL to avoid hardcoding dev project
       let supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://velmmplevfrtrtrypoch.supabase.co';

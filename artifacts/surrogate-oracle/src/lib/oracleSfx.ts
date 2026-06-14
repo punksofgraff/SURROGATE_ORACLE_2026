@@ -221,7 +221,54 @@ export function playOraclePresence(): void {
   } catch { /* silently fail */ }
 }
 
-// ── 4. EXIT TONE ──────────────────────────────────────────────────────────────
+// ── 4. SIGNAL LOCKED ─────────────────────────────────────────────────────────
+// Fired when the seeker reaches SEEKER_MAX depth (portrait summon unlocks).
+// Character: crystalline double-tone ascending — precision + achievement.
+// Duration: ~700ms.
+
+export function playSignalLockedSfx(): void {
+  try {
+    const c = ctx();
+    const t = c.currentTime;
+
+    // First tone — lower anchor
+    const osc1 = c.createOscillator();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(660, t);
+    osc1.frequency.exponentialRampToValueAtTime(880, t + 0.18);
+    const g1 = c.createGain();
+    g1.gain.setValueAtTime(0.07, t);
+    g1.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+    osc1.connect(g1); g1.connect(c.destination);
+    osc1.start(t); osc1.stop(t + 0.34);
+
+    // Second tone — higher resolve (slight delay)
+    const osc2 = c.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, t + 0.14);
+    osc2.frequency.exponentialRampToValueAtTime(1320, t + 0.38);
+    const g2 = c.createGain();
+    g2.gain.setValueAtTime(0, t);
+    g2.gain.setValueAtTime(0.06, t + 0.14);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+    osc2.connect(g2); g2.connect(c.destination);
+    osc2.start(t + 0.14); osc2.stop(t + 0.72);
+
+    // Bright shimmer — noise burst at the peak
+    const noise = c.createBufferSource();
+    noise.buffer = makeNoiseBuffer(c, 0.18);
+    const nf = c.createBiquadFilter();
+    nf.type = 'highpass'; nf.frequency.value = 5000;
+    const ng = c.createGain();
+    ng.gain.setValueAtTime(0.04, t + 0.28);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.46);
+    noise.connect(nf); nf.connect(ng); ng.connect(c.destination);
+    noise.start(t + 0.28); noise.stop(t + 0.46);
+
+  } catch { /* silently fail */ }
+}
+
+// ── 5. EXIT TONE ──────────────────────────────────────────────────────────────
 // Fired when the Oracle session closes.
 // Character: the channel collapsing — energy dissipating, portal sealing.
 // Duration: ~1.2s.

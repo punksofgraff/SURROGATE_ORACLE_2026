@@ -1348,7 +1348,13 @@ export function SurrogateOracleImmersion() {
           <GraffPunksRadio isPlaying={isAudioPlaying} onToggle={() => setIsAudioPlaying(!isAudioPlaying)} stations={defaultAudioTracks} currentStation={currentStation} onStationChange={switchStation} />
           <motion.div onPointerDown={() => startHold('WALLET', 'Your wallet.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => { console.log('👉 WALLET CLICK RECEIVED'); if (!consumeHold()) { console.log('👉 WALLET TRIGGERED'); setShowWallet(true); } }} className="oracle-bottom-btn oracle-bottom-btn--active">
             <img src="/portrait-btn.png" alt="Wallet" className="oracle-bottom-btn__img" />
-            <span className="oracle-bottom-btn__label">WALLET</span>
+            {currentUserId && !currentUserId.includes('.') ? (
+              <span className="oracle-bottom-btn__label" style={{ color: '#00ff88', fontSize: '0.52rem', letterSpacing: '0.08em' }}>
+                {currentUserId.slice(0, 6)}…{currentUserId.slice(-4)}
+              </span>
+            ) : (
+              <span className="oracle-bottom-btn__label">WALLET</span>
+            )}
           </motion.div>
           <motion.div onPointerDown={() => startHold('ENCULTURATE CRATE', 'Settings.')} onPointerUp={endHold} onPointerLeave={endHold}>
             <EnculturateCrate onClick={() => { if (!consumeHold()) setDebugMode(true); }} isActive={isAlive} />

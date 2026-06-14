@@ -172,8 +172,9 @@ interface OracleConversationProps {
   onDisconnected?: () => void;
   isGuidedTour?: boolean;
   /** When false, mic auto-restart after turn-complete is suppressed regardless of
-   *  micAutoRestartEnabledRef state. Set to true only in oracle/tour phases so stale
-   *  refs from prior sessions can never trigger getUserMedia during lore or terminal. */
+   *  micAutoRestartEnabledRef state. Set to true only in the oracle scenePhase — tour
+   *  is listen-only and must not trigger getUserMedia. Defaults to false so stale refs
+   *  from prior sessions can never open the mic during lore, terminal, or tour. */
   micAutoRestartAllowed?: boolean;
 }
 

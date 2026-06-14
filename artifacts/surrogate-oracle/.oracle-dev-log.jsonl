@@ -19126,3 +19126,17 @@
 {"label":"MIC→GEMINI: 3750 chunks sent | vad=silence rms=0.104 | speaking=false","status":"ok","_t":1781396177881}
 {"label":"GEMINI WS ERROR","status":"err","_t":1781396266063}
 {"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781396266281}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781396539425}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781396539730}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781396539793}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781396539952}
+{"label":"ORACLE_CONV UNMOUNT","status":"warn","_t":1781396546130}
+{"label":"EXIT INITIATED","status":"ok","_t":1781396546133}
+{"label":"SEEKER ECHO SAVE FAILED","status":"warn","_t":1781396546267}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781396546428}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781396546434}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781396546450}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781396546640}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781396546644}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781396546981}
+{"label":"DORMANT RESTORED","status":"ok","_t":1781396549192}

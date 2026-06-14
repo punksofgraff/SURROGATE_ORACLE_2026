@@ -794,9 +794,8 @@ export function SurrogateOracleImmersion() {
         false
       );
       logStep('ORACLE TOUR NARRATION STARTED', 'ok');
-      // Enable mic auto-restart — mic will open automatically AFTER Oracle's first spoken turn,
-      // not before. Never call startMic() here directly (would prompt permissions too early).
-      oracleConversationRef.current?.enableMicAutoRestart();
+      // Tour is listen-only — mic stays closed until the seeker enters oracle phase.
+      // Do NOT call enableMicAutoRestart() or startMic() here.
     }, 600);
     return () => { clearTimeout(t); };
   }, [scenePhase]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1569,7 +1568,7 @@ export function SurrogateOracleImmersion() {
           onUserSpeakingChange={(speaking) => setIsUserSpeaking(prev => prev !== speaking ? speaking : prev)}
           isVisible={isOracleMode}
           autoStart={false}
-          micAutoRestartAllowed={scenePhase === 'oracle' || scenePhase === 'tour'}
+          micAutoRestartAllowed={scenePhase === 'oracle'}
           onBargeIn={connection.flushPlayback}
           onPortraitRequest={() => {
             if (portraitViewerUrl) {

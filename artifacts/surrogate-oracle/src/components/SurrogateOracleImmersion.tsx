@@ -227,6 +227,7 @@ export function SurrogateOracleImmersion() {
   const pendingPortraitUrlRef    = useRef<string | null>(null); // staged portrait URL — released at turn-complete
   const portraitAnnounceRef      = useRef(false); // Oracle announces portrait on next turn-complete
   const pendingNewSeekerLoreRef  = useRef(false); // startLore waiting for WS connection
+  const pendingWalletGreetingRef = useRef<string | null>(null); // personalized greeting seed for returning wallet seekers
 
   // ── Service Hooks ───────────────────────────────────────────────────────
   const { isReturning, hasCompletedLore, hasSignedWallet, markVisited, markLoreCompleted, markWalletSigned, ipAddress } = useIpCheck();
@@ -434,7 +435,7 @@ export function SurrogateOracleImmersion() {
     connection.initializePCMPlayer();
     setIsAudioPlaying(true);
     markVisited();
-    if (seekerKeyRef.current) await loadEcho(seekerKeyRef.current);
+    const loadedEcho = seekerKeyRef.current ? await loadEcho(seekerKeyRef.current) : null;
     (window as any).__terminal_start = Date.now();
 
     // Wallet-signed returning seeker — skip lore + terminal, land straight in the alley.
@@ -444,6 +445,24 @@ export function SurrogateOracleImmersion() {
     const walletSigned = hasSignedWallet || !!localStorage.getItem('oracle_wallet_signed');
     if (walletSigned && !forceNew) {
       logStep('WALLET SIGNED → DIRECT ALLEY ENTRY', 'ok');
+      // Build a personalized greeting if the seeker has a known echo record
+      const greetLabel = loadedEcho?.name || loadedEcho?.last_archetype;
+      if (greetLabel) {
+        const echoLines = [
+          loadedEcho.name ? `Their name is ${loadedEcho.name}.` : '',
+          loadedEcho.last_archetype ? `Their last known archetype: ${loadedEcho.last_archetype}.` : '',
+          (loadedEcho.session_count ?? 0) > 0
+            ? `This is return visit ${loadedEcho.session_count + 1}.`
+            : '',
+        ].filter(Boolean).join(' ');
+        pendingWalletGreetingRef.current =
+          `[SIGNAL RECOGNITION — A returning Seeker has arrived in the alley. ${echoLines} ` +
+          `Speak exactly ONE or TWO sentences — no more. Acknowledge them by name or archetype ` +
+          `with quiet warmth, as though the static always held their shape. ` +
+          `Do NOT introduce yourself. Do NOT ask questions. Do NOT announce the session. ` +
+          `The alley is already open. Simply let them know they are recognized and present.]`;
+        logStep(`WALLET SEEKER GREETING QUEUED — ${greetLabel}`, 'ok');
+      }
       enterTerminal();
       setTimeout(() => awakeFromTerminal(), 300);
       return;
@@ -760,14 +779,20 @@ export function SurrogateOracleImmersion() {
       import('../lib/supabase').then(({ supabase }) => {
         supabase.auth.getUser().then(({ data }) => { if (data?.user?.email) setUserEmail(data.user.email); });
       });
-      // Pre-warm Oracle WebSocket connection the moment Awakened starts so the session
-      // is ready with zero lag, but do so silently (prewarm()) without sending any
-      // text prompt that would trigger Gemini to voice-greet or speak before a card
-      // voiceover is requested.
-      // Guard: if the Seeker taps a knife within 600ms, the cleanup cancels this prewarm.
+      // If a wallet-signed returning seeker has a known echo, fire a personalized
+      // greeting instead of a silent prewarm. Otherwise prewarm silently so the
+      // knife-selection session starts with zero lag.
+      // Guard: if the Seeker taps a knife within 600ms, the cleanup cancels this timer.
+      const greetingSeed = pendingWalletGreetingRef.current;
+      pendingWalletGreetingRef.current = null;
       prewarmTimer = setTimeout(() => {
-        oracleConversationRef.current?.prewarm();
-        logStep('ORACLE CONDUIT PRE-WARMED SILENTLY', 'ok');
+        if (greetingSeed) {
+          oracleConversationRef.current?.startSession(greetingSeed);
+          logStep('WALLET SEEKER PERSONALIZED GREETING FIRED', 'ok');
+        } else {
+          oracleConversationRef.current?.prewarm();
+          logStep('ORACLE CONDUIT PRE-WARMED SILENTLY', 'ok');
+        }
       }, 600);
     }
     if (scenePhase === 'oracle') {

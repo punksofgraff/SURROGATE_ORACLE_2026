@@ -1083,13 +1083,48 @@ export function SurrogateOracleImmersion() {
   }, []);
 
   // Iframe path: wallet signs inside the embedded card and posts back via postMessage.
+  //
+  // Diagnostics: this postMessage handshake is the most opaque leg of the wallet pipe.
+  // We control the origin gate + the accepted message shapes; the wallet controls what it
+  // actually emits and from which origin. When a sign-in "does nothing", this lets us pin
+  // the break to OUR side (origin/shape mismatch we silently dropped) vs THEIRS (wallet
+  // never posted back). We log every plausibly-wallet message — including rejected ones —
+  // tagged [WALLET-BRIDGE]. Wallet addresses are public keys, not secrets.
   useEffect(() => {
     const handleWalletMessage = (e: MessageEvent) => {
-      if (e.origin !== 'https://wallet.thesurrogate.me') return;
+      const data = e.data;
+      const looksWalletRelated =
+        e.origin.includes('thesurrogate.me') ||
+        (!!data && typeof data === 'object' && typeof data.type === 'string' && data.type.includes('wallet'));
+
+      if (looksWalletRelated) {
+        const shape = data && typeof data === 'object'
+          ? { type: data.type, keys: Object.keys(data) }
+          : { raw: data };
+        console.info('[WALLET-BRIDGE] inbound', { origin: e.origin, ...shape });
+        logStep(`WALLET BRIDGE — msg from ${e.origin} (${data?.type ?? 'no-type'})`, 'ok');
+      }
+
+      if (e.origin !== 'https://wallet.thesurrogate.me') {
+        if (looksWalletRelated) {
+          console.warn('[WALLET-BRIDGE] REJECTED — origin mismatch (expected https://wallet.thesurrogate.me):', e.origin);
+          logStep(`WALLET BRIDGE — REJECTED foreign origin ${e.origin}`, 'warn');
+        }
+        return;
+      }
+
       if (e.data?.type === 'wallet_signed' || e.data?.type === 'wallet_connected') {
         const walletAddress: string | undefined =
           e.data.address || e.data.wallet_address || e.data.publicKey || undefined;
+        console.info(`[WALLET-BRIDGE] accepted ${e.data.type} — address present:`, !!walletAddress);
+        logStep(
+          `WALLET BRIDGE — accepted ${e.data.type}${walletAddress ? ' (address captured)' : ' (NO address field!)'}`,
+          walletAddress ? 'ok' : 'warn',
+        );
         void processWalletSignIn(walletAddress);
+      } else if (looksWalletRelated) {
+        console.warn('[WALLET-BRIDGE] wallet-origin message with unrecognized type:', e.data?.type);
+        logStep(`WALLET BRIDGE — unrecognized type "${e.data?.type}" from wallet origin`, 'warn');
       }
     };
     window.addEventListener('message', handleWalletMessage);

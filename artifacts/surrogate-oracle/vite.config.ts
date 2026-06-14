@@ -119,7 +119,14 @@ export default defineConfig({
       'Cache-Control': 'no-store, no-cache, must-revalidate',
       'Pragma': 'no-cache',
       'Expires': '0',
-      'Permissions-Policy': 'publickey-credentials-get=(self "https://wallet.thesurrogate.me"), publickey-credentials-create=(self "https://wallet.thesurrogate.me")',
+      // Delegate the features the embedded wallet iframe needs to the wallet origin.
+      // NOTE: this header is DEV-ONLY — production serves a static build (no server to
+      // emit headers), and Permissions-Policy is ignored as an HTML <meta>. In production
+      // the iframe `allow=` attribute (see SurrogateOracleImmersion.tsx) is the sole,
+      // spec-compliant delegation mechanism and already carries the full feature set.
+      // A Permissions-Policy header only constrains the features it names; anything omitted
+      // keeps its default `self` allowlist, so this list is parity/intent, not a gate.
+      'Permissions-Policy': 'publickey-credentials-get=(self "https://wallet.thesurrogate.me"), publickey-credentials-create=(self "https://wallet.thesurrogate.me"), payment=(self "https://wallet.thesurrogate.me"), clipboard-write=(self "https://wallet.thesurrogate.me")',
     },
   },
   preview: {

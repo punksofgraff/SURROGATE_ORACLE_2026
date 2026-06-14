@@ -34,9 +34,14 @@ export function useIpCheck() {
           setHasCompletedLore(true);
         }
 
-        const walletFlag = localStorage.getItem(`oracle_wallet_signed_${ip}`);
+        // Check IP-keyed key first; fall back to the IP-agnostic key written
+        // when the wallet signs before the IP check resolves.
+        const walletFlag = localStorage.getItem(`oracle_wallet_signed_${ip}`)
+          || localStorage.getItem('oracle_wallet_signed');
         if (walletFlag) {
           setHasSignedWallet(true);
+          // Upgrade to IP-keyed storage so future loads skip the agnostic fallback.
+          localStorage.setItem(`oracle_wallet_signed_${ip}`, 'true');
         }
 
         // 3. Optional: check database if we want a hard backend check
@@ -60,6 +65,7 @@ export function useIpCheck() {
           if (walletData.onboarding_status === 'wallet_signed') {
             setHasSignedWallet(true);
             localStorage.setItem(`oracle_wallet_signed_${ip}`, 'true');
+            localStorage.setItem('oracle_wallet_signed', 'true');
           }
           
           logStep('IP CHECK: RETURN TRIP VERIFIED', 'ok');
@@ -112,12 +118,19 @@ export function useIpCheck() {
   };
 
   const markWalletSigned = async () => {
-    if (!ipAddress) return;
-    localStorage.setItem(`oracle_wallet_signed_${ipAddress}`, 'true');
-    localStorage.setItem(`surrogate_lore_completed_${ipAddress}`, 'true');
+    // Always write the IP-agnostic key immediately so the sign is captured even
+    // if the IP check hasn't resolved yet (avoids silent drop on fast signers).
+    localStorage.setItem('oracle_wallet_signed', 'true');
     setHasSignedWallet(true);
     setHasCompletedLore(true);
     setIsReturning(true);
+
+    if (!ipAddress) {
+      logStep('WALLET SIGNED (IP pending — agnostic key written)', 'ok');
+      return; // IP-keyed write + Supabase will happen when checkIp re-runs or upgrades on next load
+    }
+    localStorage.setItem(`oracle_wallet_signed_${ipAddress}`, 'true');
+    localStorage.setItem(`surrogate_lore_completed_${ipAddress}`, 'true');
     try {
       await supabase.from('user_wallets').upsert({
         ip_address: ipAddress,

@@ -438,8 +438,11 @@ export function SurrogateOracleImmersion() {
     (window as any).__terminal_start = Date.now();
 
     // Wallet-signed returning seeker — skip lore + terminal, land straight in the alley.
+    // Check both the React state (set by async IP check) AND the IP-agnostic localStorage
+    // key directly so fast tappers before the IP check resolves are still recognised.
     const forceNew = new URLSearchParams(window.location.search).has('newuser');
-    if (hasSignedWallet && !forceNew) {
+    const walletSigned = hasSignedWallet || !!localStorage.getItem('oracle_wallet_signed');
+    if (walletSigned && !forceNew) {
       logStep('WALLET SIGNED → DIRECT ALLEY ENTRY', 'ok');
       enterTerminal();
       setTimeout(() => awakeFromTerminal(), 300);

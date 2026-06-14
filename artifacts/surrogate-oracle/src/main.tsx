@@ -33,7 +33,14 @@ if (_sp.has('reset')) {
   sessionStorage.clear();
   window.location.replace('/?newuser');
 } else if (_sp.has('fresh')) {
-  ['oracle_lore_completed','oracle_active_session_id','oracle_steps_sticky'].forEach(k => localStorage.removeItem(k));
+  // Remove fixed-name keys
+  ['oracle_lore_completed','oracle_active_session_id','oracle_steps_sticky','oracle_wallet_signed'].forEach(k => localStorage.removeItem(k));
+  // Remove IP-keyed variants (pattern match — IP is unknown at this point)
+  for (const k of Object.keys(localStorage)) {
+    if (k.startsWith('oracle_wallet_signed_') || k.startsWith('surrogate_lore_completed_')) {
+      localStorage.removeItem(k);
+    }
+  }
   window.location.replace('/?newuser');
 }
 

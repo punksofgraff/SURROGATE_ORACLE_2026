@@ -19152,3 +19152,15 @@
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1781439617466}
 {"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781439617895}
 {"label":"TAB BACKGROUNDED","status":"warn","_t":1781439626358}
+{"label":"ORACLE_CONV UNMOUNT","status":"warn","_t":1781440058975}
+{"label":"EXIT INITIATED","status":"ok","_t":1781440058979}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781440059035}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781440059043}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781440059175}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781440059175}
+{"label":"SEEKER ECHO SAVE FAILED","status":"warn","_t":1781440059418}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781440059526}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781440059526}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781440059593}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781440059714}
+{"label":"DORMANT RESTORED","status":"ok","_t":1781440061800}

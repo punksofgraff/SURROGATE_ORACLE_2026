@@ -306,9 +306,18 @@ export function SurrogateOracleImmersion() {
     });
 
     if (isFirstTimeSeeker) {
-      // Lore complete — now present the orientation choice before awakening.
-      logStep('LORE DONE → STAGE_00 PRESENTED', 'ok');
-      setShowStage00(true);
+      // Lore complete — transition alley in first, then materialize the ACK card over it.
+      logStep('LORE DONE → ALLEY TRANSITION', 'ok');
+      document.body.setAttribute('data-rift-opening', 'true');
+      setTimeout(() => {
+        journey.awakeFromTerminal();
+        document.body.removeAttribute('data-rift-opening');
+        // Wait for alley to fully materialize, then reveal knife card on top of it
+        setTimeout(() => {
+          setShowStage00(true);
+          logStep('STAGE_00 PRESENTED (over alley)', 'ok');
+        }, 600);
+      }, 850);
       return;
     }
 
@@ -662,6 +671,14 @@ export function SurrogateOracleImmersion() {
     // Enable mic auto-restart so the mic turns on automatically AFTER the Oracle finishes the initial reply,
     // avoiding recording background noise/feedback while the Oracle reads the question and answers it.
     oracleConversationRef.current?.enableMicAutoRestart();
+
+    // Bundle all permissions in this single user-gesture context:
+    //   1. Gyro (iOS DeviceOrientation) — for parallax tilt
+    //   2. Front camera — starts face tracking pipeline as Oracle wakes
+    // Mic permission fires automatically after Oracle's first response (via enableMicAutoRestart above).
+    const _DE = (DeviceOrientationEvent as any);
+    if (typeof _DE?.requestPermission === 'function') _DE.requestPermission().catch(() => {});
+    activateCamera();
 
     setTimeout(() => {
       const fullStory = LORE_SEQUENCE.join('\n');

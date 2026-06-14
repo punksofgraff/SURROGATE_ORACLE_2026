@@ -784,7 +784,8 @@ export function SurrogateOracleImmersion() {
       nextTarget = MUSIC_OFF_VOLUME;
       rampMs = 800;
     } else if (scenePhase === 'awakened') {
-      nextTarget = MUSIC_KNIFE_VOLUME;
+      // Keep silent while the Stage00 ACK card is up — fade in only once knife cards are visible
+      nextTarget = showStage00 ? MUSIC_OFF_VOLUME : MUSIC_KNIFE_VOLUME;
       rampMs = 1500;
     } else if (scenePhase === 'oracle') {
       // Restore music volume when in oracle mode and mic is NOT active!
@@ -798,7 +799,7 @@ export function SurrogateOracleImmersion() {
     if (Math.abs(nextTarget - targetVol) > 0.0001) {
       fadeToVolume(nextTarget, rampMs);
     }
-  }, [scenePhase, isOracleSpeaking, isMicActive, isAudioPlaying, targetVol, fadeToVolume]);
+  }, [scenePhase, showStage00, isOracleSpeaking, isMicActive, isAudioPlaying, targetVol, fadeToVolume]);
 
   useEffect(() => {
     if (!audioRef.current) return;

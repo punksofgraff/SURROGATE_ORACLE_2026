@@ -4362,78 +4362,80 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   z-index: 2;
 }
 
-/* ── Portrait command button in signal pad ─────────────────────────────── */
-.oc-portrait-btn {
+/* ── Summon HUD — top XR-HUD progress meter / summon control ─────────────── */
+.oc-summon-hud {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  width: min(280px, 72vw);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.oc-summon-hud__meter {
   width: 100%;
-  background: rgba(0,255,136, 0.08);
-  border: 1px solid rgba(0,255,136, 0.30);
-  color: rgba(0,255,136, 0.85);
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 0.72rem;
-  letter-spacing: 0.12em;
-  padding: 8px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  text-align: center;
-  transition: background 0.18s, border-color 0.18s, color 0.18s;
-  margin-bottom: 2px;
+  pointer-events: none;
+  animation: oc-summon-flicker 0.5s steps(1, end) 1;
 }
-.oc-portrait-btn:hover {
-  background: rgba(0,255,136, 0.18);
-  border-color: rgba(0,255,136, 0.65);
-  color: #00ffcc;
-}
-
-/* ── Portrait summon progress bar ──────────────────────────────────────── */
-.oc-portrait-progress-wrap {
-  width: 100%;
-  margin-bottom: 2px;
-}
-.oc-portrait-btn--locked {
-  opacity: 0.38;
-  cursor: not-allowed;
-  border-color: rgba(0,255,136, 0.12);
-  color: rgba(0,255,136, 0.38);
-  box-shadow: none;
-}
-.oc-portrait-btn--locked:hover {
-  background: rgba(0,255,136, 0.08);
-  border-color: rgba(0,255,136, 0.12);
-  color: rgba(0,255,136, 0.38);
-}
-.oc-portrait-btn--ready {
-  background: rgba(0,255,136, 0.13);
-  border-color: rgba(0,255,136, 0.65);
-  color: #00ffcc;
-  box-shadow: 0 0 10px rgba(0,255,136,0.30), 0 0 22px rgba(0,255,136,0.12);
-  animation: oracle-pulse 2s ease-in-out infinite;
-}
-.oc-portrait-progress-bar {
+.oc-summon-hud__track {
   width: 100%;
   height: 3px;
   background: rgba(0,255,136, 0.10);
+  border: 1px solid rgba(0,255,136, 0.18);
   border-radius: 2px;
   overflow: hidden;
-  margin-top: 5px;
 }
-.oc-portrait-progress-fill {
+.oc-summon-hud__fill {
   height: 100%;
   background: linear-gradient(90deg, #00cc66, #00ffcc);
   border-radius: 2px;
-  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
   box-shadow: 0 0 6px rgba(0,255,136,0.55);
+  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.oc-portrait-progress-label {
+.oc-summon-hud__label {
+  margin-top: 5px;
   font-family: 'Share Tech Mono', monospace;
-  font-size: 0.57rem;
-  letter-spacing: 0.10em;
-  color: rgba(0,255,136, 0.45);
+  font-size: 0.56rem;
+  letter-spacing: 0.18em;
   text-align: center;
-  margin-top: 4px;
-  transition: color 0.3s;
+  color: rgba(0,255,136, 0.5);
+  text-shadow: 0 0 6px rgba(0,255,136,0.3);
 }
-.oc-portrait-btn--ready ~ .oc-portrait-progress-bar { display: none; }
-.oc-portrait-btn--ready ~ * .oc-portrait-progress-label { color: rgba(0,255,136, 0.7); }
+.oc-summon-hud__btn {
+  pointer-events: auto;
+  cursor: pointer;
+  width: 100%;
+  background: rgba(0,255,136, 0.13);
+  border: 1px solid rgba(0,255,136, 0.65);
+  color: #00ffcc;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  padding: 8px 12px;
+  border-radius: 4px;
+  text-align: center;
+  box-shadow: 0 0 10px rgba(0,255,136,0.30), 0 0 22px rgba(0,255,136,0.12);
+  transition: background 0.18s, border-color 0.18s, color 0.18s;
+  animation: oc-summon-flicker 0.5s steps(1, end) 1, oracle-pulse 2s ease-in-out 0.5s infinite;
+}
+.oc-summon-hud__btn:hover {
+  background: rgba(0,255,136, 0.22);
+  border-color: #00ffcc;
+  color: #fff;
+}
+@keyframes oc-summon-flicker {
+  0%   { opacity: 0; }
+  10%  { opacity: 0.8; }
+  20%  { opacity: 0.1; }
+  32%  { opacity: 0.9; }
+  46%  { opacity: 0.2; }
+  60%  { opacity: 1; }
+  72%  { opacity: 0.35; }
+  86%  { opacity: 0.95; }
+  100% { opacity: 1; }
+}
 
 @keyframes oracle-pulse {
   0%, 100% { box-shadow: 0 0 10px rgba(0,255,136,0.4), 0 0 20px rgba(0,255,136,0.15); }

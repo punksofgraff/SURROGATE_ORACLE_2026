@@ -1520,14 +1520,14 @@ export function SurrogateOracleImmersion() {
                     className="oracle-portrait-fullscreen__mint"
                     onClick={() => window.open(withWalletReturn(mintUrl, 'mint'), '_blank', 'noopener,noreferrer')}
                   >
-                    CLAIM AS NFT
+                    MINT AS NFT
                   </button>
                 )}
                 <button
                   className="oracle-portrait-fullscreen__dismiss"
                   onClick={() => setShowPortraitCard(false)}
                 >
-                  {isOracleMode ? '✕ RETURN TO ORACLE' : '◈ ENTER THE CASCADE'}
+                  {isOracleMode ? '✕ RETURN TO ALLEY' : '◈ ENTER THE CASCADE'}
                 </button>
               </div>
             </motion.div>

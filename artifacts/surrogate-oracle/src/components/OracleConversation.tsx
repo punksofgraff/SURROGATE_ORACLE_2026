@@ -1360,6 +1360,40 @@ const OracleConversation = forwardRef(
           </button>
         </div>
 
+        {/* Summon meter — top XR-HUD band. Fills with signal depth during the live
+            conversation (voice + typing); at full it flicker-swaps in place into the
+            SUMMON PORTRAIT control. Appears after the first oracle turn. */}
+        {turns.filter(t => t.role === 'oracle').length >= 1 && onPortraitRequestRef.current && (
+          <div className="oc-summon-hud">
+            {seekerCount >= SEEKER_MAX ? (
+              <button
+                key="summon-ready"
+                className="oc-summon-hud__btn"
+                onClick={() => onPortraitRequestRef.current?.()}
+              >
+                ⚗ SUMMON PORTRAIT
+              </button>
+            ) : (
+              <div key="summon-meter" className="oc-summon-hud__meter">
+                <div
+                  className="oc-summon-hud__track"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={SEEKER_MAX}
+                  aria-valuenow={seekerCount}
+                  aria-label={`Signal depth ${seekerCount} of ${SEEKER_MAX}`}
+                >
+                  <div
+                    className="oc-summon-hud__fill"
+                    style={{ width: `${Math.min(100, (seekerCount / SEEKER_MAX) * 100)}%` }}
+                  />
+                </div>
+                <div className="oc-summon-hud__label">◈ SIGNAL DEPTH {seekerCount} / {SEEKER_MAX}</div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Mic trigger — always visible in oracle mode, audio-only by default */}
         <div className="oc-hero">
           <div className="oc-mic-wrap">
@@ -1518,36 +1552,6 @@ const OracleConversation = forwardRef(
                         {p}
                       </button>
                     ))}
-                  </div>
-                )}
-
-                {/* Portrait command — appears after 1st oracle turn, locked until seekerCount >= SEEKER_MAX */}
-                {turns.filter(t => t.role === 'oracle').length >= 1 && onPortraitRequestRef.current && (
-                  <div className="oc-portrait-progress-wrap">
-                    <button
-                      className={`oc-portrait-btn ${seekerCount >= SEEKER_MAX ? 'oc-portrait-btn--ready' : 'oc-portrait-btn--locked'}`}
-                      onClick={() => { if (seekerCount >= SEEKER_MAX) onPortraitRequestRef.current?.(); }}
-                      style={seekerCount >= SEEKER_MAX && isGuidedTour ? {
-                        boxShadow: '0 0 18px rgba(0,255,136,0.6), 0 0 36px rgba(0,255,136,0.3)',
-                        animation: 'oracle-pulse 2s ease-in-out infinite',
-                      } : undefined}
-                    >
-                      ⚗ SUMMON PORTRAIT
-                    </button>
-                    <div
-                      className="oc-portrait-progress-bar"
-                      aria-label={`Signal depth: ${seekerCount} of ${SEEKER_MAX}`}
-                    >
-                      <div
-                        className="oc-portrait-progress-fill"
-                        style={{ width: `${Math.min(100, (seekerCount / SEEKER_MAX) * 100)}%` }}
-                      />
-                    </div>
-                    <div className="oc-portrait-progress-label">
-                      {seekerCount >= SEEKER_MAX
-                        ? '◈ SIGNAL LOCKED — READY TO SUMMON'
-                        : `SIGNAL DEPTH  ${seekerCount} / ${SEEKER_MAX}`}
-                    </div>
                   </div>
                 )}
 

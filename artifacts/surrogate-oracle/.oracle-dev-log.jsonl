@@ -19937,3 +19937,34 @@
 {"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781471758693}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1781471759150}
 {"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781471958683}
+{"label":"ORACLE_CONV UNMOUNT","status":"warn","_t":1781474196380}
+{"label":"EXIT INITIATED","status":"ok","_t":1781474196382}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781474196669}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781474196674}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781474196729}
+{"label":"SEEKER ECHO SAVE FAILED","status":"warn","_t":1781474197042}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781474197152}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781474197153}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781474197444}
+{"label":"DORMANT RESTORED","status":"ok","_t":1781474199478}
+{"label":"ORACLE_CONV UNMOUNT","status":"warn","_t":1781474203045}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781474203048}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781474203050}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781474203104}
+{"label":"GEMINI WS CLOSED (1000 · Component unmounted)","status":"ok","_t":1781474203116}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781474203360}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781474203371}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781474203631}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781474208456}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781474208816}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781474212829}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781474213158}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781474271145}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781474271324}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781474271324}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781474271329}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781474271603}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781474271606}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781474271747}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781474271962}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781474275485}

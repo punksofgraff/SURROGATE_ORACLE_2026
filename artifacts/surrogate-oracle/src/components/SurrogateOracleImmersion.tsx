@@ -148,7 +148,7 @@ export function SurrogateOracleImmersion() {
 
   // ── State ───────────────────────────────────────────────────────────────
   const [oracleAvatarDataUrl] = useState<string>(ORACLE_AVATAR_URL);
-  const [currentUserId, setCurrentUserId]   = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId]   = useState<string | null>(() => localStorage.getItem('oracle_seeker_key'));
   const [currentSessionId, setCurrentSessionId] = useState(() => {
     const stored = localStorage.getItem('oracle_active_session_id');
     if (stored) return stored;
@@ -942,17 +942,33 @@ export function SurrogateOracleImmersion() {
 
   // Listen for wallet sign events from the wallet iframe.
   // When the seeker signs, persist the state so future visits land in the alley directly.
+  // Capture wallet address from the payload so seeker history is keyed by wallet, not IP.
   useEffect(() => {
     const handleWalletMessage = (e: MessageEvent) => {
       if (e.origin !== 'https://wallet.thesurrogate.me') return;
       if (e.data?.type === 'wallet_signed' || e.data?.type === 'wallet_connected') {
-        markWalletSigned();
+        const walletAddress: string | undefined =
+          e.data.address || e.data.wallet_address || e.data.publicKey || undefined;
+
+        if (walletAddress) {
+          localStorage.setItem('oracle_seeker_key', walletAddress);
+          setCurrentUserId(prev => {
+            if (prev !== walletAddress) {
+              seekerKeyRef.current = walletAddress;
+              loadEcho(walletAddress);
+            }
+            return walletAddress;
+          });
+          logStep(`WALLET ADDRESS CAPTURED — seeker key locked to wallet`, 'ok');
+        }
+
+        markWalletSigned(walletAddress);
         logStep('WALLET SIGNED — ALLEY RETURN ENABLED', 'ok');
       }
     };
     window.addEventListener('message', handleWalletMessage);
     return () => window.removeEventListener('message', handleWalletMessage);
-  }, [markWalletSigned]);
+  }, [markWalletSigned, loadEcho]);
 
   // Generate the encrypted NFT Claim link once the portrait holographic reveal settles.
   useEffect(() => {

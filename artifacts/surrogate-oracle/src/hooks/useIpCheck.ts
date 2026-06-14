@@ -36,8 +36,10 @@ export function useIpCheck() {
 
         // Check IP-keyed key first; fall back to the IP-agnostic key written
         // when the wallet signs before the IP check resolves.
+        // Also treat a stored wallet seeker key as proof of signing.
         const walletFlag = localStorage.getItem(`oracle_wallet_signed_${ip}`)
-          || localStorage.getItem('oracle_wallet_signed');
+          || localStorage.getItem('oracle_wallet_signed')
+          || localStorage.getItem('oracle_seeker_key');
         if (walletFlag) {
           setHasSignedWallet(true);
           // Upgrade to IP-keyed storage so future loads skip the agnostic fallback.
@@ -117,10 +119,14 @@ export function useIpCheck() {
     }
   };
 
-  const markWalletSigned = async () => {
+  const markWalletSigned = async (walletAddress?: string) => {
     // Always write the IP-agnostic key immediately so the sign is captured even
     // if the IP check hasn't resolved yet (avoids silent drop on fast signers).
     localStorage.setItem('oracle_wallet_signed', 'true');
+    if (walletAddress) {
+      // Persist the canonical seeker key so future sessions resolve to the wallet, not the IP.
+      localStorage.setItem('oracle_seeker_key', walletAddress);
+    }
     setHasSignedWallet(true);
     setHasCompletedLore(true);
     setIsReturning(true);

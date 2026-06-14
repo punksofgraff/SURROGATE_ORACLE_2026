@@ -19164,3 +19164,77 @@
 {"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781440059593}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1781440059714}
 {"label":"DORMANT RESTORED","status":"ok","_t":1781440061800}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781440069508}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781440069698}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781440069704}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781440069705}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781440070179}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781440070180}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781440070433}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781440070434}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781440098964}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781440117688}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781440269991}
+{"label":"ORACLE_CONV UNMOUNT","status":"warn","_t":1781440420473}
+{"label":"EXIT INITIATED","status":"ok","_t":1781440420477}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781440420537}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781440420538}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781440420597}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781440420597}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781440421977}
+{"label":"SEEKER ECHO SAVE FAILED","status":"warn","_t":1781440422002}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781440422057}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781440422070}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781440422334}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781440422537}
+{"label":"DORMANT RESTORED","status":"ok","_t":1781440424035}
+{"label":"ORACLE_CONV UNMOUNT","status":"warn","_t":1781440427023}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781440427030}
+{"label":"EXIT INITIATED","status":"ok","_t":1781440427030}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781440427054}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781440427054}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781440427056}
+{"label":"GEMINI WS CLOSED (1000 · Component unmounted)","status":"ok","_t":1781440427081}
+{"label":"SEEKER ECHO SAVE FAILED","status":"warn","_t":1781440427131}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781440427278}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781440427279}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781440427293}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781440427486}
+{"label":"DORMANT RESTORED","status":"ok","_t":1781440429954}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781440438907}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781440439071}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781440452283}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781440452451}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781440469012}
+{"label":"ORACLE_CONV UNMOUNT","status":"warn","_t":1781440469013}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781440469013}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781440469014}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781440469015}
+{"label":"EXIT INITIATED","status":"ok","_t":1781440469016}
+{"label":"GEMINI WS CLOSED (1000 · Component unmounted)","status":"ok","_t":1781440469070}
+{"label":"SEEKER ECHO SAVE FAILED","status":"warn","_t":1781440469126}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781440469241}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781440469245}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781440469250}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781440469422}
+{"label":"DORMANT RESTORED","status":"ok","_t":1781440471816}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781440669899}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781441016356}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781441112612}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781442979978}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781442980124}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781442980161}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781442980183}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781442980389}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781442980395}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781442980439}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781442980806}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781443180399}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781456403865}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781456403973}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781456403976}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781456403980}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781456404335}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781456404336}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781456404408}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781456404658}

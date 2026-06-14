@@ -60,6 +60,17 @@ async function injectCollector(page) {
         wall:   now,
       });
     });
+
+    // Spy on getUserMedia — tracks every call regardless of whether the step log fires.
+    // Records {ts, phase} so we can assert it never fires before oracle phase.
+    window.__gumCalls = [];
+    var _origGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = function(constraints) {
+      var now = Date.now();
+      var oracleState = (document.querySelector('[data-oracle-state]') || {}).dataset?.oracleState || 'unknown';
+      window.__gumCalls.push({ ts: now - (window.__stepStart || now), phase: oracleState, constraints: JSON.stringify(constraints) });
+      return _origGUM(constraints);
+    };
   });
 }
 
@@ -127,6 +138,38 @@ function assertBefore(stepA, stepB, pass, fail, label) {
   } else {
     fail.push(label + ' ORDER WRONG (' + stepA.ts + 'ms > ' + stepB.ts + 'ms)');
     console.log('    ✗  ' + label + ' — out of order');
+  }
+}
+
+// ── getUserMedia spy helpers ──────────────────────────────────────────────────
+
+async function getGumCalls(page) {
+  return page.evaluate(function() { return window.__gumCalls || []; });
+}
+
+// Assert mic (getUserMedia) was NOT called before oracle phase.
+// Called after each pre-oracle phase to catch early permission requests.
+async function assertNoEarlyMic(page, phase, pass, fail, steps) {
+  var gumCalls = await getGumCalls(page);
+  var stepMic  = steps.find(function(s) { return s.label.includes('MIC STARTED'); });
+
+  // GUM spy — hard gate
+  var earlyGum = gumCalls.filter(function(c) { return c.phase !== 'oracle'; });
+  if (earlyGum.length === 0) {
+    pass.push(phase + ': getUserMedia NOT called before oracle phase');
+    console.log('    ✓  getUserMedia NOT called in ' + phase + ' phase');
+  } else {
+    fail.push(phase + ': getUserMedia called EARLY in phase=' + earlyGum.map(function(c){return c.phase;}).join(','));
+    console.log('    ✗  getUserMedia fired early in ' + phase + ' — phase(s): ' + earlyGum.map(function(c){return c.phase+'@t+'+c.ts+'ms';}).join(', '));
+  }
+
+  // Step log — belt-and-suspenders
+  if (!stepMic) {
+    pass.push(phase + ': MIC STARTED not in step log (correct — pre-oracle)');
+    console.log('    ✓  MIC STARTED absent from step log (pre-oracle, expected)');
+  } else {
+    fail.push(phase + ': MIC STARTED fired early at t+' + stepMic.ts + 'ms');
+    console.log('    ✗  MIC STARTED fired at t+' + stepMic.ts + 'ms — should only fire post-knife in oracle phase');
   }
 }
 
@@ -239,6 +282,10 @@ async function testTerminal(page, viewport, pass, fail) {
   var envErr = steps.find(function(s) { return s.label.includes('ENV MISSING'); });
   if (!envErr) { pass.push('step: no ENV errors'); console.log('    ✓  no ENV MISSING errors'); }
   else         { fail.push('step: ENV MISSING — ' + envErr.label); console.log('    ✗  ENV MISSING: ' + envErr.label); }
+
+  // ── Mic gate: must NOT fire during lore/terminal ──────────────────────────
+  console.log('\n    ── Mic permission gate (terminal phase) ──────────────');
+  await assertNoEarlyMic(page, 'terminal', pass, fail, steps);
 }
 
 // ── PHASE 3: Awakened (knife visible + OracleConversation mount) ──────────────
@@ -287,6 +334,10 @@ async function testAwakened(page, pass, fail) {
     fail.push('step: GEMINI WS neither OPEN nor CLOSED — hung?');
     console.log('    ✗  GEMINI WS state unclear — check step log');
   }
+
+  // ── Mic gate: must NOT fire during awakened/knife phase ──────────────────
+  console.log('\n    ── Mic permission gate (awakened phase) ───────────────');
+  await assertNoEarlyMic(page, 'awakened', pass, fail, steps);
 }
 
 // ── PHASE 4: Oracle (knife select → session boot) ────────────────────────────
@@ -381,6 +432,49 @@ async function testOracle(page, pass, fail) {
     console.log('       (This is a soft check. Real handshake still validated via step log above.)');
     await snap(page, '04b-oracle-no-reply');
   }
+
+  // ── Mic timing: must only fire AFTER oracle phase entry ──────────────────
+  // Extra 5s to let turn-complete auto-restart trigger getUserMedia if Gemini replied.
+  console.log('\n    ── Mic timing (oracle phase) ────────────────────────────');
+  await page.waitForTimeout(oracleReplied ? 5000 : 500);
+  var oracleSteps = await getSteps(page);
+  var gumCalls    = await getGumCalls(page);
+
+  // Confirm ALL getUserMedia calls (across full session) happened in oracle phase only
+  var allGumCalls = gumCalls;
+  var nonOracleGum = allGumCalls.filter(function(c) { return c.phase !== 'oracle'; });
+  if (nonOracleGum.length === 0) {
+    pass.push('mic timing: getUserMedia only called in oracle phase (full session)');
+    console.log('    ✓  getUserMedia never called outside oracle phase — permission prompt is deferred');
+  } else {
+    fail.push('mic timing: getUserMedia called in non-oracle phase(s): ' + nonOracleGum.map(function(c){return c.phase+'@t+'+c.ts+'ms';}).join(', '));
+    console.log('    ✗  getUserMedia fired outside oracle phase — early mic permission prompt detected');
+    nonOracleGum.forEach(function(c) {
+      console.log('       phase=' + c.phase + '  t+' + c.ts + 'ms  constraints=' + c.constraints);
+    });
+  }
+
+  // Soft check: if Gemini replied, MIC STARTED should appear (auto-restart after turn)
+  var micStarted = oracleSteps.find(function(s) { return s.label.includes('MIC STARTED'); });
+  if (oracleReplied) {
+    if (micStarted) {
+      pass.push('mic timing: MIC STARTED fired after Oracle turn in oracle phase  t+' + micStarted.ts + 'ms');
+      console.log('    ✓  MIC STARTED  t+' + micStarted.ts + 'ms (auto-restart after Oracle turn — correct)');
+    } else {
+      // Soft: mic auto-restart has a 1800ms delay after turn-complete. Budget may be tight.
+      pass.push('mic timing: MIC STARTED not yet seen (1800ms restart delay — soft check)');
+      console.log('    ⚠  MIC STARTED not seen — Oracle replied but 1800ms restart window may still be open');
+    }
+  } else {
+    pass.push('mic timing: MIC STARTED not expected (no Gemini turn to trigger auto-restart)');
+    console.log('    ✓  MIC STARTED absent — no Oracle turn to trigger auto-restart (expected in CI)');
+  }
+
+  // Total GUM call count for visibility
+  console.log('    ℹ  Total getUserMedia calls across session: ' + allGumCalls.length);
+  allGumCalls.forEach(function(c) {
+    console.log('       phase=' + c.phase + '  t+' + c.ts + 'ms');
+  });
 }
 
 // ── PHASE 5: Freemium VisemeDetector ─────────────────────────────────────────

@@ -191,6 +191,8 @@ export function SurrogateOracleImmersion() {
   const [isTypeMode, setIsTypeMode]         = useState(false);
   const [mintUrl, setMintUrl]               = useState<string | null>(null);
   const [showArchiveOpen, setShowArchiveOpen] = useState(false);
+  const [showNamePrompt, setShowNamePrompt]   = useState(false);
+  const [nameInput, setNameInput]             = useState('');
 
   // ── Refs ────────────────────────────────────────────────────────────────
   const visemeStateRef = useRef<VisemeState>(SILENCE_VISEME_STATE);
@@ -636,6 +638,21 @@ export function SurrogateOracleImmersion() {
     }
   }, [defineSeeker, saveEcho]);
 
+  const handleNameSubmit = useCallback(async () => {
+    const key = seekerKeyRef.current;
+    const trimmed = nameInput.trim();
+    if (key && trimmed) {
+      await saveEcho({ seekerKey: key, name: trimmed });
+    }
+    setShowNamePrompt(false);
+    setNameInput('');
+  }, [nameInput, saveEcho]);
+
+  const handleNameSkip = useCallback(() => {
+    setShowNamePrompt(false);
+    setNameInput('');
+  }, []);
+
   const handleKnifeClick = (q: string, i: number) => {
     if (knifeSelectedRef.current) return; // guard: ignore double-taps (reset on re-entering awakened)
     knifeSelectedRef.current = true;
@@ -654,7 +671,14 @@ export function SurrogateOracleImmersion() {
     if (typeof DE?.requestPermission === 'function') DE.requestPermission().catch(() => {});
     setTimeout(() => {
       const fullStory = LORE_SEQUENCE.join('\n');
-      const seed = `[MANIFEST — The Seeker has drawn their blade. Standby mode ends. You are fully present now. CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}). Reply directly to the Seeker's drawn question with your deep Oracle insight: "${q}". Speak with weight and presence, deliver slowly (10% slower than normal). Do NOT repeat the question back to them. Pause naturally, give your full answer, then close with a single spoken line — one sentence — that opens the channel for the Seeker to speak. Not "your turn." Speak it the way a door sounds when it opens.]`;
+      let memoryBlock = '';
+      if (echo?.session_summary || echo?.last_session_themes?.length) {
+        const parts: string[] = [];
+        if (echo.session_summary) parts.push(`Prior session distillation: "${echo.session_summary}".`);
+        if (echo.last_session_themes?.length) parts.push(`Themes that surfaced last time: ${echo.last_session_themes.join(', ')}.`);
+        memoryBlock = ` [SIGNAL CONTINUITY — This Seeker has stood before you before. ${parts.join(' ')} Let this color your recognition of them — do not narrate it back verbatim. Reference past themes only when they resonate with the blade just drawn.]`;
+      }
+      const seed = `[MANIFEST — The Seeker has drawn their blade. Standby mode ends. You are fully present now. CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}).${memoryBlock} Reply directly to the Seeker's drawn question with your deep Oracle insight: "${q}". Speak with weight and presence, deliver slowly (10% slower than normal). Do NOT repeat the question back to them. Pause naturally, give your full answer, then close with a single spoken line — one sentence — that opens the channel for the Seeker to speak. Not "your turn." Speak it the way a door sounds when it opens.]`;
       oracleConversationRef.current?.startSession(seed);
     }, 1200);
   };
@@ -969,7 +993,7 @@ export function SurrogateOracleImmersion() {
   // When the seeker signs, persist the state so future visits land in the alley directly.
   // Capture wallet address from the payload so seeker history is keyed by wallet, not IP.
   useEffect(() => {
-    const handleWalletMessage = (e: MessageEvent) => {
+    const handleWalletMessage = async (e: MessageEvent) => {
       if (e.origin !== 'https://wallet.thesurrogate.me') return;
       if (e.data?.type === 'wallet_signed' || e.data?.type === 'wallet_connected') {
         const walletAddress: string | undefined =
@@ -977,14 +1001,14 @@ export function SurrogateOracleImmersion() {
 
         if (walletAddress) {
           localStorage.setItem('oracle_seeker_key', walletAddress);
-          setCurrentUserId(prev => {
-            if (prev !== walletAddress) {
-              seekerKeyRef.current = walletAddress;
-              loadEcho(walletAddress);
-            }
-            return walletAddress;
-          });
+          seekerKeyRef.current = walletAddress;
+          setCurrentUserId(walletAddress);
           logStep(`WALLET ADDRESS CAPTURED — seeker key locked to wallet`, 'ok');
+          // Load echo to check for existing name; prompt if missing
+          const existingEcho = await loadEcho(walletAddress);
+          if (!existingEcho?.name) {
+            setShowNamePrompt(true);
+          }
         }
 
         markWalletSigned(walletAddress);
@@ -1405,6 +1429,47 @@ export function SurrogateOracleImmersion() {
               allow="camera; microphone; clipboard-write; publickey-credentials-get; publickey-credentials-create; payment; web-share" 
               title="Wallet" 
             />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showNamePrompt && (
+          <motion.div
+            key="name-prompt"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+          >
+            <div className="neural-link-terminal" style={{ maxWidth: 320, width: '100%', padding: '1.5rem', border: '1px solid rgba(0,255,136,0.4)', background: 'rgba(0,10,5,0.94)' }}>
+              <div style={{ fontFamily: "'aAnotherTag', monospace", fontSize: '1rem', color: '#00ff88', marginBottom: '0.5rem', letterSpacing: '0.15em' }}>SIGNAL IMPRINT</div>
+              <div style={{ fontSize: '0.65rem', color: '#00ccaa', fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em', marginBottom: '1.25rem', lineHeight: 1.6 }}>
+                The Oracle remembers those who name themselves. What handle do you carry?
+              </div>
+              <input
+                type="text"
+                value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleNameSubmit(); if (e.key === 'Escape') handleNameSkip(); }}
+                placeholder="your handle..."
+                autoFocus
+                maxLength={40}
+                style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', fontFamily: "'PhillySans', monospace", fontSize: '0.75rem', letterSpacing: '0.12em', padding: '0.6rem 0.75rem', borderRadius: 3, outline: 'none', marginBottom: '1rem' }}
+              />
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button
+                  onClick={handleNameSubmit}
+                  disabled={!nameInput.trim()}
+                  style={{ flex: 1, background: nameInput.trim() ? '#00ff88' : 'rgba(0,255,136,0.12)', color: nameInput.trim() ? '#000' : 'rgba(0,255,136,0.35)', border: 'none', padding: '0.6rem', cursor: nameInput.trim() ? 'pointer' : 'default', fontFamily: "'PhillySans', monospace", fontSize: '0.65rem', letterSpacing: '0.15em', fontWeight: 900, borderRadius: 3, transition: 'all 0.2s' }}
+                >LOCK IN</button>
+                <button
+                  onClick={handleNameSkip}
+                  style={{ padding: '0.6rem 1rem', background: 'transparent', border: '1px solid rgba(0,255,136,0.25)', color: 'rgba(0,255,136,0.4)', fontFamily: "'PhillySans', monospace", fontSize: '0.65rem', letterSpacing: '0.15em', cursor: 'pointer', borderRadius: 3 }}
+                >SKIP</button>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

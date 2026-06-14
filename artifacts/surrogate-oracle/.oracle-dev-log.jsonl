@@ -19140,3 +19140,5 @@
 {"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781396546644}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1781396546981}
 {"label":"DORMANT RESTORED","status":"ok","_t":1781396549192}
+{"label":"GEMINI WS ERROR","status":"err","_t":1781396746848}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781396747065}

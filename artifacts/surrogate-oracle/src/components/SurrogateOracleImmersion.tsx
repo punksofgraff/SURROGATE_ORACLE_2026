@@ -423,11 +423,6 @@ export function SurrogateOracleImmersion() {
   }, [loreStarted, connection]);
 
   const handleFirstTap = useCallback(async () => {
-    // iOS: fire DeviceOrientation permission on the very first gesture — must be
-    // synchronous (before any await) so iOS recognises it as user-initiated.
-    const _DE = (DeviceOrientationEvent as any);
-    if (typeof _DE?.requestPermission === 'function') _DE.requestPermission().catch(() => {});
-
     if (scenePhase !== 'dormant' || showStage00) return;
     // iOS Safari: ALL audio operations must be synchronous within the gesture handler.
     // setupAudioSpine is now fully sync — creates/unlocks AudioContext and wires the
@@ -668,8 +663,6 @@ export function SurrogateOracleImmersion() {
     // avoiding recording background noise/feedback while the Oracle reads the question and answers it.
     oracleConversationRef.current?.enableMicAutoRestart();
 
-    const DE = (DeviceOrientationEvent as any);
-    if (typeof DE?.requestPermission === 'function') DE.requestPermission().catch(() => {});
     setTimeout(() => {
       const fullStory = LORE_SEQUENCE.join('\n');
       let memoryBlock = '';

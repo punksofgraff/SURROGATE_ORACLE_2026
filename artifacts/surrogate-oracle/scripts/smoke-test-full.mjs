@@ -22,7 +22,7 @@ try {
   });
 } catch {}
 
-const BASE = 'http://localhost:5173';
+const BASE = process.env.ORACLE_SMOKE_URL || 'http://localhost:5173';
 
 // ── Colour helpers
 const G   = s => `\x1b[32m${s}\x1b[0m`;

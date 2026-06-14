@@ -1,6 +1,6 @@
 # SURROGATE — Replit Integration
 
-Last updated: 2026-06-01. Cinematic Entrance + Audio Battle + Journey Reset complete.
+Last updated: 2026-06-14. Alley/XR camera-passthrough fix complete.
 
 ---
 
@@ -47,7 +47,7 @@ Runs a full end-to-end Playwright journey: dormant → terminal → awakened →
 pnpm --filter @workspace/surrogate-oracle run dev
 
 # Run pressure test
-node scripts/oracle-pressure.mjs
+node scripts/smoke-test-full.mjs
 ```
 
 **Known expected non-failures:**
@@ -78,6 +78,16 @@ Radio stream: `MediaElementSource` → `GainNode(SESSION_AMBIENT=0.008)` → `Sp
 **Radio stations:** `src/config/audioTracks.ts` — Graff Punks (default), Drone Zone, Groove Salad.
 
 ---
+
+## Session Overhaul: 2026-06-14
+
+**Alley background + XR mode fix:**
+- Bug: alley/arcade background vanished in normal (non-XR) mode and the journey blanked; entering XR also killed the journey.
+- Root cause: CSS keyed on `.oracle-stage[data-camera-active="true"]` hid the alley (`display:none`), hid ground-fog, and made the stage transparent. But the camera also activates in NORMAL mode (invisible face-tracking for Oracle gaze, from knife selection), so `data-camera-active` flipped true in normal mode and the scene blanked.
+- Fix: gated alley-fade / ground-fog-hide / transparent-stage on BOTH `[data-xr-mode="true"][data-camera-active="true"]` (true XR passthrough only). Alley now fades to `opacity:0.04` (near-null) in XR instead of `display:none`. Added `.xr-camera-layer--tracking-only { opacity:0 }`.
+- Camera `<video>` now renders whenever `cameraActive` (invisible tracking layer in normal mode); all XR overlay decorations stay inside an `{isXRMode && …}` block.
+- `ALLEY_BG_URL` → local `/alley-bg.png` (`public/alley-bg.png`), no longer an external host.
+- Tooling: `smoke-test-full.mjs` BASE now overridable via `ORACLE_SMOKE_URL`; corrected stale pressure-test command reference above.
 
 ## Session Overhaul: 2026-06-02
 

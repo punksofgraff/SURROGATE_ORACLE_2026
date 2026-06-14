@@ -66,7 +66,7 @@ import './SurrogateOracleImmersion.css';
 
 const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
 const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
-const ALLEY_BG_URL       = 'https://i.postimg.cc/jSJRRRk2/7D633B70-4C62-4326-92A8-3B8790C9B3B0.png';
+const ALLEY_BG_URL       = '/alley-bg.png';
 const DEFAULT_STATION    = 0; // Graff Punks — sole station
 
 // Act 5 — Rift-Construct: Oracle shifts from archivist to active witness.
@@ -1206,8 +1206,14 @@ export function SurrogateOracleImmersion() {
         crossOrigin="anonymous"
       />
 
-      {isXRMode && cameraActive && (
-        <video ref={cameraVideoRef} className="xr-camera-layer" autoPlay playsInline muted />
+      {cameraActive && (
+        <video
+          ref={cameraVideoRef}
+          className={`xr-camera-layer${isXRMode ? '' : ' xr-camera-layer--tracking-only'}`}
+          autoPlay
+          playsInline
+          muted
+        />
       )}
 
       {isXRMode && (

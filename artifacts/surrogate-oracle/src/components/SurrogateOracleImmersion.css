@@ -2416,20 +2416,30 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   will-change: transform;
 }
 
-/* ── CAMERA ACTIVE: Hide alley — user chose camera passthrough ───────────────
-   Gated on data-camera-active="true" (user choice) NOT data-xr-mode="true"
-   (context detection). Alley is the default immersion even in XR context.   */
-.oracle-stage[data-camera-active="true"] .oracle-alley {
-  display: none !important;
+/* Normal mode: the camera is live ONLY as a face-tracking source for the
+   Oracle's gaze. Keep it decoding (never display:none) but fully invisible —
+   the alley stays the visible world.                                        */
+.xr-camera-layer--tracking-only {
+  opacity: 0;
 }
 
-/* ── CAMERA ACTIVE: Hide ground fog — wrong depth cue against real camera ── */
-.oracle-stage[data-camera-active="true"] .oracle-ground-fog {
+/* ── XR PASSTHROUGH: fade alley to near-null so the live camera shows through ─
+   Gated on BOTH data-xr-mode AND data-camera-active — i.e. true XR camera
+   passthrough. In NORMAL mode the camera runs invisibly for gaze tracking and
+   the alley must stay FULLY ALIVE, so these rules must NEVER fire on
+   data-camera-active alone.                                                  */
+.oracle-stage[data-xr-mode="true"][data-camera-active="true"] .oracle-alley {
+  opacity: 0.04 !important;
+  animation: none !important;
+}
+
+/* ── XR PASSTHROUGH: hide ground fog — wrong depth cue against real camera ── */
+.oracle-stage[data-xr-mode="true"][data-camera-active="true"] .oracle-ground-fog {
   display: none;
 }
 
-/* ── CAMERA ACTIVE: Transparent root so compositor sees the camera feed ───── */
-.oracle-stage[data-camera-active="true"] {
+/* ── XR PASSTHROUGH: transparent stage so the compositor sees the camera feed ─ */
+.oracle-stage[data-xr-mode="true"][data-camera-active="true"] {
   background: transparent;
 }
 

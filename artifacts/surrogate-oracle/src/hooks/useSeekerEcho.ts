@@ -37,6 +37,8 @@ export interface SeekerEchoUpsert {
   lastCost?: string | null;
   alignment?: string | null;
   irlContext?: string | null;
+  sessionSummary?: string | null;
+  lastSessionThemes?: string[] | null;
 }
 
 const FUNCTION_NAME = 'seeker-echo';

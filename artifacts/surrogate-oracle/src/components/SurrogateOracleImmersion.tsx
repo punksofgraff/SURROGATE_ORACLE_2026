@@ -40,6 +40,7 @@ import { EffectComposer, DepthOfField } from '@react-three/postprocessing';
 
 // Hooks
 import { useIpCheck } from '../hooks/useIpCheck';
+import { supabase } from '../lib/supabase';
 import { useSeekerEcho } from '../hooks/useSeekerEcho';
 import { useSeekerDefine } from '../hooks/useSeekerDefine';
 import { useAtmosphere } from '../hooks/useAtmosphere';
@@ -1004,9 +1005,49 @@ export function SurrogateOracleImmersion() {
           seekerKeyRef.current = walletAddress;
           setCurrentUserId(walletAddress);
           logStep(`WALLET ADDRESS CAPTURED — seeker key locked to wallet`, 'ok');
-          // Load echo to check for existing name; prompt if missing
-          const existingEcho = await loadEcho(walletAddress);
-          if (!existingEcho?.name) {
+
+          // Load echo for this wallet address
+          let finalEcho = await loadEcho(walletAddress);
+
+          // If the wallet has no prior history, try to carry over any IP-keyed echo.
+          // This preserves archetype/alignment/session history built before the seeker
+          // connected a wallet. Guard: only merge if the IP echo was seen within 30 days
+          // (protects against shared-IP collisions on stale records).
+          if (!finalEcho?.session_count && ipAddress && ipAddress !== walletAddress) {
+            try {
+              const { data: ipResult } = await supabase.functions.invoke('seeker-echo', {
+                body: { op: 'read', seekerKey: ipAddress },
+              });
+              const ipEcho = ipResult?.echo ?? null;
+              const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+              const isRecent = ipEcho?.last_seen_at
+                ? Date.now() - new Date(ipEcho.last_seen_at).getTime() < THIRTY_DAYS_MS
+                : false;
+
+              if (ipEcho && isRecent) {
+                logStep('SEEKER ECHO — merging IP history into wallet key', 'ok');
+                finalEcho = await saveEcho({
+                  seekerKey: walletAddress,
+                  name: ipEcho.name ?? undefined,
+                  handles: ipEcho.handles ?? undefined,
+                  lastArchetype: ipEcho.last_archetype ?? undefined,
+                  totemLevel: ipEcho.totem_level ?? undefined,
+                  lastCost: ipEcho.last_cost ?? undefined,
+                  alignment: ipEcho.alignment ?? undefined,
+                  irlContext: ipEcho.irl_context ?? undefined,
+                  sessionSummary: ipEcho.session_summary ?? undefined,
+                  lastSessionThemes: ipEcho.last_session_themes ?? undefined,
+                });
+                logStep('SEEKER ECHO MERGED — IP history now under wallet key', 'ok');
+              }
+            } catch (mergeErr) {
+              logStep('SEEKER ECHO MERGE SKIPPED (non-fatal)', 'warn');
+              console.warn('Echo merge error:', mergeErr);
+            }
+          }
+
+          // Prompt for name if still missing after potential merge
+          if (!finalEcho?.name) {
             setShowNamePrompt(true);
           }
         }
@@ -1017,7 +1058,7 @@ export function SurrogateOracleImmersion() {
     };
     window.addEventListener('message', handleWalletMessage);
     return () => window.removeEventListener('message', handleWalletMessage);
-  }, [markWalletSigned, loadEcho]);
+  }, [markWalletSigned, loadEcho, saveEcho, ipAddress]);
 
   // Generate the encrypted NFT Claim link once the portrait holographic reveal settles.
   useEffect(() => {

@@ -1553,7 +1553,7 @@ export function SurrogateOracleImmersion() {
                 {mintUrl && (
                   <button
                     className="oracle-portrait-fullscreen__mint"
-                    onClick={() => window.open(withWalletReturn(mintUrl, 'mint'), '_blank', 'noopener,noreferrer')}
+                    onClick={() => window.location.assign(withWalletReturn(mintUrl, 'mint'))}
                   >
                     MINT AS NFT
                   </button>
@@ -1684,17 +1684,16 @@ export function SurrogateOracleImmersion() {
                     › RETURN TRIP VERIFIED
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    <a
-                      href={withWalletReturn('https://wallet.thesurrogate.me', 'signin')}
-                      target="_blank" rel="noreferrer"
+                    <button
+                      onClick={() => window.location.assign(withWalletReturn('https://wallet.thesurrogate.me', 'signin'))}
                       style={{
-                        background: '#00ff88', color: '#000', padding: '1rem',
-                        textDecoration: 'none', fontWeight: 900, borderRadius: 4,
+                        background: '#00ff88', color: '#000', padding: '1rem', border: 'none',
+                        cursor: 'pointer', fontWeight: 900, borderRadius: 4,
                         fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em'
                       }}
                     >
                       CONNECT SURROGATE WALLET
-                    </a>
+                    </button>
                     <button
                       onClick={() => handleAwakeTransition()}
                       style={{ 
@@ -1985,6 +1984,11 @@ export function SurrogateOracleImmersion() {
               <button onClick={() => { if (confirm('Reset?')) { resetJourney(); setHamburgerOpen(false); } }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>RESET</button>
               <button onClick={() => { if (isXRMode) deactivateXRMode(); else handleActivateXRMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#b026ff', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isXRMode ? '◈ EXIT AR' : '◈ AR MODE'}</button>
               <button onClick={() => { oracleConversationRef.current?.toggleTypeMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isTypeMode ? 'CLOSE PAD' : 'TYPE SIGNAL'}</button>
+              {currentUserId && (
+                <div style={{ padding: '10px 16px', borderTop: '1px solid rgba(0,255,136,0.15)', color: 'rgba(0,255,136,0.45)', fontSize: '0.62rem', fontFamily: "'PhillySans', monospace", letterSpacing: '0.12em' }}>
+                  ◈ {currentUserId.slice(0, 6)}…{currentUserId.slice(-4)}
+                </div>
+              )}
             </motion.div>
           )}
           </AnimatePresence>

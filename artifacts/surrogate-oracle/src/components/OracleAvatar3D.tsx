@@ -146,17 +146,6 @@ const CAM_Y_CENTER  = 1.45;
 const CAM_Y_RANGE   = 0.22; // vertical look-around extent
 const CAM_LERP      = 0.08; // responsive on phone while still smooth
 
-// ── Arm-gesture blend ──────────────────────────────────────────────────────
-// The idle GLB clip floats the arms up into an unnatural "no one stands like
-// that" pose. The talking clips hold a natural forward orator posture. So we
-// keep the talking clip blended in as a baseline AT ALL TIMES (suppressing the
-// creepy idle arms) and ramp it to full gesture during speech.
-const REST_GESTURE_WEIGHT  = 0.62; // baseline talking-clip weight when silent
-const SPEECH_GESTURE_CAP   = 0.92; // peak talking-clip weight during speech
-const REST_GESTURE_TIMESCALE   = 0.10; // gentle hold of the forward posture at rest
-const SPEECH_GESTURE_TIMESCALE = 0.38; // full gesture playback while speaking
-const GESTURE_SMOOTH       = 0.06; // weight lerp toward target (no snapping)
-
 // Fallback group offset if the head bone can't be located. The real offset is
 // computed per-model from the actual Head bone (see meshData.avatarYOffset) so a
 // swapped GLB (hero3.glb was replaced; .bak is the prior model) frames the FACE,
@@ -186,10 +175,6 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     groupRef,
   );
   const talkingActionRef = useRef<THREE.AnimationAction | null>(null);
-  // Smoothed talking-clip weight. Held at a REST baseline at all times so the
-  // talking clip's natural forward arm posture overrides the idle clip's
-  // "creepy float-up" arms, then ramps to full gesture during speech.
-  const gestureWeightRef = useRef(REST_GESTURE_WEIGHT);
 
   // Resolve each action from its distinct clip OBJECT (not by name): separate
   // GLB exports often reuse clip names ("mixamo.com"), which collide in drei's
@@ -259,6 +244,12 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     let spineBone:         THREE.Object3D | null = null; // Spine2 — upper chest
     let leftShoulderBone:  THREE.Object3D | null = null;
     let rightShoulderBone: THREE.Object3D | null = null;
+    // Arm chain — captured so we can settle the arms back to the rig's natural
+    // bind pose (arms DOWN, out of the head/chest frame) while at rest. The idle
+    // clip floats them UP into frame which reads as "creepy / no one stands like
+    // that"; bind pose is the relaxed default. Speech blends this off so the
+    // talking clips gesture freely.
+    const armChainBones: THREE.Object3D[] = [];
 
     scene.traverse((child) => {
       // Mesh logging for debugging
@@ -292,6 +283,8 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       if (!spineBone && n === 'spine1') spineBone = child;
       if (n === 'leftshoulder'  && !leftShoulderBone)  leftShoulderBone  = child;
       if (n === 'rightshoulder' && !rightShoulderBone) rightShoulderBone = child;
+      // Whole arm chain (shoulder → hand) on both sides, for the rest-pose settle.
+      if (/^(left|right)(shoulder|arm|forearm|hand)$/.test(n)) armChainBones.push(child);
 
       const sm = child as THREE.SkinnedMesh;
       if (!sm.isSkinnedMesh || !sm.morphTargetDictionary || !sm.morphTargetInfluences) return;
@@ -330,6 +323,20 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       if (import.meta.env.DEV) console.log('[OracleAvatar3D] head Y =', headWorld.y, '→ avatarYOffset =', avatarYOffset);
     }
 
+    // ── Capture arm-chain bind pose (arms down / relaxed) ─────────────────────
+    // useGLTF caches the scene, so on a remount the bones can still carry the
+    // last animated pose. Force the skeleton to bind pose, snapshot the arm
+    // rotations, so useFrame can settle the arms there. Done AFTER the head-Y
+    // framing read so posing the skeleton can't perturb avatarYOffset.
+    const armRestBones: Array<{ bone: THREE.Object3D; quat: THREE.Quaternion }> = [];
+    const skel = result[0]?.mesh?.skeleton;
+    if (skel) {
+      skel.pose();
+      for (const b of armChainBones) {
+        armRestBones.push({ bone: b, quat: b.quaternion.clone() });
+      }
+    }
+
     if (import.meta.env.DEV) {
       if (hasMorphs) {
         console.group('[OracleAvatar3D] Morph Target Dictionary');
@@ -360,10 +367,15 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       spineBone:          spineBone         as THREE.Object3D | null,
       leftShoulderBone:   leftShoulderBone  as THREE.Object3D | null,
       rightShoulderBone:  rightShoulderBone as THREE.Object3D | null,
+      armRestBones,
       hasMorphs,
       avatarYOffset,
     };
   }, [scene]);
+
+  // Smoothed arm rest-pose strength: 1 = arms fully settled to bind (down, at
+  // rest), 0 = talking clip drives the arms (gesturing during speech).
+  const armRestRef = useRef(1);
 
   useFrame((state, delta) => {
     const vs     = visemeStateRef.current;
@@ -387,36 +399,43 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         (a): a is THREE.AnimationAction => !!a,
       );
 
-      // Keep a talking action alive AT ALL TIMES — its forward arm posture is
-      // the baseline that suppresses the idle clip's creepy float-up arms.
-      if (!talkingActionRef.current && talkPool.length > 0) {
+      // Pick a talking variation if we just started speaking
+      if (isSpeaking && !talkingActionRef.current && talkPool.length > 0) {
         const chosen = talkPool[Math.floor(Math.random() * talkPool.length)];
         chosen.reset().setLoop(THREE.LoopRepeat, Infinity).play();
-        chosen.setEffectiveWeight(REST_GESTURE_WEIGHT);
+        chosen.setEffectiveWeight(0);
         talkingActionRef.current = chosen;
       }
+      if (!isSpeaking && talkingActionRef.current) {
+        talkingActionRef.current.stop();   // release the mixer slot when silent
+        talkingActionRef.current = null;
+      }
 
-      // Target weight: full orator gesture while speaking, gentle baseline at
-      // rest. Smoothed so the transition never snaps.
-      const targetWeight = isSpeaking
-        ? Math.max(REST_GESTURE_WEIGHT, Math.min(SPEECH_GESTURE_CAP, amp * 5))
-        : REST_GESTURE_WEIGHT;
-      gestureWeightRef.current +=
-        (targetWeight - gestureWeightRef.current) * GESTURE_SMOOTH * lerpDt;
-      const talkWeight = gestureWeightRef.current;
-
-      // Slow the talking clip almost to a hold at rest (a calm forward stance,
-      // not perpetual hand-waving); resume full playback while speaking.
-      const targetTimeScale = isSpeaking
-        ? SPEECH_GESTURE_TIMESCALE
-        : REST_GESTURE_TIMESCALE;
-
+      // Let the talking clip lead so the arms gesture forward & expressive
+      // (like an orator) instead of hanging at the sides. Ramps in fast and
+      // dominates the idle base pose during speech. At rest only the idle clip
+      // plays, so the head/gaze stays organic and looks at the seeker.
+      const talkWeight =
+        isSpeaking && talkingActionRef.current ? Math.min(0.92, amp * 5) : 0;
       idleAction.setEffectiveWeight(1 - talkWeight * 0.85);
       // Only the chosen talking action carries weight; the rest stay at 0.
       for (const a of talkPool) {
-        const active = a === talkingActionRef.current;
-        a.setEffectiveWeight(active ? talkWeight : 0);
-        if (active) a.setEffectiveTimeScale(targetTimeScale);
+        a.setEffectiveWeight(a === talkingActionRef.current ? talkWeight : 0);
+      }
+
+      // Settle the arms to their relaxed bind pose (arms DOWN, out of the
+      // head/chest frame). Hold them mostly down even while speaking — the user
+      // wants a natural standing posture, not an orator waving into frame — but
+      // relax the hold a little during speech so a hint of gesture survives.
+      // Touches ONLY arm bones; head, neck, spine and gaze are driven below.
+      const targetRest = isSpeaking ? 0.78 : 1;
+      armRestRef.current +=
+        (targetRest - armRestRef.current) * 0.07 * lerpDt;
+      const restK = armRestRef.current;
+      if (restK > 0.001) {
+        for (const { bone, quat } of meshData.armRestBones) {
+          bone.quaternion.slerp(quat, restK);
+        }
       }
     }
 
@@ -522,7 +541,12 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
 
     // ── Head: organic conversational movement ─────────────────────────────
     if (meshData.headBone) {
-      const headLerpF = lerpDt * 0.09;
+      // The talking clips are full-body and re-drive the head every frame toward
+      // an upward, off-axis pose. A slow reclaim (0.09) loses that fight and the
+      // head reads as "looking up and to the left" while the Oracle speaks. A
+      // strong reclaim keeps the head locked on the seeker through speech while
+      // still leaving the idle drift / nod readable on top.
+      const headLerpF = lerpDt * 0.35;
       const speakAmt  = amp * 1.1;
 
       // Base parallax gaze with enhanced lock-on tracking
@@ -550,7 +574,9 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
 
     // ── Neck: gentle follow ───────────────────────────────────────────────
     if (meshData.neckBone) {
-      const neckLerpF = lerpDt * 0.05;
+      // Match the head's stronger reclaim so the neck follows the gaze rather
+      // than the talking clip's off-axis drive.
+      const neckLerpF = lerpDt * 0.20;
       const neckSwayX = Math.sin(t * 0.80) * 0.025 + Math.sin(t * 1.90 + 0.6) * 0.012 * amp;
       const neckSwayZ = Math.cos(t * 0.52 + 1.1) * 0.018;
       meshData.neckBone.rotation.y = THREE.MathUtils.lerp(meshData.neckBone.rotation.y, gx * 0.15, neckLerpF);

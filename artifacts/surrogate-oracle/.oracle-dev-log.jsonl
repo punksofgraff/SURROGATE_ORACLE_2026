@@ -21140,3 +21140,21 @@
 {"label":"GEMINI WS OPENED","status":"ok","_t":1781907921593}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1781907922106}
 {"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781907926372}
+{"label":"AUDIO CONTEXT STATE: running","status":"ok","_t":1781908121781}
+{"label":"AUDIO SPINE INITIALIZED","status":"ok","_t":1781908121809}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781908121812}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781908121997}
+{"label":"SEEKER ECHO LOAD FAILED","status":"warn","_t":1781908122413}
+{"label":"TAP → TERMINAL","status":"ok","_t":1781908122418}
+{"label":"RECOGNIZED SIGNAL → SKIP AVAILABLE","status":"ok","_t":1781908122467}
+{"label":"AUDIO HARD MUTE INITIATED (800ms)","status":"ok","_t":1781908122688}
+{"label":"LORE STATUS: COMPLETED (Persisted)","status":"ok","_t":1781908136501}
+{"label":"LORE STATUS: COMPLETED (Persisted)","status":"ok","_t":1781908136511}
+{"label":"LORE DONE → AWAKENED","status":"ok","_t":1781908136944}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1781908137671}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781908137672}
+{"label":"ORACLE CONDUIT PRE-WARMED SILENTLY","status":"ok","_t":1781908137675}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781908138164}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781908138168}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781908138494}
+{"label":"KNIFE[0] SELECTED","status":"ok","_t":1781908139560}

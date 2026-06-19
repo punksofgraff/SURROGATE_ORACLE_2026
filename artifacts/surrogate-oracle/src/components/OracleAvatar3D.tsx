@@ -182,11 +182,20 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   const armFreeIdle = useMemo(() => idleClips.map(stripArmTracks), [idleClips]);
 
   // Animation mixer — driven by speaking state
-  const { actions, mixer } = useAnimations(
+  const { mixer } = useAnimations(
     [...armFreeIdle, ...armFreeT1, ...armFreeT2],
     groupRef,
   );
   const talkingActionRef = useRef<THREE.AnimationAction | null>(null);
+
+  // Resolve each action from its distinct clip OBJECT (not by name): separate
+  // GLB exports often reuse clip names ("mixamo.com"), which collide in drei's
+  // name-keyed `actions` map and alias idle/talk together. Keying off the clip
+  // instances (bound to the same group root) is collision-proof. Populated in
+  // the mount effect below, once groupRef is attached.
+  const idleActionRef  = useRef<THREE.AnimationAction | null>(null);
+  const talk1ActionRef = useRef<THREE.AnimationAction | null>(null);
+  const talk2ActionRef = useRef<THREE.AnimationAction | null>(null);
 
   // Blinking state — speed, double-blink support, idle vs speech mode
   const blinkRef = useRef({
@@ -206,18 +215,33 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
 
   // ── Start idle animation on mount — 45% slower than source clip ──────────
   useEffect(() => {
-    const idle = actions['M_Standing_Idle_001'];
+    const root = groupRef.current;
+    if (!root) return;
+
+    // Bind one action per distinct clip instance to the group root.
+    const idle  = armFreeIdle[0] ? mixer.clipAction(armFreeIdle[0], root) : null;
+    const talk1 = armFreeT1[0]   ? mixer.clipAction(armFreeT1[0], root)   : null;
+    const talk2 = armFreeT2[0]   ? mixer.clipAction(armFreeT2[0], root)   : null;
+    idleActionRef.current  = idle;
+    talk1ActionRef.current = talk1;
+    talk2ActionRef.current = talk2;
+
     if (idle) {
       idle.reset().setLoop(THREE.LoopRepeat, Infinity).play();
       idle.setEffectiveWeight(1);
       idle.setEffectiveTimeScale(0.38);
     }
     // Pre-set talking action time scales too
-    const t1 = actions['M_Standing_Idle_Variations_003'];
-    const t2 = actions['M_Standing_Idle_Variations_007'];
-    if (t1) t1.setEffectiveTimeScale(0.38);
-    if (t2) t2.setEffectiveTimeScale(0.38);
-  }, [actions]);
+    if (talk1) talk1.setEffectiveTimeScale(0.38);
+    if (talk2) talk2.setEffectiveTimeScale(0.38);
+
+    if (
+      import.meta.env.DEV && idle &&
+      (idle === talk1 || idle === talk2 || (talk1 && talk1 === talk2))
+    ) {
+      console.warn('[OracleAvatar3D] idle/talk actions alias — GLB clip names collide; blend will be degraded.');
+    }
+  }, [mixer, armFreeIdle, armFreeT1, armFreeT2]);
 
   // Cache skinned meshes + gaze bones — found once on mount, zero traversal per frame.
   const meshData = useMemo(() => {
@@ -348,35 +372,37 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     mixer.update(delta);
 
     // Blend idle ↔ talking based on Oracle speaking amplitude
-    const idleAction    = actions['M_Standing_Idle_001'];
-    const talk1Action   = actions['M_Standing_Idle_Variations_003'];
-    const talk2Action   = actions['M_Standing_Idle_Variations_007'];
+    const idleAction    = idleActionRef.current;
+    const talk1Action   = talk1ActionRef.current;
+    const talk2Action   = talk2ActionRef.current;
 
-    if (idleAction && talk1Action && talk2Action) {
+    // Guard per-action: idle drives the base pose even if a talking clip is
+    // missing/renamed, so a single bad export can't disable the whole combo.
+    if (idleAction) {
       const isSpeaking = amp > 0.04;
+      const talkPool = [talk1Action, talk2Action].filter(
+        (a): a is THREE.AnimationAction => !!a,
+      );
 
       // Pick a talking variation if we just started speaking
-      if (isSpeaking && !talkingActionRef.current) {
-        const chosen = Math.random() < 0.5 ? talk1Action : talk2Action;
+      if (isSpeaking && !talkingActionRef.current && talkPool.length > 0) {
+        const chosen = talkPool[Math.floor(Math.random() * talkPool.length)];
         chosen.reset().setLoop(THREE.LoopRepeat, Infinity).play();
         chosen.setEffectiveWeight(0);
         talkingActionRef.current = chosen;
       }
       if (!isSpeaking && talkingActionRef.current) {
+        talkingActionRef.current.stop();   // release the mixer slot when silent
         talkingActionRef.current = null;
       }
 
       // Cap at 0.55 — spine sway should be subtle, not full-emote override
-      const talkWeight = isSpeaking ? Math.min(0.55, amp * 3) : 0;
+      const talkWeight =
+        isSpeaking && talkingActionRef.current ? Math.min(0.55, amp * 3) : 0;
       idleAction.setEffectiveWeight(1 - talkWeight * 0.6);
-      if (talkingActionRef.current) {
-        talkingActionRef.current.setEffectiveWeight(talkWeight);
-        // Fade out the other talking action
-        const other = talkingActionRef.current === talk1Action ? talk2Action : talk1Action;
-        other.setEffectiveWeight(0);
-      } else {
-        talk1Action.setEffectiveWeight(0);
-        talk2Action.setEffectiveWeight(0);
+      // Only the chosen talking action carries weight; the rest stay at 0.
+      for (const a of talkPool) {
+        a.setEffectiveWeight(a === talkingActionRef.current ? talkWeight : 0);
       }
     }
 

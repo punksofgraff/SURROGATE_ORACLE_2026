@@ -39,6 +39,8 @@ const PHASE_INTENSITY: Record<Phase, number> = {
   oracle:   1.20,
 };
 
+const clamp = (v: number, lim: number) => Math.max(-lim, Math.min(lim, v));
+
 export function useParallax(
   phase: Phase,
   onUpdate?: (x: number, y: number) => void,
@@ -191,12 +193,17 @@ export function useParallax(
       }
 
       // ── Cabinet / Oracle center — 3D tilt (the hero effect) ───────────────
+      // Clamp the envelope so the face NEVER tilts/shifts far enough to clip
+      // out of the cabinet frame ("wing clipping" during Oracle speech). The
+      // old rotation multiplied by intensity twice (ix/iy already carry it),
+      // which at oracle intensity (1.2) pushed tilt past ±20°. Parallax stays
+      // on at every phase — it just can't throw the face off-center anymore.
       const cabinet = el('.oracle-center');
       if (cabinet) {
-        const dx = ix * vw * 0.015;
-        const dy = iy * vh * 0.010;
-        const rotX = -iy * 14 * intensity;
-        const rotY =  ix * 16 * intensity;
+        const dx   = clamp(ix * vw * 0.015, vw * 0.018);
+        const dy   = clamp(iy * vh * 0.010, vh * 0.012);
+        const rotX = clamp(-iy * 14, 9);
+        const rotY = clamp( ix * 16, 10);
         cabinet.style.transform =
           `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) rotateX(${rotX}deg) rotateY(${rotY}deg)`;
       }

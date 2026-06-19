@@ -20812,3 +20812,13 @@
 {"label":"TAB FOREGROUNDED","status":"ok","_t":1781897528455}
 {"label":"GEMINI WS ERROR","status":"err","_t":1781897532229}
 {"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781897532238}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781903202216}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781903202442}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781903202483}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781903202492}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781903203228}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781903203229}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781903203424}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781903203643}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781903322091}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781903403142}

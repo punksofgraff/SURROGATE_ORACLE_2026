@@ -20,19 +20,6 @@ import * as THREE from 'three';
 import type { VisemeState } from '../lib/visemeDetector';
 import type { SeekerMotion } from '../hooks/useXRMode';
 
-// Strip arm/shoulder/hand/finger tracks from any GLB clip so only
-// spine/torso sway survives. Face morphs + our own useFrame code
-// handle lips/head; arms must NEVER fight that system.
-const ARM_TRACK_RE = /\.(LeftShoulder|RightShoulder|LeftArm|RightArm|LeftForeArm|RightForeArm|LeftHand|RightHand|LeftFinger|RightFinger)\d*/i;
-const FINGER_TRACK_RE = /\.(Left|Right)(Index|Middle|Ring|Pinky|Thumb)\d*/i;
-
-function stripArmTracks(clip: THREE.AnimationClip): THREE.AnimationClip {
-  const filtered = clip.tracks.filter(
-    t => !ARM_TRACK_RE.test(t.name) && !FINGER_TRACK_RE.test(t.name),
-  );
-  return new THREE.AnimationClip(clip.name, clip.duration, filtered);
-}
-
 // ── OVR Viseme Standard (Oculus / Ready Player Me) ───────────────────────────
 // 15 phoneme visemes + silence. Stored as morph targets in RPM-compatible GLBs.
 // Oracle worklet produces internal labels (A–H, X); we map them to OVR keys.
@@ -175,15 +162,16 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   // Smooth camera target — avoids snapping on sudden gesture changes
   const camTarget = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
 
-  // Filter arm/shoulder tracks — keep only spine/torso sway for talking clips.
-  // Arms must NOT gesture in sync with speech; face morph targets handle that.
-  const armFreeT1 = useMemo(() => talking1Clips.map(stripArmTracks), [talking1Clips]);
-  const armFreeT2 = useMemo(() => talking2Clips.map(stripArmTracks), [talking2Clips]);
-  const armFreeIdle = useMemo(() => idleClips.map(stripArmTracks), [idleClips]);
+  // Full source clips, arms included — natural arm + body animation straight
+  // from the GLB idle/talking exports. (Arm-track stripping was removed: it
+  // froze the arms in bind pose, leaving the avatar "vampire stiff".)
+  const idleAnim  = idleClips;
+  const talk1Anim = talking1Clips;
+  const talk2Anim = talking2Clips;
 
   // Animation mixer — driven by speaking state
   const { mixer } = useAnimations(
-    [...armFreeIdle, ...armFreeT1, ...armFreeT2],
+    [...idleAnim, ...talk1Anim, ...talk2Anim],
     groupRef,
   );
   const talkingActionRef = useRef<THREE.AnimationAction | null>(null);
@@ -219,9 +207,9 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     if (!root) return;
 
     // Bind one action per distinct clip instance to the group root.
-    const idle  = armFreeIdle[0] ? mixer.clipAction(armFreeIdle[0], root) : null;
-    const talk1 = armFreeT1[0]   ? mixer.clipAction(armFreeT1[0], root)   : null;
-    const talk2 = armFreeT2[0]   ? mixer.clipAction(armFreeT2[0], root)   : null;
+    const idle  = idleAnim[0]  ? mixer.clipAction(idleAnim[0], root)  : null;
+    const talk1 = talk1Anim[0] ? mixer.clipAction(talk1Anim[0], root) : null;
+    const talk2 = talk2Anim[0] ? mixer.clipAction(talk2Anim[0], root) : null;
     idleActionRef.current  = idle;
     talk1ActionRef.current = talk1;
     talk2ActionRef.current = talk2;
@@ -241,7 +229,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     ) {
       console.warn('[OracleAvatar3D] idle/talk actions alias — GLB clip names collide; blend will be degraded.');
     }
-  }, [mixer, armFreeIdle, armFreeT1, armFreeT2]);
+  }, [mixer, idleAnim, talk1Anim, talk2Anim]);
 
   // Cache skinned meshes + gaze bones — found once on mount, zero traversal per frame.
   const meshData = useMemo(() => {

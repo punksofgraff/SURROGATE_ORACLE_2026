@@ -384,10 +384,12 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         talkingActionRef.current = null;
       }
 
-      // Cap at 0.55 — spine sway should be subtle, not full-emote override
+      // Let the talking clip lead so the arms gesture forward & expressive
+      // (like an orator) instead of hanging at the sides. Ramps in fast and
+      // dominates the idle base pose during speech.
       const talkWeight =
-        isSpeaking && talkingActionRef.current ? Math.min(0.55, amp * 3) : 0;
-      idleAction.setEffectiveWeight(1 - talkWeight * 0.6);
+        isSpeaking && talkingActionRef.current ? Math.min(0.92, amp * 5) : 0;
+      idleAction.setEffectiveWeight(1 - talkWeight * 0.85);
       // Only the chosen talking action carries weight; the rest stay at 0.
       for (const a of talkPool) {
         a.setEffectiveWeight(a === talkingActionRef.current ? talkWeight : 0);

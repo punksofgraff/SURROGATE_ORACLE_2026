@@ -166,7 +166,6 @@ export function SurrogateOracleImmersion() {
   // After the Mirror, offer the AR "the Oracle sees you" beat (Act 5 / Rift-Construct) as a
   // discoverable invitation instead of leaving it buried in the hamburger.
   const [offerRift, setOfferRift] = useState(false);
-  const [camNotice, setCamNotice] = useState<string | null>(null);
   const [showRiftRitual, setShowRiftRitual] = useState(false);
   const [isRiftOpening, setIsRiftOpening] = useState(false);
   const [portraitViewerUrl, setPortraitViewerUrl] = useState<string | null>(null);
@@ -1054,13 +1053,10 @@ export function SurrogateOracleImmersion() {
 
   // Camera-denial safety net — activateXRMode() flips the bg transparent before
   // getUserMedia resolves; if the Seeker denies the camera we'd be left in a black void.
-  // Roll back to the alley and surface a graceful, in-voice notice.
+  // Silently roll back to the alley (no HUD notice — XR self-evidently needs the camera).
   useEffect(() => {
     if (!(cameraError && isXRMode && !cameraActive)) return;
     deactivateXRMode();
-    setCamNotice('THE RIFT HOLDS CLOSED — CAMERA ACCESS REQUIRED');
-    const t = setTimeout(() => setCamNotice(null), 4500);
-    return () => clearTimeout(t);
   }, [cameraError, isXRMode, cameraActive, deactivateXRMode]);
 
   // Stage portrait URL — released in onTurnComplete so reveal fires after Oracle finishes speaking,
@@ -2324,28 +2320,6 @@ export function SurrogateOracleImmersion() {
             }}>
               TEARING REALITY...
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Camera-denied notice — graceful, in-voice, auto-clears. */}
-      <AnimatePresence>
-        {camNotice && (
-          <motion.div
-            key="cam-notice"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            style={{
-              position: 'fixed', bottom: '108px', left: '50%', transform: 'translateX(-50%)',
-              zIndex: 120, pointerEvents: 'none', textAlign: 'center',
-              background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(176,38,255,0.45)',
-              borderRadius: '8px', padding: '10px 18px',
-              fontFamily: "'Share Tech Mono', monospace", fontSize: '0.62rem',
-              letterSpacing: '0.16em', color: 'rgba(176,38,255,0.95)',
-            }}
-          >
-            {camNotice}
           </motion.div>
         )}
       </AnimatePresence>

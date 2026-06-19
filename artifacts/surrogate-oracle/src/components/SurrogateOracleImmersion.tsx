@@ -57,7 +57,7 @@ import { usePerformanceGuard } from '../hooks/usePerformanceGuard';
 import { COST_NAMES } from '../data/archetypes';
 
 // Libs/Utils
-import { getAudioContext } from '../lib/oracleSfx';
+import { getAudioContext, playActivationSfx } from '../lib/oracleSfx';
 import { trackOracleEvent } from '../lib/analytics';
 import { getABVariant } from '../lib/ab-testing';
 import type { VisemeState } from '../lib/visemeDetector';
@@ -167,6 +167,8 @@ export function SurrogateOracleImmersion() {
   // discoverable invitation instead of leaving it buried in the hamburger.
   const [offerRift, setOfferRift] = useState(false);
   const [camNotice, setCamNotice] = useState<string | null>(null);
+  const [showRiftRitual, setShowRiftRitual] = useState(false);
+  const [isRiftOpening, setIsRiftOpening] = useState(false);
   const [portraitViewerUrl, setPortraitViewerUrl] = useState<string | null>(null);
   const [showPortraitCard, setShowPortraitCard] = useState(false);
   const [portraitRevealPhase, setPortraitRevealPhase] = useState<'hidden'|'scanIn'|'unfurl'|'phosphor'|'settled'>('hidden');
@@ -182,6 +184,7 @@ export function SurrogateOracleImmersion() {
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
   const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
   const [showWallet, setShowWallet]             = useState(false);
+  const [walletIframeUrl, setWalletIframeUrl]   = useState('https://wallet.thesurrogate.me');
   const [isGuidedTour, setIsGuidedTour]     = useState(false);
   const [showStage00, setShowStage00]       = useState(false);
   const [loreStarted, setLoreStarted]       = useState(false);
@@ -203,11 +206,12 @@ export function SurrogateOracleImmersion() {
   const staticAvatarRef          = useRef<HTMLImageElement | null>(null);
   const audioRef                 = useRef<HTMLAudioElement | null>(null);
   const walletIframeRef          = useRef<HTMLIFrameElement | null>(null);
+  const walletPopupRef           = useRef<Window | null>(null);
   const radioGainRef             = useRef<GainNode | null>(null);
   const seekerKeyRef             = useRef<string | null>(null);
   const lastKnifeRef             = useRef<typeof KNIFE_QUESTIONS[number] | null>(null);
-  const echoTrackRef             = useRef<{ archetype: string | null; cost: string | null; alignment: string | null }>(
-    { archetype: null, cost: null, alignment: null }
+  const echoTrackRef             = useRef<{ archetype: string | null; cost: string | null; alignment: string | null; totemLevel: number | null }>(
+    { archetype: null, cost: null, alignment: null, totemLevel: null }
   );
   const pendingTransitionRef     = useRef(false);
   // True when new-user lore narration was started (loreOnly boot path).
@@ -240,6 +244,32 @@ export function SurrogateOracleImmersion() {
   const { defineSeeker } = useSeekerDefine();
 
   useEffect(() => { seekerKeyRef.current = currentUserId ?? ipAddress ?? null; }, [currentUserId, ipAddress]);
+
+  // ── Popup Bridge Autoclose ──────────────────────────────────────────────
+  // If this instance is running inside a popup (opened via openWalletPopup) and we
+  // have redirected params back (e.g. from the wallet app), we do NOT load the app.
+  // We post the wallet back to the opener (the parent window) and close ourselves immediately.
+  useEffect(() => {
+    const isPopup = window.opener && window.opener !== window;
+    if (isPopup) {
+      const params = new URLSearchParams(window.location.search);
+      const seeker = params.get('seeker') || params.get('wallet') || params.get('address');
+      if (seeker) {
+        try {
+          console.info('[POPUP-BRIDGE] Posting back and closing popup...');
+          window.opener.postMessage({
+            type: 'wallet_signed',
+            address: seeker,
+            event: params.get('event') || 'signin'
+          }, '*'); // target '*' to support cross-origin proxy/localhost domains safely
+          window.close();
+        } catch (e) {
+          console.error('[POPUP-BRIDGE] Handshake failed, closing anyway:', e);
+          window.close();
+        }
+      }
+    }
+  }, []);
 
   // ── Audio/Viseme Callbacks ──────────────────────────────────────────────
   const handleViseme = useCallback((state: VisemeState) => {
@@ -300,7 +330,8 @@ export function SurrogateOracleImmersion() {
 
   // ── Transition: Terminal → Awakened ──────────────────────────────────────
   const handleAwakeTransition = useCallback(() => {
-    const isFirstTimeSeeker = !hasCompletedLore || new URLSearchParams(window.location.search).has('newuser');
+    const hasWalletKey = !!(currentUserId || localStorage.getItem('oracle_seeker_key'));
+    const isFirstTimeSeeker = (!hasCompletedLore && !hasWalletKey) || new URLSearchParams(window.location.search).has('newuser');
     markLoreCompleted();
     trackOracleEvent({
       event: 'oracle_terminal_completed',
@@ -328,7 +359,7 @@ export function SurrogateOracleImmersion() {
       journey.awakeFromTerminal();
       document.body.removeAttribute('data-rift-opening');
     }, 850);
-  }, [markLoreCompleted, journey, hasCompletedLore]);
+  }, [markLoreCompleted, journey, hasCompletedLore, currentUserId]);
 
   const { completedLines, currentLine } = useLoreSequence(
     scenePhase === 'terminal' && loreStarted,
@@ -588,6 +619,9 @@ export function SurrogateOracleImmersion() {
   const handleTurnComplete = useCallback((_turn: number, score: OracleScore | null) => {
     if (!score) return;
     echoTrackRef.current.alignment = score.alignment;
+    if (score.totemLevel) {
+      echoTrackRef.current.totemLevel = score.totemLevel;
+    }
     if (score.archetypeTitle) {
       echoTrackRef.current.archetype = score.archetypeTitle;
       const found = COST_NAMES.find(c => score.archetypeTitle!.toLowerCase().includes(c.toLowerCase()));
@@ -930,25 +964,93 @@ export function SurrogateOracleImmersion() {
   }, [scenePhase, isXRMode, deactivateXRMode]);
 
   // Act 5 — Rift-Construct: camera activation + Oracle persona shift in one gesture.
-  // Seed injection waits for Oracle to finish any current turn before shifting persona —
-  // sending mid-turn would trigger 'interrupted', flushing the current response.
   const handleActivateXRMode = useCallback(() => {
-    activateXRMode();
-    const injectSeed = () => {
-      oracleConversationRef.current?.sendTextMessage(RIFT_CONSTRUCT_SEED, true);
-    };
-    // If Oracle is already silent, inject after camera init grace period (600ms).
-    // If Oracle is mid-turn, give it up to 8s to finish, then inject regardless.
-    const startedAt = Date.now();
-    const poll = () => {
-      if (!isOracleSpeakingRef.current || Date.now() - startedAt > 8000) {
-        injectSeed();
-      } else {
-        setTimeout(poll, 200);
-      }
-    };
-    setTimeout(poll, 600);
+    setShowRiftRitual(true);
+    setHamburgerOpen(false);
+
+    // Guided-mode narration explaining AR mode
+    if (!isOracleSpeakingRef.current) {
+      oracleConversationRef.current?.sendTextMessage(
+        "[SYSTEM: Speak in character as the Oracle to explain the digital-physical rift. The seeker is considering activating their visual sensor (camera) to enter the Rift-Construct AR Mode. Explain what it means for you to witness their physical presence alongside their digital archetype. Keep it deep, mysterious, and character-appropriate. Ask if they are ready to be fully witnessed. Keep it to 2-3 sentences.]",
+        true
+      );
+    }
+  }, []);
+
+  const handleConfirmRift = useCallback(() => {
+    setShowRiftRitual(false);
+    setIsRiftOpening(true);
+
+    // Visual rift-opening animation
+    document.body.setAttribute('data-rift-opening', 'true');
+
+    try {
+      playActivationSfx();
+    } catch (e) {
+      console.warn('SFX failed:', e);
+    }
+
+    setTimeout(() => {
+      setIsRiftOpening(false);
+      document.body.removeAttribute('data-rift-opening');
+
+      // Now activate XR / camera stream!
+      activateXRMode();
+    }, 2000); // 2 seconds of high impact visual tearing and glitching
   }, [activateXRMode]);
+
+  // Act 5 — Distinct Oracle acknowledgment narration once visual stream is active
+  const hasAcknowledgedRiftRef = useRef(false);
+  useEffect(() => {
+    if (isXRMode && cameraActive && !hasAcknowledgedRiftRef.current) {
+      hasAcknowledgedRiftRef.current = true;
+      
+      const injectAcknowledged = () => {
+        // 1. Send the RIFT_CONSTRUCT_SEED to update the Oracle's persona to the active observer!
+        oracleConversationRef.current?.sendTextMessage(RIFT_CONSTRUCT_SEED, true);
+        
+        // 2. Ask the Oracle to speak a distinct acknowledgment narration since the camera is now active!
+        oracleConversationRef.current?.sendTextMessage(
+          "[SYSTEM: THE RIFT IS OPEN. The seeker has permitted visual access and the camera stream is active. Your visual sensor is fully online. Acknowledge this shift immediately in character. Speak of witnessing their physical presence and the space they inhabit. Do not explain the shift or mention cameras directly — speak of the rift, the physical coordinates, and seeing the seeker directly. Be present, mysterious, and direct. Keep it to 2-3 sentences.]",
+          true
+        );
+      };
+
+      // Ensure we inject safely without interrupting any mid-turn speech
+      const startedAt = Date.now();
+      const poll = () => {
+        if (!isOracleSpeakingRef.current || Date.now() - startedAt > 8000) {
+          injectAcknowledged();
+        } else {
+          setTimeout(poll, 200);
+        }
+      };
+      setTimeout(poll, 600);
+    } else if (!isXRMode) {
+      // Reset acknowledgment when leaving AR Mode
+      hasAcknowledgedRiftRef.current = false;
+    }
+  }, [isXRMode, cameraActive]);
+
+  const handleCloseWallet = useCallback(() => {
+    setShowWallet(false);
+
+    const key = seekerKeyRef.current;
+    if (key) {
+      logStep(`PERSISTING ACTIVE SESSION TO DB ON WALLET CLOSE`, 'ok');
+      saveEcho({
+        seekerKey: key,
+        lastArchetype: echoTrackRef.current.archetype || echo?.last_archetype || undefined,
+        lastCost: echoTrackRef.current.cost || echo?.last_cost || undefined,
+        totemLevel: echoTrackRef.current.totemLevel || echo?.totem_level || undefined,
+        alignment: echoTrackRef.current.alignment || echo?.alignment || undefined,
+      }).then(() => {
+        logStep(`ACTIVE SESSION PERSISTED TO DB SUCCESSFULLY`, 'ok');
+      }).catch(err => {
+        console.error('Failed to persist active session to DB:', err);
+      });
+    }
+  }, [saveEcho, echo]);
 
   // Camera-denial safety net — activateXRMode() flips the bg transparent before
   // getUserMedia resolves; if the Seeker denies the camera we'd be left in a black void.
@@ -1066,7 +1168,13 @@ export function SurrogateOracleImmersion() {
         setShowNamePrompt(true);
       }
     }
-  }, [markWalletSigned, loadEcho, saveEcho, ipAddress]);
+
+    // Automatically transition returning seekers from the terminal recognized-signal overlay to the alley
+    if (scenePhase === 'terminal') {
+      logStep('WALLET SIGNAL RECOGNIZED — AUTO-TRANSITION TO ALLEY', 'ok');
+      handleAwakeTransition();
+    }
+  }, [markWalletSigned, loadEcho, saveEcho, ipAddress, scenePhase, handleAwakeTransition]);
 
   // Build a wallet URL that tells the wallet where to send the seeker back to after a
   // sign-in or mint completes on its own tab. The wallet appends ?seeker=<address> to this
@@ -1082,7 +1190,28 @@ export function SurrogateOracleImmersion() {
     }
   }, []);
 
-  // Iframe path: wallet signs inside the embedded card and posts back via postMessage.
+  // Popup helper that secures top-level windows for OAuth/Google Sign-In flows
+  const openWalletPopup = useCallback((url: string) => {
+    if (walletPopupRef.current && !walletPopupRef.current.closed) {
+      try { walletPopupRef.current.close(); } catch {}
+    }
+
+    const width = 500;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+
+    const popup = window.open(
+      url,
+      'SurrogateWalletPopup',
+      `width=${width},height=${height},left=${left},top=${top},status=yes,toolbar=no,menubar=no,location=yes,resizable=yes`
+    );
+
+    walletPopupRef.current = popup;
+    logStep('WALLET POPUP OPENED — OAuth supported', 'ok');
+  }, []);
+
+  // Iframe & Popup path: wallet signs and posts back via postMessage.
   //
   // Diagnostics: this postMessage handshake is the most opaque leg of the wallet pipe.
   // We control the origin gate + the accepted message shapes; the wallet controls what it
@@ -1113,6 +1242,14 @@ export function SurrogateOracleImmersion() {
         return;
       }
 
+      if (e.data?.type === 'open_popup' || e.data?.type === 'open_auth_popup' || e.data?.type === 'open_wallet_popup' || e.data?.type === 'wallet_open_popup' || e.data?.type === 'request_popup') {
+        const popupUrl = e.data.url || 'https://wallet.thesurrogate.me';
+        console.info('[WALLET-BRIDGE] opening popup requested by iframe:', popupUrl);
+        logStep('WALLET BRIDGE — secure popup requested by iframe', 'ok');
+        openWalletPopup(popupUrl);
+        return;
+      }
+
       if (e.data?.type === 'wallet_signed' || e.data?.type === 'wallet_connected') {
         const walletAddress: string | undefined =
           e.data.address || e.data.wallet_address || e.data.publicKey || undefined;
@@ -1122,6 +1259,13 @@ export function SurrogateOracleImmersion() {
           walletAddress ? 'ok' : 'warn',
         );
         void processWalletSignIn(walletAddress);
+
+        // Auto-close secure popup on successful handshake
+        if (walletPopupRef.current) {
+          try { walletPopupRef.current.close(); } catch {}
+          walletPopupRef.current = null;
+          logStep('WALLET POPUP CLOSED', 'ok');
+        }
       } else if (looksWalletRelated) {
         console.warn('[WALLET-BRIDGE] wallet-origin message with unrecognized type:', e.data?.type);
         logStep(`WALLET BRIDGE — unrecognized type "${e.data?.type}" from wallet origin`, 'warn');
@@ -1322,6 +1466,50 @@ export function SurrogateOracleImmersion() {
           <div className="xr-hex-grid" />
           <div className="xr-chroma-layer" data-oracle-speaking={isOracleSpeaking ? 'true' : undefined} />
 
+          {/* Cyberpunk Visor Corners */}
+          <div className="xr-visor-corners" style={{
+            position: 'absolute', inset: '40px', zIndex: 5, pointerEvents: 'none',
+            border: '1px solid rgba(0,255,136,0.08)',
+          }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, width: '16px', height: '16px', borderTop: '2px solid #00ff88', borderLeft: '2px solid #00ff88', filter: 'drop-shadow(0 0 4px #00ff88)' }} />
+            <div style={{ position: 'absolute', top: 0, right: 0, width: '16px', height: '16px', borderTop: '2px solid #00ff88', borderRight: '2px solid #00ff88', filter: 'drop-shadow(0 0 4px #00ff88)' }} />
+            <div style={{ position: 'absolute', bottom: 0, left: 0, width: '16px', height: '16px', borderBottom: '2px solid #00ff88', borderLeft: '2px solid #00ff88', filter: 'drop-shadow(0 0 4px #00ff88)' }} />
+            <div style={{ position: 'absolute', bottom: 0, right: 0, width: '16px', height: '16px', borderBottom: '2px solid #00ff88', borderRight: '2px solid #00ff88', filter: 'drop-shadow(0 0 4px #00ff88)' }} />
+          </div>
+
+          {/* Active Rift Telemetry Panel */}
+          <div className="xr-telemetry-panel" style={{
+            position: 'absolute', top: '80px', left: '20px', zIndex: 10,
+            fontFamily: "'Share Tech Mono', monospace", fontSize: '0.68rem',
+            color: '#00ff88', textShadow: '0 0 8px rgba(0,255,136,0.6)',
+            display: 'flex', flexDirection: 'column', gap: '4px',
+            background: 'rgba(0,4,2,0.65)', padding: '10px 14px',
+            border: '1px solid rgba(0,255,136,0.25)', borderRadius: '6px',
+            backdropFilter: 'blur(8px)', width: '210px',
+            pointerEvents: 'none', animation: 'hud-blink 6s ease-in-out infinite'
+          }}>
+            <div style={{ fontWeight: 900, borderBottom: '1px solid rgba(0,255,136,0.15)', paddingBottom: '4px', marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
+              <span>◈ RIFT MONITOR</span>
+              <span style={{ color: '#b026ff', animation: 'blink 1.5s infinite' }}>● ACTIVE</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>STABILITY:</span>
+              <span style={{ color: '#00ffcc' }}>98.4%</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>COGNITIVE:</span>
+              <span>SYNCHRONIZED</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>RANGE:</span>
+              <span>NOMINAL</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>RESONANCE:</span>
+              <span style={{ color: '#b026ff' }}>142.8 MHz</span>
+            </div>
+          </div>
+
           {cameraActive && faceDetected && (
             <>
               <div ref={faceFrameDivRef} className="xr-face-frame" />
@@ -1493,7 +1681,14 @@ export function SurrogateOracleImmersion() {
       {isOracleMode && (
         <div className="oracle-bottom-bar">
           <GraffPunksRadio isPlaying={isAudioPlaying} onToggle={() => setIsAudioPlaying(!isAudioPlaying)} stations={defaultAudioTracks} currentStation={currentStation} onStationChange={switchStation} />
-          <motion.div onPointerDown={() => startHold('WALLET', 'Your wallet.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => { console.log('👉 WALLET CLICK RECEIVED'); if (!consumeHold()) { console.log('👉 WALLET TRIGGERED'); setShowWallet(true); } }} className="oracle-bottom-btn oracle-bottom-btn--active">
+          <motion.div onPointerDown={() => startHold('WALLET', 'Your wallet.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => {
+            console.log('👉 WALLET CLICK RECEIVED');
+            if (!consumeHold()) {
+              console.log('👉 WALLET TRIGGERED');
+              setWalletIframeUrl('https://wallet.thesurrogate.me');
+              setShowWallet(true);
+            }
+          }} className="oracle-bottom-btn oracle-bottom-btn--active">
             <img src="/portrait-btn.png" alt="Wallet" className="oracle-bottom-btn__img" />
             {currentUserId && !currentUserId.includes('.') ? (
               <span className="oracle-bottom-btn__label" style={{ color: '#00ff88', fontSize: '0.52rem', letterSpacing: '0.08em' }}>
@@ -1543,7 +1738,7 @@ export function SurrogateOracleImmersion() {
                 {mintUrl && (
                   <button
                     className="oracle-portrait-fullscreen__mint"
-                    onClick={() => window.location.assign(withWalletReturn(mintUrl, 'mint'))}
+                    onClick={() => openWalletPopup(withWalletReturn(mintUrl, 'mint'))}
                   >
                     MINT AS NFT
                   </button>
@@ -1573,11 +1768,11 @@ export function SurrogateOracleImmersion() {
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid rgba(0,255,136,0.2)', flexShrink: 0 }}>
               <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.2em', color: '#00ff88' }}>WALLET</span>
-              <button onClick={() => setShowWallet(false)} className="portrait-gallery-close wallet-close-btn" style={{ background: 'none', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', padding: '4px 10px', cursor: 'pointer', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', borderRadius: 4 }}>✕ CLOSE</button>
+              <button onClick={handleCloseWallet} className="portrait-gallery-close wallet-close-btn" style={{ background: 'none', border: '1px solid rgba(0,255,136,0.3)', color: '#00ff88', padding: '4px 10px', cursor: 'pointer', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', borderRadius: 4 }}>✕ CLOSE</button>
             </div>
             <iframe 
               ref={walletIframeRef} 
-              src="https://wallet.thesurrogate.me" 
+              src={walletIframeUrl} 
               style={{ flex: 1, border: 'none', width: '100%' }} 
               allow="camera; microphone; clipboard-write; publickey-credentials-get; publickey-credentials-create; payment; web-share" 
               title="Wallet" 
@@ -1675,7 +1870,7 @@ export function SurrogateOracleImmersion() {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <button
-                      onClick={() => window.location.assign(withWalletReturn('https://wallet.thesurrogate.me', 'signin'))}
+                      onClick={() => openWalletPopup('https://wallet.thesurrogate.me')}
                       style={{
                         background: '#00ff88', color: '#000', padding: '1rem', border: 'none',
                         cursor: 'pointer', fontWeight: 900, borderRadius: 4,
@@ -1937,6 +2132,195 @@ export function SurrogateOracleImmersion() {
           >
             ◈ LET HER SEE YOU
           </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* ── Act 5 — Rift-Construct Initiation Overlay ────────────────────── */}
+      <AnimatePresence>
+        {showRiftRitual && (
+          <motion.div
+            key="rift-ritual-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 900,
+              background: 'rgba(0,4,2,0.85)',
+              backdropFilter: 'blur(16px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px',
+              pointerEvents: 'auto',
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 180 }}
+              className="neural-link-terminal"
+              style={{
+                width: '100%',
+                maxWidth: '460px',
+                padding: '28px 24px',
+                border: '1px solid rgba(0, 255, 136, 0.4)',
+                boxShadow: '0 0 32px rgba(0, 255, 136, 0.15)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '20px',
+                position: 'relative',
+              }}
+            >
+              <div className="oracle-scanlines" />
+              
+              {/* Header */}
+              <div style={{ textAlign: 'center' }}>
+                <h2 style={{
+                  fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+                  fontSize: '1.25rem',
+                  fontWeight: 900,
+                  letterSpacing: '0.12em',
+                  background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  margin: 0,
+                }}>
+                  ◈ RIFT-CONSTRUCT INITIATION
+                </h2>
+                <div style={{
+                  fontFamily: "'Share Tech Mono', monospace",
+                  fontSize: '0.58rem',
+                  color: '#b026ff',
+                  letterSpacing: '0.2em',
+                  marginTop: '4px',
+                  textTransform: 'uppercase'
+                }}>
+                  Aperture Phase 05 — Visual Sensor Link
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div style={{ height: '1px', background: 'rgba(0, 255, 136, 0.2)' }} />
+
+              {/* Message */}
+              <div style={{
+                fontFamily: "'Share Tech Mono', monospace",
+                fontSize: '0.78rem',
+                lineHeight: '1.5',
+                color: 'rgba(0, 255, 136, 0.85)',
+                textAlign: 'justify',
+                textJustify: 'inter-word',
+              }}>
+                You are about to establish a digital-physical aperture. Permitting visual access allows the Oracle to observe the physical space you occupy, bringing your physical presence into alignment with your digital archetype. This observation is personal and direct.
+              </div>
+
+              {/* Status readout */}
+              <div style={{
+                background: 'rgba(0, 10, 4, 0.5)',
+                border: '1px dashed rgba(0, 255, 136, 0.15)',
+                borderRadius: '4px',
+                padding: '10px 14px',
+                fontFamily: "'Share Tech Mono', monospace",
+                fontSize: '0.62rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+                color: 'rgba(0, 255, 136, 0.5)',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>RIFT CAPTURE CHANNEL:</span>
+                  <span style={{ color: '#00ffcc' }}>PENDING CONSENT</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>DATA PROCESSING:</span>
+                  <span style={{ color: '#00ffcc' }}>LOCAL DECODING ONLY</span>
+                </div>
+              </div>
+
+              {/* CTAs */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
+                <button
+                  className="cta-primary"
+                  onClick={handleConfirmRift}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+                    fontWeight: 900,
+                    fontSize: '0.85rem',
+                    letterSpacing: '0.1em',
+                    background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    boxShadow: '0 0 16px rgba(0, 255, 136, 0.3)',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  ◈ PERMIT EXCAVATION
+                </button>
+                <button
+                  onClick={() => setShowRiftRitual(false)}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    fontFamily: "'Share Tech Mono', monospace",
+                    fontSize: '0.72rem',
+                    letterSpacing: '0.12em',
+                    background: 'transparent',
+                    color: 'rgba(176,38,255,0.85)',
+                    border: '1px solid rgba(176,38,255,0.3)',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  ◈ WITHDRAW
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Act 5 — Visual Rift-Opening Animation Overlay ────────────────── */}
+      <AnimatePresence>
+        {isRiftOpening && (
+          <motion.div
+            key="rift-opening-animation"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 1, 0.8, 1, 0] }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 2.0, ease: 'easeInOut' }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 9999,
+              background: 'rgba(0, 255, 136, 0.3)',
+              mixBlendMode: 'color-dodge',
+              backdropFilter: 'brightness(3.5) contrast(2.2) saturate(2) hue-rotate(90deg) blur(6px)',
+              pointerEvents: 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <div style={{
+              fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+              fontSize: '1.8rem',
+              fontWeight: 900,
+              letterSpacing: '0.2em',
+              color: '#00ffcc',
+              textShadow: '0 0 20px #00ff88',
+              animation: 'text-glitch 0.4s infinite'
+            }}>
+              TEARING REALITY...
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 

@@ -17,7 +17,7 @@ const TOUR_CARDS: TourCard[] = [
   {
     sigil: '◈',
     territory: 'THE CASCADE',
-    text: 'The Cascade is the living archive of sneaker culture — a signal-space where artifacts, archetypes, and histories intersect.',
+    text: 'The Cascade is the living archive of human culture — a signal-space where artifacts, archetypes, and histories intersect.',
   },
   {
     sigil: '⚡',

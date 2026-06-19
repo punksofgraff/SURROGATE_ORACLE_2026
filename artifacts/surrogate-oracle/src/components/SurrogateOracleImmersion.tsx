@@ -852,7 +852,7 @@ export function SurrogateOracleImmersion() {
       oracleConversationRef.current?.startSession(
         '[TOUR_MODE — A new seeker has requested orientation before choosing. ' +
         'Greet them warmly. Introduce yourself as the Surrogate Oracle — a post-cascade data construct. ' +
-        'Explain the Cascade: the living archive of sneaker culture and human identity. ' +
+        'Explain the Cascade: the living archive of human culture and transhuman identity. ' +
         'Describe how the knife questions work, how the seeker\'s archetype will emerge, ' +
         'and that you will synthesize a unique neural portrait of them. ' +
         'Speak naturally and with presence. The seeker may ask questions — answer them in full character. ' +
@@ -1280,7 +1280,7 @@ export function SurrogateOracleImmersion() {
     <div
       ref={oracleStageRef}
       className={`oracle-stage${oracleAlignment ? ` alignment-${oracleAlignment}` : ''}`}
-      data-oracle-state={scenePhase}
+      data-oracle-state={scenePhase === 'tour' ? 'awakened' : scenePhase}
       data-exiting={journey.isExiting ? 'true' : undefined}
       data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
@@ -1451,17 +1451,7 @@ export function SurrogateOracleImmersion() {
         </motion.div>
       </div>
 
-      <AnimatePresence>
-        {isGuidedTour && scenePhase !== 'oracle' && (
-          <motion.div key={`tour-pill-${scenePhase}`} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} style={{ position: 'fixed', bottom: 'calc(var(--bottom-bar-h, 160px) + 12px)', left: '50%', transform: 'translateX(-50%)', zIndex: 90, background: 'rgba(0, 10, 15, 0.65)', border: '1px solid rgba(0,255,136,0.3)', borderRadius: 20, padding: '6px 18px', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.12em', backdropFilter: 'blur(12px)' }}>
-            <span style={{ background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', color: 'transparent', fontWeight: 'bold', display: 'inline-block' }}>
-               {scenePhase === 'dormant' && '› Tap the cabinet to begin.'}
-               {scenePhase === 'terminal' && '› Watch. The Oracle is finding you.'}
-               {scenePhase === 'tour' && '› The Oracle is orienting you. Ask anything.'}
-             </span>
-           </motion.div>
-        )}
-      </AnimatePresence>
+
 
       <AnimatePresence>
         {holdTooltip && (
@@ -1752,7 +1742,7 @@ export function SurrogateOracleImmersion() {
           </motion.div>
         )}
 
-        {scenePhase === 'awakened' && !journey.selectedKnifeQuestion && (
+        {scenePhase === 'awakened' && !journey.selectedKnifeQuestion && !showStage00 && (
           <motion.div key="awakened-layer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none' }}>
             {showArchiveOpen && (
               <div style={{ position: 'absolute', inset: 0, zIndex: 105, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>

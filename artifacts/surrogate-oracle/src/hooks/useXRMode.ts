@@ -35,6 +35,7 @@ const THREE_MathUtils = THREE.MathUtils;
 export interface SeekerMotion {
   phoneTilt: { x: number; y: number }; // normalized -1 to 1 (DeviceOrientation)
   facePos:  { x: number; y: number }; // normalized -1 to 1 (FaceDetector or skin-tone centroid)
+  hasFace:  boolean;
 }
 
 /** Natural-video-pixel bounding box of detected face, for AR overlay positioning. */
@@ -95,7 +96,8 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   const streamRef = useRef<MediaStream | null>(null);
   const seekerMotionRef = useRef<SeekerMotion>({
     phoneTilt: { x: 0, y: 0 },
-    facePos:   { x: 0, y: 0 }
+    facePos:   { x: 0, y: 0 },
+    hasFace:   false
   });
 
   // ── Device Orientation Listener ──
@@ -161,12 +163,15 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
       const cx = -(bb.x + bb.width  / 2) / vw * 2 + 1;
       const cy = -((bb.y + bb.height / 2) / vh * 2 - 1);
       updateGaze(cx, cy);
+      seekerMotionRef.current.hasFace = true;
       if (faceDetectedTimerRef.current) clearTimeout(faceDetectedTimerRef.current);
       setFaceDetected(true);
       // Hold "detected" for 1.5s after the last confirmed frame to avoid flicker
       faceDetectedTimerRef.current = setTimeout(() => {
         faceBoundsRef.current = null;
         setFaceDetected(false);
+        seekerMotionRef.current.hasFace = false;
+        seekerMotionRef.current.facePos = { x: 0, y: 0 };
       }, 1500);
     };
 
@@ -283,6 +288,8 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     streamRef.current = null;
     setCameraReady(false);
     setCameraActive(false);
+    seekerMotionRef.current.hasFace = false;
+    seekerMotionRef.current.facePos = { x: 0, y: 0 };
     if (cameraVideoRef.current) {
       cameraVideoRef.current.srcObject = null;
     }

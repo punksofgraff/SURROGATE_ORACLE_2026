@@ -443,11 +443,10 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     let seekerY = cameraStateRef?.current ? -cameraStateRef.current.y : 0;
 
     if (seekerMotionRef?.current) {
-      const { phoneTilt, facePos } = seekerMotionRef.current;
+      const { phoneTilt, facePos, hasFace } = seekerMotionRef.current;
       
       // Determine if we have active sensor data
       const hasTilt = Math.abs(phoneTilt.x) > 0.01 || Math.abs(phoneTilt.y) > 0.01;
-      const hasFace = Math.abs(facePos.x) > 0.01 || Math.abs(facePos.y) > 0.01;
 
       if (hasTilt || hasFace) {
         if (hasTilt) {

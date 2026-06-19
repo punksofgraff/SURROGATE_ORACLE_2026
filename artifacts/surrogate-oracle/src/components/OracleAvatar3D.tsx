@@ -152,21 +152,9 @@ const CAM_LERP      = 0.08; // responsive on phone while still smooth
 // not the legs — the old hardcoded -1.59 was calibrated for the previous avatar.
 const AVATAR_Y_OFFSET = -1.59;
 
-// ── Natural arm rest pose ────────────────────────────────────────────────────
-// The RPM/Wolf3D bind pose is a stiff A-pose: upper arms splayed ~30° out from
-// the torso, which reads as a mannequin "hovering" its arms. Earlier euler
-// offsets were guessed blind (sign/axis depend on each bone's local roll) and
-// never looked right. Instead we settle the rest pose GEOMETRICALLY: rotate the
-// upper-arm bone so it points straight DOWN in world space (gravity is
-// unambiguous — no per-axis sign guessing), and let the forearm/hand follow on
-// their bind rotations, so the whole arm hangs comfortably at the side. A tiny
-// forward tilt keeps the hands just clear of the thighs.
-const ARM_REST_DOWN = new THREE.Vector3(0, -1, 0.06).normalize();
-
-// Reused per-frame to avoid allocations in the arm-settle loop.
-const _armEuler = new THREE.Euler();
-const _armQuat  = new THREE.Quaternion();
-const _armSway  = new THREE.Quaternion();
+// Arms are driven by the avatar's own baked skeletal clips (idle gestures at
+// rest, talk gestures during speech) via the idle↔talk crossfade in useFrame —
+// natural movement like any game avatar. No procedural arm pinning.
 
 export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef }: OracleAvatar3DProps) {
   const { scene }      = useGLTF('/hero3.glb?v=morphs-v2');
@@ -246,11 +234,11 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     if (idle) {
       idle.reset().setLoop(THREE.LoopRepeat, Infinity).play();
       idle.setEffectiveWeight(1);
-      idle.setEffectiveTimeScale(0.38);
+      idle.setEffectiveTimeScale(0.65);
     }
     // Pre-set talking action time scales too
-    if (talk1) talk1.setEffectiveTimeScale(0.38);
-    if (talk2) talk2.setEffectiveTimeScale(0.38);
+    if (talk1) talk1.setEffectiveTimeScale(0.65);
+    if (talk2) talk2.setEffectiveTimeScale(0.65);
 
     if (
       import.meta.env.DEV && idle &&
@@ -273,13 +261,6 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     let spineBone:         THREE.Object3D | null = null; // Spine2 — upper chest
     let leftShoulderBone:  THREE.Object3D | null = null;
     let rightShoulderBone: THREE.Object3D | null = null;
-    // Arm chain — captured so we can settle the arms back to the rig's natural
-    // bind pose (arms DOWN, out of the head/chest frame) while at rest. The idle
-    // clip floats them UP into frame which reads as "creepy / no one stands like
-    // that"; bind pose is the relaxed default. Speech blends this off so the
-    // talking clips gesture freely.
-    const armChainBones: THREE.Object3D[] = [];
-
     scene.traverse((child) => {
       // Mesh logging for debugging
       if (child.type === 'SkinnedMesh' || child.type === 'Mesh') {
@@ -312,8 +293,6 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       if (!spineBone && n === 'spine1') spineBone = child;
       if (n === 'leftshoulder'  && !leftShoulderBone)  leftShoulderBone  = child;
       if (n === 'rightshoulder' && !rightShoulderBone) rightShoulderBone = child;
-      // Whole arm chain (shoulder → hand) on both sides, for the rest-pose settle.
-      if (/^(left|right)(shoulder|arm|forearm|hand)$/.test(n)) armChainBones.push(child);
 
       const sm = child as THREE.SkinnedMesh;
       if (!sm.isSkinnedMesh || !sm.morphTargetDictionary || !sm.morphTargetInfluences) return;
@@ -352,59 +331,6 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       if (import.meta.env.DEV) console.log('[OracleAvatar3D] head Y =', headWorld.y, '→ avatarYOffset =', avatarYOffset);
     }
 
-    // ── Capture arm-chain bind pose (arms down / relaxed) ─────────────────────
-    // useGLTF caches the scene, so on a remount the bones can still carry the
-    // last animated pose. Force the skeleton to bind pose, snapshot the arm
-    // rotations, so useFrame can settle the arms there. Done AFTER the head-Y
-    // framing read so posing the skeleton can't perturb avatarYOffset.
-    const armRestBones: Array<{
-      bone: THREE.Object3D;
-      rest: THREE.Quaternion;                       // natural relaxed target
-      seg: 'shoulder' | 'arm' | 'forearm' | 'hand';
-      side: 'left' | 'right';
-      phase: number;                                // micro-motion phase offset
-    }> = [];
-    const skel = result[0]?.mesh?.skeleton;
-    if (skel) {
-      skel.pose();
-      scene.updateMatrixWorld(true);             // refresh world matrices to bind
-      for (const b of armChainBones) {
-        const nm   = b.name.toLowerCase();
-        const side: 'left' | 'right' = nm.startsWith('left') ? 'left' : 'right';
-        const seg  = ((['shoulder', 'forearm', 'hand'] as const).find(s => nm.endsWith(s))
-          ?? 'arm') as 'shoulder' | 'arm' | 'forearm' | 'hand';
-
-        let rest: THREE.Quaternion;
-        // Prefer the forearm child explicitly (robust against twist/intermediate
-        // bones); fall back to the first bone child.
-        const child =
-          (b.children.find(c => c.name.toLowerCase().endsWith('forearm')) ??
-            b.children.find(
-              c => (c as THREE.Object3D & { isBone?: boolean }).isBone,
-            )) as THREE.Object3D | undefined;
-
-        if (seg === 'arm' && child && b.parent) {
-          // Geometrically hang the upper arm straight DOWN in world space.
-          // curDir = world direction from shoulder→elbow at bind (splayed out).
-          const p0 = new THREE.Vector3(); b.getWorldPosition(p0);
-          const p1 = new THREE.Vector3(); child.getWorldPosition(p1);
-          const curDir = p1.sub(p0).normalize();
-          // World rotation that swings that direction down to ARM_REST_DOWN.
-          const qWorld = new THREE.Quaternion().setFromUnitVectors(curDir, ARM_REST_DOWN);
-          const boneWorld = new THREE.Quaternion();   b.getWorldQuaternion(boneWorld);
-          const parentWorld = new THREE.Quaternion(); b.parent.getWorldQuaternion(parentWorld);
-          // desired world quat, then back into the bone's local (parent) space.
-          const desiredWorld = qWorld.multiply(boneWorld);
-          rest = parentWorld.invert().multiply(desiredWorld);
-        } else {
-          // shoulder / forearm / hand keep their bind rotation; once the upper
-          // arm hangs down they follow naturally into a relaxed straight arm.
-          rest = b.quaternion.clone();
-        }
-        armRestBones.push({ bone: b, rest, seg, side, phase: Math.random() * Math.PI * 2 });
-      }
-    }
-
     if (import.meta.env.DEV) {
       if (hasMorphs) {
         console.group('[OracleAvatar3D] Morph Target Dictionary');
@@ -435,15 +361,14 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       spineBone:          spineBone         as THREE.Object3D | null,
       leftShoulderBone:   leftShoulderBone  as THREE.Object3D | null,
       rightShoulderBone:  rightShoulderBone as THREE.Object3D | null,
-      armRestBones,
       hasMorphs,
       avatarYOffset,
     };
   }, [scene]);
 
-  // Smoothed arm rest-pose strength: 1 = arms fully settled to bind (down, at
-  // rest), 0 = talking clip drives the arms (gesturing during speech).
-  const armRestRef = useRef(1);
+  // Smoothed idle↔talk crossfade weight: 0 = idle gestures (at rest), 1 = talking
+  // gestures (during speech). Eases so the arms never snap between clips.
+  const talkBlendRef = useRef(0);
 
   useFrame((state, delta) => {
     const vs     = visemeStateRef.current;
@@ -467,49 +392,33 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         (a): a is THREE.AnimationAction => !!a,
       );
 
-      // Pick a talking variation if we just started speaking
+      // Pick a talking variation when speech starts.
       if (isSpeaking && !talkingActionRef.current && talkPool.length > 0) {
         const chosen = talkPool[Math.floor(Math.random() * talkPool.length)];
         chosen.reset().setLoop(THREE.LoopRepeat, Infinity).play();
         chosen.setEffectiveWeight(0);
         talkingActionRef.current = chosen;
       }
-      if (!isSpeaking && talkingActionRef.current) {
-        talkingActionRef.current.stop();   // release the mixer slot when silent
+
+      // Smoothly crossfade idle ↔ talking so the ARMS animate from the avatar's
+      // OWN baked skeletal clips — idle = relaxed weight-shift gestures, talk =
+      // active conversational gestures. This is natural movement like any game
+      // avatar, NOT a pinned/frozen pose. Ease in/out (~0.3s) so gestures never
+      // snap or "flap". Head & neck tracks are stripped from the clips, so they
+      // only move the body + arms; the procedural gaze keeps the head on the seeker.
+      const target = isSpeaking && talkingActionRef.current ? 1 : 0;
+      talkBlendRef.current += (target - talkBlendRef.current) * 0.06 * lerpDt;
+      const blend = talkBlendRef.current;
+
+      // Release the talking slot once it has fully faded out.
+      if (!isSpeaking && talkingActionRef.current && blend < 0.01) {
+        talkingActionRef.current.stop();
         talkingActionRef.current = null;
       }
 
-      // Let the talking clip lead so the arms gesture forward & expressive
-      // (like an orator) instead of hanging at the sides. Ramps in fast and
-      // dominates the idle base pose during speech. At rest only the idle clip
-      // plays, so the head/gaze stays organic and looks at the seeker.
-      const talkWeight =
-        isSpeaking && talkingActionRef.current ? Math.min(0.92, amp * 5) : 0;
-      idleAction.setEffectiveWeight(1 - talkWeight * 0.85);
-      // Only the chosen talking action carries weight; the rest stay at 0.
+      idleAction.setEffectiveWeight(1 - blend);
       for (const a of talkPool) {
-        a.setEffectiveWeight(a === talkingActionRef.current ? talkWeight : 0);
-      }
-
-      // Arms: held in a calm, natural human REST pose at ALL times — never
-      // released to the talking clip. Letting the talk clip drive the arms made
-      // them "flap like wings"; leaving them in the stiff bind A-pose made them
-      // "hover" unnaturally. So we pin them to a relaxed pose (adducted upper
-      // arms, soft elbow flex, pronated forearms, dropped shoulders) and add a
-      // tiny breathing-coupled sway so they read alive, not frozen. All
-      // conversational expression comes from head / neck / eyes / breathing.
-      // Touches ONLY arm bones.
-      armRestRef.current += (1 - armRestRef.current) * 0.08 * lerpDt;
-      const restK = armRestRef.current;
-      if (restK > 0.001) {
-        for (const a of meshData.armRestBones) {
-          // micro-sway — gentle, slightly different per bone, ~0.6Hz
-          const s = Math.sin(t * 0.55 + a.phase);
-          _armEuler.set(s * 0.010, 0, s * 0.008, 'XYZ');
-          _armSway.setFromEuler(_armEuler);
-          _armQuat.copy(a.rest).multiply(_armSway);
-          a.bone.quaternion.slerp(_armQuat, restK);
-        }
+        a.setEffectiveWeight(a === talkingActionRef.current ? blend : 0);
       }
     }
 

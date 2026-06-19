@@ -1234,9 +1234,13 @@ export function SurrogateOracleImmersion() {
         logStep(`WALLET BRIDGE — msg from ${e.origin} (${data?.type ?? 'no-type'})`, 'ok');
       }
 
-      if (e.origin !== 'https://wallet.thesurrogate.me') {
+      // Trust the wallet origin AND our own origin: the popup-bridge redirects
+      // back to the app (app origin) and re-posts wallet_signed to the opener,
+      // so same-origin messages are a legitimate (and inherently safe) path.
+      const trustedOrigins = ['https://wallet.thesurrogate.me', window.location.origin];
+      if (!trustedOrigins.includes(e.origin)) {
         if (looksWalletRelated) {
-          console.warn('[WALLET-BRIDGE] REJECTED — origin mismatch (expected https://wallet.thesurrogate.me):', e.origin);
+          console.warn('[WALLET-BRIDGE] REJECTED — untrusted origin (expected wallet or app origin):', e.origin);
           logStep(`WALLET BRIDGE — REJECTED foreign origin ${e.origin}`, 'warn');
         }
         return;

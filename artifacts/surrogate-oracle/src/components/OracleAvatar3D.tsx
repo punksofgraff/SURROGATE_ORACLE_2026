@@ -153,21 +153,15 @@ const CAM_LERP      = 0.08; // responsive on phone while still smooth
 const AVATAR_Y_OFFSET = -1.59;
 
 // ── Natural arm rest pose ────────────────────────────────────────────────────
-// The RPM/Wolf3D bind pose is a stiff A-pose: upper arms splayed straight out,
-// zero elbow bend — it reads as a mannequin "hovering" its arms (and when the
-// talk clip drove them, as wing-flapping). A real human at rest ADDUCTS the
-// upper arms toward the torso, lets the elbows fall into a slight flex, pronates
-// the forearms so the hands rest near the thighs, and drops the shoulders.
-// These are local-euler offsets (radians) added on top of each bone's bind
-// rotation. y/z are mirrored per side (sign flips for right vs left); x is shared.
-// Tunable live in DEV via window.__oracle_armRest (edit, then call the rebuild).
-const ARM_REST_OFFSETS: Record<'shoulder' | 'arm' | 'forearm' | 'hand',
-  { x: number; y: number; z: number }> = {
-  shoulder: { x: 0.05, y: 0.00, z: 0.06 },  // slight droop
-  arm:      { x: 0.06, y: 0.02, z: 0.22 },  // adduct upper arm in toward torso
-  forearm:  { x: 0.10, y: 0.14, z: 0.05 },  // soft elbow flex + pronation
-  hand:     { x: 0.04, y: 0.00, z: 0.04 },  // relaxed wrist
-};
+// The RPM/Wolf3D bind pose is a stiff A-pose: upper arms splayed ~30° out from
+// the torso, which reads as a mannequin "hovering" its arms. Earlier euler
+// offsets were guessed blind (sign/axis depend on each bone's local roll) and
+// never looked right. Instead we settle the rest pose GEOMETRICALLY: rotate the
+// upper-arm bone so it points straight DOWN in world space (gravity is
+// unambiguous — no per-axis sign guessing), and let the forearm/hand follow on
+// their bind rotations, so the whole arm hangs comfortably at the side. A tiny
+// forward tilt keeps the hands just clear of the thighs.
+const ARM_REST_DOWN = new THREE.Vector3(0, -1, 0.06).normalize();
 
 // Reused per-frame to avoid allocations in the arm-settle loop.
 const _armEuler = new THREE.Euler();
@@ -184,12 +178,25 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   // Smooth camera target — avoids snapping on sudden gesture changes
   const camTarget = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
 
-  // Full source clips, arms included — natural arm + body animation straight
-  // from the GLB idle/talking exports. (Arm-track stripping was removed: it
-  // froze the arms in bind pose, leaving the avatar "vampire stiff".)
-  const idleAnim  = idleClips;
-  const talk1Anim = talking1Clips;
-  const talk2Anim = talking2Clips;
+  // Strip the Head/Neck tracks from every clip so the procedural gaze code is the
+  // SOLE driver of head + neck. Otherwise the idle clip keeps overwriting the head
+  // each frame to its baked "up & to the left" pose, and the gaze lerp (0.09) only
+  // nudges 9% toward the seeker — so at rest he stares off up-left instead of at
+  // the seeker. With these tracks gone, the gaze code converges and HOLDS on the
+  // seeker (he keeps looking at you while listening on mute), and the procedural
+  // nod/tilt handles head motion during speech. Arms/body tracks are untouched.
+  const stripHeadNeck = (clips: THREE.AnimationClip[]) =>
+    clips.map((c) => {
+      const clip = c.clone();
+      clip.tracks = clip.tracks.filter((tr) => {
+        const node = tr.name.split('.')[0].toLowerCase();
+        return !(node.includes('head') || node.includes('neck'));
+      });
+      return clip;
+    });
+  const idleAnim  = useMemo(() => stripHeadNeck(idleClips),     [idleClips]);
+  const talk1Anim = useMemo(() => stripHeadNeck(talking1Clips), [talking1Clips]);
+  const talk2Anim = useMemo(() => stripHeadNeck(talking2Clips), [talking2Clips]);
 
   // Animation mixer — driven by speaking state
   const { mixer } = useAnimations(
@@ -360,23 +367,43 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     const skel = result[0]?.mesh?.skeleton;
     if (skel) {
       skel.pose();
+      scene.updateMatrixWorld(true);             // refresh world matrices to bind
       for (const b of armChainBones) {
         const nm   = b.name.toLowerCase();
         const side: 'left' | 'right' = nm.startsWith('left') ? 'left' : 'right';
         const seg  = ((['shoulder', 'forearm', 'hand'] as const).find(s => nm.endsWith(s))
           ?? 'arm') as 'shoulder' | 'arm' | 'forearm' | 'hand';
-        const off  = ARM_REST_OFFSETS[seg];
-        const sgn  = side === 'left' ? 1 : -1;       // mirror y/z for the right side
-        // rest = bind ⊗ relaxation offset
-        const rest = b.quaternion.clone().multiply(
-          new THREE.Quaternion().setFromEuler(
-            new THREE.Euler(off.x, off.y * sgn, off.z * sgn, 'XYZ'),
-          ),
-        );
+
+        let rest: THREE.Quaternion;
+        // Prefer the forearm child explicitly (robust against twist/intermediate
+        // bones); fall back to the first bone child.
+        const child =
+          (b.children.find(c => c.name.toLowerCase().endsWith('forearm')) ??
+            b.children.find(
+              c => (c as THREE.Object3D & { isBone?: boolean }).isBone,
+            )) as THREE.Object3D | undefined;
+
+        if (seg === 'arm' && child && b.parent) {
+          // Geometrically hang the upper arm straight DOWN in world space.
+          // curDir = world direction from shoulder→elbow at bind (splayed out).
+          const p0 = new THREE.Vector3(); b.getWorldPosition(p0);
+          const p1 = new THREE.Vector3(); child.getWorldPosition(p1);
+          const curDir = p1.sub(p0).normalize();
+          // World rotation that swings that direction down to ARM_REST_DOWN.
+          const qWorld = new THREE.Quaternion().setFromUnitVectors(curDir, ARM_REST_DOWN);
+          const boneWorld = new THREE.Quaternion();   b.getWorldQuaternion(boneWorld);
+          const parentWorld = new THREE.Quaternion(); b.parent.getWorldQuaternion(parentWorld);
+          // desired world quat, then back into the bone's local (parent) space.
+          const desiredWorld = qWorld.multiply(boneWorld);
+          rest = parentWorld.invert().multiply(desiredWorld);
+        } else {
+          // shoulder / forearm / hand keep their bind rotation; once the upper
+          // arm hangs down they follow naturally into a relaxed straight arm.
+          rest = b.quaternion.clone();
+        }
         armRestBones.push({ bone: b, rest, seg, side, phase: Math.random() * Math.PI * 2 });
       }
     }
-    if (import.meta.env.DEV) (window as any).__oracle_armRest = ARM_REST_OFFSETS;
 
     if (import.meta.env.DEV) {
       if (hasMorphs) {

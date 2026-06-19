@@ -24,7 +24,16 @@ export function useOracleJourney({
   onStartSession,
   onCleanup,
 }: UseOracleJourneyProps) {
-  const [scenePhase, setScenePhase] = useState<ScenePhase>('dormant');
+  const [scenePhase, setScenePhase] = useState<ScenePhase>(() => {
+    // DEV-only: boot straight into a phase for visual debugging, e.g. ?phase=oracle
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search).get('phase');
+      if (p === 'oracle' || p === 'awakened' || p === 'terminal' || p === 'tour') {
+        return p as ScenePhase;
+      }
+    }
+    return 'dormant';
+  });
   const [loreComplete, setLoreComplete] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const [selectedKnifeQuestion, setSelectedKnifeQuestion] = useState<string | null>(null);

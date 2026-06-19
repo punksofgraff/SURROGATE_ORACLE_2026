@@ -152,6 +152,28 @@ const CAM_LERP      = 0.08; // responsive on phone while still smooth
 // not the legs — the old hardcoded -1.59 was calibrated for the previous avatar.
 const AVATAR_Y_OFFSET = -1.59;
 
+// ── Natural arm rest pose ────────────────────────────────────────────────────
+// The RPM/Wolf3D bind pose is a stiff A-pose: upper arms splayed straight out,
+// zero elbow bend — it reads as a mannequin "hovering" its arms (and when the
+// talk clip drove them, as wing-flapping). A real human at rest ADDUCTS the
+// upper arms toward the torso, lets the elbows fall into a slight flex, pronates
+// the forearms so the hands rest near the thighs, and drops the shoulders.
+// These are local-euler offsets (radians) added on top of each bone's bind
+// rotation. y/z are mirrored per side (sign flips for right vs left); x is shared.
+// Tunable live in DEV via window.__oracle_armRest (edit, then call the rebuild).
+const ARM_REST_OFFSETS: Record<'shoulder' | 'arm' | 'forearm' | 'hand',
+  { x: number; y: number; z: number }> = {
+  shoulder: { x: 0.05, y: 0.00, z: 0.06 },  // slight droop
+  arm:      { x: 0.06, y: 0.02, z: 0.22 },  // adduct upper arm in toward torso
+  forearm:  { x: 0.10, y: 0.14, z: 0.05 },  // soft elbow flex + pronation
+  hand:     { x: 0.04, y: 0.00, z: 0.04 },  // relaxed wrist
+};
+
+// Reused per-frame to avoid allocations in the arm-settle loop.
+const _armEuler = new THREE.Euler();
+const _armQuat  = new THREE.Quaternion();
+const _armSway  = new THREE.Quaternion();
+
 export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef }: OracleAvatar3DProps) {
   const { scene }      = useGLTF('/hero3.glb?v=morphs-v2');
   const { animations: idleClips }    = useGLTF('/oracle-idle.glb');
@@ -328,14 +350,33 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     // last animated pose. Force the skeleton to bind pose, snapshot the arm
     // rotations, so useFrame can settle the arms there. Done AFTER the head-Y
     // framing read so posing the skeleton can't perturb avatarYOffset.
-    const armRestBones: Array<{ bone: THREE.Object3D; quat: THREE.Quaternion }> = [];
+    const armRestBones: Array<{
+      bone: THREE.Object3D;
+      rest: THREE.Quaternion;                       // natural relaxed target
+      seg: 'shoulder' | 'arm' | 'forearm' | 'hand';
+      side: 'left' | 'right';
+      phase: number;                                // micro-motion phase offset
+    }> = [];
     const skel = result[0]?.mesh?.skeleton;
     if (skel) {
       skel.pose();
       for (const b of armChainBones) {
-        armRestBones.push({ bone: b, quat: b.quaternion.clone() });
+        const nm   = b.name.toLowerCase();
+        const side: 'left' | 'right' = nm.startsWith('left') ? 'left' : 'right';
+        const seg  = ((['shoulder', 'forearm', 'hand'] as const).find(s => nm.endsWith(s))
+          ?? 'arm') as 'shoulder' | 'arm' | 'forearm' | 'hand';
+        const off  = ARM_REST_OFFSETS[seg];
+        const sgn  = side === 'left' ? 1 : -1;       // mirror y/z for the right side
+        // rest = bind ⊗ relaxation offset
+        const rest = b.quaternion.clone().multiply(
+          new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(off.x, off.y * sgn, off.z * sgn, 'XYZ'),
+          ),
+        );
+        armRestBones.push({ bone: b, rest, seg, side, phase: Math.random() * Math.PI * 2 });
       }
     }
+    if (import.meta.env.DEV) (window as any).__oracle_armRest = ARM_REST_OFFSETS;
 
     if (import.meta.env.DEV) {
       if (hasMorphs) {
@@ -423,21 +464,24 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         a.setEffectiveWeight(a === talkingActionRef.current ? talkWeight : 0);
       }
 
-      // Arms: two distinct postures, smoothly cross-faded.
-      //  • At REST  → settle to the relaxed bind pose (arms DOWN by the sides),
-      //    so the idle clip's "creepy float-up" never reaches the frame.
-      //  • ORATING  → fully release to the talking clip so the elbows bend and
-      //    the arms gesture like a speech (the look the user wants while talking).
-      // The smoothing ramps the handoff over ~1s so arms rise into gesture and
-      // settle back down without snapping. Touches ONLY arm bones; head, neck,
-      // spine and gaze are driven below.
-      const targetRest = isSpeaking ? 0 : 1;
-      armRestRef.current +=
-        (targetRest - armRestRef.current) * 0.07 * lerpDt;
+      // Arms: held in a calm, natural human REST pose at ALL times — never
+      // released to the talking clip. Letting the talk clip drive the arms made
+      // them "flap like wings"; leaving them in the stiff bind A-pose made them
+      // "hover" unnaturally. So we pin them to a relaxed pose (adducted upper
+      // arms, soft elbow flex, pronated forearms, dropped shoulders) and add a
+      // tiny breathing-coupled sway so they read alive, not frozen. All
+      // conversational expression comes from head / neck / eyes / breathing.
+      // Touches ONLY arm bones.
+      armRestRef.current += (1 - armRestRef.current) * 0.08 * lerpDt;
       const restK = armRestRef.current;
       if (restK > 0.001) {
-        for (const { bone, quat } of meshData.armRestBones) {
-          bone.quaternion.slerp(quat, restK);
+        for (const a of meshData.armRestBones) {
+          // micro-sway — gentle, slightly different per bone, ~0.6Hz
+          const s = Math.sin(t * 0.55 + a.phase);
+          _armEuler.set(s * 0.010, 0, s * 0.008, 'XYZ');
+          _armSway.setFromEuler(_armEuler);
+          _armQuat.copy(a.rest).multiply(_armSway);
+          a.bone.quaternion.slerp(_armQuat, restK);
         }
       }
     }

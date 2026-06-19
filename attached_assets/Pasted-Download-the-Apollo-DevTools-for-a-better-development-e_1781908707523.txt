@@ -1,0 +1,604 @@
+Download the Apollo DevTools for a better development experience: https://chrome.google.com/webstore/detail/apollo-client-developer-t/jdkknkkbebbapilgoeccciglkfbmbnfm
+contentScript.js:1 Logger functions attached to window successfully
+contentScript.js:1 Content script initialized inside:  https://replit.com/@muenstervision/The-Surrogate-Oracle
+contentScript.js:1 Getting iframe URl Object
+content-script.js-a8PnzBQ-.js:1 [Smart Unit Converter] Content script loaded
+content-script.js-a8PnzBQ-.js:1 [Smart Unit Converter] Smart Unit Converter initialized with state: false
+content-script.js-a8PnzBQ-.js:1 [Smart Unit Converter] State changed: false
+contentScript.js:1 Running content script action:  Object
+contentScript.js:1 Running content script in iframe:  false
+contentScript.js:1 Actions executed for cookie management platforms:  Array(0)
+0h_.yv1gukta8.js:21 [LaunchDarkly] LaunchDarkly client initialized
+fbevents.js:356 Unrecognized feature: 'attribution-reporting'.
+(anonymous) @ fbevents.js:356
+ Logger functions attached to window successfully
+ Content script initialized inside:  https://js.stripe.com/v3/controller-with-preconnect-14dc085d082b2474bed54c2accb3d5ed.html#__shared_params__[version]=acacia&__shared_params__[light_experiment_assignments]=%7B%22token%22%3A%22b58e5fe8-87ab-462d-a215-962d9a001570%22%2C%22assignments%22%3A%7B%7D%7D&apiKey=pk_live_515YpNsJAmnYVOvfnsBqRdATWS6SzbNAslOz1z2tujdKuvRMDAwWMeFXp6dJL1YKRrQjB0WAp0UDGwlFYL7hxw7Fc00QkfxBFsL&apiVersion=2025-01-27.acacia&stripeJsId=b58e5fe8-87ab-462d-a215-962d9a001570&stripeObjId=sobj-443760c4-57ed-45ae-9597-c207ff327ea3&firstStripeInstanceCreatedLatency=30&controllerCount=1&isCheckout=false&stripeJsLoadTime=1781907869583&manualBrowserDeprecationRollout=false&mids[guid]=NA&mids[muid]=6c87c8a9-380f-4639-98e5-56f883eb0d38dc9dd2&mids[sid]=55130ea5-14dd-4cfb-9704-943405c7daba43ab3b&referrer=https%3A%2F%2Freplit.com%2F%40muenstervision%2FThe-Surrogate-Oracle&controllerId=__privateStripeController3541
+ Getting iframe URl Object
+ Logger functions attached to window successfully
+ Content script initialized inside:  https://www.google.com/recaptcha/enterprise/anchor?ar=1&k=6LfyLYUsAAAAAP0Xmu-hJvZOYJLSL7E410qvKyII&co=aHR0cHM6Ly9yZXBsaXQuY29tOjQ0Mw..&hl=en&v=MerVUtRoajKEbP7pLiGXkL28&size=invisible&anchor-ms=20000&execute-ms=30000&cb=tp8x21ttf8yb
+ Getting iframe URl Object
+contentScript.js:1 Logger functions attached to window successfully
+contentScript.js:1 Content script initialized inside:  https://js.stripe.com/v3/m-outer-3437aaddcdf6922d623e172c2d6f9278.html#url=https%3A%2F%2Freplit.com%2F%40muenstervision%2FThe-Surrogate-Oracle&title=The%20Surrogate%20Oracle%20-%20Replit&referrer=&muid=6c87c8a9-380f-4639-98e5-56f883eb0d38dc9dd2&sid=55130ea5-14dd-4cfb-9704-943405c7daba43ab3b&version=6&preview=false&__shared_params__[version]=acacia
+contentScript.js:1 Getting iframe URl Object
+contentScript.js:1 Logger functions attached to window successfully
+contentScript.js:1 Content script initialized inside:  https://m.stripe.network/inner.html#url=https%3A%2F%2Freplit.com%2F%40muenstervision%2FThe-Surrogate-Oracle&title=The%20Surrogate%20Oracle%20-%20Replit&referrer=&muid=6c87c8a9-380f-4639-98e5-56f883eb0d38dc9dd2&sid=55130ea5-14dd-4cfb-9704-943405c7daba43ab3b&version=6&preview=false&__shared_params__[version]=acacia
+contentScript.js:1 Getting iframe URl Object
+0i8wy8tbht2ow.js:2 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'ambient-light-sensor'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'battery'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'execution-while-not-rendered'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'execution-while-out-of-viewport'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'layout-animations'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'legacy-image-formats'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'navigation-override'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'oversized-images'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'publickey-credentials'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'speaker-selection'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'unoptimized-images'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'unsized-media'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'pointer-lock'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Allow attribute will take precedence over 'allowfullscreen'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Allow attribute will take precedence over 'allowpaymentrequest'.
+C @ 0i8wy8tbht2ow.js:2
+026ms9_2_xys3.js:2 Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://4bd21f04-d459-4cb8-9d39-ca5e053d14fd-00-1vv1oo6of0yyr.spock.replit.dev') does not match the recipient window's origin ('https://replit.com').
+w @ 026ms9_2_xys3.js:2
+026ms9_2_xys3.js:2 Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://4bd21f04-d459-4cb8-9d39-ca5e053d14fd-00-1vv1oo6of0yyr.spock.replit.dev') does not match the recipient window's origin ('https://replit.com').
+w @ 026ms9_2_xys3.js:2
+The-Surrogate-Oracle:1 Banner not shown: beforeinstallpromptevent.preventDefault() called. The page must call beforeinstallpromptevent.prompt() to show the banner.
+gravatar.com/avatar/7391980a62497e22001f1a007f4e3ab5a16025937eb7884107292d25e429f624?d=404:1  Failed to load resource: the server responded with a status of 404 ()
+bb6f0e63261b7ee65d302e7a6b95f47559c1e30690b80e7dc0a6c1020866fcbd:1  Failed to load resource: the server responded with a status of 404 ()
+stallwart.build.js:1 stallwart: failed ping 1
+stallwart.build.js:1 stallwart: failed ping 2
+stallwart.build.js:1 stallwart: failed ping 1
+stallwart.build.js:1 stallwart: failed ping 2
+stallwart.build.js:1 stallwart: failed ping 3
+stallwart.build.js:1 stallwart: failed ping 4
+0i8wy8tbht2ow.js:2 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+C @ 0i8wy8tbht2ow.js:2
+stallwart.build.js:1 stallwart: failed ping 5
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Unrecognized feature: 'ambient-light-sensor'.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Unrecognized feature: 'battery'.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Unrecognized feature: 'execution-while-not-rendered'.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Unrecognized feature: 'execution-while-out-of-viewport'.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Unrecognized feature: 'layout-animations'.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Unrecognized feature: 'legacy-image-formats'.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Unrecognized feature: 'navigation-override'.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Unrecognized feature: 'oversized-images'.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Unrecognized feature: 'publickey-credentials'.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Unrecognized feature: 'speaker-selection'.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Unrecognized feature: 'unoptimized-images'.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Unrecognized feature: 'unsized-media'.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Allow attribute will take precedence over 'allowfullscreen'.
+workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle:32 Allow attribute will take precedence over 'allowpaymentrequest'.
+026ms9_2_xys3.js:2 Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://4bd21f04-d459-4cb8-9d39-ca5e053d14fd-00-1vv1oo6of0yyr.spock.replit.dev') does not match the recipient window's origin ('https://replit.com').
+w @ 026ms9_2_xys3.js:2
+026ms9_2_xys3.js:2 Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://4bd21f04-d459-4cb8-9d39-ca5e053d14fd-00-1vv1oo6of0yyr.spock.replit.dev') does not match the recipient window's origin ('https://replit.com').
+w @ 026ms9_2_xys3.js:2
+contentScript.js:1 Logger functions attached to window successfully
+contentScript.js:1 Content script initialized inside:  https://4bd21f04-d459-4cb8-9d39-ca5e053d14fd-00-1vv1oo6of0yyr.spock.replit.dev/__replco/workspace_iframe.html?initialPath=%2F&id=artifacts%2Fsurrogate-oracle
+contentScript.js:1 Getting iframe URl Object
+contentScript.js:1 Logger functions attached to window successfully
+contentScript.js:1 Content script initialized inside:  https://4bd21f04-d459-4cb8-9d39-ca5e053d14fd-00-1vv1oo6of0yyr.spock.replit.dev/
+contentScript.js:1 Getting iframe URl Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_PHASE_ENTERED Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_PHASE_ENTERED Object
+velmmplevfrtrtrypoch.supabase.co/rest/v1/user_wallets?select=ip_address%2Conboarding_status&ip_address=eq.172.58.183.183&limit=1:1  Failed to load resource: the server responded with a status of 404 ()
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_PERFORMANCE_GUARD Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_PERFORMANCE_GUARD Object
+recaptcha__en.js:1510 Uncaught (in promise) Error: reCAPTCHA Timeout (o)
+0h_.yv1gukta8.js:21 Haven't heard from the server in a while, resetting connection...
+(anonymous) @ 0h_.yv1gukta8.js:21
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+0h_.yv1gukta8.js:21 Unknown query {
+  "kind": "Document",
+  "definitions": [
+    {
+      "kind": "OperationDefinition",
+      "operation": "query",
+      "name": {
+        "kind": "Name",
+        "value": "UsageOverviewCurrentUser"
+      },
+      "variableDefinitions": [],
+      "directives": [],
+      "selectionSet": {
+        "kind": "SelectionSet",
+        "selections": [
+          {
+            "kind": "Field",
+            "name": {
+              "kind": "Name",
+              "value": "currentUser"
+            },
+            "arguments": [],
+            "directives": [],
+            "selectionSet": {
+              "kind": "SelectionSet",
+              "selections": [
+                {
+                  "kind": "Field",
+                  "name": {
+                    "kind": "Name",
+                    "value": "id"
+                  },
+                  "arguments": [],
+                  "directives": []
+                },
+                {
+                  "kind": "Field",
+                  "name": {
+                    "kind": "Name",
+                    "value": "username"
+                  },
+                  "arguments": [],
+                  "directives": []
+                },
+                {
+                  "kind": "Field",
+                  "name": {
+                    "kind": "Name",
+                    "value": "timeCreated"
+                  },
+                  "arguments": [],
+                  "directives": []
+                },
+                {
+                  "kind": "Field",
+                  "name": {
+                    "kind": "Name",
+                    "value": "isSubscribed"
+                  },
+                  "arguments": [],
+                  "directives": []
+                },
+                {
+                  "kind": "FragmentSpread",
+                  "name": {
+                    "kind": "Name",
+                    "value": "UsageOverviewCurrentUser"
+                  },
+                  "directives": []
+                },
+                {
+                  "kind": "Field",
+                  "name": {
+                    "kind": "Name",
+                    "value": "__typename"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "FragmentDefinition",
+      "name": {
+        "kind": "Name",
+        "value": "UsageOverviewCurrentUser"
+      },
+      "typeCondition": {
+        "kind": "NamedType",
+        "name": {
+          "kind": "Name",
+          "value": "CurrentUser"
+        }
+      },
+      "directives": [],
+      "selectionSet": {
+        "kind": "SelectionSet",
+        "selections": [
+          {
+            "kind": "Field",
+            "name": {
+              "kind": "Name",
+              "value": "id"
+            },
+            "arguments": [],
+            "directives": []
+          },
+          {
+            "kind": "FragmentSpread",
+            "name": {
+              "kind": "Name",
+              "value": "UsageOverviewCurrentUserPlanStatus"
+            },
+            "directives": []
+          },
+          {
+            "kind": "Field",
+            "name": {
+              "kind": "Name",
+              "value": "customer"
+            },
+            "arguments": [],
+            "directives": [],
+            "selectionSet": {
+              "kind": "SelectionSet",
+              "selections": [
+                {
+                  "kind": "FragmentSpread",
+                  "name": {
+                    "kind": "Name",
+                    "value": "EditUsageBasedBillingAlertsFormCustomerAlerts"
+                  },
+                  "directives": []
+                },
+                {
+                  "kind": "Field",
+                  "name": {
+                    "kind": "Name",
+                    "value": "__typename"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "kind": "Field",
+            "name": {
+              "kind": "Name",
+              "value": "paymentMethod"
+            },
+            "arguments": [],
+            "directives": [],
+            "selectionSet": {
+              "kind": "SelectionSet",
+              "selections": [
+                {
+                  "kind": "InlineFragment",
+                  "typeCondition": {
+                    "kind": "NamedType",
+                    "name": {
+                      "kind": "Name",
+                      "value": "PaymentMethod"
+                    }
+                  },
+                  "directives": [],
+                  "selectionSet": {
+                    "kind": "SelectionSet",
+                    "selections": [
+                      {
+                        "kind": "Field",
+                        "name": {
+                          "kind": "Name",
+                          "value": "id"
+                        },
+                        "arguments": [],
+                        "directives": []
+                      },
+                      {
+                        "
+(anonymous) @ 0h_.yv1gukta8.js:21
+0h_.yv1gukta8.js:21 Unknown query {
+  "kind": "Document",
+  "definitions": [
+    {
+      "kind": "OperationDefinition",
+      "operation": "query",
+      "name": {
+        "kind": "Name",
+        "value": "OrgUsagePeriodInformation"
+      },
+      "variableDefinitions": [
+        {
+          "kind": "VariableDefinition",
+          "variable": {
+            "kind": "Variable",
+            "name": {
+              "kind": "Name",
+              "value": "orgId"
+            }
+          },
+          "type": {
+            "kind": "NonNullType",
+            "type": {
+              "kind": "NamedType",
+              "name": {
+                "kind": "Name",
+                "value": "String"
+              }
+            }
+          },
+          "directives": []
+        }
+      ],
+      "directives": [],
+      "selectionSet": {
+        "kind": "SelectionSet",
+        "selections": [
+          {
+            "kind": "Field",
+            "name": {
+              "kind": "Name",
+              "value": "currentUser"
+            },
+            "arguments": [],
+            "directives": [],
+            "selectionSet": {
+              "kind": "SelectionSet",
+              "selections": [
+                {
+                  "kind": "Field",
+                  "name": {
+                    "kind": "Name",
+                    "value": "id"
+                  },
+                  "arguments": [],
+                  "directives": []
+                },
+                {
+                  "kind": "Field",
+                  "name": {
+                    "kind": "Name",
+                    "value": "org"
+                  },
+                  "arguments": [
+                    {
+                      "kind": "Argument",
+                      "name": {
+                        "kind": "Name",
+                        "value": "orgId"
+                      },
+                      "value": {
+                        "kind": "Variable",
+                        "name": {
+                          "kind": "Name",
+                          "value": "orgId"
+                        }
+                      }
+                    }
+                  ],
+                  "directives": [],
+                  "selectionSet": {
+                    "kind": "SelectionSet",
+                    "selections": [
+                      {
+                        "kind": "Field",
+                        "name": {
+                          "kind": "Name",
+                          "value": "__typename"
+                        },
+                        "arguments": [],
+                        "directives": []
+                      },
+                      {
+                        "kind": "InlineFragment",
+                        "typeCondition": {
+                          "kind": "NamedType",
+                          "name": {
+                            "kind": "Name",
+                            "value": "Org"
+                          }
+                        },
+                        "directives": [],
+                        "selectionSet": {
+                          "kind": "SelectionSet",
+                          "selections": [
+                            {
+                              "kind": "Field",
+                              "name": {
+                                "kind": "Name",
+                                "value": "id"
+                              },
+                              "arguments": [],
+                              "directives": []
+                            },
+                            {
+                              "kind": "FragmentSpread",
+                              "name": {
+                                "kind": "Name",
+                                "value": "TotalUsageOrg"
+                              },
+                              "directives": []
+                            },
+                            {
+                              "kind": "Field",
+                              "name": {
+                                "kind": "Name",
+                                "value": "usageInterval"
+                              },
+                              "arguments": [],
+                              "directives": [],
+                              "selectionSet": {
+                                "kind": "SelectionSet",
+                                "selections": [
+                                  {
+                                    "kind": "InlineFragment",
+                                    "typeCondition": {
+                                      "kind": "NamedType",
+                                      "name": {
+                                        "kind": "Name",
+                                        "value": "UsageInterval"
+                                      }
+                                    },
+                                    "directives": [],
+                                    "selectionSet": {
+                                      "kind": "SelectionSet",
+                                      "s
+(anonymous) @ 0h_.yv1gukta8.js:21
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+bb6f0e63261b7ee65d302e7a6b95f47559c1e30690b80e7dc0a6c1020866fcbd:1  Failed to load resource: the server responded with a status of 404 ()
+gravatar.com/avatar/7391980a62497e22001f1a007f4e3ab5a16025937eb7884107292d25e429f624?d=404:1  Failed to load resource: the server responded with a status of 404 ()
+gravatar.com/avatar/7391980a62497e22001f1a007f4e3ab5a16025937eb7884107292d25e429f624?d=404:1  Failed to load resource: the server responded with a status of 404 ()
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+0h_.yv1gukta8.js:21 Cache data may be lost when replacing the usageBasedBillingAlertNotifications field of a Subscription object.
+
+This could cause additional (usually avoidable) network requests to fetch data that were otherwise cached.
+
+To address this problem (which is not a bug in Apollo Client), define a custom merge function for the Subscription.usageBasedBillingAlertNotifications field, so InMemoryCache can safely merge these objects:
+
+  existing: [{"__ref":"UsageBasedBillingAlertNotification:1147574"}]
+  incoming: []
+
+For more information about these options, please refer to the documentation:
+
+  * Ensuring entity objects have IDs: https://go.apollo.dev/c/generating-unique-identifiers
+  * Defining custom merge functions: https://go.apollo.dev/c/merging-non-normalized-objects
+
+(anonymous) @ 0h_.yv1gukta8.js:21
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_GHOST_TEXT_SHOWN Object
+injected.js:37 [PCMPlayer] Initializing AudioWorklet at sampleRate: 24000
+injected.js:37 [Oracle] WebSocket closed: 1006 
+(anonymous) @ injected.js:37
+injected.js:37 [PCMPlayer] AudioWorklet module loaded
+(index):1 Access to fetch at 'https://velmmplevfrtrtrypoch.supabase.co/functions/v1/seeker-echo' from origin 'https://4bd21f04-d459-4cb8-9d39-ca5e053d14fd-00-1vv1oo6of0yyr.spock.replit.dev' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: It does not have HTTP ok status.
+velmmplevfrtrtrypoch.supabase.co/functions/v1/seeker-echo:1  Failed to load resource: net::ERR_FAILED
+injected.js:37 Seeker Echo load error: FunctionsFetchError: Failed to send a request to the Edge Function
+    at @supabase_supabase-js.js?v=61019faf:329:17
+(anonymous) @ injected.js:37
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_PHASE_ENTERED Object
+velmmplevfrtrtrypoch.supabase.co/rest/v1/user_wallets?on_conflict=ip_address:1  Failed to load resource: the server responded with a status of 404 ()
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_TERMINAL_COMPLETED Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_TERMINAL_COMPLETED Object
+velmmplevfrtrtrypoch.supabase.co/rest/v1/user_wallets?on_conflict=ip_address:1  Failed to load resource: the server responded with a status of 404 ()
+velmmplevfrtrtrypoch.supabase.co/rest/v1/user_wallets?on_conflict=ip_address:1  Failed to load resource: the server responded with a status of 404 ()
+injected.js:37 You're attempting to animate multiple children within AnimatePresence, but its mode is set to "wait". This will lead to odd visual behaviour.
+(anonymous) @ injected.js:37
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_PHASE_ENTERED Object
+62injected.js:37 You're attempting to animate multiple children within AnimatePresence, but its mode is set to "wait". This will lead to odd visual behaviour.
+(anonymous) @ injected.js:37
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_PHASE_ENTERED Object
+injected.js:37 THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.
+(anonymous) @ injected.js:37
+injected.js:37 [OracleAvatar3D] Mesh "Wolf3D_Head" eye/blink morphs found: eyeBlinkLeft, eyeBlinkRight
+injected.js:37 [OracleAvatar3D] Mesh "Wolf3D_Teeth" eye/blink morphs found: eyeBlinkLeft, eyeBlinkRight
+injected.js:37 [OracleAvatar3D] Bones found: Object
+injected.js:37 [OracleAvatar3D] Eye bones found — L: true R: true
+injected.js:37 [OracleAvatar3D] head Y = 1.5567489623453887 → avatarYOffset = -1.5067489623453887
+OracleAvatar3D.tsx:242 [OracleAvatar3D] Morph Target Dictionary
+injected.js:37 Mesh "Wolf3D_Head" — raw dict: Object
+injected.js:37 Mesh "Wolf3D_Head" — resolved map: Object
+injected.js:37 Mesh "Wolf3D_Teeth" — raw dict: Object
+injected.js:37 Mesh "Wolf3D_Teeth" — resolved map: Object
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_AUDIO_START Object
+0h_.yv1gukta8.js:21 Haven't heard from the server in a while, resetting connection...
+(anonymous) @ 0h_.yv1gukta8.js:21
+0c9.lt35~0ve3.js:2 WebSocket is already in CLOSING or CLOSED state.
+send @ 0c9.lt35~0ve3.js:2
+injected.js:37 [XR] Camera failed: Timeout starting video source
+(anonymous) @ injected.js:37
+gravatar.com/avatar/7391980a62497e22001f1a007f4e3ab5a16025937eb7884107292d25e429f624?d=404:1  Failed to load resource: the server responded with a status of 404 ()
+bb6f0e63261b7ee65d302e7a6b95f47559c1e30690b80e7dc0a6c1020866fcbd:1  Failed to load resource: the server responded with a status of 404 ()
+injected.js:37 [SIGNAL:TELEMETRY] ORACLE_TURN_COMPLETED Object
+injected.js:37 [startMic] called, onMicWillStartRef.current= () => fadeToVolume(0, 80)
+OracleConversation.tsx:1020 [Deprecation] The ScriptProcessorNode is deprecated. Use AudioWorkletNode instead. (https://bit.ly/audio-worklet)
+(anonymous) @ OracleConversation.tsx:1020
+injected.js:37 [OracleAvatar3D] Mesh "Wolf3D_Head" eye/blink morphs found: eyeBlinkLeft, eyeBlinkRight
+injected.js:37 [OracleAvatar3D] Mesh "Wolf3D_Teeth" eye/blink morphs found: eyeBlinkLeft, eyeBlinkRight
+injected.js:37 [OracleAvatar3D] Bones found: Object
+injected.js:37 [OracleAvatar3D] Eye bones found — L: true R: true
+injected.js:37 [OracleAvatar3D] head Y = 1.5567160035255558 → avatarYOffset = -1.5067160035255558
+OracleAvatar3D.tsx?t=1781908247956:242 [OracleAvatar3D] Morph Target Dictionary
+injected.js:37 Mesh "Wolf3D_Head" — raw dict: Object
+injected.js:37 Mesh "Wolf3D_Head" — resolved map: Object
+injected.js:37 Mesh "Wolf3D_Teeth" — raw dict: Object
+injected.js:37 Mesh "Wolf3D_Teeth" — resolved map: Object
+0h_.yv1gukta8.js:21 Haven't heard from the server in a while, resetting connection...
+(anonymous) @ 0h_.yv1gukta8.js:21
+injected.js:37 [Oracle] WebSocket closed: 1006 
+(anonymous) @ injected.js:37
+0h_.yv1gukta8.js:21 Haven't heard from the server in a while, resetting connection...
+(anonymous) @ 0h_.yv1gukta8.js:21
+injected.js:37 👉 WALLET CLICK RECEIVED
+injected.js:37 👉 WALLET TRIGGERED
+contentScript.js:1 Logger functions attached to window successfully
+contentScript.js:1 Content script initialized inside:  https://wallet.thesurrogate.me/login?redirect=%2F
+contentScript.js:1 Getting iframe URl Object
+0h_.yv1gukta8.js:21 Haven't heard from the server in a while, resetting connection...
+(anonymous) @ 0h_.yv1gukta8.js:21
+wallet.thesurrogate.me/api/auth/verify:1  Failed to load resource: the server responded with a status of 401 ()
+ Logger functions attached to window successfully
+ Content script initialized inside:  https://embedded-wallet.thirdweb.com/sdk/2022-08-12/embedded-wallet?clientId=ff6a62498685a122c10f941627c5e63c
+ Getting iframe URl Object
+injected.js:37 [OracleAvatar3D] Mesh "Wolf3D_Head" eye/blink morphs found: eyeBlinkLeft, eyeBlinkRight
+injected.js:37 [OracleAvatar3D] Mesh "Wolf3D_Teeth" eye/blink morphs found: eyeBlinkLeft, eyeBlinkRight
+injected.js:37 [OracleAvatar3D] Bones found: Object
+injected.js:37 [OracleAvatar3D] Eye bones found — L: true R: true
+injected.js:37 [OracleAvatar3D] head Y = 1.5628485044805174 → avatarYOffset = -1.5128485044805173
+OracleAvatar3D.tsx?t=1781908445552:242 [OracleAvatar3D] Morph Target Dictionary
+injected.js:37 Mesh "Wolf3D_Head" — raw dict: Object
+injected.js:37 Mesh "Wolf3D_Head" — resolved map: Object
+injected.js:37 Mesh "Wolf3D_Teeth" — raw dict: Object
+injected.js:37 Mesh "Wolf3D_Teeth" — resolved map: Object
+injected.js:37 [OracleAvatar3D] Mesh "Wolf3D_Head" eye/blink morphs found: eyeBlinkLeft, eyeBlinkRight
+injected.js:37 [OracleAvatar3D] Mesh "Wolf3D_Teeth" eye/blink morphs found: eyeBlinkLeft, eyeBlinkRight
+injected.js:37 [OracleAvatar3D] Bones found: Object
+injected.js:37 [OracleAvatar3D] Eye bones found — L: true R: true
+injected.js:37 [OracleAvatar3D] head Y = 1.4585787201994862 → avatarYOffset = -1.4085787201994862
+OracleAvatar3D.tsx:342 [OracleAvatar3D] Morph Target Dictionary
+injected.js:37 Mesh "Wolf3D_Head" — raw dict: Object
+injected.js:37 Mesh "Wolf3D_Head" — resolved map: Object
+injected.js:37 Mesh "Wolf3D_Teeth" — raw dict: Object
+injected.js:37 Mesh "Wolf3D_Teeth" — resolved map: Object
+wallet.thesurrogate.me/api/auth/verify:1  Failed to load resource: the server responded with a status of 401 ()
+wallet.thesurrogate.me/api/auth/user/get-user:1  Failed to load resource: the server responded with a status of 401 ()
+wallet.thesurrogate.me/api/auth/user/get-user:1  Failed to load resource: the server responded with a status of 401 ()
+0h_.yv1gukta8.js:21 Haven't heard from the server in a while, resetting connection...
+(anonymous) @ 0h_.yv1gukta8.js:21
+verify:1  Failed to load resource: the server responded with a status of 401 ()
+%5B%5B...index%5D%5D-48146b810f3020e9.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1 Login failed: Error: Session validation failed
+    at Object.doLogin (%5B%5B...index%5D%5D-48146b810f3020e9.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1:12175)
+    at async Object.mutationFn (46044-b62f8d27f801de6d.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1:27664)
+doLogin @ %5B%5B...index%5D%5D-48146b810f3020e9.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1
+wallet.thesurrogate.me/api/auth/user/get-user:1  Failed to load resource: the server responded with a status of 401 ()
+verify:1  Failed to load resource: the server responded with a status of 401 ()
+verify:1  Failed to load resource: the server responded with a status of 401 ()
+%5B%5B...index%5D%5D-48146b810f3020e9.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1 Login failed: Error: Session validation failed
+    at Object.doLogin (%5B%5B...index%5D%5D-48146b810f3020e9.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1:12175)
+    at async Object.mutationFn (46044-b62f8d27f801de6d.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1:27664)
+doLogin @ %5B%5B...index%5D%5D-48146b810f3020e9.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1
+verify:1  Failed to load resource: the server responded with a status of 401 ()
+wallet.thesurrogate.me/api/auth/user/get-user:1  Failed to load resource: the server responded with a status of 401 ()
+_app-4b5f1ad1f88494d7.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1 AxiosError: Request failed with status code 401
+    at eH (_app-4b5f1ad1f88494d7.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1:272749)
+    at XMLHttpRequest.y (_app-4b5f1ad1f88494d7.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1:277870)
+onError @ _app-4b5f1ad1f88494d7.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1
+verify:1  Failed to load resource: the server responded with a status of 401 ()
+%5B%5B...index%5D%5D-48146b810f3020e9.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1 Login failed: Error: Session validation failed
+    at Object.doLogin (%5B%5B...index%5D%5D-48146b810f3020e9.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1:12175)
+    at async Object.mutationFn (46044-b62f8d27f801de6d.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1:27664)
+doLogin @ %5B%5B...index%5D%5D-48146b810f3020e9.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1
+verify:1  Failed to load resource: the server responded with a status of 401 ()
+verify:1  Failed to load resource: the server responded with a status of 401 ()
+%5B%5B...index%5D%5D-48146b810f3020e9.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1 Login failed: Error: Session validation failed
+    at Object.doLogin (%5B%5B...index%5D%5D-48146b810f3020e9.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1:12175)
+    at async Object.mutationFn (46044-b62f8d27f801de6d.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1:27664)
+doLogin @ %5B%5B...index%5D%5D-48146b810f3020e9.js?dpl=dpl_4ifRm8WvLvPzZ1pWqwXWRH5ySgAP:1
+verify:1  Failed to load resource: the server responded with a status of 401 ()
+verify:1  Failed to load resource: the server responded with a status of 40

@@ -20915,3 +20915,43 @@
 {"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781904407895}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1781904408283}
 {"label":"DORMANT RESTORED","status":"ok","_t":1781904410136}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781904607851}
+{"label":"AUDIO SPINE INITIALIZED","status":"ok","_t":1781904955183}
+{"label":"AUDIO CONTEXT STATE: running","status":"ok","_t":1781904955196}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1781904955198}
+{"label":"SEEKER ECHO LOAD FAILED","status":"warn","_t":1781904955300}
+{"label":"TAP → TERMINAL","status":"ok","_t":1781904955301}
+{"label":"RECOGNIZED SIGNAL → SKIP AVAILABLE","status":"ok","_t":1781904955301}
+{"label":"AUDIO HARD MUTE INITIATED (800ms)","status":"ok","_t":1781904955405}
+{"label":"LORE STATUS: COMPLETED (Persisted)","status":"ok","_t":1781904958034}
+{"label":"LORE STATUS: COMPLETED (Persisted)","status":"ok","_t":1781904958165}
+{"label":"LORE DONE → AWAKENED","status":"ok","_t":1781904959237}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1781904960171}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781904960177}
+{"label":"ORACLE CONDUIT PRE-WARMED SILENTLY","status":"ok","_t":1781904960184}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781904961882}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781904961890}
+{"label":"KNIFE[0] SELECTED","status":"ok","_t":1781904962081}
+{"label":"startSession() CALLED","status":"ok","_t":1781904968073}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781904968074}
+{"label":"CUSTOM BOOT path triggered","status":"ok","_t":1781904968075}
+{"label":"ORACLE PHASE ENTERED","status":"ok","_t":1781904968079}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781904972148}
+{"label":"AUDIO HARD MUTE INITIATED (400ms)","status":"ok","_t":1781904972607}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1781905021063}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781905021072}
+{"label":"AUDIO HARD MUTE INITIATED (80ms)","status":"ok","_t":1781905023022}
+{"label":"MIC SOURCE ACTIVE: rate=48000Hz","status":"ok","_t":1781905059553}
+{"label":"MIC STARTED","status":"ok","_t":1781905059554}
+{"label":"AUDIO HARD MUTE INITIATED (80ms)","status":"ok","_t":1781905059761}
+{"label":"MIC STOPPED","status":"ok","_t":1781905065036}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781905084801}
+{"label":"SESSION REFRESH (attempt 1/5)","status":"warn","_t":1781905130011}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781905130014}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781905132150}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781905132672}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781905132674}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781905133734}
+{"label":"SESSION RESUMED (native handle)","status":"ok","_t":1781905133824}
+{"label":"TAB FOREGROUNDED","status":"ok","_t":1781905152934}
+{"label":"AUDIO HARD MUTE INITIATED (80ms)","status":"ok","_t":1781905166709}

@@ -146,6 +146,17 @@ const CAM_Y_CENTER  = 1.45;
 const CAM_Y_RANGE   = 0.22; // vertical look-around extent
 const CAM_LERP      = 0.08; // responsive on phone while still smooth
 
+// ── Arm-gesture blend ──────────────────────────────────────────────────────
+// The idle GLB clip floats the arms up into an unnatural "no one stands like
+// that" pose. The talking clips hold a natural forward orator posture. So we
+// keep the talking clip blended in as a baseline AT ALL TIMES (suppressing the
+// creepy idle arms) and ramp it to full gesture during speech.
+const REST_GESTURE_WEIGHT  = 0.62; // baseline talking-clip weight when silent
+const SPEECH_GESTURE_CAP   = 0.92; // peak talking-clip weight during speech
+const REST_GESTURE_TIMESCALE   = 0.10; // gentle hold of the forward posture at rest
+const SPEECH_GESTURE_TIMESCALE = 0.38; // full gesture playback while speaking
+const GESTURE_SMOOTH       = 0.06; // weight lerp toward target (no snapping)
+
 // Fallback group offset if the head bone can't be located. The real offset is
 // computed per-model from the actual Head bone (see meshData.avatarYOffset) so a
 // swapped GLB (hero3.glb was replaced; .bak is the prior model) frames the FACE,
@@ -175,6 +186,10 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     groupRef,
   );
   const talkingActionRef = useRef<THREE.AnimationAction | null>(null);
+  // Smoothed talking-clip weight. Held at a REST baseline at all times so the
+  // talking clip's natural forward arm posture overrides the idle clip's
+  // "creepy float-up" arms, then ramps to full gesture during speech.
+  const gestureWeightRef = useRef(REST_GESTURE_WEIGHT);
 
   // Resolve each action from its distinct clip OBJECT (not by name): separate
   // GLB exports often reuse clip names ("mixamo.com"), which collide in drei's
@@ -372,27 +387,36 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         (a): a is THREE.AnimationAction => !!a,
       );
 
-      // Pick a talking variation if we just started speaking
-      if (isSpeaking && !talkingActionRef.current && talkPool.length > 0) {
+      // Keep a talking action alive AT ALL TIMES — its forward arm posture is
+      // the baseline that suppresses the idle clip's creepy float-up arms.
+      if (!talkingActionRef.current && talkPool.length > 0) {
         const chosen = talkPool[Math.floor(Math.random() * talkPool.length)];
         chosen.reset().setLoop(THREE.LoopRepeat, Infinity).play();
-        chosen.setEffectiveWeight(0);
+        chosen.setEffectiveWeight(REST_GESTURE_WEIGHT);
         talkingActionRef.current = chosen;
       }
-      if (!isSpeaking && talkingActionRef.current) {
-        talkingActionRef.current.stop();   // release the mixer slot when silent
-        talkingActionRef.current = null;
-      }
 
-      // Let the talking clip lead so the arms gesture forward & expressive
-      // (like an orator) instead of hanging at the sides. Ramps in fast and
-      // dominates the idle base pose during speech.
-      const talkWeight =
-        isSpeaking && talkingActionRef.current ? Math.min(0.92, amp * 5) : 0;
+      // Target weight: full orator gesture while speaking, gentle baseline at
+      // rest. Smoothed so the transition never snaps.
+      const targetWeight = isSpeaking
+        ? Math.max(REST_GESTURE_WEIGHT, Math.min(SPEECH_GESTURE_CAP, amp * 5))
+        : REST_GESTURE_WEIGHT;
+      gestureWeightRef.current +=
+        (targetWeight - gestureWeightRef.current) * GESTURE_SMOOTH * lerpDt;
+      const talkWeight = gestureWeightRef.current;
+
+      // Slow the talking clip almost to a hold at rest (a calm forward stance,
+      // not perpetual hand-waving); resume full playback while speaking.
+      const targetTimeScale = isSpeaking
+        ? SPEECH_GESTURE_TIMESCALE
+        : REST_GESTURE_TIMESCALE;
+
       idleAction.setEffectiveWeight(1 - talkWeight * 0.85);
       // Only the chosen talking action carries weight; the rest stay at 0.
       for (const a of talkPool) {
-        a.setEffectiveWeight(a === talkingActionRef.current ? talkWeight : 0);
+        const active = a === talkingActionRef.current;
+        a.setEffectiveWeight(active ? talkWeight : 0);
+        if (active) a.setEffectiveTimeScale(targetTimeScale);
       }
     }
 

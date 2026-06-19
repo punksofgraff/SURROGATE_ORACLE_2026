@@ -21158,3 +21158,24 @@
 {"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781908138168}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1781908138494}
 {"label":"KNIFE[0] SELECTED","status":"ok","_t":1781908139560}
+{"label":"startSession() CALLED","status":"ok","_t":1781908144345}
+{"label":"ORACLE PHASE ENTERED","status":"ok","_t":1781908144346}
+{"label":"CUSTOM BOOT path triggered","status":"ok","_t":1781908144349}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1781908147930}
+{"label":"AUDIO HARD MUTE INITIATED (400ms)","status":"ok","_t":1781908148032}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1781908196092}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1781908196103}
+{"label":"AUDIO HARD MUTE INITIATED (80ms)","status":"ok","_t":1781908197953}
+{"label":"MIC SOURCE ACTIVE: rate=48000Hz","status":"ok","_t":1781908200646}
+{"label":"MIC STARTED","status":"ok","_t":1781908200649}
+{"label":"AUDIO HARD MUTE INITIATED (80ms)","status":"ok","_t":1781908200733}
+{"label":"MIC→GEMINI: 150 chunks sent | vad=silence rms=0.143 | speaking=false","status":"ok","_t":1781908207121}
+{"label":"MIC→GEMINI: 300 chunks sent | vad=silence rms=0.209 | speaking=false","status":"ok","_t":1781908213520}
+{"label":"MIC STOPPED","status":"ok","_t":1781908216486}
+{"label":"SESSION REFRESH (attempt 1/5)","status":"warn","_t":1781908338352}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781908338359}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781908339865}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781908340534}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781908340540}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781908340977}
+{"label":"SESSION RESUMED (native handle)","status":"ok","_t":1781908341004}

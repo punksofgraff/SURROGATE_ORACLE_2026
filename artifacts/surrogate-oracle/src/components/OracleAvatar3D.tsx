@@ -423,12 +423,15 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         a.setEffectiveWeight(a === talkingActionRef.current ? talkWeight : 0);
       }
 
-      // Settle the arms to their relaxed bind pose (arms DOWN, out of the
-      // head/chest frame). Hold them mostly down even while speaking — the user
-      // wants a natural standing posture, not an orator waving into frame — but
-      // relax the hold a little during speech so a hint of gesture survives.
-      // Touches ONLY arm bones; head, neck, spine and gaze are driven below.
-      const targetRest = isSpeaking ? 0.78 : 1;
+      // Arms: two distinct postures, smoothly cross-faded.
+      //  • At REST  → settle to the relaxed bind pose (arms DOWN by the sides),
+      //    so the idle clip's "creepy float-up" never reaches the frame.
+      //  • ORATING  → fully release to the talking clip so the elbows bend and
+      //    the arms gesture like a speech (the look the user wants while talking).
+      // The smoothing ramps the handoff over ~1s so arms rise into gesture and
+      // settle back down without snapping. Touches ONLY arm bones; head, neck,
+      // spine and gaze are driven below.
+      const targetRest = isSpeaking ? 0 : 1;
       armRestRef.current +=
         (targetRest - armRestRef.current) * 0.07 * lerpDt;
       const restK = armRestRef.current;
@@ -541,12 +544,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
 
     // ── Head: organic conversational movement ─────────────────────────────
     if (meshData.headBone) {
-      // The talking clips are full-body and re-drive the head every frame toward
-      // an upward, off-axis pose. A slow reclaim (0.09) loses that fight and the
-      // head reads as "looking up and to the left" while the Oracle speaks. A
-      // strong reclaim keeps the head locked on the seeker through speech while
-      // still leaving the idle drift / nod readable on top.
-      const headLerpF = lerpDt * 0.35;
+      const headLerpF = lerpDt * 0.09;
       const speakAmt  = amp * 1.1;
 
       // Base parallax gaze with enhanced lock-on tracking
@@ -574,9 +572,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
 
     // ── Neck: gentle follow ───────────────────────────────────────────────
     if (meshData.neckBone) {
-      // Match the head's stronger reclaim so the neck follows the gaze rather
-      // than the talking clip's off-axis drive.
-      const neckLerpF = lerpDt * 0.20;
+      const neckLerpF = lerpDt * 0.05;
       const neckSwayX = Math.sin(t * 0.80) * 0.025 + Math.sin(t * 1.90 + 0.6) * 0.012 * amp;
       const neckSwayZ = Math.cos(t * 0.52 + 1.1) * 0.018;
       meshData.neckBone.rotation.y = THREE.MathUtils.lerp(meshData.neckBone.rotation.y, gx * 0.15, neckLerpF);

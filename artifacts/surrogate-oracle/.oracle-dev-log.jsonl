@@ -21519,3 +21519,5 @@
 {"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781912594023}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1781912594864}
 {"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1781912594894}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781912710108}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1781912797684}

@@ -156,16 +156,15 @@ const AVATAR_Y_OFFSET = -1.59;
 // The idle clip bakes the arms in a raised "floaty" pose. Instead of letting that
 // play, we pin the arms to a deliberate FOLDED/crossed pose ("ready to listen").
 // Targets are aimed in WORLD space (unambiguous — no per-axis euler guessing):
-// the ELBOWS come forward and the forearms fold UP across the FRONT of the chest,
-// each hand tucked near the opposite shoulder — i.e. a human "arms folded over the
-// chest" X. The "forward" direction is derived from the eyes-vs-head vector so the
-// cross always lands in FRONT of the body regardless of the rig's orientation.
-// Tunables (metres / fraction): LEFT folds in front of RIGHT so they stack.
-const ARM_DOWN_FWD      = 0.45; // upper-arm angle: pulls the ELBOWS forward so the
-                                // forearms can fold across the FRONT of the chest
-const CROSS_FRONT_LEFT  = 0.16; // LEFT forearm folds further forward (sits in front)
-const CROSS_FRONT_RIGHT = 0.09; // RIGHT folds nearer the body (sits behind left)
-const CHEST_DROP        = 0.06; // hands tuck just BELOW the opposite shoulder (mid-chest)
+// the ELBOWS stay close to the body (down + slightly forward) and the forearms fold
+// roughly HORIZONTAL across the lower chest, each hand resting near the OPPOSITE
+// elbow/forearm — a relaxed human "arms folded" pose. Aiming the hands UP at the
+// shoulders reads as a praying mantis, so we keep the forearms flat. Forward is
+// derived from eyes-vs-head. Tunables: LEFT folds in front of RIGHT so they stack.
+const ARM_DOWN_FWD      = 0.20; // upper-arm: mostly down, slight forward (elbows near body)
+const CROSS_FRONT_LEFT  = 0.14; // LEFT forearm folds further forward (sits in front)
+const CROSS_FRONT_RIGHT = 0.07; // RIGHT folds nearer the body (sits behind left)
+const HAND_RISE         = 0.06; // hands sit a touch ABOVE the opposite elbow (forearm rest)
 
 export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef }: OracleAvatar3DProps) {
   const { scene }      = useGLTF('/hero3.glb?v=morphs-v2');
@@ -435,16 +434,12 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
           if (hand) hand.getWorldPosition(wrist);
           else wrist.copy(elbowPos[s]).add(DOWN);
           const front = s === 'left' ? CROSS_FRONT_LEFT : CROSS_FRONT_RIGHT;
-          // Aim the wrist UP toward the OPPOSITE shoulder (chest height), dropped a
-          // little so the hand tucks just under it — the two forearms form an X
-          // across the FRONT of the chest, like folded arms.
-          const oppShoulderBone = opp === 'left' ? leftShoulderBone : rightShoulderBone;
-          const anchor = new THREE.Vector3();
-          if (oppShoulderBone) (oppShoulderBone as THREE.Object3D).getWorldPosition(anchor);
-          else anchor.copy(elbowPos[opp]);
-          const aimPt = anchor
+          // Aim the wrist roughly HORIZONTAL across to the OPPOSITE elbow (raised a
+          // touch so the hand rests on the opposite forearm) — the forearms fold flat
+          // across the chest like relaxed folded arms, not pointing up at the shoulders.
+          const aimPt = elbowPos[opp].clone()
             .addScaledVector(fwd, front)
-            .add(new THREE.Vector3(0, -CHEST_DROP, 0));
+            .add(new THREE.Vector3(0, HAND_RISE, 0));
           const dir  = aimPt.sub(elbowPos[s]).normalize();
           const rest = aimLocal(fore, wrist, dir);
           fore.quaternion.copy(rest);

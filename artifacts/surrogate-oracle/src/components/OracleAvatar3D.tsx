@@ -429,9 +429,26 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         if (fore) { const p = new THREE.Vector3(); fore.getWorldPosition(p); elbowPos[s] = p; }
       }
       if (import.meta.env.DEV) {
-        console.log('[ArmPose] elbowPos L', elbowPos['left']?.toArray().map(v => +v.toFixed(3)),
-                                  'R', elbowPos['right']?.toArray().map(v => +v.toFixed(3)),
-                    '| fwd', fwd.toArray(), '| lateral', lateral.toArray().map(v => +v.toFixed(3)));
+        const fmt = (v: THREE.Vector3) => v.toArray().map(n => +n.toFixed(3));
+        const fmtQ = (q: THREE.Quaternion) => {
+          const e = new THREE.Euler().setFromQuaternion(q);
+          return [e.x, e.y, e.z].map(n => +(n * 180 / Math.PI).toFixed(1)) as [number,number,number];
+        };
+        const dbg = {
+          sceneRotationY_deg: +(scene.rotation.y * 180 / Math.PI).toFixed(1),
+          sceneHasParent: !!scene.parent,
+          bonesFound: byName.size,
+          boneKeys: [...byName.keys()],
+          shoulderL_world: fmt(sL),
+          shoulderR_world: fmt(sR),
+          lateral: fmt(lateral),
+          fwd: fwd.toArray(),
+          elbowL_after_pass1: elbowPos['left']  ? fmt(elbowPos['left'])  : null,
+          elbowR_after_pass1: elbowPos['right'] ? fmt(elbowPos['right']) : null,
+          restBones: armRestBones.map(b => ({ name: b.bone.name, euler_deg: fmtQ(b.rest) })),
+        };
+        console.log('[ArmPose]', JSON.stringify(dbg, null, 2));
+        (window as unknown as Record<string, unknown>).__oracle_armPose = dbg;
       }
 
       // Pass 2: fold each forearm across the body toward the OPPOSITE elbow,

@@ -55,6 +55,46 @@ function stripForProcedural(clip: THREE.AnimationClip): THREE.AnimationClip {
   return new THREE.AnimationClip(clip.name, clip.duration, filtered);
 }
 
+// ── Arm rest-pose extraction ──────────────────────────────────────────────────
+// Reads LOCAL quaternions from idle clip frame-0 tracks — no world-space math,
+// no scene-graph timing dependency. Falls back to hardcoded RPM Mixamo values
+// if the track is missing. These quats set arms hanging naturally at sides.
+const ARM_REST_NAMES = [
+  'LeftShoulder', 'RightShoulder',
+  'LeftArm',      'RightArm',
+  'LeftForeArm',  'RightForeArm',
+] as const;
+type ArmRestName = typeof ARM_REST_NAMES[number];
+
+const ARM_FALLBACK_QUATS: Record<ArmRestName, readonly [number, number, number, number]> = {
+  LeftShoulder:  [ 0.515890,  0.499170, -0.466506,  0.516777],
+  LeftArm:       [ 0.645621,  0.018370, -0.075521,  0.759692],
+  LeftForeArm:   [-0.003256,  0.000341,  0.226657,  0.973969],
+  RightShoulder: [ 0.532089, -0.480237,  0.442232,  0.539151],
+  RightArm:      [ 0.631738, -0.156147, -0.002799,  0.759287],
+  RightForeArm:  [-0.000639,  0.000163, -0.204362,  0.978895],
+};
+
+function extractArmRestPose(clips: THREE.AnimationClip[]): Map<string, THREE.Quaternion> {
+  const map = new Map<string, THREE.Quaternion>();
+  const clip = clips[0];
+  for (const name of ARM_REST_NAMES) {
+    const key = name.toLowerCase();
+    const track = clip?.tracks.find(
+      (t) => t.name.split('.')[0].toLowerCase() === key && t.name.includes('quaternion'),
+    );
+    if (track && track.values.length >= 4) {
+      map.set(key, new THREE.Quaternion(
+        track.values[0], track.values[1], track.values[2], track.values[3],
+      ).normalize());
+    } else {
+      const [x, y, z, w] = ARM_FALLBACK_QUATS[name];
+      map.set(key, new THREE.Quaternion(x, y, z, w));
+    }
+  }
+  return map;
+}
+
 // ── OVR Viseme Standard (Oculus / Ready Player Me) ───────────────────────────
 // 15 phoneme visemes + silence. Stored as morph targets in RPM-compatible GLBs.
 // Oracle worklet produces internal labels (A–H, X); we map them to OVR keys.
@@ -202,6 +242,10 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   const armFreeT2   = useMemo(() => talking2Clips.map(stripForProcedural), [talking2Clips]);
   const armFreeIdle = useMemo(() => idleClips.map(stripForProcedural),     [idleClips]);
 
+  // Extract arm rest-pose quaternions from the RAW (unstripped) idle clip tracks.
+  // Frame-0 local quats give the animator's intended neutral arm pose — no world math.
+  const armRestPose = useMemo(() => extractArmRestPose(idleClips), [idleClips]);
+
   // Animation mixer — driven by speaking state
   const { mixer } = useAnimations(
     [...armFreeIdle, ...armFreeT1, ...armFreeT2],
@@ -277,6 +321,10 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     let spineBone:         THREE.Object3D | null = null; // Spine2 — upper chest
     let leftShoulderBone:  THREE.Object3D | null = null;
     let rightShoulderBone: THREE.Object3D | null = null;
+    let leftArmBone:       THREE.Object3D | null = null;
+    let rightArmBone:      THREE.Object3D | null = null;
+    let leftForeArmBone:   THREE.Object3D | null = null;
+    let rightForeArmBone:  THREE.Object3D | null = null;
 
     scene.traverse((child) => {
       // Mesh logging for debugging
@@ -310,6 +358,10 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       if (!spineBone && n === 'spine1') spineBone = child;
       if (n === 'leftshoulder'  && !leftShoulderBone)  leftShoulderBone  = child;
       if (n === 'rightshoulder' && !rightShoulderBone) rightShoulderBone = child;
+      if (n === 'leftarm'       && !leftArmBone)       leftArmBone       = child;
+      if (n === 'rightarm'      && !rightArmBone)      rightArmBone      = child;
+      if (n === 'leftforearm'   && !leftForeArmBone)   leftForeArmBone   = child;
+      if (n === 'rightforearm'  && !rightForeArmBone)  rightForeArmBone  = child;
 
       const sm = child as THREE.SkinnedMesh;
       if (!sm.isSkinnedMesh || !sm.morphTargetDictionary || !sm.morphTargetInfluences) return;
@@ -378,6 +430,10 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       spineBone:          spineBone         as THREE.Object3D | null,
       leftShoulderBone:   leftShoulderBone  as THREE.Object3D | null,
       rightShoulderBone:  rightShoulderBone as THREE.Object3D | null,
+      leftArmBone:        leftArmBone       as THREE.Object3D | null,
+      rightArmBone:       rightArmBone      as THREE.Object3D | null,
+      leftForeArmBone:    leftForeArmBone   as THREE.Object3D | null,
+      rightForeArmBone:   rightForeArmBone  as THREE.Object3D | null,
       hasMorphs,
       avatarYOffset,
     };
@@ -594,6 +650,25 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         breathCycle * 0.005,
         lerpDt * 0.04,
       );
+    }
+
+    // ── Arm rest-pose pin ────────────────────────────────────────────────────
+    // Arm tracks are stripped from all clips so the mixer never writes to these
+    // bones. We own them — copy the extracted neutral quaternion every frame so
+    // they stay in the intended at-sides pose regardless of bind/T-pose.
+    {
+      const armBoneMap: Array<[THREE.Object3D | null, string]> = [
+        [meshData.leftShoulderBone,  'leftshoulder'],
+        [meshData.rightShoulderBone, 'rightshoulder'],
+        [meshData.leftArmBone,       'leftarm'],
+        [meshData.rightArmBone,      'rightarm'],
+        [meshData.leftForeArmBone,   'leftforearm'],
+        [meshData.rightForeArmBone,  'rightforearm'],
+      ];
+      for (const [bone, key] of armBoneMap) {
+        const q = armRestPose.get(key);
+        if (bone && q) (bone as THREE.Bone).quaternion.copy(q);
+      }
     }
 
     if (!vs) return;

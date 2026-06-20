@@ -153,18 +153,18 @@ const CAM_LERP      = 0.08; // responsive on phone while still smooth
 const AVATAR_Y_OFFSET = -1.59;
 
 // ── Crossed-arms "ready to listen" rest pose ─────────────────────────────────
-// The idle clip bakes the arms in a raised "floaty" pose. Instead of letting that
-// play, we pin the arms to a deliberate FOLDED/crossed pose ("ready to listen").
-// Targets are aimed in WORLD space (unambiguous — no per-axis euler guessing):
-// the ELBOWS stay close to the body (down + slightly forward) and the forearms fold
-// roughly HORIZONTAL across the lower chest, each hand resting near the OPPOSITE
-// elbow/forearm — a relaxed human "arms folded" pose. Aiming the hands UP at the
-// shoulders reads as a praying mantis, so we keep the forearms flat. Forward is
-// derived from eyes-vs-head. Tunables: LEFT folds in front of RIGHT so they stack.
-const ARM_DOWN_FWD      = 0.20; // upper-arm: mostly down, slight forward (elbows near body)
-const CROSS_FRONT_LEFT  = 0.14; // LEFT forearm folds further forward (sits in front)
-const CROSS_FRONT_RIGHT = 0.07; // RIGHT folds nearer the body (sits behind left)
-const HAND_RISE         = 0.06; // hands sit a touch ABOVE the opposite elbow (forearm rest)
+// ROOT CAUSE OF PREVIOUS FAILURES: pass-1 had NO lateral component, so both
+// elbows collapsed to x≈±0.13 near center (T-rex / mantis anchor). Natural
+// folded arms need elbows at x≈±0.28. Fix: each arm hangs DOWN + OUTWARD
+// (shoulder-to-shoulder lateral axis, sign per side) + slight forward so elbows
+// land at body sides before the forearms fold across.
+// LEFT forearm sits in front of RIGHT. All tunables in one place.
+const ARM_FWD           = 0.18; // upper-arm: slight forward lean (keep small)
+const ARM_OUT           = 0.50; // upper-arm: lateral spread — the previously missing axis
+const CROSS_FRONT_LEFT  = 0.14; // LEFT forearm pushed forward (in front)
+const CROSS_FRONT_RIGHT = 0.07; // RIGHT forearm slightly back (behind left)
+const HAND_RISE         = 0.06; // wrist target above opposite elbow (forearm rest)
+const PRONATE           = 0.0;  // forearm roll around long axis — tune if palms face wrong way
 
 export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef }: OracleAvatar3DProps) {
   const { scene }      = useGLTF('/hero3.glb?v=morphs-v2');
@@ -401,13 +401,25 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
 
       const sides = ['left', 'right'] as const;
 
-      // Pass 1: hang the upper arms DOWN (slightly forward); apply immediately so
-      // the elbow positions update before the forearm fold is computed.
-      const downDir = DOWN.clone().addScaledVector(fwd, ARM_DOWN_FWD).normalize();
+      // Pass 1: hang each upper arm DOWN + OUTWARD (lateral, per side) + slight FWD.
+      // The lateral axis is read from shoulder world positions — no assumed ±X.
+      // This places elbows at body sides (x≈±0.28) not collapsed center (x≈±0.13).
+      const sL = new THREE.Vector3();
+      const sR = new THREE.Vector3();
+      if (leftShoulderBone)  (leftShoulderBone  as THREE.Object3D).getWorldPosition(sL);
+      if (rightShoulderBone) (rightShoulderBone as THREE.Object3D).getWorldPosition(sR);
+      const lateral = sR.clone().sub(sL);
+      if (lateral.lengthSq() < 1e-6) lateral.set(1, 0, 0); else lateral.normalize();
+
       for (const s of sides) {
         const arm  = byName.get(s + 'arm');
         const fore = byName.get(s + 'forearm');
         if (!arm || !fore) continue;
+        const sign = s === 'left' ? -1 : 1; // left goes −lateral, right goes +lateral
+        const downDir = DOWN.clone()
+          .addScaledVector(fwd,     ARM_FWD)
+          .addScaledVector(lateral, sign * ARM_OUT)
+          .normalize();
         const elbow = new THREE.Vector3(); fore.getWorldPosition(elbow);
         const rest = aimLocal(arm, elbow, downDir);
         arm.quaternion.copy(rest);
@@ -441,9 +453,19 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
             .addScaledVector(fwd, front)
             .add(new THREE.Vector3(0, HAND_RISE, 0));
           const dir  = aimPt.sub(elbowPos[s]).normalize();
-          const rest = aimLocal(fore, wrist, dir);
-          fore.quaternion.copy(rest);
-          armRestBones.push({ bone: fore, rest });
+          let finalRest = aimLocal(fore, wrist, dir);
+          // Optional pronation: twist forearm around its own long axis so palms face
+          // the body. PRONATE=0 leaves the bind-pose roll intact. Increase toward
+          // ~0.8–1.2 if palms face the wrong way (tune with user's eyes).
+          if (PRONATE !== 0) {
+            const pw2 = new THREE.Quaternion();
+            if (fore.parent) fore.parent.getWorldQuaternion(pw2);
+            const twist = new THREE.Quaternion().setFromAxisAngle(dir, PRONATE);
+            const twistLocal = pw2.clone().invert().multiply(twist).multiply(pw2);
+            finalRest = twistLocal.multiply(finalRest);
+          }
+          fore.quaternion.copy(finalRest);
+          armRestBones.push({ bone: fore, rest: finalRest });
         }
         // Hands & shoulders hold their bind rotation so they ride the arm calmly.
         if (hand)     armRestBones.push({ bone: hand,     rest: hand.quaternion.clone() });

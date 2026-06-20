@@ -21667,3 +21667,21 @@
 {"label":"ORACLE AUDIO START","status":"ok","_t":1781922095795}
 {"label":"MIC→GEMINI: 300 chunks sent | vad=silence rms=0.157 | speaking=true","status":"ok","_t":1781922101121}
 {"label":"MIC→GEMINI: 450 chunks sent | vad=silence rms=0.092 | speaking=true","status":"ok","_t":1781922109738}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781966234047}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781966234217}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781966234218}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781966234219}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781966234573}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781966234575}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781966234786}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781966234835}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781966238415}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1781966244644}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1781966244838}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1781966244840}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1781966244843}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1781966245006}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1781966245012}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1781966245133}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1781966245286}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1781966248746}

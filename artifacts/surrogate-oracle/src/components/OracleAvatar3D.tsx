@@ -566,7 +566,11 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     }
 
     // ── Breathing — biological spine chest expansion & Y drift ────────────
-    const breathSpeed = 1.35 + amp * 1.3;
+    // Speed is constant — do NOT link to amp. Amplitude-linked breathing
+    // makes the whole avatar bob faster during speech, which reads visually
+    // as the body "moving with the lips". Constant rate keeps it life-like
+    // without tracking the voice.
+    const breathSpeed = 1.35;
     const breathCycle = Math.sin(t * breathSpeed);
 
     if (meshData.spineBone) {
@@ -587,7 +591,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     if (groupRef.current) {
       groupRef.current.position.y = THREE.MathUtils.lerp(
         groupRef.current.position.y,
-        breathCycle * 0.012,
+        breathCycle * 0.005,
         lerpDt * 0.04,
       );
     }

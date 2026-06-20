@@ -20,6 +20,41 @@ import * as THREE from 'three';
 import type { VisemeState } from '../lib/visemeDetector';
 import type { SeekerMotion } from '../hooks/useXRMode';
 
+// ── Clip preprocessing — strip tracks owned by procedural useFrame ────────────
+//
+// Rule: every bone/morph that useFrame writes to procedurally must be ABSENT
+// from the AnimationClip, otherwise the mixer overwrites the procedural values
+// each frame and the two systems fight each other.
+//
+// Owned by useFrame (strip from ALL clips):
+//   head / neck bones        → procedural gaze
+//   Wolf3D_Head morphTargets → real-time PCM visemes (mixer would overwrite lips)
+//   arms / shoulders / hands → bind pose holds arms; clips would flail them
+//   spine / hips / chest     → procedural breathing; spine sway also cascades
+//                              world-space movement to arms even with arm tracks
+//                              stripped — so spine must be stripped too.
+//
+// What clips ARE allowed to drive: legs, toes — invisible for a bust avatar.
+
+const ARM_TRACK_RE   = /\.(LeftShoulder|RightShoulder|LeftArm|RightArm|LeftForeArm|RightForeArm|LeftHand|RightHand|LeftFinger|RightFinger)\d*/i;
+const SPINE_TRACK_RE = /\.(Hips|Spine|Spine1|Spine2|UpperChest|Chest)\d*/i;
+const FINGER_TRACK_RE = /\.(Left|Right)(Index|Middle|Ring|Pinky|Thumb)\d*/i;
+
+function stripForProcedural(clip: THREE.AnimationClip): THREE.AnimationClip {
+  const filtered = clip.tracks.filter((t) => {
+    // Head/neck bones AND Wolf3D_Head.morphTargetInfluences — strip both.
+    // Splitting on '.' gives the node name; Wolf3D_Head contains 'head'.
+    const node = t.name.split('.')[0].toLowerCase();
+    if (node.includes('head') || node.includes('neck')) return false;
+    // Arms, spine, fingers
+    if (ARM_TRACK_RE.test(t.name))   return false;
+    if (SPINE_TRACK_RE.test(t.name)) return false;
+    if (FINGER_TRACK_RE.test(t.name)) return false;
+    return true;
+  });
+  return new THREE.AnimationClip(clip.name, clip.duration, filtered);
+}
+
 // ── OVR Viseme Standard (Oculus / Ready Player Me) ───────────────────────────
 // 15 phoneme visemes + silence. Stored as morph targets in RPM-compatible GLBs.
 // Oracle worklet produces internal labels (A–H, X); we map them to OVR keys.
@@ -152,19 +187,6 @@ const CAM_LERP      = 0.08; // responsive on phone while still smooth
 // not the legs — the old hardcoded -1.59 was calibrated for the previous avatar.
 const AVATAR_Y_OFFSET = -1.59;
 
-// Arm/shoulder/hand/finger track regex — used to strip arm keyframes from the
-// IDLE clip so arms rest at the GLB's natural bind position during idle.
-// Talking clips keep full arm tracks so gesture animation runs during speech.
-const ARM_TRACK_RE    = /\.(LeftShoulder|RightShoulder|LeftArm|RightArm|LeftForeArm|RightForeArm|LeftHand|RightHand)\d*/i;
-const FINGER_TRACK_RE = /\.(Left|Right)(Index|Middle|Ring|Pinky|Thumb)\d*/i;
-
-function stripArmTracks(clip: THREE.AnimationClip): THREE.AnimationClip {
-  const tracks = clip.tracks.filter(
-    t => !ARM_TRACK_RE.test(t.name) && !FINGER_TRACK_RE.test(t.name),
-  );
-  return new THREE.AnimationClip(clip.name, clip.duration, tracks);
-}
-
 export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef }: OracleAvatar3DProps) {
   const { scene }      = useGLTF('/hero3.glb?v=morphs-v2');
   const { animations: idleClips }    = useGLTF('/oracle-idle.glb');
@@ -175,32 +197,14 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   // Smooth camera target — avoids snapping on sudden gesture changes
   const camTarget = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
 
-  // Strip the Head/Neck tracks from every clip so the procedural gaze code is the
-  // SOLE driver of head + neck. Otherwise the idle clip keeps overwriting the head
-  // each frame to its baked "up & to the left" pose, and the gaze lerp (0.09) only
-  // nudges 9% toward the seeker — so at rest he stares off up-left instead of at
-  // the seeker. With these tracks gone, the gaze code converges and HOLDS on the
-  // seeker (he keeps looking at you while listening on mute), and the procedural
-  // nod/tilt handles head motion during speech. Arms/body tracks are untouched.
-  const stripHeadNeck = (clips: THREE.AnimationClip[]) =>
-    clips.map((c) => {
-      const clip = c.clone();
-      clip.tracks = clip.tracks.filter((tr) => {
-        const node = tr.name.split('.')[0].toLowerCase();
-        return !(node.includes('head') || node.includes('neck'));
-      });
-      return clip;
-    });
-  // Idle: strip head/neck (procedural gaze owns those) AND arm tracks (arms rest at
-  // bind pose — natural hang, no float). Talking clips keep full arm tracks so
-  // gesture animation runs during speech — normal NPC/PC behavior.
-  const idleAnim  = useMemo(() => stripHeadNeck(idleClips).map(stripArmTracks),     [idleClips]);
-  const talk1Anim = useMemo(() => stripHeadNeck(talking1Clips), [talking1Clips]);
-  const talk2Anim = useMemo(() => stripHeadNeck(talking2Clips), [talking2Clips]);
+  // All clips: strip head/neck/morphs/arms/spine so procedural useFrame owns them.
+  const armFreeT1   = useMemo(() => talking1Clips.map(stripForProcedural), [talking1Clips]);
+  const armFreeT2   = useMemo(() => talking2Clips.map(stripForProcedural), [talking2Clips]);
+  const armFreeIdle = useMemo(() => idleClips.map(stripForProcedural),     [idleClips]);
 
   // Animation mixer — driven by speaking state
   const { mixer } = useAnimations(
-    [...idleAnim, ...talk1Anim, ...talk2Anim],
+    [...armFreeIdle, ...armFreeT1, ...armFreeT2],
     groupRef,
   );
   const talkingActionRef = useRef<THREE.AnimationAction | null>(null);
@@ -236,9 +240,9 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     if (!root) return;
 
     // Bind one action per distinct clip instance to the group root.
-    const idle  = idleAnim[0]  ? mixer.clipAction(idleAnim[0], root)  : null;
-    const talk1 = talk1Anim[0] ? mixer.clipAction(talk1Anim[0], root) : null;
-    const talk2 = talk2Anim[0] ? mixer.clipAction(talk2Anim[0], root) : null;
+    const idle  = armFreeIdle[0] ? mixer.clipAction(armFreeIdle[0], root) : null;
+    const talk1 = armFreeT1[0]   ? mixer.clipAction(armFreeT1[0], root)   : null;
+    const talk2 = armFreeT2[0]   ? mixer.clipAction(armFreeT2[0], root)   : null;
     idleActionRef.current  = idle;
     talk1ActionRef.current = talk1;
     talk2ActionRef.current = talk2;
@@ -246,11 +250,11 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     if (idle) {
       idle.reset().setLoop(THREE.LoopRepeat, Infinity).play();
       idle.setEffectiveWeight(1);
-      idle.setEffectiveTimeScale(0.65);
+      idle.setEffectiveTimeScale(0.38);
     }
     // Pre-set talking action time scales too
-    if (talk1) talk1.setEffectiveTimeScale(0.65);
-    if (talk2) talk2.setEffectiveTimeScale(0.65);
+    if (talk1) talk1.setEffectiveTimeScale(0.38);
+    if (talk2) talk2.setEffectiveTimeScale(0.38);
 
     if (
       import.meta.env.DEV && idle &&
@@ -258,7 +262,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     ) {
       console.warn('[OracleAvatar3D] idle/talk actions alias — GLB clip names collide; blend will be degraded.');
     }
-  }, [mixer, idleAnim, talk1Anim, talk2Anim]);
+  }, [mixer, armFreeIdle, armFreeT1, armFreeT2]);
 
   // Cache skinned meshes + gaze bones — found once on mount, zero traversal per frame.
   const meshData = useMemo(() => {
@@ -273,6 +277,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     let spineBone:         THREE.Object3D | null = null; // Spine2 — upper chest
     let leftShoulderBone:  THREE.Object3D | null = null;
     let rightShoulderBone: THREE.Object3D | null = null;
+
     scene.traverse((child) => {
       // Mesh logging for debugging
       if (child.type === 'SkinnedMesh' || child.type === 'Mesh') {
@@ -378,9 +383,6 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     };
   }, [scene]);
 
-  // Smoothed idle↔talk crossfade weight: 0 = idle (at rest), 1 = talking.
-  const talkBlendRef = useRef(0);
-
   useFrame((state, delta) => {
     const vs     = visemeStateRef.current;
     const amp    = vs?.amplitude ?? 0;
@@ -403,33 +405,25 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         (a): a is THREE.AnimationAction => !!a,
       );
 
-      // Pick a talking variation when speech starts.
+      // Pick a talking variation if we just started speaking
       if (isSpeaking && !talkingActionRef.current && talkPool.length > 0) {
         const chosen = talkPool[Math.floor(Math.random() * talkPool.length)];
         chosen.reset().setLoop(THREE.LoopRepeat, Infinity).play();
         chosen.setEffectiveWeight(0);
         talkingActionRef.current = chosen;
       }
-
-      // Smoothly crossfade idle ↔ talking so the ARMS animate from the avatar's
-      // OWN baked skeletal clips — idle = relaxed weight-shift gestures, talk =
-      // active conversational gestures. This is natural movement like any game
-      // avatar, NOT a pinned/frozen pose. Ease in/out (~0.3s) so gestures never
-      // snap or "flap". Head & neck tracks are stripped from the clips, so they
-      // only move the body + arms; the procedural gaze keeps the head on the seeker.
-      const target = isSpeaking && talkingActionRef.current ? 1 : 0;
-      talkBlendRef.current += (target - talkBlendRef.current) * 0.06 * lerpDt;
-      const blend = talkBlendRef.current;
-
-      // Release the talking slot once it has fully faded out.
-      if (!isSpeaking && talkingActionRef.current && blend < 0.01) {
-        talkingActionRef.current.stop();
+      if (!isSpeaking && talkingActionRef.current) {
+        talkingActionRef.current.stop();   // release the mixer slot when silent
         talkingActionRef.current = null;
       }
 
-      idleAction.setEffectiveWeight(1 - blend);
+      // Cap at 0.55 — spine sway should be subtle, not full-emote override
+      const talkWeight =
+        isSpeaking && talkingActionRef.current ? Math.min(0.55, amp * 3) : 0;
+      idleAction.setEffectiveWeight(1 - talkWeight * 0.6);
+      // Only the chosen talking action carries weight; the rest stay at 0.
       for (const a of talkPool) {
-        a.setEffectiveWeight(a === talkingActionRef.current ? blend : 0);
+        a.setEffectiveWeight(a === talkingActionRef.current ? talkWeight : 0);
       }
     }
 

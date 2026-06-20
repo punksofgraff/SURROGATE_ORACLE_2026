@@ -374,16 +374,11 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       skeleton.pose();
       scene.updateMatrixWorld(true);
 
-      // Forward (horizontal) from eyes relative to head; fall back to +Z.
+      // Avatar forward = +Z. The group has no rotation (JSX: position Y only), so
+      // GLB-local space IS world space. Eye bones in hero3.glb sit *behind* the
+      // head pivot, making eyes−head point toward −Z (backward). Hardcoding +Z
+      // is unambiguous: camera is at positive Z looking at the avatar at origin.
       const fwd = new THREE.Vector3(0, 0, 1);
-      if (headBone && leftEyeBone && rightEyeBone) {
-        const hp = new THREE.Vector3(); (headBone as THREE.Object3D).getWorldPosition(hp);
-        const l = new THREE.Vector3(); (leftEyeBone as THREE.Object3D).getWorldPosition(l);
-        const r = new THREE.Vector3(); (rightEyeBone as THREE.Object3D).getWorldPosition(r);
-        fwd.addVectors(l, r).multiplyScalar(0.5).sub(hp);
-        fwd.y = 0;
-        if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, 1); else fwd.normalize();
-      }
       const DOWN = new THREE.Vector3(0, -1, 0);
 
       // Local quat that re-aims `bone` so (childPos - bonePos) points along dir.
@@ -432,6 +427,11 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       for (const s of sides) {
         const fore = byName.get(s + 'forearm');
         if (fore) { const p = new THREE.Vector3(); fore.getWorldPosition(p); elbowPos[s] = p; }
+      }
+      if (import.meta.env.DEV) {
+        console.log('[ArmPose] elbowPos L', elbowPos['left']?.toArray().map(v => +v.toFixed(3)),
+                                  'R', elbowPos['right']?.toArray().map(v => +v.toFixed(3)),
+                    '| fwd', fwd.toArray(), '| lateral', lateral.toArray().map(v => +v.toFixed(3)));
       }
 
       // Pass 2: fold each forearm across the body toward the OPPOSITE elbow,

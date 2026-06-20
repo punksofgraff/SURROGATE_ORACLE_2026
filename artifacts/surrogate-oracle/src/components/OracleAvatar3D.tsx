@@ -152,9 +152,20 @@ const CAM_LERP      = 0.08; // responsive on phone while still smooth
 // not the legs — the old hardcoded -1.59 was calibrated for the previous avatar.
 const AVATAR_Y_OFFSET = -1.59;
 
-// Arms are driven by the avatar's own baked skeletal clips (idle gestures at
-// rest, talk gestures during speech) via the idle↔talk crossfade in useFrame —
-// natural movement like any game avatar. No procedural arm pinning.
+// ── Crossed-arms "ready to listen" rest pose ─────────────────────────────────
+// The idle clip bakes the arms in a raised "floaty" pose. Instead of letting that
+// play, we pin the arms to a deliberate FOLDED/crossed pose ("ready to listen").
+// Targets are aimed in WORLD space (unambiguous — no per-axis euler guessing):
+// the ELBOWS come forward and the forearms fold UP across the FRONT of the chest,
+// each hand tucked near the opposite shoulder — i.e. a human "arms folded over the
+// chest" X. The "forward" direction is derived from the eyes-vs-head vector so the
+// cross always lands in FRONT of the body regardless of the rig's orientation.
+// Tunables (metres / fraction): LEFT folds in front of RIGHT so they stack.
+const ARM_DOWN_FWD      = 0.45; // upper-arm angle: pulls the ELBOWS forward so the
+                                // forearms can fold across the FRONT of the chest
+const CROSS_FRONT_LEFT  = 0.16; // LEFT forearm folds further forward (sits in front)
+const CROSS_FRONT_RIGHT = 0.09; // RIGHT folds nearer the body (sits behind left)
+const CHEST_DROP        = 0.06; // hands tuck just BELOW the opposite shoulder (mid-chest)
 
 export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef }: OracleAvatar3DProps) {
   const { scene }      = useGLTF('/hero3.glb?v=morphs-v2');
@@ -261,6 +272,8 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     let spineBone:         THREE.Object3D | null = null; // Spine2 — upper chest
     let leftShoulderBone:  THREE.Object3D | null = null;
     let rightShoulderBone: THREE.Object3D | null = null;
+    // Arm chain (shoulder→hand, both sides) — pinned to the crossed rest pose.
+    const armChainBones: THREE.Object3D[] = [];
     scene.traverse((child) => {
       // Mesh logging for debugging
       if (child.type === 'SkinnedMesh' || child.type === 'Mesh') {
@@ -293,6 +306,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       if (!spineBone && n === 'spine1') spineBone = child;
       if (n === 'leftshoulder'  && !leftShoulderBone)  leftShoulderBone  = child;
       if (n === 'rightshoulder' && !rightShoulderBone) rightShoulderBone = child;
+      if (/^(left|right)(shoulder|arm|forearm|hand)$/.test(n)) armChainBones.push(child);
 
       const sm = child as THREE.SkinnedMesh;
       if (!sm.isSkinnedMesh || !sm.morphTargetDictionary || !sm.morphTargetInfluences) return;
@@ -352,6 +366,96 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       }
     }
 
+    // ── Build the crossed "ready to listen" rest pose (world-space aim) ────────
+    const armRestBones: Array<{ bone: THREE.Object3D; rest: THREE.Quaternion }> = [];
+    const byName = new Map<string, THREE.Object3D>();
+    for (const b of armChainBones) byName.set(b.name.toLowerCase(), b);
+    const skeleton = result[0]?.mesh?.skeleton;
+    if (skeleton && byName.size > 0) {
+      skeleton.pose();
+      scene.updateMatrixWorld(true);
+
+      // Forward (horizontal) from eyes relative to head; fall back to +Z.
+      const fwd = new THREE.Vector3(0, 0, 1);
+      if (headBone && leftEyeBone && rightEyeBone) {
+        const hp = new THREE.Vector3(); (headBone as THREE.Object3D).getWorldPosition(hp);
+        const l = new THREE.Vector3(); (leftEyeBone as THREE.Object3D).getWorldPosition(l);
+        const r = new THREE.Vector3(); (rightEyeBone as THREE.Object3D).getWorldPosition(r);
+        fwd.addVectors(l, r).multiplyScalar(0.5).sub(hp);
+        fwd.y = 0;
+        if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, 1); else fwd.normalize();
+      }
+      const DOWN = new THREE.Vector3(0, -1, 0);
+
+      // Local quat that re-aims `bone` so (childPos - bonePos) points along dir.
+      const aimLocal = (bone: THREE.Object3D, childPos: THREE.Vector3, dir: THREE.Vector3) => {
+        const bp = new THREE.Vector3(); bone.getWorldPosition(bp);
+        const cur = childPos.clone().sub(bp);
+        if (cur.lengthSq() < 1e-9) return bone.quaternion.clone();
+        cur.normalize();
+        const rot = new THREE.Quaternion().setFromUnitVectors(cur, dir);
+        const bw = new THREE.Quaternion(); bone.getWorldQuaternion(bw);
+        const pw = new THREE.Quaternion();
+        if (bone.parent) bone.parent.getWorldQuaternion(pw);
+        return pw.invert().multiply(rot.multiply(bw));
+      };
+
+      const sides = ['left', 'right'] as const;
+
+      // Pass 1: hang the upper arms DOWN (slightly forward); apply immediately so
+      // the elbow positions update before the forearm fold is computed.
+      const downDir = DOWN.clone().addScaledVector(fwd, ARM_DOWN_FWD).normalize();
+      for (const s of sides) {
+        const arm  = byName.get(s + 'arm');
+        const fore = byName.get(s + 'forearm');
+        if (!arm || !fore) continue;
+        const elbow = new THREE.Vector3(); fore.getWorldPosition(elbow);
+        const rest = aimLocal(arm, elbow, downDir);
+        arm.quaternion.copy(rest);
+        armRestBones.push({ bone: arm, rest });
+      }
+      scene.updateMatrixWorld(true);
+
+      // Elbow positions after the upper arms have dropped.
+      const elbowPos: Record<string, THREE.Vector3> = {};
+      for (const s of sides) {
+        const fore = byName.get(s + 'forearm');
+        if (fore) { const p = new THREE.Vector3(); fore.getWorldPosition(p); elbowPos[s] = p; }
+      }
+
+      // Pass 2: fold each forearm across the body toward the OPPOSITE elbow,
+      // pushed forward so they cross in front (left in front of right).
+      for (const s of sides) {
+        const fore     = byName.get(s + 'forearm');
+        const hand     = byName.get(s + 'hand');
+        const shoulder = byName.get(s + 'shoulder');
+        const opp      = s === 'left' ? 'right' : 'left';
+        if (fore && elbowPos[s] && elbowPos[opp]) {
+          const wrist = new THREE.Vector3();
+          if (hand) hand.getWorldPosition(wrist);
+          else wrist.copy(elbowPos[s]).add(DOWN);
+          const front = s === 'left' ? CROSS_FRONT_LEFT : CROSS_FRONT_RIGHT;
+          // Aim the wrist UP toward the OPPOSITE shoulder (chest height), dropped a
+          // little so the hand tucks just under it — the two forearms form an X
+          // across the FRONT of the chest, like folded arms.
+          const oppShoulderBone = opp === 'left' ? leftShoulderBone : rightShoulderBone;
+          const anchor = new THREE.Vector3();
+          if (oppShoulderBone) (oppShoulderBone as THREE.Object3D).getWorldPosition(anchor);
+          else anchor.copy(elbowPos[opp]);
+          const aimPt = anchor
+            .addScaledVector(fwd, front)
+            .add(new THREE.Vector3(0, -CHEST_DROP, 0));
+          const dir  = aimPt.sub(elbowPos[s]).normalize();
+          const rest = aimLocal(fore, wrist, dir);
+          fore.quaternion.copy(rest);
+          armRestBones.push({ bone: fore, rest });
+        }
+        // Hands & shoulders hold their bind rotation so they ride the arm calmly.
+        if (hand)     armRestBones.push({ bone: hand,     rest: hand.quaternion.clone() });
+        if (shoulder) armRestBones.push({ bone: shoulder, rest: shoulder.quaternion.clone() });
+      }
+    }
+
     return {
       meshes:             result,
       headBone:           headBone          as THREE.Object3D | null,
@@ -361,14 +465,18 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       spineBone:          spineBone         as THREE.Object3D | null,
       leftShoulderBone:   leftShoulderBone  as THREE.Object3D | null,
       rightShoulderBone:  rightShoulderBone as THREE.Object3D | null,
+      armRestBones,
       hasMorphs,
       avatarYOffset,
     };
   }, [scene]);
 
   // Smoothed idle↔talk crossfade weight: 0 = idle gestures (at rest), 1 = talking
-  // gestures (during speech). Eases so the arms never snap between clips.
+  // gestures (during speech). Eases so the body never snaps between clips.
   const talkBlendRef = useRef(0);
+  // Arm-pin strength: eases 0→1 so the arms settle INTO the crossed rest pose on
+  // arrival, then hold it (overriding the clip's floaty arms).
+  const armRestRef = useRef(0);
 
   useFrame((state, delta) => {
     const vs     = visemeStateRef.current;
@@ -419,6 +527,17 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       idleAction.setEffectiveWeight(1 - blend);
       for (const a of talkPool) {
         a.setEffectiveWeight(a === talkingActionRef.current ? blend : 0);
+      }
+    }
+
+    // ── Arms: hold the crossed "ready to listen" rest pose ────────────────
+    // The clips (above) animate the whole body incl. arms; we override ONLY the
+    // arm chain back to the deliberate folded pose so they never float or flap.
+    armRestRef.current += (1 - armRestRef.current) * 0.05 * lerpDt;
+    const restK = armRestRef.current;
+    if (restK > 0.001 && meshData.armRestBones.length > 0) {
+      for (const a of meshData.armRestBones) {
+        a.bone.quaternion.slerp(a.rest, restK);
       }
     }
 

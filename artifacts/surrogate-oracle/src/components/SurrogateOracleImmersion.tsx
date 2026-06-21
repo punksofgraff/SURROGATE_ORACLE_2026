@@ -707,13 +707,9 @@ export function SurrogateOracleImmersion() {
     // avoiding recording background noise/feedback while the Oracle reads the question and answers it.
     oracleConversationRef.current?.enableMicAutoRestart();
 
-    // Bundle all permissions in this single user-gesture context:
-    //   1. Gyro (iOS DeviceOrientation) — for parallax tilt
-    //   2. Front camera — starts face tracking pipeline as Oracle wakes
-    // Mic permission fires automatically after Oracle's first response (via enableMicAutoRestart above).
-    const _DE = (DeviceOrientationEvent as any);
-    if (typeof _DE?.requestPermission === 'function') _DE.requestPermission().catch(() => {});
-    activateCamera();
+    // Mark Oracle as muted on arrival. Permissions (mic, camera, gyro) are consolidated
+    // and requested simultaneously on the first Microphone "SIGNAL CONNECT" tap.
+    localStorage.setItem('oracle_session_muted', 'true');
 
     setTimeout(() => {
       const fullStory = LORE_SEQUENCE.join('\n');
@@ -845,6 +841,7 @@ export function SurrogateOracleImmersion() {
   useEffect(() => {
     let prewarmTimer: ReturnType<typeof setTimeout> | null = null;
     if (scenePhase === 'awakened') {
+      localStorage.setItem('oracle_session_muted', 'true');
       connection.flushPlayback(); // Stop any leftover lore narration/ambient sounds before knife selection
       connection.initializePCMPlayer();
       import('../lib/supabase').then(({ supabase }) => {
@@ -1178,7 +1175,15 @@ export function SurrogateOracleImmersion() {
   const withWalletReturn = useCallback((url: string, event: 'signin' | 'mint') => {
     try {
       const u = new URL(url);
-      u.searchParams.set('return_url', window.location.origin + window.location.pathname);
+      const returnUrl = new URL(window.location.origin + window.location.pathname);
+      
+      // Pass along the active session ID so returning restores the transcript context
+      const currentSessionId = localStorage.getItem('oracle_active_session_id');
+      if (currentSessionId) {
+        returnUrl.searchParams.set('session_id', currentSessionId);
+      }
+      
+      u.searchParams.set('return_url', returnUrl.toString());
       u.searchParams.set('event', event);
       return u.toString();
     } catch {
@@ -1290,6 +1295,11 @@ export function SurrogateOracleImmersion() {
     walletReturnHandledRef.current = true;
 
     const event = params.get('event'); // optional: 'signin' | 'mint'
+    const sessionId = params.get('session_id');
+    if (sessionId) {
+      localStorage.setItem('oracle_active_session_id', sessionId);
+    }
+    
     logStep(`WALLET RETURN DETECTED${event ? ` (${event})` : ''} — activating seeker`, 'ok');
     void processWalletSignIn(seeker);
     // If the IP check hasn't resolved yet, markWalletSigned can't persist to user_wallets.
@@ -1301,6 +1311,7 @@ export function SurrogateOracleImmersion() {
     params.delete('wallet');
     params.delete('address');
     params.delete('event');
+    params.delete('session_id');
     const qs = params.toString();
     const newUrl = window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash;
     window.history.replaceState({}, '', newUrl);
@@ -1425,6 +1436,7 @@ export function SurrogateOracleImmersion() {
       ref={oracleStageRef}
       className={`oracle-stage${oracleAlignment ? ` alignment-${oracleAlignment}` : ''}`}
       data-oracle-state={scenePhase === 'tour' ? 'awakened' : scenePhase}
+      data-oracle-alignment={oracleAlignment || undefined}
       data-exiting={journey.isExiting ? 'true' : undefined}
       data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
@@ -2019,6 +2031,22 @@ export function SurrogateOracleImmersion() {
           onMicClick={(willListen) => {
             if (willListen) {
               setIsAudioPlaying(false);
+              
+              // Unmute the Oracle's voice, request gyro and camera permissions in a single unified user gesture
+              const startMuted = localStorage.getItem('oracle_session_muted') === 'true';
+              if (startMuted) {
+                localStorage.setItem('oracle_session_muted', 'false');
+                connection.setVolume(2.50, 300);
+                
+                // Gyro (DeviceOrientation)
+                const _DE = (DeviceOrientationEvent as any);
+                if (typeof _DE?.requestPermission === 'function') _DE.requestPermission().catch(() => {});
+                
+                // Camera for face tracking
+                activateCamera();
+                
+                logStep('SIGNAL CONNECTED — SENSORS ACTIVE', 'ok');
+              }
             }
           }}
           onUserSpeakingChange={(speaking) => setIsUserSpeaking(prev => prev !== speaking ? speaking : prev)}

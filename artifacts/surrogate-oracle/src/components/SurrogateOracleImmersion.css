@@ -785,6 +785,7 @@
   opacity: 0.65;
   filter: brightness(0.85) grayscale(0.40) blur(0.5px) saturate(0.6);
   animation: oracle-glitch-phase 8s infinite;
+  transition: none !important;
 }
 
 @keyframes oracle-glitch-phase {
@@ -801,6 +802,7 @@
    inline style overrides animation-delay + animation-duration per session.    */
 .oracle-stage[data-oracle-state="terminal"] .oracle-avatar-static {
   animation: oracle-materialize 3.8s 0.3s ease-in-out both;
+  transition: none !important;
 }
 
 @keyframes oracle-materialize {
@@ -833,6 +835,7 @@
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-static {
   animation: awakened-phase-manifest 2.0s cubic-bezier(0.22, 1, 0.36, 1) both,
              oracle-knife-strain 3.5s 2.2s ease-in-out infinite;
+  transition: none !important;
 }
 
 @keyframes oracle-knife-strain {
@@ -4945,7 +4948,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-smoke-hook {
   opacity: 1;
   filter: none;
-  transition: opacity 1s ease, filter 1s ease;
+  transition: none !important;
   animation: 
     oracle-phase-manifest 1.5s cubic-bezier(0.19, 1, 0.22, 1) both,
     oracle-headroom-phase 14s linear 2s infinite;

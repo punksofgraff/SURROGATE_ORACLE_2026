@@ -269,7 +269,24 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     [...armFreeIdle, ...armFreeT1, ...armFreeT2],
     groupRef,
   );
-  const talkingActionRef = useRef<THREE.AnimationAction | null>(null);
+
+  // Biological head physics (nodding/tilting spring-damper system driven by vocal transients)
+  const headPhysRef = useRef({
+    nodAngle: 0,
+    nodVel: 0,
+    tiltAngle: 0,
+    tiltVel: 0,
+    lastAmp: 0,
+  });
+
+  // Stateful animation crossfader with fast-attack, slow-decay amplitude envelopes
+  const blendStateRef = useRef({
+    currentTalkWeight: 0,
+    activeTalkAction: null as THREE.AnimationAction | null,
+    fadeDirection: 'idle' as 'idle' | 'talking',
+    lastSpeakTime: 0,
+    smoothedAmp: 0,
+  });
 
   // Resolve each action from its distinct clip OBJECT (not by name): separate
   // GLB exports often reuse clip names ("mixamo.com"), which collide in drei's
@@ -474,30 +491,76 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     // Guard per-action: idle drives the base pose even if a talking clip is
     // missing/renamed, so a single bad export can't disable the whole combo.
     if (idleAction) {
-      const isSpeaking = amp > 0.04;
+      const isSpeaking = amp > 0.035;
       const talkPool = [talk1Action, talk2Action].filter(
         (a): a is THREE.AnimationAction => !!a,
       );
 
-      // Pick a talking variation if we just started speaking
-      if (isSpeaking && !talkingActionRef.current && talkPool.length > 0) {
-        const chosen = talkPool[Math.floor(Math.random() * talkPool.length)];
-        chosen.reset().setLoop(THREE.LoopRepeat, Infinity).play();
-        chosen.setEffectiveWeight(0);
-        talkingActionRef.current = chosen;
-      }
-      if (!isSpeaking && talkingActionRef.current) {
-        talkingActionRef.current.stop();   // release the mixer slot when silent
-        talkingActionRef.current = null;
+      const bs = blendStateRef.current;
+      const now = state.clock.elapsedTime;
+
+      if (isSpeaking) {
+        bs.lastSpeakTime = now;
+        if (bs.fadeDirection !== 'talking') {
+          bs.fadeDirection = 'talking';
+          // Pick a random talking variation if we don't have one or if the previous one finished
+          if (talkPool.length > 0) {
+            const chosen = talkPool[Math.floor(Math.random() * talkPool.length)];
+            bs.activeTalkAction = chosen;
+            chosen.reset().setLoop(THREE.LoopRepeat, Infinity).play();
+          }
+        }
+      } else {
+        // Keep gesturing for 0.45 seconds of pause between words to prevent abrupt stops
+        if (bs.fadeDirection === 'talking' && now - bs.lastSpeakTime > 0.45) {
+          bs.fadeDirection = 'idle';
+        }
       }
 
-      // Cap at 0.55 — spine sway should be subtle, not full-emote override
-      const talkWeight =
-        isSpeaking && talkingActionRef.current ? Math.min(0.55, amp * 3) : 0;
-      idleAction.setEffectiveWeight(1 - talkWeight * 0.6);
-      // Only the chosen talking action carries weight; the rest stay at 0.
+      // Fast-attack, slow-decay amplitude envelope for gesturing intensity
+      const envelopeTarget = bs.fadeDirection === 'talking' ? Math.max(0.4, Math.min(1.0, amp * 4.0)) : 0.0;
+      if (envelopeTarget > bs.smoothedAmp) {
+        bs.smoothedAmp += (envelopeTarget - bs.smoothedAmp) * Math.min(1, delta * 12.0); // fast onset
+      } else {
+        bs.smoothedAmp += (envelopeTarget - bs.smoothedAmp) * Math.min(1, delta * 3.5);  // slow decay gestural hang
+      }
+
+      // Blend talk weight smoothly
+      const targetWeight = bs.fadeDirection === 'talking' ? bs.smoothedAmp : 0.0;
+      const blendSpeed = bs.fadeDirection === 'talking' ? 8.0 : 4.0;
+      bs.currentTalkWeight += (targetWeight - bs.currentTalkWeight) * Math.min(1, delta * blendSpeed);
+
+      const tw = bs.currentTalkWeight;
+
+      // Base idle weight is inverse of talk weight
+      idleAction.setEffectiveWeight(1.0 - tw);
+
+      // Distribute weights to talking actions, smoothly stopping inactive ones
       for (const a of talkPool) {
-        a.setEffectiveWeight(a === talkingActionRef.current ? talkWeight : 0);
+        if (a === bs.activeTalkAction) {
+          a.setEffectiveWeight(tw);
+          // Ensure it is playing if weight is non-zero
+          if (tw > 0.01 && !a.isRunning()) {
+            a.play();
+          }
+        } else {
+          // Crossfade and stop other talking clips
+          const currentWeight = a.getEffectiveWeight();
+          if (currentWeight > 0.01) {
+            a.setEffectiveWeight(THREE.MathUtils.lerp(currentWeight, 0, Math.min(1, delta * 8.0)));
+          } else {
+            a.setEffectiveWeight(0);
+            a.stop();
+          }
+        }
+      }
+
+      // Clean up when fully transitioned back to idle
+      if (tw <= 0.002 && bs.fadeDirection === 'idle') {
+        if (bs.activeTalkAction) {
+          bs.activeTalkAction.stop();
+          bs.activeTalkAction = null;
+        }
       }
     }
 
@@ -593,36 +656,64 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     if (meshData.leftEyeBone) {
       meshData.leftEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.y, finalEyeX, eyeLerpF);
       meshData.leftEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.leftEyeBone.rotation.x, finalEyeY, eyeLerpF);
-      meshData.leftEyeBone.scale.y    = 1.0 - leftBlinkVal * 0.92;
+      // eyeball scaling removed to avoid deflating grape bug
     }
     if (meshData.rightEyeBone) {
       meshData.rightEyeBone.rotation.y = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.y, finalEyeX, eyeLerpF);
       meshData.rightEyeBone.rotation.x = THREE.MathUtils.lerp(meshData.rightEyeBone.rotation.x, finalEyeY, eyeLerpF);
-      meshData.rightEyeBone.scale.y    = 1.0 - rightBlinkVal * 0.92;
+      // eyeball scaling removed to avoid deflating grape bug
     }
 
     // ── Head: organic conversational movement ─────────────────────────────
     if (meshData.headBone) {
       const headLerpF = lerpDt * 0.09;
-      const speakAmt  = amp * 1.1;
+      const hp = headPhysRef.current;
+      const dt = Math.min(delta, 0.03); // clamp to avoid physics explosion during lag
 
-      // Base parallax gaze with enhanced lock-on tracking
+      // 1. Calculate positive amplitude changes (attacks/onset of speech syllables)
+      const ampDiff = Math.max(0, amp - hp.lastAmp);
+      hp.lastAmp = amp;
+
+      // 2. Drive physics velocity with speech transients (emphasis impulses)
+      if (amp > 0.035) {
+        // Sudden volume increases cause a downward nod impulse
+        hp.nodVel -= ampDiff * 2.8; 
+        
+        // Tilt left/right randomly based on emphasis
+        if (ampDiff > 0.01 && Math.random() < 0.5) {
+          hp.tiltVel += (Math.random() - 0.5) * ampDiff * 3.5;
+        }
+      }
+
+      // 3. Spring forces pulling back to baseline
+      // If speaking, lean slightly forward (nodding down target)
+      const targetNodBaseline = amp > 0.035 ? -0.06 * Math.min(1.0, amp * 4) : 0;
+      const targetTiltBaseline = 0;
+
+      // Nod spring (Stiffness = 32, damping = 6.2 for snappy but damped response)
+      const forceNod = (targetNodBaseline - hp.nodAngle) * 32.0 - hp.nodVel * 6.2;
+      hp.nodVel += forceNod * dt;
+      hp.nodAngle += hp.nodVel * dt;
+
+      // Tilt spring (Stiffness = 24, damping = 5.0)
+      const forceTilt = (targetTiltBaseline - hp.tiltAngle) * 24.0 - hp.tiltVel * 5.0;
+      hp.tiltVel += forceTilt * dt;
+      hp.tiltAngle += hp.tiltVel * dt;
+
+      // 4. Combine with parallax gaze and alive idle drift
       let tx = gx * 0.45;
       let ty = gy * 0.32;
       let tz = 0;
 
       // Alive idle drift — two incommensurate freqs (~0.11Hz + ~0.18Hz)
       tx += Math.sin(t * 0.71 + 0.4) * 0.025 + Math.sin(t * 1.13 + 1.7) * 0.016;
-      tz += Math.cos(t * 0.57 + 0.9) * 0.020;
+      
+      // Apply biological physics offsets to head rotation
+      ty += hp.nodAngle;
+      tz += hp.tiltAngle;
 
-      if (amp > 0.04) {
-        // Conversational nod at 0.62 Hz
-        ty -= Math.sin(t * 3.90) * 0.12 * speakAmt;
-        // Conversational tilt at 0.37 Hz
-        tz += Math.sin(t * 2.30 + 1.2) * 0.12 * speakAmt;
-        // Forward lean into the moment — up to 0.04 rad
-        ty -= amp * 0.04;
-      }
+      // Subtle slow roll on head rotation
+      tz += Math.cos(t * 0.57 + 0.9) * 0.020;
 
       meshData.headBone.rotation.y = THREE.MathUtils.lerp(meshData.headBone.rotation.y, tx, headLerpF);
       meshData.headBone.rotation.x = THREE.MathUtils.lerp(meshData.headBone.rotation.x, ty, headLerpF);
@@ -675,8 +766,10 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     // armPinWeightRef lerps toward 0 when speaking so talk-clip gesture tracks
     // take over, then back to 1 when silent to re-pin to the neutral at-sides pose.
     {
-      const targetPin = amp > 0.04 ? 0.0 : 1.0;
-      armPinWeightRef.current += (targetPin - armPinWeightRef.current) * Math.min(1, delta * 4);
+      const bs = blendStateRef.current;
+      const tw = bs.currentTalkWeight;
+      const targetPin = 1.0 - tw;
+      armPinWeightRef.current += (targetPin - armPinWeightRef.current) * Math.min(1, delta * 8.0);
       const w = armPinWeightRef.current;
       if (w > 0.005) {
         const armBoneMap: Array<[THREE.Object3D | null, string]> = [

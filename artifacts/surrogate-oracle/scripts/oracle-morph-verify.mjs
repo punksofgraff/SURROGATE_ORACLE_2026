@@ -95,7 +95,7 @@ console.log();
 
 console.log('TEST 1 — STRUCTURE\n');
 assert('Wolf3D_Head has morph targets',  targets.length > 0,   `(${targets.length} targets)`);
-assert('15 OVR visemes present',         targets.length === 15, `(got ${targets.length})`);
+assert('17 OVR + blink morph targets present', targets.length === 17, `(got ${targets.length})`);
 assert('targetNames count matches',      targetNames.length === targets.length);
 
 for (let t = 0; t < targets.length; t++) {

@@ -42,6 +42,10 @@ export function useOracleConnection({
     initializePCMPlayer();
   }, [initializePCMPlayer]);
 
+  const setVolume = useCallback((vol: number, rampMs = 150) => {
+    pcmPlayerRef.current?.setVolume(vol, rampMs);
+  }, []);
+
   // ── Audio response handler ────────────────────────────────────────────────
 
   const handleOracleResponse = useCallback(async (data: Int16Array | string) => {
@@ -53,7 +57,10 @@ export function useOracleConnection({
     if (isFirstChunkRef.current) {
       playOraclePresence();
       isFirstChunkRef.current = false;
-      player.setVolume(2.50, 40);
+      
+      // Start muted if oracle_session_muted is set to true
+      const isMuted = localStorage.getItem('oracle_session_muted') === 'true';
+      player.setVolume(isMuted ? 0.0001 : 2.50, 40);
     }
 
     let pcmData: Int16Array | null   = data instanceof Int16Array ? data : null;
@@ -173,12 +180,13 @@ export function useOracleConnection({
     startLoreTracking,
     getLorePlaybackMs,
     getLoreBufferedMs,
+    setVolume,
   }), [
     error,
     initializePCMPlayer, initializeOracle,
     handleOracleResponse, resetFirstChunk, cleanup, boostMicVolume, getAnalyser, setTransmissionQ,
     flushPlayback, startQuestionTracking, getQuestionPlaybackMs, getQuestionBufferedMs,
-    startLoreTracking, getLorePlaybackMs, getLoreBufferedMs,
+    startLoreTracking, getLorePlaybackMs, getLoreBufferedMs, setVolume,
   ]);
 
   return value;

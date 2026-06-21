@@ -26,25 +26,46 @@ export function useOracleJourney({
 }: UseOracleJourneyProps) {
   const [scenePhase, setScenePhase] = useState<ScenePhase>(() => {
     // DEV-only: boot straight into a phase for visual debugging, e.g. ?phase=oracle
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-      const p = new URLSearchParams(window.location.search).get('phase');
-      if (p === 'oracle' || p === 'awakened' || p === 'terminal' || p === 'tour') {
-        return p as ScenePhase;
+    if (typeof window !== 'undefined') {
+      if (import.meta.env.DEV) {
+        const p = new URLSearchParams(window.location.search).get('phase');
+        if (p === 'oracle' || p === 'awakened' || p === 'terminal' || p === 'tour') {
+          return p as ScenePhase;
+        }
+      }
+      const saved = localStorage.getItem('oracle_scene_phase');
+      if (saved === 'oracle' || saved === 'awakened' || saved === 'terminal' || saved === 'tour') {
+        return saved as ScenePhase;
       }
     }
     return 'dormant';
   });
+  
   const [loreComplete, setLoreComplete] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
-  const [selectedKnifeQuestion, setSelectedKnifeQuestion] = useState<string | null>(null);
-  const [selectedKnifeIndex, setSelectedKnifeIndex] = useState<number | null>(null);
+  const [selectedKnifeQuestion, setSelectedKnifeQuestion] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('oracle_selected_knife_question');
+    }
+    return null;
+  });
+  const [selectedKnifeIndex, setSelectedKnifeIndex] = useState<number | null>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('oracle_selected_knife_index');
+      return saved ? parseInt(saved, 10) : null;
+    }
+    return null;
+  });
 
   const alleyAmbienceStopRef = useRef<(() => void) | null>(null);
 
   // Authoritative mirror of scenePhase for closure-safe transition guards. Synced from
   // state, and set immediately on a transition so a same-tick double-call can't slip through.
-  const scenePhaseRef = useRef<ScenePhase>('dormant');
-  useEffect(() => { scenePhaseRef.current = scenePhase; }, [scenePhase]);
+  const scenePhaseRef = useRef<ScenePhase>(scenePhase);
+  useEffect(() => { 
+    scenePhaseRef.current = scenePhase; 
+    localStorage.setItem('oracle_scene_phase', scenePhase);
+  }, [scenePhase]);
 
   const enterTerminal = useCallback(() => {
     if (scenePhase !== 'dormant') return;
@@ -83,6 +104,8 @@ export function useOracleJourney({
     logStep(`KNIFE[${index}] SELECTED`, 'ok');
     setSelectedKnifeQuestion(question);
     setSelectedKnifeIndex(index);
+    localStorage.setItem('oracle_selected_knife_question', question);
+    localStorage.setItem('oracle_selected_knife_index', String(index));
     
     // Transition to full Oracle mode after a dramatic pause
     setTimeout(() => {
@@ -97,6 +120,9 @@ export function useOracleJourney({
     setIsExiting(false);
     setSelectedKnifeQuestion(null);
     setSelectedKnifeIndex(null);
+    localStorage.removeItem('oracle_scene_phase');
+    localStorage.removeItem('oracle_selected_knife_question');
+    localStorage.removeItem('oracle_selected_knife_index');
 
     alleyAmbienceStopRef.current?.();
     alleyAmbienceStopRef.current = null;
@@ -121,6 +147,9 @@ export function useOracleJourney({
       setLoreComplete(false);
       setSelectedKnifeQuestion(null);
       setSelectedKnifeIndex(null);
+      localStorage.removeItem('oracle_scene_phase');
+      localStorage.removeItem('oracle_selected_knife_question');
+      localStorage.removeItem('oracle_selected_knife_index');
 
       alleyAmbienceStopRef.current?.();
       alleyAmbienceStopRef.current = null;

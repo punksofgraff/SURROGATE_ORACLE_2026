@@ -2033,20 +2033,17 @@ export function SurrogateOracleImmersion() {
               setIsAudioPlaying(false);
               
               // Unmute the Oracle's voice, request gyro and camera permissions in a single unified user gesture
-              const startMuted = localStorage.getItem('oracle_session_muted') === 'true';
-              if (startMuted) {
-                localStorage.setItem('oracle_session_muted', 'false');
-                connection.setVolume(2.50, 300);
-                
-                // Gyro (DeviceOrientation)
-                const _DE = (DeviceOrientationEvent as any);
-                if (typeof _DE?.requestPermission === 'function') _DE.requestPermission().catch(() => {});
-                
-                // Camera for face tracking
-                activateCamera();
-                
-                logStep('SIGNAL CONNECTED — SENSORS ACTIVE', 'ok');
-              }
+              localStorage.setItem('oracle_session_muted', 'false');
+              connection.setVolume(2.50, 300);
+              
+              // Gyro (DeviceOrientation)
+              const _DE = (DeviceOrientationEvent as any);
+              if (typeof _DE?.requestPermission === 'function') _DE.requestPermission().catch(() => {});
+              
+              // Camera for face tracking
+              activateCamera();
+              
+              logStep('SIGNAL CONNECTED — SENSORS ACTIVE', 'ok');
             }
           }}
           onUserSpeakingChange={(speaking) => setIsUserSpeaking(prev => prev !== speaking ? speaking : prev)}

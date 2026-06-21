@@ -27,8 +27,18 @@ export function useOracleJourney({
   const [scenePhase, setScenePhase] = useState<ScenePhase>(() => {
     // DEV-only: boot straight into a phase for visual debugging, e.g. ?phase=oracle
     if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      // ?reset or ?_b= (emitted by /bust redirect) — wipe all persisted journey
+      // state so the experience starts clean from dormant.
+      if (params.has('reset') || params.has('_b')) {
+        localStorage.removeItem('oracle_scene_phase');
+        localStorage.removeItem('oracle_selected_knife_question');
+        localStorage.removeItem('oracle_selected_knife_index');
+        localStorage.removeItem('oracle_session_muted');
+        return 'dormant';
+      }
       if (import.meta.env.DEV) {
-        const p = new URLSearchParams(window.location.search).get('phase');
+        const p = params.get('phase');
         if (p === 'oracle' || p === 'awakened' || p === 'terminal' || p === 'tour') {
           return p as ScenePhase;
         }

@@ -42,14 +42,26 @@ const FINGER_TRACK_RE = /\.(Left|Right)(Index|Middle|Ring|Pinky|Thumb)\d*/i;
 
 function stripForProcedural(clip: THREE.AnimationClip): THREE.AnimationClip {
   const filtered = clip.tracks.filter((t) => {
-    // Head/neck bones AND Wolf3D_Head.morphTargetInfluences — strip both.
-    // Splitting on '.' gives the node name; Wolf3D_Head contains 'head'.
     const node = t.name.split('.')[0].toLowerCase();
     if (node.includes('head') || node.includes('neck')) return false;
-    // Arms, spine, fingers
-    if (ARM_TRACK_RE.test(t.name))   return false;
-    if (SPINE_TRACK_RE.test(t.name)) return false;
+    if (ARM_TRACK_RE.test(t.name))    return false;
+    if (SPINE_TRACK_RE.test(t.name))  return false;
     if (FINGER_TRACK_RE.test(t.name)) return false;
+    return true;
+  });
+  return new THREE.AnimationClip(clip.name, clip.duration, filtered);
+}
+
+// Variant for TALKING clips: keeps arm/shoulder/hand/finger gesture tracks so
+// the Mixamo-authored gestures play during speech. Strips head/neck (procedural
+// gaze owns them), Wolf3D_Head morphs (PCM visemes own them), and spine/hips
+// (procedural breathing owns spine — also prevents spine sway cascading into
+// arms twice through the parent chain).
+function stripForProceduralKeepArms(clip: THREE.AnimationClip): THREE.AnimationClip {
+  const filtered = clip.tracks.filter((t) => {
+    const node = t.name.split('.')[0].toLowerCase();
+    if (node.includes('head') || node.includes('neck')) return false;
+    if (SPINE_TRACK_RE.test(t.name)) return false;
     return true;
   });
   return new THREE.AnimationClip(clip.name, clip.duration, filtered);
@@ -237,14 +249,20 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   // Smooth camera target — avoids snapping on sudden gesture changes
   const camTarget = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
 
-  // All clips: strip head/neck/morphs/arms/spine so procedural useFrame owns them.
-  const armFreeT1   = useMemo(() => talking1Clips.map(stripForProcedural), [talking1Clips]);
-  const armFreeT2   = useMemo(() => talking2Clips.map(stripForProcedural), [talking2Clips]);
-  const armFreeIdle = useMemo(() => idleClips.map(stripForProcedural),     [idleClips]);
+  // Idle: strip arms so procedural pin owns them.
+  // Talk: keep arm/hand/finger tracks so Mixamo gesture keyframes play during speech.
+  // All: strip head/neck (gaze), morphs (PCM visemes), spine (procedural breathing).
+  const armFreeIdle = useMemo(() => idleClips.map(stripForProcedural),          [idleClips]);
+  const armFreeT1   = useMemo(() => talking1Clips.map(stripForProceduralKeepArms), [talking1Clips]);
+  const armFreeT2   = useMemo(() => talking2Clips.map(stripForProceduralKeepArms), [talking2Clips]);
 
   // Extract arm rest-pose quaternions from the RAW (unstripped) idle clip tracks.
   // Frame-0 local quats give the animator's intended neutral arm pose — no world math.
   const armRestPose = useMemo(() => extractArmRestPose(idleClips), [idleClips]);
+
+  // Smooth blend weight between rest-pose pin (1.0 = idle) and clip-driven arms
+  // (0.0 = speaking). Lerped each frame so there is no snap at transition edges.
+  const armPinWeightRef = useRef(1.0);
 
   // Animation mixer — driven by speaking state
   const { mixer } = useAnimations(
@@ -653,21 +671,26 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     }
 
     // ── Arm rest-pose pin ────────────────────────────────────────────────────
-    // Arm tracks are stripped from all clips so the mixer never writes to these
-    // bones. We own them — copy the extracted neutral quaternion every frame so
-    // they stay in the intended at-sides pose regardless of bind/T-pose.
+    // Arm pin: smoothly blend between rest-pose (idle) and clip-driven (speech).
+    // armPinWeightRef lerps toward 0 when speaking so talk-clip gesture tracks
+    // take over, then back to 1 when silent to re-pin to the neutral at-sides pose.
     {
-      const armBoneMap: Array<[THREE.Object3D | null, string]> = [
-        [meshData.leftShoulderBone,  'leftshoulder'],
-        [meshData.rightShoulderBone, 'rightshoulder'],
-        [meshData.leftArmBone,       'leftarm'],
-        [meshData.rightArmBone,      'rightarm'],
-        [meshData.leftForeArmBone,   'leftforearm'],
-        [meshData.rightForeArmBone,  'rightforearm'],
-      ];
-      for (const [bone, key] of armBoneMap) {
-        const q = armRestPose.get(key);
-        if (bone && q) (bone as THREE.Bone).quaternion.copy(q);
+      const targetPin = amp > 0.04 ? 0.0 : 1.0;
+      armPinWeightRef.current += (targetPin - armPinWeightRef.current) * Math.min(1, delta * 4);
+      const w = armPinWeightRef.current;
+      if (w > 0.005) {
+        const armBoneMap: Array<[THREE.Object3D | null, string]> = [
+          [meshData.leftShoulderBone,  'leftshoulder'],
+          [meshData.rightShoulderBone, 'rightshoulder'],
+          [meshData.leftArmBone,       'leftarm'],
+          [meshData.rightArmBone,      'rightarm'],
+          [meshData.leftForeArmBone,   'leftforearm'],
+          [meshData.rightForeArmBone,  'rightforearm'],
+        ];
+        for (const [bone, key] of armBoneMap) {
+          const q = armRestPose.get(key);
+          if (bone && q) (bone as THREE.Bone).quaternion.slerp(q, w);
+        }
       }
     }
 

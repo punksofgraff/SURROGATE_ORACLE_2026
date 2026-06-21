@@ -14,6 +14,15 @@ const LOG_FILE = path.resolve(import.meta.dirname, ".oracle-dev-log.jsonl");
 function oracleLogRelayPlugin() {
   return {
     name: 'oracle-log-relay',
+    // Stamp the HTML document with BUILD_ID on every server start.
+    // Any proxy or browser that cached the previous HTML will see a changed
+    // ETag / content and fetch a fresh copy, pulling in all updated JS modules.
+    transformIndexHtml(html: string) {
+      return html.replace(
+        '</head>',
+        `  <meta name="x-build-id" content="${BUILD_ID}" />\n</head>`
+      );
+    },
     configureServer(server: any) {
       // /bust — cache nuke. 302 redirect with timestamp forces browser to fetch fresh bundle.
       server.middlewares.use('/bust', (_req: any, res: any) => {

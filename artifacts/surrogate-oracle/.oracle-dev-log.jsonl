@@ -25139,3 +25139,59 @@
 {"label":"GEMINI WS OPENED","status":"ok","_t":1782077251471}
 {"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1782077251478}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1782077251801}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1782077326601}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1782077326628}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1782077326701}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1782077326708}
+{"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1782077327161}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1782077327584}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1782077327585}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1782077327872}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1782077335511}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1782077335512}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1782077335608}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1782077335698}
+{"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1782077335882}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1782077335886}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1782077335889}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1782077336184}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1782077349637}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1782077349689}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1782077349830}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1782077349834}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1782077350106}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1782077350107}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1782077350344}
+{"label":"AUDIO CONTEXT STATE: running","status":"ok","_t":1782077351953}
+{"label":"NARRATIVE SIGNAL ACTIVATED","status":"ok","_t":1782077352031}
+{"label":"AUDIO SPINE INITIALIZED","status":"ok","_t":1782077352179}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1782077352214}
+{"label":"NEW SEEKER → LORE INITIATED","status":"ok","_t":1782077352224}
+{"label":"TAP → TERMINAL","status":"ok","_t":1782077352228}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1782077352230}
+{"label":"PLAYING ARCHIVE RECORDING","status":"ok","_t":1782077352266}
+{"label":"LORE DONE → ALLEY TRANSITION","status":"ok","_t":1782077401350}
+{"label":"LORE DONE → AWAKENED","status":"ok","_t":1782077401979}
+{"label":"STAGE_00 PRESENTED (over alley)","status":"ok","_t":1782077402584}
+{"label":"AUDIO HARD MUTE INITIATED (1500ms)","status":"ok","_t":1782077402802}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1782077402828}
+{"label":"ORACLE CONDUIT PRE-WARMED SILENTLY","status":"ok","_t":1782077402843}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1782077403911}
+{"label":"STAGE_00 → ENTER CASCADE","status":"ok","_t":1782077408086}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1782077408304}
+{"label":"ORACLE INTERRUPTED (barge-in)","status":"warn","_t":1782077408309}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1782077410255}
+{"label":"AUDIO HARD MUTE INITIATED (400ms)","status":"ok","_t":1782077410510}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1782077413065}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1782077413289}
+{"label":"GEMINI WS ERROR","status":"err","_t":1782077420228}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1782077420387}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1782078857198}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1782078857358}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1782078857359}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1782078857361}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1782078857649}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1782078857669}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1782078857755}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1782078857909}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1782078861338}

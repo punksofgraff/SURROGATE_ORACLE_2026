@@ -25131,3 +25131,11 @@
 {"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1782077216155}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1782077216380}
 {"label":"TAB BACKGROUNDED","status":"warn","_t":1782077216775}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1782077250584}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1782077250641}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1782077250748}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1782077250810}
+{"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1782077251420}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1782077251471}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1782077251478}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1782077251801}

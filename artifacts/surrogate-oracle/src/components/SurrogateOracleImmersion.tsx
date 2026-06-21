@@ -2028,7 +2028,7 @@ export function SurrogateOracleImmersion() {
           onListeningChange={setIsMicActive}
           onMicWillStart={() => fadeToVolume(0, 80)}
           onTypeModeChange={setIsTypeMode}
-          onMicClick={(willListen) => {
+          onMicClick={async (willListen) => {
             if (willListen) {
               setIsAudioPlaying(false);
               
@@ -2036,11 +2036,19 @@ export function SurrogateOracleImmersion() {
               localStorage.setItem('oracle_session_muted', 'false');
               connection.setVolume(2.50, 300);
               
-              // Gyro (DeviceOrientation)
+              // 1. Gyro (DeviceOrientation) - Request first and synchronously to guarantee user gesture validation on iOS
               const _DE = (DeviceOrientationEvent as any);
               if (typeof _DE?.requestPermission === 'function') _DE.requestPermission().catch(() => {});
               
-              // Camera for face tracking
+              // 2. Request Consolidated Mic + Camera permissions concurrently in a single native prompt
+              try {
+                const jointStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+                jointStream.getTracks().forEach(t => t.stop()); // release tracks immediately
+              } catch (err) {
+                console.warn('[Consolidated Perms] Joint prompt denied or error:', err);
+              }
+
+              // 3. Camera for face tracking (starts instantly with 0 prompts because of the joint warmer above)
               activateCamera();
               
               logStep('SIGNAL CONNECTED — SENSORS ACTIVE', 'ok');

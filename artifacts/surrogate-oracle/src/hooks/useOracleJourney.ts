@@ -27,23 +27,16 @@ export function useOracleJourney({
   const [scenePhase, setScenePhase] = useState<ScenePhase>(() => {
     // DEV-only: boot straight into a phase for visual debugging, e.g. ?phase=oracle
     if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      // ?reset or ?_b= (emitted by /bust redirect) — wipe all persisted journey
-      // state so the experience starts clean from dormant.
-      if (params.has('reset') || params.has('_b')) {
-        localStorage.removeItem('oracle_scene_phase');
-        localStorage.removeItem('oracle_selected_knife_question');
-        localStorage.removeItem('oracle_selected_knife_index');
-        localStorage.removeItem('oracle_session_muted');
-        return 'dormant';
-      }
+      // DEV shortcut: ?phase=oracle boots straight into a phase for visual debugging.
       if (import.meta.env.DEV) {
-        const p = params.get('phase');
+        const p = new URLSearchParams(window.location.search).get('phase');
         if (p === 'oracle' || p === 'awakened' || p === 'terminal' || p === 'tour') {
           return p as ScenePhase;
         }
       }
-      const saved = localStorage.getItem('oracle_scene_phase');
+      // sessionStorage — survives HMR/hot-reload in the same tab but dies on new
+      // tab open or fresh preview load. No more jumping into oracle on cold load.
+      const saved = sessionStorage.getItem('oracle_scene_phase');
       if (saved === 'oracle' || saved === 'awakened' || saved === 'terminal' || saved === 'tour') {
         return saved as ScenePhase;
       }
@@ -55,13 +48,13 @@ export function useOracleJourney({
   const [isExiting, setIsExiting] = useState(false);
   const [selectedKnifeQuestion, setSelectedKnifeQuestion] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('oracle_selected_knife_question');
+      return sessionStorage.getItem('oracle_selected_knife_question');
     }
     return null;
   });
   const [selectedKnifeIndex, setSelectedKnifeIndex] = useState<number | null>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('oracle_selected_knife_index');
+      const saved = sessionStorage.getItem('oracle_selected_knife_index');
       return saved ? parseInt(saved, 10) : null;
     }
     return null;
@@ -74,7 +67,7 @@ export function useOracleJourney({
   const scenePhaseRef = useRef<ScenePhase>(scenePhase);
   useEffect(() => { 
     scenePhaseRef.current = scenePhase; 
-    localStorage.setItem('oracle_scene_phase', scenePhase);
+    sessionStorage.setItem('oracle_scene_phase', scenePhase);
   }, [scenePhase]);
 
   const enterTerminal = useCallback(() => {
@@ -114,8 +107,8 @@ export function useOracleJourney({
     logStep(`KNIFE[${index}] SELECTED`, 'ok');
     setSelectedKnifeQuestion(question);
     setSelectedKnifeIndex(index);
-    localStorage.setItem('oracle_selected_knife_question', question);
-    localStorage.setItem('oracle_selected_knife_index', String(index));
+    sessionStorage.setItem('oracle_selected_knife_question', question);
+    sessionStorage.setItem('oracle_selected_knife_index', String(index));
     
     // Transition to full Oracle mode after a dramatic pause
     setTimeout(() => {
@@ -130,9 +123,9 @@ export function useOracleJourney({
     setIsExiting(false);
     setSelectedKnifeQuestion(null);
     setSelectedKnifeIndex(null);
-    localStorage.removeItem('oracle_scene_phase');
-    localStorage.removeItem('oracle_selected_knife_question');
-    localStorage.removeItem('oracle_selected_knife_index');
+    sessionStorage.removeItem('oracle_scene_phase');
+    sessionStorage.removeItem('oracle_selected_knife_question');
+    sessionStorage.removeItem('oracle_selected_knife_index');
 
     alleyAmbienceStopRef.current?.();
     alleyAmbienceStopRef.current = null;
@@ -157,9 +150,9 @@ export function useOracleJourney({
       setLoreComplete(false);
       setSelectedKnifeQuestion(null);
       setSelectedKnifeIndex(null);
-      localStorage.removeItem('oracle_scene_phase');
-      localStorage.removeItem('oracle_selected_knife_question');
-      localStorage.removeItem('oracle_selected_knife_index');
+      sessionStorage.removeItem('oracle_scene_phase');
+      sessionStorage.removeItem('oracle_selected_knife_question');
+      sessionStorage.removeItem('oracle_selected_knife_index');
 
       alleyAmbienceStopRef.current?.();
       alleyAmbienceStopRef.current = null;

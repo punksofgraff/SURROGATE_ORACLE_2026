@@ -270,10 +270,10 @@ async function testTerminal(page, viewport, pass, fail) {
     console.log('    ✓  step: LORE SEQUENCE COMPLETE — skipped via __oracle_skipLore (expected)');
   }
   var sAwk  = assertStep(steps, 'LORE DONE → AWAKENED',  pass, fail, 'step: LORE DONE → AWAKENED');
-  // Territory announcement fires at +1200ms after awakened — wait for it before asserting
+  // Silent pre-warm fires after awakened — wait for it before asserting
   await page.waitForTimeout(1600);
   steps = await getSteps(page);
-             assertStep(steps, 'ORACLE ANNOUNCES TERRITORIES', pass, fail, 'step: ORACLE ANNOUNCES TERRITORIES');
+             assertStep(steps, 'ORACLE CONDUIT PRE-WARMED SILENTLY', pass, fail, 'step: ORACLE CONDUIT PRE-WARMED SILENTLY');
 
   // Order: TAP before AWAKENED
   if (sTap && sAwk) assertBefore(sTap, sAwk, pass, fail, 'TAP fires before AWAKENED');

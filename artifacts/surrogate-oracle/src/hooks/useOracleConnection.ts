@@ -58,14 +58,12 @@ export function useOracleConnection({
       playOraclePresence();
       isFirstChunkRef.current = false;
       
-      // Start muted if oracle_session_muted is set to true
-      const isMuted = localStorage.getItem('oracle_session_muted') === 'true';
-      player.setVolume(isMuted ? 0.0001 : 2.50, 40);
-
-      // AUTO-UNMUTE GUARD: once read, clear it so subsequent turns are NEVER muted by default
-      if (isMuted) {
-        localStorage.setItem('oracle_session_muted', 'false');
-      }
+      // Always start audible — permissions consolidation is handled by the SIGNAL CONNECT
+      // UI tap (which requests mic/camera/gyro). The oracle_session_muted flag previously
+      // gated audio on that tap, but that path was decoupled in a13de3e; keeping the
+      // 0.0001 branch silences Oracle for type-mode users and anyone who misses the button.
+      player.setVolume(2.50, 40);
+      localStorage.setItem('oracle_session_muted', 'false');
     }
 
     let pcmData: Int16Array | null   = data instanceof Int16Array ? data : null;

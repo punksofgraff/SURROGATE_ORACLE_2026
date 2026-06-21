@@ -742,10 +742,18 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       const spineLerpF = lerpDt * 0.05;
       // Rotates spine slightly back/upwards on breathing in
       const breathRotX = breathCycle * 0.015;
+
+      // Rhetorical forward lean based on speaking intensity (tw) and current amplitude
+      const bs = blendStateRef.current;
+      const tw = bs.currentTalkWeight;
+      const speakLeanX = -0.055 * tw * Math.min(1.0, amp * 4.0);
+      const speakSwayZ = Math.sin(t * 1.5) * 0.035 * tw;
+
       // Subtle chest expansion scaling
       const chestScale = 1.0 + Math.max(0, breathCycle) * 0.005;
 
-      meshData.spineBone.rotation.x = THREE.MathUtils.lerp(meshData.spineBone.rotation.x, breathRotX, spineLerpF);
+      meshData.spineBone.rotation.x = THREE.MathUtils.lerp(meshData.spineBone.rotation.x, breathRotX + speakLeanX, spineLerpF);
+      meshData.spineBone.rotation.z = THREE.MathUtils.lerp(meshData.spineBone.rotation.z, speakSwayZ, spineLerpF);
       meshData.spineBone.scale.set(
         THREE.MathUtils.lerp(meshData.spineBone.scale.x, chestScale, spineLerpF),
         THREE.MathUtils.lerp(meshData.spineBone.scale.y, 1.0, spineLerpF),
@@ -783,6 +791,38 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         for (const [bone, key] of armBoneMap) {
           const q = armRestPose.get(key);
           if (bone && q) (bone as THREE.Bone).quaternion.slerp(q, w);
+        }
+      }
+    }
+
+    // ── Oratory Arm Amplification ────────────────────────────────────────────
+    // When actively speaking (tw > 0), dynamically open her chest, lift her elbows,
+    // and expand her gestures to mimic a master orator on stage.
+    {
+      const bs = blendStateRef.current;
+      const tw = bs.currentTalkWeight;
+      if (tw > 0.01) {
+        const ampFactor = tw * Math.min(1.0, amp * 4.5);
+        const shoulderAbduction = ampFactor * 0.08; // lift shoulders outward
+        const elbowLift = ampFactor * 0.06;         // open elbows
+
+        // Left shoulder rotates out around local Z (negative rotation)
+        if (meshData.leftShoulderBone) {
+          meshData.leftShoulderBone.rotation.z -= shoulderAbduction;
+        }
+        // Right shoulder rotates out around local Z (positive rotation)
+        if (meshData.rightShoulderBone) {
+          meshData.rightShoulderBone.rotation.z += shoulderAbduction;
+        }
+        // Left arm rotates out around local Y (positive rotation to open chest)
+        if (meshData.leftArmBone) {
+          meshData.leftArmBone.rotation.y += elbowLift;
+          meshData.leftArmBone.rotation.z -= elbowLift * 0.4;
+        }
+        // Right arm rotates out around local Y (negative rotation to open chest)
+        if (meshData.rightArmBone) {
+          meshData.rightArmBone.rotation.y -= elbowLift;
+          meshData.rightArmBone.rotation.z += elbowLift * 0.4;
         }
       }
     }

@@ -703,9 +703,6 @@ export function SurrogateOracleImmersion() {
 
     // Stop any active card preview/voiceover immediately
     connection.flushPlayback();
-    // Enable mic auto-restart so the mic turns on automatically AFTER the Oracle finishes the initial reply,
-    // avoiding recording background noise/feedback while the Oracle reads the question and answers it.
-    oracleConversationRef.current?.enableMicAutoRestart();
 
     // Mark Oracle as muted on arrival. Permissions (mic, camera, gyro) are consolidated
     // and requested simultaneously on the first Microphone "SIGNAL CONNECT" tap.
@@ -2035,6 +2032,9 @@ export function SurrogateOracleImmersion() {
               // Unmute the Oracle's voice, request gyro and camera permissions in a single unified user gesture
               localStorage.setItem('oracle_session_muted', 'false');
               connection.setVolume(2.50, 300);
+              
+              // Enable mic auto-restart for subsequent speech turns
+              oracleConversationRef.current?.enableMicAutoRestart();
               
               // 1. Gyro (DeviceOrientation) - Request first and synchronously to guarantee user gesture validation on iOS
               const _DE = (DeviceOrientationEvent as any);

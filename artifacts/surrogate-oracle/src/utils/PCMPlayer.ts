@@ -186,10 +186,9 @@ export class PCMPlayer {
     const safeTarget = Math.max(0.0001, target);
     this.masterGain.gain.cancelScheduledValues(now);
     
-    // Ensure current value is non-zero before exponential ramp
     const startVal = Math.max(0.0001, this.masterGain.gain.value);
     this.masterGain.gain.setValueAtTime(startVal, now);
-    this.masterGain.gain.exponentialRampToValueAtTime(safeTarget, now + rampMs / 1000);
+    this.masterGain.gain.linearRampToValueAtTime(safeTarget, now + rampMs / 1000);
   }
 
   public boostVolume(multiplier: number, rampMs: number = 50) {
@@ -200,7 +199,7 @@ export class PCMPlayer {
     const newTarget = startVal * multiplier;
     this.masterGain.gain.cancelScheduledValues(now);
     this.masterGain.gain.setValueAtTime(startVal, now);
-    this.masterGain.gain.exponentialRampToValueAtTime(Math.max(0.0001, newTarget), now + rampMs / 1000);
+    this.masterGain.gain.linearRampToValueAtTime(Math.max(0.0001, newTarget), now + rampMs / 1000);
   }
 
   public getAnalyser(): AnalyserNode {

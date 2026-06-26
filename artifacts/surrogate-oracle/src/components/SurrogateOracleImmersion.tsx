@@ -52,7 +52,6 @@ import { useOracleConnection } from '../hooks/useOracleConnection';
 import { usePortraitPipeline } from '../hooks/usePortraitPipeline';
 import { useOracleJourney } from '../hooks/useOracleJourney';
 import { usePerformanceGuard } from '../hooks/usePerformanceGuard';
-import { useSessionBudget } from '../hooks/useSessionBudget';
 import WalletGateCard from './WalletGateCard';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 
@@ -317,15 +316,6 @@ export function SurrogateOracleImmersion() {
   });
 
   const { scenePhase, enterTerminal, enterTour, awakeFromTerminal, exitOracleMode, selectKnifeQuestion, resetJourney } = journey;
-
-  const { budgetExceeded, reset: resetBudget } = useSessionBudget({
-    isOracleMode:   scenePhase === 'oracle',
-    isWalletSigned: hasSignedWallet,
-    onExceeded:     () => {
-      oracleConversationRef.current?.disconnect();
-      logStep('SESSION BUDGET EXCEEDED — gate shown', 'warn');
-    },
-  });
 
   // ── Telemetry: Phase Tracking ──────────────────────────────────────────
   useEffect(() => {
@@ -1097,7 +1087,14 @@ export function SurrogateOracleImmersion() {
     setPortraitViewerUrl(url);
     setShowPortraitCard(true);
     portraitAnnounceRef.current = true; // Oracle speaks about it on next turn-complete
-  }, []);
+    // Non-wallet seekers: first portrait is the natural session gate — show wallet CTA,
+    // disconnect Gemini. The portrait stays visible as the hook.
+    if (!hasSignedWallet) {
+      oracleConversationRef.current?.disconnect();
+      setShowJourneyLimitGate(true);
+      logStep('PORTRAIT GATE — non-wallet seeker, session ended', 'warn');
+    }
+  }, [hasSignedWallet]);
 
   const portrait = usePortraitPipeline({ currentUserId, userEmail, currentSessionId, onPortraitGenerated: handlePortraitGenerated });
 
@@ -1147,7 +1144,6 @@ export function SurrogateOracleImmersion() {
       logStep(`WALLET ADDRESS CAPTURED — seeker key locked to wallet`, 'ok');
     }
     markWalletSigned(walletAddress);
-    resetBudget();
     setShowJourneyLimitGate(false);
     logStep('WALLET SIGNED — ALLEY RETURN ENABLED', 'ok');
 
@@ -2117,7 +2113,7 @@ export function SurrogateOracleImmersion() {
         />
       )}
 
-      {(budgetExceeded || showJourneyLimitGate) && (
+      {showJourneyLimitGate && (
         <WalletGateCard
           onRegister={() => {
             setShowJourneyLimitGate(false);

@@ -171,7 +171,8 @@ export function SurrogateOracleImmersion() {
   // discoverable invitation instead of leaving it buried in the hamburger.
   const [offerRift, setOfferRift] = useState(false);
   const [showRiftRitual, setShowRiftRitual] = useState(false);
-  const [showTierGate, setShowTierGate]     = useState(false);
+  const [showTierGate, setShowTierGate]         = useState(false);
+  const [showJourneyLimitGate, setShowJourneyLimitGate] = useState(false);
   const [isRiftOpening, setIsRiftOpening] = useState(false);
   const [portraitViewerUrl, setPortraitViewerUrl] = useState<string | null>(null);
   const [showPortraitCard, setShowPortraitCard] = useState(false);
@@ -674,13 +675,12 @@ export function SurrogateOracleImmersion() {
           }).catch((err: unknown) => console.warn('[memory-distill] fire-and-forget failed:', err));
         });
       }
-      // Count completed journeys for the wallet-gated tier limit.
-      if (hasSignedWallet) {
-        const countKey = `surrogate_journeys_${key}`;
-        const next = parseInt(localStorage.getItem(countKey) ?? '0', 10) + 1;
-        localStorage.setItem(countKey, String(next));
-        logStep(`JOURNEY COMPLETE — total: ${next}`, 'ok');
-      }
+      // Count completed journeys per seeker key (wallet address or IP).
+      // Tracked for all users — wallet seekers hit the tier gate, IP seekers hit the wallet gate.
+      const countKey = `surrogate_journeys_${key}`;
+      const next = parseInt(localStorage.getItem(countKey) ?? '0', 10) + 1;
+      localStorage.setItem(countKey, String(next));
+      logStep(`JOURNEY COMPLETE — total: ${next} [${hasSignedWallet ? 'wallet' : 'ip'}]`, 'ok');
     }
     exitOracleMode();
   }, [saveEcho, exitOracleMode, hasSignedWallet]);
@@ -753,13 +753,18 @@ export function SurrogateOracleImmersion() {
     }
     if (scenePhase === 'oracle') {
       sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; pendingPortraitUrlRef.current = null;
-      // Tier gate: wallet seekers who have hit FREE_JOURNEYS are blocked from a new session.
-      if (hasSignedWallet) {
+      // Journey gate: check seeker count (wallet address or IP) against the free limit.
+      {
         const key = seekerKeyRef.current;
         const count = key ? parseInt(localStorage.getItem(`surrogate_journeys_${key}`) ?? '0', 10) : 0;
         if (count >= FREE_JOURNEYS) {
-          setShowTierGate(true);
-          logStep(`TIER GATE TRIGGERED — journeys: ${count}`, 'warn');
+          if (hasSignedWallet) {
+            setShowTierGate(true);
+            logStep(`TIER GATE — wallet seeker, journeys: ${count}`, 'warn');
+          } else {
+            setShowJourneyLimitGate(true);
+            logStep(`WALLET GATE — ip seeker, journeys: ${count}`, 'warn');
+          }
         }
       }
     }
@@ -1143,6 +1148,7 @@ export function SurrogateOracleImmersion() {
     }
     markWalletSigned(walletAddress);
     resetBudget();
+    setShowJourneyLimitGate(false);
     logStep('WALLET SIGNED — ALLEY RETURN ENABLED', 'ok');
 
     if (walletAddress) {
@@ -2111,9 +2117,12 @@ export function SurrogateOracleImmersion() {
         />
       )}
 
-      {budgetExceeded && (
+      {(budgetExceeded || showJourneyLimitGate) && (
         <WalletGateCard
-          onRegister={() => openWalletPopup('https://wallet.thesurrogate.me')}
+          onRegister={() => {
+            setShowJourneyLimitGate(false);
+            openWalletPopup('https://wallet.thesurrogate.me');
+          }}
         />
       )}
 

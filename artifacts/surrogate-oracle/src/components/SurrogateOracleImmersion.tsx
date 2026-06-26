@@ -52,6 +52,8 @@ import { useOracleConnection } from '../hooks/useOracleConnection';
 import { usePortraitPipeline } from '../hooks/usePortraitPipeline';
 import { useOracleJourney } from '../hooks/useOracleJourney';
 import { usePerformanceGuard } from '../hooks/usePerformanceGuard';
+import { useSessionBudget } from '../hooks/useSessionBudget';
+import WalletGateCard from './WalletGateCard';
 
 // Data
 import { COST_NAMES } from '../data/archetypes';
@@ -311,6 +313,15 @@ export function SurrogateOracleImmersion() {
   });
 
   const { scenePhase, enterTerminal, enterTour, awakeFromTerminal, exitOracleMode, selectKnifeQuestion, resetJourney } = journey;
+
+  const { budgetExceeded, reset: resetBudget } = useSessionBudget({
+    isOracleMode:   scenePhase === 'oracle',
+    isWalletSigned: hasSignedWallet,
+    onExceeded:     () => {
+      oracleConversationRef.current?.disconnect();
+      logStep('SESSION BUDGET EXCEEDED — gate shown', 'warn');
+    },
+  });
 
   // ── Telemetry: Phase Tracking ──────────────────────────────────────────
   useEffect(() => {
@@ -1110,6 +1121,7 @@ export function SurrogateOracleImmersion() {
       logStep(`WALLET ADDRESS CAPTURED — seeker key locked to wallet`, 'ok');
     }
     markWalletSigned(walletAddress);
+    resetBudget();
     logStep('WALLET SIGNED — ALLEY RETURN ENABLED', 'ok');
 
     if (walletAddress) {
@@ -2075,6 +2087,12 @@ export function SurrogateOracleImmersion() {
             return lines.join('\n');
           })()}
           isGuidedTour={isGuidedTour}
+        />
+      )}
+
+      {budgetExceeded && (
+        <WalletGateCard
+          onRegister={() => openWalletPopup('https://wallet.thesurrogate.me')}
         />
       )}
 

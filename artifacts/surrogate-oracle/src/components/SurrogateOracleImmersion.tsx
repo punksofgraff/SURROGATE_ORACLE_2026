@@ -54,6 +54,7 @@ import { useOracleJourney } from '../hooks/useOracleJourney';
 import { usePerformanceGuard } from '../hooks/usePerformanceGuard';
 import { useSessionBudget } from '../hooks/useSessionBudget';
 import WalletGateCard from './WalletGateCard';
+import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 
 // Data
 import { COST_NAMES } from '../data/archetypes';
@@ -70,6 +71,7 @@ const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.pn
 const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = '/alley-bg.png';
 const DEFAULT_STATION    = 0; // Graff Punks — sole station
+const FREE_JOURNEYS      = 5; // wallet seekers get this many free oracle journeys
 
 // Act 5 — Rift-Construct: Oracle shifts from archivist to active witness.
 // No brackets — brackets suppress Gemini audio output (same issue as knife prompts).
@@ -169,6 +171,7 @@ export function SurrogateOracleImmersion() {
   // discoverable invitation instead of leaving it buried in the hamburger.
   const [offerRift, setOfferRift] = useState(false);
   const [showRiftRitual, setShowRiftRitual] = useState(false);
+  const [showTierGate, setShowTierGate]     = useState(false);
   const [isRiftOpening, setIsRiftOpening] = useState(false);
   const [portraitViewerUrl, setPortraitViewerUrl] = useState<string | null>(null);
   const [showPortraitCard, setShowPortraitCard] = useState(false);
@@ -671,9 +674,16 @@ export function SurrogateOracleImmersion() {
           }).catch((err: unknown) => console.warn('[memory-distill] fire-and-forget failed:', err));
         });
       }
+      // Count completed journeys for the wallet-gated tier limit.
+      if (hasSignedWallet) {
+        const countKey = `surrogate_journeys_${key}`;
+        const next = parseInt(localStorage.getItem(countKey) ?? '0', 10) + 1;
+        localStorage.setItem(countKey, String(next));
+        logStep(`JOURNEY COMPLETE — total: ${next}`, 'ok');
+      }
     }
     exitOracleMode();
-  }, [saveEcho, exitOracleMode]);
+  }, [saveEcho, exitOracleMode, hasSignedWallet]);
 
   const handleSeekerIdentified = useCallback(async (name: string | null, handles: string[]) => {
     const knife = lastKnifeRef.current;
@@ -741,7 +751,18 @@ export function SurrogateOracleImmersion() {
       knifeSelectedRef.current = false;
       oracleHasSpokenRef.current = false;
     }
-    if (scenePhase === 'oracle') { sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; pendingPortraitUrlRef.current = null; }
+    if (scenePhase === 'oracle') {
+      sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; pendingPortraitUrlRef.current = null;
+      // Tier gate: wallet seekers who have hit FREE_JOURNEYS are blocked from a new session.
+      if (hasSignedWallet) {
+        const key = seekerKeyRef.current;
+        const count = key ? parseInt(localStorage.getItem(`surrogate_journeys_${key}`) ?? '0', 10) : 0;
+        if (count >= FREE_JOURNEYS) {
+          setShowTierGate(true);
+          logStep(`TIER GATE TRIGGERED — journeys: ${count}`, 'warn');
+        }
+      }
+    }
     if (scenePhase === 'dormant') {
       knifeSelectedRef.current = false;
       oracleHasSpokenRef.current = false;
@@ -2095,6 +2116,22 @@ export function SurrogateOracleImmersion() {
           onRegister={() => openWalletPopup('https://wallet.thesurrogate.me')}
         />
       )}
+
+      <InlineSubscriptionModal
+        isOpen={showTierGate}
+        onClose={() => {
+          setShowTierGate(false);
+          exitOracleMode();
+        }}
+        userId={currentUserId ?? seekerKeyRef.current ?? ''}
+        context="engage-further"
+        onUpgradeSuccess={() => {
+          const key = seekerKeyRef.current;
+          if (key) localStorage.removeItem(`surrogate_journeys_${key}`);
+          setShowTierGate(false);
+          logStep('TIER UPGRADE — journey count cleared', 'ok');
+        }}
+      />
 
       {/* ── The Mirror reveal — the climax of the ritual ──────────────────────
           When the Oracle names the Seeker, a dim backdrop hushes the rings and the

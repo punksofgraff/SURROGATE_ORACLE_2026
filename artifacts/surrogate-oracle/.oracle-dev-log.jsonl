@@ -25345,3 +25345,11 @@
 {"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1782512357369}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1782512357554}
 {"label":"TAB BACKGROUNDED","status":"warn","_t":1782512360997}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1782514654291}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1782514654617}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1782514654618}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1782514654622}
+{"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1782514655212}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1782514656176}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1782514656181}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1782514656551}

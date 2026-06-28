@@ -313,6 +313,10 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     nextTime: 0,
   });
 
+  // Records clock.elapsedTime on first useFrame — used for the greeting grace period
+  // that suppresses tilt physics impulses until the avatar has settled on mount.
+  const mountTimeRef = useRef(-1.0);
+
   // ── Start idle animation on mount — 45% slower than source clip ──────────
   useEffect(() => {
     const root = groupRef.current;
@@ -479,6 +483,9 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     const amp    = vs?.amplitude ?? 0;
     const lerpDt = Math.min(delta * 60, 1); // frame-rate independent
     const t      = state.clock.elapsedTime;
+
+    // Stamp mount time on the very first frame (used by greeting grace period below)
+    if (mountTimeRef.current < 0) mountTimeRef.current = t;
 
     // ── Animation mixer ───────────────────────────────────────────────────
     mixer.update(delta);
@@ -670,17 +677,23 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       const hp = headPhysRef.current;
       const dt = Math.min(delta, 0.03); // clamp to avoid physics explosion during lag
 
-      // 1. Calculate positive amplitude changes (attacks/onset of speech syllables)
-      const ampDiff = Math.max(0, amp - hp.lastAmp);
+      // 1. Calculate positive amplitude changes (attacks/onset of speech syllables).
+      // Clamp to 0.025 so the first-word amplitude spike (0 → 0.2+ in one frame)
+      // can't launch the physics into a large oscillation.
+      const ampDiffRaw = Math.max(0, amp - hp.lastAmp);
+      const ampDiff    = Math.min(ampDiffRaw, 0.025);
       hp.lastAmp = amp;
 
-      // 2. Drive physics velocity with speech transients (emphasis impulses)
+      // 2. Drive physics velocity with speech transients (emphasis impulses).
       if (amp > 0.035) {
         // Sudden volume increases cause a downward nod impulse
-        hp.nodVel -= ampDiff * 2.8; 
-        
-        // Tilt left/right randomly based on emphasis
-        if (ampDiff > 0.01 && Math.random() < 0.5) {
+        hp.nodVel -= ampDiff * 2.8;
+
+        // Tilt left/right randomly based on emphasis.
+        // Grace period: suppress tilt for first 2 s after mount so the opening
+        // greeting doesn't trigger max-headroom oscillation before the avatar settles.
+        const graceElapsed = t - mountTimeRef.current;
+        if (ampDiff > 0.01 && Math.random() < 0.5 && graceElapsed > 2.0) {
           hp.tiltVel += (Math.random() - 0.5) * ampDiff * 3.5;
         }
       }
@@ -695,8 +708,10 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       hp.nodVel += forceNod * dt;
       hp.nodAngle += hp.nodVel * dt;
 
-      // Tilt spring (Stiffness = 24, damping = 5.0)
-      const forceTilt = (targetTiltBaseline - hp.tiltAngle) * 24.0 - hp.tiltVel * 5.0;
+      // Tilt spring — damping raised to 7.5 (ζ≈0.77, near-critical).
+      // Previous value 5.0 (ζ≈0.51) was visibly underdamped; greeting bursts
+      // caused multi-cycle oscillation that read as "looking around".
+      const forceTilt = (targetTiltBaseline - hp.tiltAngle) * 24.0 - hp.tiltVel * 7.5;
       hp.tiltVel += forceTilt * dt;
       hp.tiltAngle += hp.tiltVel * dt;
 
@@ -791,38 +806,6 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         for (const [bone, key] of armBoneMap) {
           const q = armRestPose.get(key);
           if (bone && q) (bone as THREE.Bone).quaternion.slerp(q, w);
-        }
-      }
-    }
-
-    // ── Oratory Arm Amplification ────────────────────────────────────────────
-    // When actively speaking (tw > 0), dynamically open her chest, lift her elbows,
-    // and expand her gestures to mimic a master orator on stage.
-    {
-      const bs = blendStateRef.current;
-      const tw = bs.currentTalkWeight;
-      if (tw > 0.01) {
-        const ampFactor = tw * Math.min(1.0, amp * 4.5);
-        const shoulderAbduction = ampFactor * 0.08; // lift shoulders outward
-        const elbowLift = ampFactor * 0.06;         // open elbows
-
-        // Left shoulder rotates out around local Z (negative rotation)
-        if (meshData.leftShoulderBone) {
-          meshData.leftShoulderBone.rotation.z -= shoulderAbduction;
-        }
-        // Right shoulder rotates out around local Z (positive rotation)
-        if (meshData.rightShoulderBone) {
-          meshData.rightShoulderBone.rotation.z += shoulderAbduction;
-        }
-        // Left arm rotates out around local Y (positive rotation to open chest)
-        if (meshData.leftArmBone) {
-          meshData.leftArmBone.rotation.y += elbowLift;
-          meshData.leftArmBone.rotation.z -= elbowLift * 0.4;
-        }
-        // Right arm rotates out around local Y (negative rotation to open chest)
-        if (meshData.rightArmBone) {
-          meshData.rightArmBone.rotation.y -= elbowLift;
-          meshData.rightArmBone.rotation.z += elbowLift * 0.4;
         }
       }
     }

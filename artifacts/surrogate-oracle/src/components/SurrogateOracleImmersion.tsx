@@ -1632,47 +1632,54 @@ export function SurrogateOracleImmersion() {
             {isOracleMode && <div className="oracle-monitor-cast" />}
             <div className="oracle-scanlines" />
             <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
+            {/* Canvas warmup — mounts in awakened (knife-selection ceremony) so GLBs and
+                GPU shaders are compiled before oracle phase begins. Invisible and non-interactive
+                until isOracleMode; never unmounted mid-session so compiled objects are retained.
+                CSS opacity + transition handles the same 1.2 s fade-in that motion.div gave. */}
+            {awakened && (
+              <div
+                className="oracle-avatar-canvas oracle-avatar-smoke-hook"
+                style={{
+                  width: '100%', height: '100%',
+                  position: 'absolute', top: 0, left: 0,
+                  opacity: isOracleMode ? 1 : 0,
+                  transition: 'opacity 1.2s ease-out',
+                  pointerEvents: isOracleMode ? 'auto' : 'none',
+                  zIndex: 3,
+                }}
+              >
+                <OracleErrorBoundary>
+                  <Suspense fallback={<OracleAvatarFallback />}>
+                    <Canvas
+                      camera={{ position: [0, 0, 1.8], fov: 55 }}
+                      dpr={isDegraded ? [1, 1] : [1, Math.min(window.devicePixelRatio, 2)]}
+                      gl={{ antialias: !isDegraded, alpha: true }}
+                      style={{ width: '100%', height: '100%', background: 'transparent' }}
+                      frameloop="always"
+                    >
+                      <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
+                      {!isDegraded && (
+                        <EffectComposer>
+                          <DepthOfField
+                            focusDistance={0.012}
+                            focalLength={0.022}
+                            bokehScale={2.0}
+                            height={480}
+                          />
+                        </EffectComposer>
+                      )}
+                    </Canvas>
+                  </Suspense>
+                </OracleErrorBoundary>
+              </div>
+            )}
+            {/* Portrait-state overlays — only visible during pre-oracle awakened phase */}
             <AnimatePresence mode="wait">
-              {isOracleMode ? (
-                <motion.div
-                  key="live-face"
-                  className="oracle-avatar-container"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 1.2, ease: "easeOut" }}
-                  style={{ zIndex: 3, position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'auto' }}
-                >
-                  <div className="oracle-avatar-canvas oracle-avatar-smoke-hook" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}>
-                    <OracleErrorBoundary>
-                      <Suspense fallback={<OracleAvatarFallback />}>
-                        <Canvas
-                          camera={{ position: [0, 0, 1.8], fov: 55 }}
-                          dpr={isDegraded ? [1, 1] : [1, Math.min(window.devicePixelRatio, 2)]}
-                          gl={{ antialias: !isDegraded, alpha: true }}
-                          style={{ width: '100%', height: '100%', background: 'transparent' }}
-                          frameloop="always"
-                        >
-                          <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
-                          {!isDegraded && (
-                            <EffectComposer>
-                              <DepthOfField
-                                focusDistance={0.012}
-                                focalLength={0.022}
-                                bokehScale={2.0}
-                                height={480}
-                              />
-                            </EffectComposer>
-                          )}
-                        </Canvas>
-                      </Suspense>
-                    </OracleErrorBoundary>
-                  </div>
-                </motion.div>
-              ) : portrait.portraitError ? (
+              {!isOracleMode && portrait.portraitError ? (
                 <motion.div key="portrait-error" className="oracle-avatar-container" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ zIndex: 12, position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 8 }}>
                   <div style={{ color: '#cc00ff', fontFamily: "'PhillySans', monospace", fontSize: '0.75rem', letterSpacing: '0.1em', textAlign: 'center', padding: '0 16px', textShadow: '0 0 10px rgba(176,38,255,0.6)' }}>{portrait.portraitError}</div>
                 </motion.div>
-              ) : portrait.isGenerating ? (
+              ) : !isOracleMode && portrait.isGenerating ? (
                 <motion.div key="portrait-generating" className="oracle-avatar-container" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ zIndex: 12, position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
                   <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }} style={{ fontSize: '2.5rem' }}>⚗</motion.div>
                   <div style={{ color: '#00ff88', fontFamily: "'PhillySans', monospace", fontSize: '0.7rem', letterSpacing: '0.15em', textShadow: '0 0 10px rgba(0,255,136,0.6)' }}>SYNTHESIZING YOUR SIGNAL…</div>

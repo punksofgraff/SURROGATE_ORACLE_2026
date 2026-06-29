@@ -93,6 +93,9 @@ export function useOracleJourney({
     scenePhaseRef.current = 'awakened';
     logStep('LORE DONE → AWAKENED', 'ok');
     setScenePhase('awakened');
+    // Mark that the seeker has passed through awakened at least once this session.
+    // Used by the Canvas warmup to skip the Suspense fallback on re-entry.
+    sessionStorage.setItem('oracle_canvas_warmed', '1');
     
     // Stop the low-frequency alley hum once lore is finished
     alleyAmbienceStopRef.current?.();

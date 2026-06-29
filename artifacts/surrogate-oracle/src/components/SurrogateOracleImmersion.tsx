@@ -151,6 +151,13 @@ export function SurrogateOracleImmersion() {
     : false;
 
   // ── State ───────────────────────────────────────────────────────────────
+  // True once the seeker has passed through awakened at least once this tab session.
+  // Lets us skip the Suspense fallback on re-entry (no "frozen static" flash) and
+  // mount the Canvas earlier so GPU shaders are compiled before oracle phase begins.
+  const [canvasWarmed] = useState<boolean>(() =>
+    typeof window !== 'undefined' && !!sessionStorage.getItem('oracle_canvas_warmed')
+  );
+
   const [oracleAvatarDataUrl] = useState<string>(ORACLE_AVATAR_URL);
   const [currentUserId, setCurrentUserId]   = useState<string | null>(() => localStorage.getItem('oracle_seeker_key'));
   const [currentSessionId, setCurrentSessionId] = useState(() => {
@@ -1632,11 +1639,15 @@ export function SurrogateOracleImmersion() {
             {isOracleMode && <div className="oracle-monitor-cast" />}
             <div className="oracle-scanlines" />
             <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
-            {/* Canvas warmup — mounts in awakened (knife-selection ceremony) so GLBs and
-                GPU shaders are compiled before oracle phase begins. Invisible and non-interactive
-                until isOracleMode; never unmounted mid-session so compiled objects are retained.
-                CSS opacity + transition handles the same 1.2 s fade-in that motion.div gave. */}
-            {awakened && (
+            {/* Canvas warmup — mounts in terminal (lore) or awakened so GPU shaders compile
+                before oracle phase begins. Also mounts immediately on re-entry when
+                canvasWarmed=true (sessionStorage persists across navigation within the tab).
+                Invisible and non-interactive until isOracleMode; never unmounted mid-session
+                so compiled objects are retained.
+                CSS opacity + transition handles the same 1.2 s fade-in that motion.div gave.
+                Suspense fallback: transparent (null) when canvasWarmed, so re-entering seekers
+                never see a "frozen static image" flash during WebGL context init. */}
+            {(awakened || scenePhase === 'terminal' || canvasWarmed) && (
               <div
                 className="oracle-avatar-canvas oracle-avatar-smoke-hook"
                 style={{
@@ -1649,7 +1660,7 @@ export function SurrogateOracleImmersion() {
                 }}
               >
                 <OracleErrorBoundary>
-                  <Suspense fallback={<OracleAvatarFallback />}>
+                  <Suspense fallback={canvasWarmed ? null : <OracleAvatarFallback />}>
                     <Canvas
                       camera={{ position: [0, 0, 1.8], fov: 55 }}
                       dpr={isDegraded ? [1, 1] : [1, Math.min(window.devicePixelRatio, 2)]}

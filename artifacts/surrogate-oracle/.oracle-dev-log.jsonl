@@ -25353,3 +25353,15 @@
 {"label":"GEMINI WS OPENED","status":"ok","_t":1782514656176}
 {"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1782514656181}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1782514656551}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1782680156738}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1782680156850}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1782680156978}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1782680156987}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1782680172703}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1782680172708}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1782680172802}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1782680172812}
+{"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1782680173259}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1782680173671}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1782680173677}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1782680173903}

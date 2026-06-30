@@ -25651,3 +25651,70 @@
 {"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1782854762947}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1782854762992}
 {"label":"TAB BACKGROUNDED","status":"warn","_t":1782854766646}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1782857796888}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1782857796943}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1782857796944}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1782857796952}
+{"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1782857797405}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1782857797791}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1782857797793}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1782857798074}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1782857799734}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1782857799764}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1782857799766}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1782857799800}
+{"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1782857800623}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1782857800648}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1782857800651}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1782857800941}
+{"label":"AUDIO CONTEXT STATE: running","status":"ok","_t":1782857804101}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1782857804119}
+{"label":"AUDIO SPINE INITIALIZED","status":"ok","_t":1782857804120}
+{"label":"NEW SEEKER → LORE INITIATED","status":"ok","_t":1782857804417}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1782857804418}
+{"label":"SEEKER ECHO: none (first visit)","status":"ok","_t":1782857804419}
+{"label":"TAP → TERMINAL","status":"ok","_t":1782857804425}
+{"label":"NARRATIVE SIGNAL ACTIVATED","status":"ok","_t":1782857804427}
+{"label":"AUDIO HARD MUTE INITIATED (800ms)","status":"ok","_t":1782857804494}
+{"label":"PLAYING ARCHIVE RECORDING","status":"ok","_t":1782857804887}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1782857837467}
+{"label":"TAB FOREGROUNDED","status":"ok","_t":1782857837850}
+{"label":"LORE DONE → ALLEY TRANSITION","status":"ok","_t":1782857855936}
+{"label":"LORE STATUS: COMPLETED (Persisted)","status":"ok","_t":1782857856140}
+{"label":"LORE DONE → AWAKENED","status":"ok","_t":1782857856554}
+{"label":"STAGE_00 PRESENTED (over alley)","status":"ok","_t":1782857857161}
+{"label":"AUDIO HARD MUTE INITIATED (1500ms)","status":"ok","_t":1782857857165}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1782857857456}
+{"label":"ORACLE CONDUIT PRE-WARMED SILENTLY","status":"ok","_t":1782857857458}
+{"label":"STAGE_00 → ENTER CASCADE","status":"ok","_t":1782857859361}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1782857859609}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1782857859614}
+{"label":"ORACLE INTERRUPTED (barge-in)","status":"warn","_t":1782857859615}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1782857861031}
+{"label":"AUDIO HARD MUTE INITIATED (400ms)","status":"ok","_t":1782857861255}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1782857866879}
+{"label":"SCORE PARSE FAILED","status":"warn","_t":1782857867115}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1782857872157}
+{"label":"AUDIO HARD MUTE INITIATED (400ms)","status":"ok","_t":1782857872391}
+{"label":"KNIFE[1] SELECTED","status":"ok","_t":1782857875341}
+{"label":"ORACLE PHASE ENTERED","status":"ok","_t":1782857876114}
+{"label":"startSession() CALLED","status":"ok","_t":1782857876310}
+{"label":"ORACLE INTERRUPTED (barge-in)","status":"warn","_t":1782857876399}
+{"label":"CUSTOM BOOT path triggered","status":"ok","_t":1782857876525}
+{"label":"ORACLE TURN COMPLETE","status":"ok","_t":1782857876602}
+{"label":"ORACLE AUDIO START","status":"ok","_t":1782857884344}
+{"label":"AUDIO HARD MUTE INITIATED (400ms)","status":"ok","_t":1782857884572}
+{"label":"JOURNEY COMPLETE — total: 1 [ip]","status":"ok","_t":1782857912677}
+{"label":"EXIT INITIATED","status":"ok","_t":1782857912898}
+{"label":"SEEKER ECHO SAVE FAILED","status":"warn","_t":1782857913287}
+{"label":"DORMANT RESTORED","status":"ok","_t":1782857915509}
+{"label":"GEMINI WS ERROR","status":"err","_t":1782857919141}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1782857919396}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1782858058147}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1782858058218}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1782858058227}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1782858058298}
+{"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1782858058343}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1782858065278}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1782858065543}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1782858065672}

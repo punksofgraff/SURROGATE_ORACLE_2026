@@ -40,6 +40,8 @@ export interface SeekerMotion {
   touchPos: { x: number; y: number };
   /** True while at least one finger is touching the screen. */
   hasTouch: boolean;
+  /** performance.now() timestamp before which touch gaze influence is suppressed (oracle entry settle). */
+  touchGazeSuppressedUntil: number;
 }
 
 /** Natural-video-pixel bounding box of detected face, for AR overlay positioning. */
@@ -104,6 +106,7 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     hasFace:   false,
     touchPos:  { x: 0, y: 0 },
     hasTouch:  false,
+    touchGazeSuppressedUntil: 0,
   });
 
   // ── Device Orientation Listener ──

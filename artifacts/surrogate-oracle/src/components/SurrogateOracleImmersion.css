@@ -15,7 +15,7 @@
    * Not pixel-matched to background photo — the cabinet IS the stage.
    */
   --cabinet-top: 44%;
-  --cabinet-left: 50%;     /* 45% + 5pp right */
+  --cabinet-left: 50%;
   --cabinet-width: clamp(114px, 18vw, 214px);  /* −12% area: prev × √0.88 ≈ 0.938× */
 
   /* Animation Timings */
@@ -538,6 +538,18 @@
 .oracle-stage[data-oracle-state="oracle"] .oracle-center {
   top: 33%;
   transition: top 0.9s var(--ease-cinematic), opacity 1.4s var(--ease-cinematic);
+}
+
+/* CONDUIT LOCKING — static image shimmers while waiting for Gemini session.created */
+@keyframes oracle-conduit-pulse {
+  0%   { filter: brightness(1) contrast(1); }
+  25%  { filter: brightness(1.18) contrast(1.12) saturate(0.8); }
+  50%  { filter: brightness(0.88) contrast(1.06) saturate(1.15); }
+  75%  { filter: brightness(1.10) contrast(0.98) saturate(0.9); }
+  100% { filter: brightness(1) contrast(1); }
+}
+.oracle-stage[data-oracle-manifesting="true"] .oracle-avatar-static {
+  animation: oracle-conduit-pulse 2.2s ease-in-out infinite;
 }
 
 .oracle-tap-prompt {

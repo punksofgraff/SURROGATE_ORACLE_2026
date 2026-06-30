@@ -634,15 +634,19 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     let seekerY = cameraStateRef?.current ? -cameraStateRef.current.y : 0;
 
     if (seekerMotionRef?.current) {
-      const { facePos, hasFace, touchPos, hasTouch } = seekerMotionRef.current;
+      const { facePos, hasFace, touchPos, hasTouch, touchGazeSuppressedUntil } = seekerMotionRef.current;
 
       // Priority: face (camera) > touch position > parallax/mouse (default seekerX/Y)
       // NOTE: phoneTilt is NOT used for head gaze — tilt drives the cabinet CSS transform
       // in useParallax, so using it here too would make head+cabinet move in lockstep
       // (zero Mona Lisa effect). Touch position is screen-relative and independent.
 
+      // Suppress stale touch gaze for the first ~1.8s of oracle entry so the knife-selection
+      // tap doesn't make the avatar appear right-shifted on manifestation.
+      const touchActive = hasTouch && performance.now() >= (touchGazeSuppressedUntil ?? 0);
+
       if (hasFace) {
-        if (hasTouch) {
+        if (touchActive) {
           // Mobile with camera: face (50%) + touch position (30%) + parallax (20%)
           seekerX = facePos.x * 0.50 + touchPos.x * 0.30 + seekerX * 0.20;
           seekerY = facePos.y * 0.50 + touchPos.y * 0.30 + seekerY * 0.20;
@@ -651,7 +655,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
           seekerX = facePos.x * 0.65 + seekerX * 0.35;
           seekerY = facePos.y * 0.65 + seekerY * 0.35;
         }
-      } else if (hasTouch) {
+      } else if (touchActive) {
         // Mobile without camera: touch position (80%) + parallax (20%)
         // Touch pos IS the Mona Lisa signal on mobile — avatar looks toward finger.
         seekerX = touchPos.x * 0.80 + seekerX * 0.20;

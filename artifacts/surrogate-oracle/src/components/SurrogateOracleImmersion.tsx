@@ -187,6 +187,8 @@ export function SurrogateOracleImmersion() {
   const [isMicActive, setIsMicActive]       = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isGeminiConnected, setIsGeminiConnected] = useState(false);
+  const [forceOracleManifest, setForceOracleManifest] = useState(false);
+  const [hasManifested, setHasManifested] = useState(false);
   const [debugMode, setDebugMode]           = useState(false);
   const [oracleAlignment, setOracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
   const [profanePulse, setProfanePulse] = useState(0);
@@ -894,14 +896,39 @@ export function SurrogateOracleImmersion() {
         }
       }, 600);
     }
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
     if (scenePhase === 'oracle') {
       setShowPortraitCard(false); // let Oracle avatar arrive unblocked
       connection.setTransmissionQ(0.01, 200);
+      // Reset stale touch gaze from knife-selection tap so the avatar enters centered.
+      // touchGazeSuppressedUntil gives a 1.8s settle window before new touches drive gaze.
+      if (seekerMotionRef.current) {
+        seekerMotionRef.current.hasTouch = false;
+        seekerMotionRef.current.touchPos = { x: 0, y: 0 };
+        seekerMotionRef.current.touchGazeSuppressedUntil = performance.now() + 1800;
+      }
+      cameraStateRef.current = { ...cameraStateRef.current, x: 0, y: 0 };
+      // Reset manifest latch so fresh API readiness is required for this session.
+      setForceOracleManifest(false);
+      // Fallback: if session.created hasn't arrived after 6s, manifest the avatar anyway.
+      fallbackTimer = setTimeout(() => {
+        setForceOracleManifest(true);
+        logStep('ORACLE MANIFEST FALLBACK — Gemini slow, forcing visibility', 'warn');
+      }, 6000);
     }
     return () => {
       if (prewarmTimer !== null) clearTimeout(prewarmTimer);
+      if (fallbackTimer !== null) clearTimeout(fallbackTimer);
     };
   }, [scenePhase, connection]);
+
+  // Latch hasManifested once the Gemini session confirms (or the fallback fires).
+  // Keeps the 3D canvas visible during WS reconnects (isGeminiConnected briefly drops to false
+  // on disconnect). Resets to false when oracle phase exits so the next session starts fresh.
+  useEffect(() => {
+    if (scenePhase !== 'oracle') { setHasManifested(false); return; }
+    if (isGeminiConnected || forceOracleManifest) setHasManifested(true);
+  }, [scenePhase, isGeminiConnected, forceOracleManifest]);
 
   // Tour phase: fire Oracle orientation speech + open mic for interactive Q&A
   useEffect(() => {
@@ -1465,6 +1492,9 @@ export function SurrogateOracleImmersion() {
   useParallax(scenePhase, handleParallaxUpdate, handleZoom);
 
   const isOracleMode = scenePhase === 'oracle';
+  // 3D canvas only becomes visible once Gemini confirms session.created (or a 6s fallback fires).
+  // hasManifested latches true after first reveal so WS reconnects don't briefly hide the avatar.
+  const oracleManifestReady = isOracleMode && (hasManifested || isGeminiConnected || forceOracleManifest);
   const awakened     = scenePhase === 'awakened' || scenePhase === 'tour' || isOracleMode;
   const isAlive      = scenePhase !== 'dormant';
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
@@ -1477,6 +1507,7 @@ export function SurrogateOracleImmersion() {
       data-oracle-state={scenePhase === 'tour' ? 'awakened' : scenePhase}
       data-oracle-alignment={oracleAlignment || undefined}
       data-exiting={journey.isExiting ? 'true' : undefined}
+      data-oracle-manifesting={(isOracleMode && !oracleManifestReady) ? 'true' : undefined}
       data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
       data-camera-active={cameraActive ? 'true' : undefined}
@@ -1653,9 +1684,9 @@ export function SurrogateOracleImmersion() {
                 style={{
                   width: '100%', height: '100%',
                   position: 'absolute', top: 0, left: 0,
-                  opacity: isOracleMode ? 1 : 0,
-                  transition: 'opacity 1.2s ease-out',
-                  pointerEvents: isOracleMode ? 'auto' : 'none',
+                  opacity: oracleManifestReady ? 1 : 0,
+                  transition: 'opacity 1.8s ease-out',
+                  pointerEvents: oracleManifestReady ? 'auto' : 'none',
                   zIndex: 3,
                 }}
               >

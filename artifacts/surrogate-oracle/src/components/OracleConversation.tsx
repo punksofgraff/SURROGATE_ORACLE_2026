@@ -660,7 +660,6 @@ const OracleConversation = forwardRef(
       // Live again — clear any "reconnecting"/"lost" UI the Seeker may have seen.
       setReconnecting(false);
       setReconnectExhausted(false);
-      onConnectedRef.current?.();
       };
 
       ws.onmessage = async (event) => {
@@ -712,6 +711,10 @@ const OracleConversation = forwardRef(
               pendingMessagesRef.current = [];
             }, 450);
           }
+          // Signal parent that Gemini has truly accepted the session and is ready to speak.
+          // Intentionally after session setup — isGeminiConnected now means "session.created confirmed",
+          // not just "WebSocket open". This gates the 3D avatar manifestation on actual API readiness.
+          onConnectedRef.current?.();
         }
           if (msg.type === 'server.content') {
             // Step 2 — usageMetadata can ride along on a serverContent frame (proxy forwards it

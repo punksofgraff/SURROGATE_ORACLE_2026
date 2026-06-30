@@ -634,24 +634,30 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     let seekerY = cameraStateRef?.current ? -cameraStateRef.current.y : 0;
 
     if (seekerMotionRef?.current) {
-      const { phoneTilt, facePos, hasFace } = seekerMotionRef.current;
-      
-      // Determine if we have active sensor data
-      const hasTilt = Math.abs(phoneTilt.x) > 0.01 || Math.abs(phoneTilt.y) > 0.01;
+      const { facePos, hasFace, touchPos, hasTouch } = seekerMotionRef.current;
 
-      if (hasTilt || hasFace) {
-        if (hasTilt) {
-          // Mobile/Tablet: phone tilt (60%) + face position (20%) + parallax residual (20%)
-          // Keeping parallax residual means the avatar still reacts to screen position even on mobile.
-          seekerX = phoneTilt.x * 0.60 + facePos.x * 0.20 + seekerX * 0.20;
-          seekerY = phoneTilt.y * 0.60 + facePos.y * 0.20 + seekerY * 0.20;
+      // Priority: face (camera) > touch position > parallax/mouse (default seekerX/Y)
+      // NOTE: phoneTilt is NOT used for head gaze — tilt drives the cabinet CSS transform
+      // in useParallax, so using it here too would make head+cabinet move in lockstep
+      // (zero Mona Lisa effect). Touch position is screen-relative and independent.
+
+      if (hasFace) {
+        if (hasTouch) {
+          // Mobile with camera: face (50%) + touch position (30%) + parallax (20%)
+          seekerX = facePos.x * 0.50 + touchPos.x * 0.30 + seekerX * 0.20;
+          seekerY = facePos.y * 0.50 + touchPos.y * 0.30 + seekerY * 0.20;
         } else {
-          // Desktop: face tracking (65%) + parallax/mouse (35%)
-          // Blending instead of 100% face prevents detection noise from overriding cursor position.
+          // Desktop with camera: face (65%) + parallax/mouse (35%)
           seekerX = facePos.x * 0.65 + seekerX * 0.35;
           seekerY = facePos.y * 0.65 + seekerY * 0.35;
         }
+      } else if (hasTouch) {
+        // Mobile without camera: touch position (80%) + parallax (20%)
+        // Touch pos IS the Mona Lisa signal on mobile — avatar looks toward finger.
+        seekerX = touchPos.x * 0.80 + seekerX * 0.20;
+        seekerY = touchPos.y * 0.80 + seekerY * 0.20;
       }
+      // else: no touch, no face → seekerX/Y stays as parallax/mouse (desktop default)
     }
 
     const gx = Math.max(-1, Math.min(1, seekerX));

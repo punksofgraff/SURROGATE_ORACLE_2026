@@ -36,6 +36,10 @@ export interface SeekerMotion {
   phoneTilt: { x: number; y: number }; // normalized -1 to 1 (DeviceOrientation)
   facePos:  { x: number; y: number }; // normalized -1 to 1 (FaceDetector or skin-tone centroid)
   hasFace:  boolean;
+  /** Finger position on screen, normalized -1..1 from centre. Active when a touch is held. */
+  touchPos: { x: number; y: number };
+  /** True while at least one finger is touching the screen. */
+  hasTouch: boolean;
 }
 
 /** Natural-video-pixel bounding box of detected face, for AR overlay positioning. */
@@ -97,7 +101,9 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   const seekerMotionRef = useRef<SeekerMotion>({
     phoneTilt: { x: 0, y: 0 },
     facePos:   { x: 0, y: 0 },
-    hasFace:   false
+    hasFace:   false,
+    touchPos:  { x: 0, y: 0 },
+    hasTouch:  false,
   });
 
   // ── Device Orientation Listener ──
@@ -140,6 +146,48 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
       window.removeEventListener('deviceorientation', handleOrientation);
     };
   }, []); // mount-once — independent of isXRMode / cameraActive
+
+  // ── Touch Position Tracker ────────────────────────────────────────────────
+  // Tracks where the seeker's finger is on screen (normalized -1..1 from centre).
+  // This is the correct mobile gaze signal — it is screen-relative and therefore
+  // INDEPENDENT of phone tilt. Phone tilt drives the cabinet CSS transform, so
+  // using tilt for head gaze too would make head+cabinet move in lockstep (zero
+  // Mona Lisa effect). Touch position gives the avatar a target to look toward
+  // that is separate from how the cabinet is oriented.
+  useEffect(() => {
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length < 1) return;
+      const t = e.touches[0];
+      seekerMotionRef.current.touchPos = {
+        x: THREE_MathUtils.clamp((t.clientX / window.innerWidth  - 0.5) * 2, -1, 1),
+        y: THREE_MathUtils.clamp((t.clientY / window.innerHeight - 0.5) * 2, -1, 1),
+      };
+      seekerMotionRef.current.hasTouch = true;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length < 1) return;
+      const t = e.touches[0];
+      seekerMotionRef.current.touchPos = {
+        x: THREE_MathUtils.clamp((t.clientX / window.innerWidth  - 0.5) * 2, -1, 1),
+        y: THREE_MathUtils.clamp((t.clientY / window.innerHeight - 0.5) * 2, -1, 1),
+      };
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) {
+        seekerMotionRef.current.hasTouch = false;
+        // Leave touchPos at last known position — head stays looking there rather
+        // than snapping to centre. It will be smoothed out by headLerpF over time.
+      }
+    };
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchmove',  onTouchMove,  { passive: true });
+    window.addEventListener('touchend',   onTouchEnd,   { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove',  onTouchMove);
+      window.removeEventListener('touchend',   onTouchEnd);
+    };
+  }, []); // mount-once
 
   // ── Face Tracking ──────────────────────────────────────────────────────────
   // Primary: Shape Detection API FaceDetector (Chrome/Android — hardware-accelerated).

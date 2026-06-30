@@ -101,10 +101,11 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   });
 
   // ── Device Orientation Listener ──
+  // Always active — phoneTilt feeds the avatar gaze regardless of XR/camera state.
+  // On Android/desktop (no permission required) the listener attaches immediately.
+  // On iOS the browser requires a user-gesture call to DeviceOrientationEvent.requestPermission;
+  // we piggyback on first touchstart so the seeker never sees a separate dialog.
   useEffect(() => {
-    // Only track if XR or camera is active (seeker allowed motion)
-    if (!isXRMode && !cameraActive) return;
-
     const handleOrientation = (e: DeviceOrientationEvent) => {
       if (!e.beta || !e.gamma) return;
       // beta: -180 to 180 (front/back tilt), gamma: -90 to 90 (left/right tilt)
@@ -114,9 +115,31 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
       seekerMotionRef.current.phoneTilt = { x, y };
     };
 
-    window.addEventListener('deviceorientation', handleOrientation);
-    return () => window.removeEventListener('deviceorientation', handleOrientation);
-  }, [isXRMode, cameraActive]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const DE = DeviceOrientationEvent as any;
+    const needsPermission = typeof DE?.requestPermission === 'function';
+
+    if (!needsPermission) {
+      // Android / desktop — fires without a permission dialog
+      window.addEventListener('deviceorientation', handleOrientation, { passive: true });
+      return () => window.removeEventListener('deviceorientation', handleOrientation);
+    }
+
+    // iOS Safari — must be inside a user-gesture callback
+    const requestOnTouch = async () => {
+      try {
+        const result = await DE.requestPermission();
+        if (result === 'granted') {
+          window.addEventListener('deviceorientation', handleOrientation, { passive: true });
+        }
+      } catch { /* permission denied or unsupported — silently skip */ }
+    };
+    window.addEventListener('touchstart', requestOnTouch, { once: true });
+    return () => {
+      window.removeEventListener('touchstart', requestOnTouch);
+      window.removeEventListener('deviceorientation', handleOrientation);
+    };
+  }, []); // mount-once — independent of isXRMode / cameraActive
 
   // ── Face Tracking ──────────────────────────────────────────────────────────
   // Primary: Shape Detection API FaceDetector (Chrome/Android — hardware-accelerated).

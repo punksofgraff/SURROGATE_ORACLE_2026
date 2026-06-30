@@ -641,13 +641,15 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
 
       if (hasTilt || hasFace) {
         if (hasTilt) {
-          // Mobile/Tablet: Blend phone tilt (70%) and face position (30%)
-          seekerX = phoneTilt.x * 0.7 + facePos.x * 0.3;
-          seekerY = phoneTilt.y * 0.7 + facePos.y * 0.3;
+          // Mobile/Tablet: phone tilt (60%) + face position (20%) + parallax residual (20%)
+          // Keeping parallax residual means the avatar still reacts to screen position even on mobile.
+          seekerX = phoneTilt.x * 0.60 + facePos.x * 0.20 + seekerX * 0.20;
+          seekerY = phoneTilt.y * 0.60 + facePos.y * 0.20 + seekerY * 0.20;
         } else {
-          // Desktop: Use 100% face tracking if camera is active, else seekerX remains mouse parallax
-          seekerX = facePos.x;
-          seekerY = facePos.y;
+          // Desktop: face tracking (65%) + parallax/mouse (35%)
+          // Blending instead of 100% face prevents detection noise from overriding cursor position.
+          seekerX = facePos.x * 0.65 + seekerX * 0.35;
+          seekerY = facePos.y * 0.65 + seekerY * 0.35;
         }
       }
     }
@@ -673,7 +675,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
 
     // ── Head: organic conversational movement ─────────────────────────────
     if (meshData.headBone) {
-      const headLerpF = lerpDt * 0.09;
+      const headLerpF = lerpDt * 0.12;
       const hp = headPhysRef.current;
       const dt = Math.min(delta, 0.03); // clamp to avoid physics explosion during lag
 

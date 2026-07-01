@@ -660,6 +660,9 @@ const OracleConversation = forwardRef(
       // Live again — clear any "reconnecting"/"lost" UI the Seeker may have seen.
       setReconnecting(false);
       setReconnectExhausted(false);
+      // Fire onConnected at WS open so isGeminiConnected gates the canvas promptly.
+      // (session.created fires 100-500ms later; ws.onopen is fast enough for prewarm readiness.)
+      onConnectedRef.current?.();
       };
 
       ws.onmessage = async (event) => {

@@ -11,6 +11,8 @@
  *     Web Audio API requires user interaction before AudioContext can run.
  */
 
+import { createAudioContext } from './browserCapabilities';
+
 let _ctx: AudioContext | null = null;
 
 /**
@@ -19,12 +21,12 @@ let _ctx: AudioContext | null = null;
  */
 export function getAudioContext(): AudioContext {
   if (!_ctx || _ctx.state === 'closed') {
-    _ctx = new (window.AudioContext || (window as any).webkitAudioContext)({
+    _ctx = createAudioContext({
       sampleRate: 24000 // Match Gemini PCM stream exactly
     });
     // Expose for testing
     if (typeof window !== 'undefined') {
-      (window as any).__audioContext = _ctx;
+      window.__audioContext = _ctx;
     }
   }
   if (_ctx.state === 'suspended') {
@@ -103,7 +105,9 @@ function makeNoiseBuffer(c: AudioContext, durationSec: number): AudioBuffer {
       chime.start(t);
       chime.stop(t + 0.56);
 
-    } catch { /* silently fail on restricted contexts */ }
+    } catch (err) {
+      console.warn('[SFX] playActivationSfx failed (restricted audio context?):', err);
+    }
   }
 
 // ── 2. ALLEY AMBIENCE ─────────────────────────────────────────────────────────
@@ -163,9 +167,12 @@ export function startAlleyAmbience(): () => void {
         sub.stop(stopAt);
         mid.stop(stopAt);
         shimmer.stop(stopAt);
-      } catch { /* already stopped */ }
+      } catch (err) {
+        console.warn('[SFX] startAlleyAmbience stop() failed (already stopped?):', err);
+      }
     };
-  } catch {
+  } catch (err) {
+    console.warn('[SFX] startAlleyAmbience failed to start:', err);
     return () => {};
   }
 }
@@ -218,7 +225,9 @@ export function playOraclePresence(): void {
     tone.start(t);
     tone.stop(t + 0.32);
 
-  } catch { /* silently fail */ }
+  } catch (err) {
+    console.warn('[SFX] playOraclePresence failed:', err);
+  }
 }
 
 // ── 4. SIGNAL LOCKED ─────────────────────────────────────────────────────────
@@ -265,7 +274,9 @@ export function playSignalLockedSfx(): void {
     noise.connect(nf); nf.connect(ng); ng.connect(c.destination);
     noise.start(t + 0.28); noise.stop(t + 0.46);
 
-  } catch { /* silently fail */ }
+  } catch (err) {
+    console.warn('[SFX] playSignalLockedSfx failed:', err);
+  }
 }
 
 // ── 5. EXIT TONE ──────────────────────────────────────────────────────────────
@@ -312,5 +323,7 @@ export function playExitTone(): void {
     noise.start(t);
     noise.stop(t + 1.0);
 
-  } catch { /* silently fail */ }
+  } catch (err) {
+    console.warn('[SFX] playExitTone failed:', err);
+  }
 }

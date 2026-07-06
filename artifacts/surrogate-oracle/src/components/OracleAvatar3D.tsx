@@ -381,8 +381,8 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
            
            // Expose all morph names for debugging
            if (import.meta.env.DEV) {
-             (window as any).__oracle_allMorphs = (window as any).__oracle_allMorphs || {};
-             (window as any).__oracle_allMorphs[m.name] = keys;
+             window.__oracle_allMorphs = window.__oracle_allMorphs || {};
+             window.__oracle_allMorphs[m.name] = keys;
            }
         }
       }
@@ -449,14 +449,14 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         console.groupEnd();
         
         // Expose for debugging
-        (window as any).__oracle_morphDicts = result.map(({ mesh, indexMap }) => ({
+        window.__oracle_morphDicts = result.map(({ mesh, indexMap }) => ({
           meshName: mesh.name,
           dict:     { ...mesh.morphTargetDictionary },
           resolved: Object.fromEntries(indexMap),
         }));
       } else {
         console.warn('[OracleAvatar3D] hero3.glb has no morph targets.');
-        (window as any).__oracle_morphDicts = [];
+        window.__oracle_morphDicts = [];
       }
     }
 

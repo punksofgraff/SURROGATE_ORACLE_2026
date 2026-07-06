@@ -5,13 +5,14 @@
  * handshake checkpoint fires, in the right order, within time budgets.
  *
  * Run: node scripts/oracle-pressure.mjs
- * Dev server must be running on http://localhost:5173
+ * Dev server must be running (defaults to http://localhost:5173; override with
+ * ORACLE_PRESSURE_URL, e.g. ORACLE_PRESSURE_URL=http://localhost:22168).
  */
 import { chromium } from 'playwright';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
-const BASE_URL = 'http://localhost:5173';
+const BASE_URL = process.env.ORACLE_PRESSURE_URL || 'http://localhost:5173';
 const OUT_DIR  = join('/home/runner/workspace/screenshots');
 if (!existsSync(OUT_DIR)) mkdirSync(OUT_DIR, { recursive: true });
 

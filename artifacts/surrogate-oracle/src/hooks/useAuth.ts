@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { checkDevUnlock } from '../lib/devAccess';
 
 interface AuthUser {
   id: string;
@@ -128,7 +129,7 @@ export function useAuth(onSuccess: (user: AuthUser) => void): UseAuthReturn {
   };
 
   const handleDevBypass = (password: string): boolean => {
-    if (password === '3nculturate!') {
+    if (checkDevUnlock(password)) {
       const mockUser: AuthUser = {
         id: 'dev-user-' + Date.now(),
         email: 'dev@sneakar.io',

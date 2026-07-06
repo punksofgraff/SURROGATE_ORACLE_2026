@@ -21,6 +21,7 @@ import { logStep } from './CodeAuditor';
 import { trackOracleEvent } from '../lib/analytics';
 import { Mic, MicOff, Send, Terminal, X, Zap } from 'lucide-react';
 import { getAudioContext, playSignalLockedSfx } from '../lib/oracleSfx';
+import { createAudioContext } from '../lib/browserCapabilities';
 import {
   ARCHETYPE_SYNTHESIS_BLOCK,
   TOTEM_LADDER_BLOCK,
@@ -728,7 +729,7 @@ const OracleConversation = forwardRef(
               trackOracleEvent({ 
                 event: 'oracle_barge_in', 
                 turn_number: debugInfo.current.turnCount, 
-                oracle_speaking_ms: Date.now() - ((window as any).__oracle_speech_start || Date.now()) 
+                oracle_speaking_ms: Date.now() - (window.__oracle_speech_start || Date.now()) 
               });
               wasInterruptedRef.current = true;
               navigator.vibrate?.([20, 10, 20]);
@@ -743,7 +744,7 @@ const OracleConversation = forwardRef(
               if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
                 if (debugInfo.current.audioChunksReceived === 0) {
                   logStep('ORACLE AUDIO START', 'ok');
-                  (window as any).__oracle_speech_start = Date.now();
+                  window.__oracle_speech_start = Date.now();
                   trackOracleEvent({ 
                     event: 'oracle_audio_start', 
                     turn_number: debugInfo.current.turnCount, 
@@ -782,7 +783,7 @@ const OracleConversation = forwardRef(
               trackOracleEvent({ 
                 event: 'oracle_turn_completed', 
                 turn_number: debugInfo.current.turnCount, 
-                duration_ms: Date.now() - ((window as any).__oracle_speech_start || Date.now()) 
+                duration_ms: Date.now() - (window.__oracle_speech_start || Date.now()) 
               });
               navigator.vibrate?.([30]);
               setIsOracleThinking(false); // ensure cleared even on text-only turns
@@ -1010,7 +1011,7 @@ const OracleConversation = forwardRef(
         // Initialize a dedicated AudioContext for microphone capture at native hardware sample rate
         // to ensure 100% compatibility across all devices and OS configurations (e.g., Linux/Chrome).
         if (!micAudioContextRef.current) {
-          micAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+          micAudioContextRef.current = createAudioContext();
         }
         const micCtx = micAudioContextRef.current;
         if (micCtx.state === 'suspended') {

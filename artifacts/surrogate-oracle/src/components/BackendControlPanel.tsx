@@ -13,6 +13,7 @@ import { PortraitGalleryDashboard } from './PortraitGalleryDashboard';
 import { Learn2EarnInterface } from './Learn2EarnInterface';
 import { supabase, supabaseEdgeFunctionHeaders } from '../lib/supabase';
 import { useChainFuelz } from '../hooks/useChainFuelz';
+import { checkDevUnlock } from '../lib/devAccess';
 import type { OracleConversationHandle } from './OracleConversation';
 
 // ── Frequencies ────────────────────────────────────────────────────────────────
@@ -590,13 +591,13 @@ export const BackendControlPanel = ({
                       type="password"
                       value={debugPw}
                       onChange={e => setDebugPw(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && debugPw === '3nculturate!' && setDebugPassed(true)}
+                      onKeyDown={e => e.key === 'Enter' && checkDevUnlock(debugPw) && setDebugPassed(true)}
                       placeholder="DECRYPTION KEY"
                       data-testid="debug-password-input"
                       className="ec-gate__input"
                     />
                     <motion.button
-                      onClick={() => { if (debugPw === '3nculturate!') setDebugPassed(true); }}
+                      onClick={() => { if (checkDevUnlock(debugPw)) setDebugPassed(true); }}
                       whileHover={{ scale: 1.04, boxShadow: '0 0 44px rgba(176,38,255,0.5)' }}
                       whileTap={{ scale: 0.97 }}
                       data-testid="debug-access-btn"

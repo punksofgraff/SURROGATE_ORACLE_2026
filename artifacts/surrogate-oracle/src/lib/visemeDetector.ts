@@ -5,6 +5,8 @@
  * Preston Blair set: X B C D E F G H A
  */
 
+import { createAudioContext } from './browserCapabilities';
+
 export type Viseme = 'X' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
 
 export interface VisemeState {
@@ -34,7 +36,7 @@ export class VisemeDetector {
   private readonly onUpdate: (s: VisemeState) => void;
 
   constructor(onUpdate: (s: VisemeState) => void, existingContext?: AudioContext) {
-    this.ctx = existingContext || new (window.AudioContext || (window as any).webkitAudioContext)();
+    this.ctx = existingContext || createAudioContext();
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 1024;
     this.analyser.smoothingTimeConstant = 0.5;

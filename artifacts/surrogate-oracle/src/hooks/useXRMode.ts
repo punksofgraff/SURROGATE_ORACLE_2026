@@ -28,6 +28,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { isInIframe, needsDeviceOrientationPermission, requestDeviceOrientationPermission } from '../lib/browserCapabilities';
 import * as THREE from 'three';
 
 const THREE_MathUtils = THREE.MathUtils;
@@ -84,7 +85,7 @@ function detectXRMode(): boolean {
   // Explicit XR params → always XR
   if (p.has('xr') || p.has('holodexr') || p.has('sneakar-xr')) return true;
   // Iframe detection → HolodeXR WebView context (NOT Replit preview when ?standard set)
-  try { return window.self !== window.top; } catch { return true; /* cross-origin iframe */ }
+  return isInIframe();
 }
 
 export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
@@ -124,9 +125,7 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
       seekerMotionRef.current.phoneTilt = { x, y };
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const DE = DeviceOrientationEvent as any;
-    const needsPermission = typeof DE?.requestPermission === 'function';
+    const needsPermission = needsDeviceOrientationPermission();
 
     if (!needsPermission) {
       // Android / desktop — fires without a permission dialog
@@ -136,12 +135,10 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
 
     // iOS Safari — must be inside a user-gesture callback
     const requestOnTouch = async () => {
-      try {
-        const result = await DE.requestPermission();
-        if (result === 'granted') {
-          window.addEventListener('deviceorientation', handleOrientation, { passive: true });
-        }
-      } catch { /* permission denied or unsupported — silently skip */ }
+      const granted = await requestDeviceOrientationPermission('[XR]');
+      if (granted) {
+        window.addEventListener('deviceorientation', handleOrientation, { passive: true });
+      }
     };
     window.addEventListener('touchstart', requestOnTouch, { once: true });
     return () => {
@@ -207,10 +204,10 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     let frameCount = 0;
     let detecting = false;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const hasFaceAPI = 'FaceDetector' in window;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const detector = hasFaceAPI ? new (window as any).FaceDetector({ fastMode: true, maxDetectedFaces: 1 }) : null;
+    const hasFaceAPI = 'FaceDetector' in window && !!window.FaceDetector;
+    const detector = hasFaceAPI && window.FaceDetector
+      ? new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 })
+      : null;
 
     const canvas = document.createElement('canvas');
     canvas.width = 60;
@@ -412,18 +409,30 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
         case 'holodexr:init':
           setIsXRMode(true);
           startCamera();
-          try { (e.source as Window)?.postMessage({ type: 'oracle:ready', version: '2.0' }, '*'); } catch {}
+          try {
+            (e.source as Window)?.postMessage({ type: 'oracle:ready', version: '2.0' }, '*');
+          } catch (err) {
+            console.warn('[XR] postMessage(oracle:ready) failed:', err);
+          }
           break;
 
         case 'holodexr:marker-detected':
           setMarkerActive(true);
           onMarkerRef.current?.();
-          try { (e.source as Window)?.postMessage({ type: 'oracle:awakened' }, '*'); } catch {}
+          try {
+            (e.source as Window)?.postMessage({ type: 'oracle:awakened' }, '*');
+          } catch (err) {
+            console.warn('[XR] postMessage(oracle:awakened) failed:', err);
+          }
           break;
 
         case 'holodexr:marker-lost':
           setMarkerActive(false);
-          try { (e.source as Window)?.postMessage({ type: 'oracle:dormant' }, '*'); } catch {}
+          try {
+            (e.source as Window)?.postMessage({ type: 'oracle:dormant' }, '*');
+          } catch (err) {
+            console.warn('[XR] postMessage(oracle:dormant) failed:', err);
+          }
           break;
       }
     };
@@ -431,8 +440,7 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     window.addEventListener('message', handleMessage);
 
     // ── window.SurrogateXR global API (HolodeXR JS bridge) ──────────────────
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).SurrogateXR = {
+    window.SurrogateXR = {
       version: '2.0',
       launch: () => {
         setIsXRMode(true);
@@ -472,7 +480,11 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   // Notify HolodeXR parent when camera stream is live
   useEffect(() => {
     if (!isXRMode || !cameraReady) return;
-    try { window.parent.postMessage({ type: 'oracle:camera-ready' }, '*'); } catch {}
+    try {
+      window.parent.postMessage({ type: 'oracle:camera-ready' }, '*');
+    } catch (err) {
+      console.warn('[XR] postMessage(oracle:camera-ready) failed:', err);
+    }
   }, [isXRMode, cameraReady]);
 
   return { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraReady, cameraError, markerActive, autoStart, seekerMotionRef };

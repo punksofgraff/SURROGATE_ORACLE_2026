@@ -348,7 +348,7 @@ export function SurrogateOracleImmersion() {
     markLoreCompleted();
     trackOracleEvent({
       event: 'oracle_terminal_completed',
-      total_ms: Date.now() - ((window as any).__terminal_start || Date.now())
+      total_ms: Date.now() - (window.__terminal_start || Date.now())
     });
 
     if (isFirstTimeSeeker) {
@@ -467,7 +467,9 @@ export function SurrogateOracleImmersion() {
         connection.handleOracleResponse(LORE_AUDIO_URL);
         return;
       }
-    } catch (e) {}
+    } catch (err) {
+      console.warn('[Audio] Pre-recorded lore narration check failed, falling back to live TTS:', err);
+    }
 
     // Primary path: real-time Gemini TTS (robust fallback)
     logStep('GENERATING LIVE NARRATION', 'ok');
@@ -489,7 +491,7 @@ export function SurrogateOracleImmersion() {
     setIsAudioPlaying(true);
     markVisited();
     const loadedEcho = seekerKeyRef.current ? await loadEcho(seekerKeyRef.current) : null;
-    (window as any).__terminal_start = Date.now();
+    window.__terminal_start = Date.now();
 
     // Wallet-signed returning seeker — skip lore + terminal, land straight in the alley.
     // Check both the React state (set by async IP check) AND the IP-agnostic localStorage
@@ -656,7 +658,7 @@ export function SurrogateOracleImmersion() {
       event: 'oracle_exit', 
       phase_at_exit: scenePhase, 
       turns: oracleConversationRef.current?.getSessionTurns().length || 0,
-      total_ms: Date.now() - ((window as any).__session_start || Date.now())
+      total_ms: Date.now() - (window.__session_start || Date.now())
     });
     if (key) {
       saveEcho({
@@ -955,28 +957,28 @@ export function SurrogateOracleImmersion() {
   }, [scenePhase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    (window as any).__oracle_handleAudio = (url: string) => connection.handleOracleResponse(url);
-    (window as any).__oracle_test = () => {
+    window.__oracle_handleAudio = (url: string) => connection.handleOracleResponse(url);
+    window.__oracle_test = () => {
       const ref = oracleConversationRef.current;
       if (!ref) return;
       ref.sendTextMessage('[TEST SIGNAL]', true);
     };
-    (window as any).oracleConversationRef = oracleConversationRef;
-    (window as any).__oracle_skipLore = () => {
+    window.oracleConversationRef = oracleConversationRef;
+    window.__oracle_skipLore = () => {
       if (journey.scenePhase !== 'terminal') return;
       logStep('LORE SKIPPED (DEV HOOK)', 'ok');
       trackOracleEvent({ 
         event: 'oracle_terminal_skipped', 
         at_slide: completedLinesLengthRef.current, 
-        ms_elapsed: Date.now() - ((window as any).__terminal_start || Date.now()) 
+        ms_elapsed: Date.now() - (window.__terminal_start || Date.now()) 
       });
       journey.awakeFromTerminal();
     };
     return () => {
-      delete (window as any).__oracle_handleAudio;
-      delete (window as any).__oracle_test;
-      delete (window as any).oracleConversationRef;
-      delete (window as any).__oracle_skipLore;
+      delete window.__oracle_handleAudio;
+      delete window.__oracle_test;
+      delete window.oracleConversationRef;
+      delete window.__oracle_skipLore;
     };
   }, [connection, journey]);
 
@@ -1408,7 +1410,7 @@ export function SurrogateOracleImmersion() {
 
   useEffect(() => {
     logStep('NEURAL LINK AWAKENING', 'ok');
-    (window as any).__session_start = Date.now();
+    window.__session_start = Date.now();
     setShowConversation(true);
     // initializePCMPlayer() intentionally NOT called here — must be called synchronously
     // inside the first tap gesture handler (handleFirstTap) so the AudioWorklet is

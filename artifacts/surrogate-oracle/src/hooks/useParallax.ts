@@ -20,6 +20,7 @@
  *   floor-refl    0.014×  floor (less parallax = feels grounded)
  */
 import { useEffect } from 'react';
+import { needsDeviceOrientationPermission, requestDeviceOrientationPermission } from '../lib/browserCapabilities';
 
 type Phase = 'dormant' | 'terminal' | 'tour' | 'awakened' | 'oracle';
 
@@ -78,8 +79,7 @@ export function useParallax(
 
     // Capability check — more reliable than UA sniffing (catches iPads in desktop mode,
     // iOS Chrome, and any future UA changes).
-    const DE = DeviceOrientationEvent as any;
-    const needsPermission = typeof DE?.requestPermission === 'function';
+    const needsPermission = needsDeviceOrientationPermission();
 
     if (!needsPermission) {
       // Android / desktop — gyro fires without a permission dialog
@@ -89,14 +89,12 @@ export function useParallax(
     // Request gyro permission on first touch (iOS Safari requires a user-gesture call)
     const requestGyroOnTouch = async () => {
       if (!needsPermission || gyroActive) return;
-      try {
-        const result = await DE.requestPermission();
-        if (result === 'granted') {
-          gyroActive = true;
-          usingGyro = true;
-          window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
-        }
-      } catch {}
+      const granted = await requestDeviceOrientationPermission('[Parallax]');
+      if (granted) {
+        gyroActive = true;
+        usingGyro = true;
+        window.addEventListener('deviceorientation', onDeviceOrientation, { passive: true });
+      }
     };
 
     // ── Mouse fallback (desktop) ──────────────────────────────────────────────

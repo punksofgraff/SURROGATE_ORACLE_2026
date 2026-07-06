@@ -8,6 +8,8 @@
  * back with minimal jitter and zero intermediate file creation.
  */
 
+import { createAudioContext } from '../lib/browserCapabilities';
+
 export class PCMPlayer {
   private context: AudioContext;
   private sampleRate: number;
@@ -42,7 +44,7 @@ export class PCMPlayer {
   constructor(sampleRate: number = 24000, playbackRate: number = 1.0, existingContext?: AudioContext) {
     this.sampleRate = sampleRate;
     this.playbackRate = playbackRate;
-    this.context = existingContext || new (window.AudioContext || (window as any).webkitAudioContext)({
+    this.context = existingContext || createAudioContext({
       sampleRate: this.sampleRate
     });
 
@@ -58,7 +60,8 @@ export class PCMPlayer {
       comp.attack.setValueAtTime(0.003,  this.context.currentTime);
       comp.release.setValueAtTime(0.200, this.context.currentTime);
       this.compressor = comp;
-    } catch {
+    } catch (err) {
+      console.warn('[PCMPlayer] DynamicsCompressor unavailable, skipping:', err);
       this.compressor = null;
     }
 
@@ -71,7 +74,8 @@ export class PCMPlayer {
       f.frequency.setValueAtTime(1000, this.context.currentTime);
       f.Q.setValueAtTime(0.1, this.context.currentTime); // transparent by default
       this.transmissionFilter = f;
-    } catch {
+    } catch (err) {
+      console.warn('[PCMPlayer] Transmission BiquadFilter unavailable, skipping:', err);
       this.transmissionFilter = null;
     }
 
@@ -81,7 +85,8 @@ export class PCMPlayer {
       gain.gain.setValueAtTime(1.0, this.context.currentTime); // Start audible; setVolume ramps to target
       gain.connect(this.context.destination);
       this.masterGain = gain;
-    } catch {
+    } catch (err) {
+      console.warn('[PCMPlayer] Master GainNode unavailable, skipping:', err);
       this.masterGain = null;
     }
 
@@ -103,7 +108,8 @@ export class PCMPlayer {
         panner.connect(this.context.destination);
       }
       this.panner = panner;
-    } catch {
+    } catch (err) {
+      console.warn('[PCMPlayer] PannerNode (HRTF) unavailable, skipping:', err);
       this.panner = null;
     }
 
@@ -269,7 +275,9 @@ export class PCMPlayer {
     // buffer — otherwise chunks accumulate while the context clock is frozen, the
     // ring buffer floods, and audio plays with a fast-forward artifact on resume.
     if (this.context.state === 'suspended') {
-      try { await this.context.resume(); } catch { /* ignore */ }
+      try { await this.context.resume(); } catch (err) {
+        console.warn('[PCMPlayer] AudioContext.resume() failed during feed():', err);
+      }
     }
 
     await this.workletReady;
@@ -358,7 +366,9 @@ export class PCMPlayer {
       this.workletNode.port.postMessage({ type: 'stop' });
     }
     this.sourceNodes.forEach(node => {
-      try { node.stop(); } catch (e) { }
+      try { node.stop(); } catch (err) {
+        console.warn('[PCMPlayer] sourceNode.stop() failed (already stopped?):', err);
+      }
     });
     this.sourceNodes = [];
     this.nextStartTime = 0;

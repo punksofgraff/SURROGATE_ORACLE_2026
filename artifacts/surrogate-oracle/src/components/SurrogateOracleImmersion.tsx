@@ -1706,6 +1706,8 @@ export function SurrogateOracleImmersion() {
           ref={oracleConversationRef}
           userId={currentUserId || undefined}
           sessionId={currentSessionId}
+          cameraVideoRef={cameraVideoRef}
+          cameraActive={cameraActive}
           onOracleResponse={connection.handleOracleResponse}
           onCoinsEarned={(amt) => setSessionCoins(s => s + amt)}
           onSessionEnd={handleSessionEnd}

@@ -1,6 +1,6 @@
 # SURROGATE — Replit Integration
 
-Last updated: 2026-07-06. Codebase quality pass (Task #23) complete.
+Last updated: 2026-07-06. Live camera vision for Oracle (Task #25) complete.
 
 ---
 
@@ -79,7 +79,18 @@ Radio stream: `MediaElementSource` → `GainNode(SESSION_AMBIENT=0.008)` → `Sp
 
 ---
 
-## Session Overhaul: 2026-07-06
+## Session Overhaul: 2026-07-06 (Live Camera Vision, Task #25)
+
+**Live camera vision for Oracle:**
+- Gemini Live's native-audio model accepts video frames as realtime input independently of the `responseModalities: ['AUDIO']` output config — no session/model config change was needed to add video-in.
+- `useGeminiSession.ts` now additionally exports `sessionBootedRef` (already existed internally, just not returned) — the correct gate for any new realtime-input stream, since `isConnected` flips true at `ws.onopen`, before `session.created`. Using `isConnected` would risk sending mid-handshake.
+- New `src/hooks/useVisionFrames.ts`: captures a JPEG snapshot from the already-active camera `<video>` (the same element `useXRMode` keeps alive for local face-tracking gaze) on an independent `setInterval` (0.5fps, 768px longest-edge, quality 0.65) and sends it over the same Gemini WebSocket using the identical `client.realtimeInput` / `media_chunks` envelope the audio path already uses — just `mimeType: 'image/jpeg'` instead of `audio/pcm`. Frames are drop-not-queue (skipped, never buffered, if the gate is closed) and the hook is a strict no-op when the camera isn't active, so the audio-only journey is byte-for-byte unaffected when vision is unavailable.
+- Wired additively into `OracleConversation.tsx` (new optional `cameraVideoRef`/`cameraActive` props, `frameChunksSent` debug counter) and `SurrogateOracleImmersion.tsx` (passes its existing `useXRMode()` camera refs through) — the camera already activates automatically during the joint-permission step on first tap in normal (non-XR) mode, so vision is live for the default Seeker flow, not just XR passthrough.
+- Confirmed via code read that `supabase/functions/gemini-live-proxy/index.ts` forwards `realtimeInput` generically with no mimeType filtering — no proxy change was required.
+- Verification: `pnpm --filter @workspace/surrogate-oracle run typecheck` clean; `node scripts/oracle-pressure.mjs` re-run after the change — desktop suite fully clean (45/45), only the pre-existing mobile-viewport timing crash (documented above as a known non-regression).
+- **Not verified in this session:** end-to-end vision correctness (e.g. "how many fingers am I holding up") requires a real camera and device — this sandboxed environment has no camera hardware and Playwright cannot simulate one for this path. Recommend a manual check on a real device before relying on this in front of users.
+
+## Session Overhaul: 2026-07-06 (Codebase Quality Pass, Task #23)
 
 **Codebase quality pass (Task #23):**
 - Removed hardcoded debug-unlock password; now gated by `VITE_DEV_UNLOCK_PASSWORD` env var, fails closed if unset.

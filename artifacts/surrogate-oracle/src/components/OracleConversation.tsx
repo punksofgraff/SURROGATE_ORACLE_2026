@@ -23,6 +23,7 @@ import { Mic, MicOff, Send, Terminal, X, Zap } from 'lucide-react';
 import { getAudioContext, playSignalLockedSfx } from '../lib/oracleSfx';
 import { createAudioContext } from '../lib/browserCapabilities';
 import { useGeminiSession, GEMINI_MODEL, type GeminiSessionHandlers } from '../hooks/useGeminiSession';
+import { useVisionFrames } from '../hooks/useVisionFrames';
 
 // GEMINI_MODEL, ORACLE_SYSTEM_PROMPT and its supporting prompt blocks moved to
 // useGeminiSession.ts — they are pure inputs to the WS session.config payload
@@ -76,6 +77,12 @@ interface OracleConversationProps {
    *  is listen-only and must not trigger getUserMedia. Defaults to false so stale refs
    *  from prior sessions can never open the mic during lore, terminal, or tour. */
   micAutoRestartAllowed?: boolean;
+  /** The already-active camera <video> element from useXRMode (gaze tracking).
+   *  Optional/additive — when provided alongside `cameraActive`, periodic frames
+   *  are streamed to the Gemini Live session so the Oracle can see the Seeker. */
+  cameraVideoRef?: React.RefObject<HTMLVideoElement | null>;
+  /** Mirrors useXRMode's cameraActive — camera permission granted and stream attached. */
+  cameraActive?: boolean;
 }
 
 export interface OracleConversationHandle {
@@ -152,6 +159,8 @@ const OracleConversation = forwardRef(
       onMicWillStart,
       onMicClick,
       onTypeModeChange,
+      cameraVideoRef,
+      cameraActive,
     } = props;
 
     const [isListening, setIsListening] = useState(false);
@@ -285,6 +294,7 @@ const OracleConversation = forwardRef(
       turnCount: 0,
       audioChunksReceived: 0,
       audioChunksSent: 0,
+      frameChunksSent: 0,
       connectedAt: null as number | null,
       lastError: null as string | null,
       recentMessages: [] as string[],
@@ -653,7 +663,20 @@ const OracleConversation = forwardRef(
       disconnect,
       prewarm,
       startSession,
+      sessionBootedRef,
     } = geminiSession;
+
+    // Additive vision feed — streams periodic camera snapshots into the same
+    // Gemini Live session over `wsRef`, gated on `sessionBootedRef` (not
+    // `isConnected`) so nothing sends mid-handshake. No-op when the camera isn't
+    // active (audio-only journey is completely unaffected).
+    useVisionFrames({
+      videoRef: cameraVideoRef,
+      active: cameraActive,
+      wsRef,
+      sessionBootedRef,
+      onFrameSent: () => { debugInfo.current.frameChunksSent++; },
+    });
 
     const startMic = async () => {
       if (isListeningRef.current) return;

@@ -187,6 +187,12 @@ export interface UseGeminiSessionReturn {
   /** Clears sessionBootedRef — called by the component when sessionId rotates
    *  so a fresh session can re-boot (e.g. fire "Greetings... Seeker" again). */
   resetSessionBoot: () => void;
+  /** Read-only view of sessionBootedRef — true only after `session.created` has
+   *  been confirmed by Gemini (not merely `ws.onopen`). Additive export: existing
+   *  boot/reconnect logic still owns writes to the underlying ref. Any feature that
+   *  streams data alongside the voice session (e.g. vision frames) should gate on
+   *  this rather than `isConnected`, which flips true earlier at ws.onopen. */
+  sessionBootedRef: MutableRefObject<boolean>;
 }
 
 export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessionReturn {
@@ -614,5 +620,6 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     prewarm,
     startSession,
     resetSessionBoot,
+    sessionBootedRef,
   };
 }

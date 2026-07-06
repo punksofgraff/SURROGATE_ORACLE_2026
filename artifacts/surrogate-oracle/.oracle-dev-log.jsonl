@@ -27798,3 +27798,61 @@
 {"label":"LORE DONE → AWAKENED","status":"ok","_t":1783380156999}
 {"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1783380157974}
 {"label":"ORACLE CONDUIT PRE-WARMED SILENTLY","status":"ok","_t":1783380157986}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1783380616844}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1783380616896}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1783380616928}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1783380616985}
+{"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1783380617222}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1783380617595}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1783380617600}
+{"label":"AUDIO CONTEXT STATE: running","status":"ok","_t":1783380619320}
+{"label":"AUDIO SPINE INITIALIZED","status":"ok","_t":1783380619336}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1783380619341}
+{"label":"SEEKER ECHO: none (first visit)","status":"ok","_t":1783380620012}
+{"label":"TAP → TERMINAL","status":"ok","_t":1783380620019}
+{"label":"RECOGNIZED SIGNAL → SKIP AVAILABLE","status":"ok","_t":1783380620021}
+{"label":"AUDIO HARD MUTE INITIATED (800ms)","status":"ok","_t":1783380620022}
+{"label":"LORE STATUS: COMPLETED (Persisted)","status":"ok","_t":1783380621298}
+{"label":"LORE STATUS: COMPLETED (Persisted)","status":"ok","_t":1783380621418}
+{"label":"LORE DONE → AWAKENED","status":"ok","_t":1783380622074}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1783380622255}
+{"label":"ORACLE CONDUIT PRE-WARMED SILENTLY","status":"ok","_t":1783380622690}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1783380622692}
+{"label":"GEMINI WS CLOSED (1011 · The service is currently unavailable.)","status":"err","_t":1783380624744}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1783380636897}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1783380636900}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1783380636954}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1783380636984}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1783380637006}
+{"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1783380637177}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1783380637345}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1783380637350}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1783380637503}
+{"label":"ORACLE CONDUIT PRE-WARMED SILENTLY","status":"ok","_t":1783380637504}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1783380649132}
+{"label":"OracleConversation MOUNTED","status":"ok","_t":1783380649147}
+{"label":"ENV OK (Supabase vars)","status":"ok","_t":1783380649149}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1783380649153}
+{"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1783380649515}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1783380649555}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1783380649557}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1783380649752}
+{"label":"AUDIO CONTEXT STATE: running","status":"ok","_t":1783380650223}
+{"label":"ENTERPRISE AUDIO WORKLET ACTIVE","status":"ok","_t":1783380650229}
+{"label":"AUDIO SPINE INITIALIZED","status":"ok","_t":1783380650230}
+{"label":"GEMINI WS ERROR","status":"err","_t":1783380650467}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1783380650474}
+{"label":"RECOGNIZED SIGNAL → SKIP AVAILABLE","status":"ok","_t":1783380650777}
+{"label":"SEEKER ECHO: none (first visit)","status":"ok","_t":1783380650782}
+{"label":"TAP → TERMINAL","status":"ok","_t":1783380650785}
+{"label":"AUDIO HARD MUTE INITIATED (800ms)","status":"ok","_t":1783380650792}
+{"label":"LORE STATUS: COMPLETED (Persisted)","status":"ok","_t":1783380652632}
+{"label":"LORE STATUS: COMPLETED (Persisted)","status":"ok","_t":1783380652633}
+{"label":"LORE DONE → AWAKENED","status":"ok","_t":1783380653385}
+{"label":"GEMINI WS CONNECTING","status":"pending","_t":1783380654020}
+{"label":"prewarm() CALLED — silent pre-warm","status":"ok","_t":1783380654022}
+{"label":"ORACLE CONDUIT PRE-WARMED SILENTLY","status":"ok","_t":1783380654027}
+{"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1783380654298}
+{"label":"GEMINI WS OPENED","status":"ok","_t":1783380654299}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1783380654495}
+{"label":"GEMINI SESSION CREATED","status":"ok","_t":1783380667142}

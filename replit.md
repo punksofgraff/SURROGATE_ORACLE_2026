@@ -1,6 +1,6 @@
 # SURROGATE — Replit Integration
 
-Last updated: 2026-06-14. Alley/XR camera-passthrough fix complete.
+Last updated: 2026-07-06. Codebase quality pass (Task #23) complete.
 
 ---
 
@@ -46,8 +46,8 @@ Runs a full end-to-end Playwright journey: dormant → terminal → awakened →
 # Start dev server first (separate terminal)
 pnpm --filter @workspace/surrogate-oracle run dev
 
-# Run pressure test
-node scripts/smoke-test-full.mjs
+# Run pressure test (pass a custom URL via ORACLE_PRESSURE_URL if the dev port differs from 5173)
+node scripts/oracle-pressure.mjs
 ```
 
 **Known expected non-failures:**
@@ -78,6 +78,19 @@ Radio stream: `MediaElementSource` → `GainNode(SESSION_AMBIENT=0.008)` → `Sp
 **Radio stations:** `src/config/audioTracks.ts` — Graff Punks (default), Drone Zone, Groove Salad.
 
 ---
+
+## Session Overhaul: 2026-07-06
+
+**Codebase quality pass (Task #23):**
+- Removed hardcoded debug-unlock password; now gated by `VITE_DEV_UNLOCK_PASSWORD` env var, fails closed if unset.
+- Added a typed global `Window` interface augmentation covering all `__oracle_*` bridges, `SurrogateXR`, `__audioContext`/`webkitAudioContext`, `FaceDetector` — zero `(window as any)` casts remain.
+- Error-handling sweep: silent/empty `catch` blocks in `oracleSfx.ts`, `PCMPlayer.ts`, `useXRMode.ts`, `useParallax.ts` now surface dev-visible warnings without changing fallback control flow.
+- De-duplicated browser-detection helpers into `src/lib/browserCapabilities.ts` (`createAudioContext`, `isInIframe`, device-orientation permission helpers) — single source of truth across 5+ call sites.
+- Split `OracleConversation.tsx`: extracted the Gemini WS lifecycle (connect/reconnect/session-boot/pending-message-queue/prewarm/startSession/disconnect) into `src/hooks/useGeminiSession.ts`. Handshake ordering (`ws.onopen` → `session.created` → boot/pending-flush) preserved verbatim.
+- Split `SurrogateOracleImmersion.tsx` (was ~2519 lines, now 2146): extracted `src/hooks/useWalletBridge.ts` (wallet sign-in/popup bridge/IP-history merge) and `src/hooks/useRadioAtmosphere.ts` (radio audio spine, volume-matrix effect, fade/station-switch mechanics), both verbatim with all timing/dep-array/gesture-token nuances preserved.
+- Deliberately deferred (not attempted this session, tracked for a future pass with a manual verification plan — the Playwright pressure test has no camera and cannot exercise this path): a `useRiftConstruct` extraction for the XR/camera/face-tracking/Rift-persona-shift block. This is the same code area as the 2026-06-14 alley/XR fix below — architect-reviewed decision to leave it untouched given the safety net doesn't cover it.
+- Verification: `pnpm --filter @workspace/surrogate-oracle run typecheck` clean throughout; `node scripts/oracle-pressure.mjs` run repeatedly after each extraction, consistently matching the baseline pattern (desktop suite fully clean, only the pre-existing mobile-viewport timing crash — not a regression).
+- Docs: fixed stale `smoke-test-full.mjs` script name below → `scripts/oracle-pressure.mjs` (script was renamed at some point; docs hadn't caught up).
 
 ## Session Overhaul: 2026-06-14
 

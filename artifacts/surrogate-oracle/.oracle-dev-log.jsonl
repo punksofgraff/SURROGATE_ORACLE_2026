@@ -25885,3 +25885,4 @@
 {"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1783371768971}
 {"label":"TAB BACKGROUNDED","status":"warn","_t":1783371812000}
 {"label":"TAB BACKGROUNDED","status":"warn","_t":1783371812009}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1783371966529}

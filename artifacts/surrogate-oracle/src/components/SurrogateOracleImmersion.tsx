@@ -1751,7 +1751,7 @@ export function SurrogateOracleImmersion() {
               
               // 1. Gyro (DeviceOrientation) - Request first and synchronously to guarantee user gesture validation on iOS
               const _DE = (DeviceOrientationEvent as any);
-              if (typeof _DE?.requestPermission === 'function') _DE.requestPermission().catch(() => {});
+              if (typeof _DE?.requestPermission === 'function') _DE.requestPermission().catch((err: unknown) => console.warn('[Parallax] DeviceOrientation permission request failed:', err));
               
               // 2. Request Consolidated Mic + Camera permissions concurrently in a single native prompt
               try {

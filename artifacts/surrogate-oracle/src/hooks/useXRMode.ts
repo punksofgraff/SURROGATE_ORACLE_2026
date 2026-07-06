@@ -203,6 +203,7 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     let rafId: number;
     let frameCount = 0;
     let detecting = false;
+    let detectorFailLogged = false;
 
     const hasFaceAPI = 'FaceDetector' in window && !!window.FaceDetector;
     const detector = hasFaceAPI && window.FaceDetector
@@ -301,7 +302,14 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
           } else {
             skinCentroidTick(); // hardware missed — fall through to skin-tone centroid
           }
-        }).catch(() => { detecting = false; skinCentroidTick(); });
+        }).catch((err) => {
+          detecting = false;
+          if (!detectorFailLogged) {
+            detectorFailLogged = true;
+            console.warn('[XR] FaceDetector.detect() failed, falling back to skin-tone centroid:', err);
+          }
+          skinCentroidTick();
+        });
       } else if (!detector) {
         skinCentroidTick();
       }
@@ -350,7 +358,9 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     if (!vid || !streamRef.current) return;
     if (vid.srcObject !== streamRef.current) {
       vid.srcObject = streamRef.current;
-      vid.play().catch(() => {});
+      vid.play().catch((err) => {
+        console.warn('[XR] Camera preview video.play() failed:', err);
+      });
     }
   }, [cameraActive]);
 

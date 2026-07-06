@@ -68,7 +68,7 @@ export function logStep(label: string, status: StepStatus = 'ok') {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ label, status }),
-    }).catch(() => {});
+    }).catch((err) => console.warn('[CodeAuditor] dev-log relay POST failed:', err));
   }
 }
 

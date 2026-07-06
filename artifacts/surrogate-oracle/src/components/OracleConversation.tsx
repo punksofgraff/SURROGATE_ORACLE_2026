@@ -217,7 +217,7 @@ const OracleConversation = forwardRef(
           'Prefer': 'return=minimal',
         },
         body: JSON.stringify(rows),
-      }).catch(() => {});
+      }).catch((err) => console.warn('[Persistence] Conversation turn upload failed:', err));
     }, [turns, sessionId]);
 
     // Load turns from Supabase on mount when localStorage has nothing (new device / cleared storage)
@@ -241,7 +241,7 @@ const OracleConversation = forwardRef(
           setTurns(loaded);
           lastSupabaseTurnCountRef.current = loaded.length;
         })
-        .catch(() => {});
+        .catch((err) => console.warn('[Persistence] Conversation turn restore failed:', err));
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId]);
 
@@ -850,7 +850,9 @@ const OracleConversation = forwardRef(
       mediaStreamRef.current?.getTracks().forEach(t => t.stop());
       mediaStreamRef.current = null;
       if (micAudioContextRef.current && micAudioContextRef.current.state !== 'closed') {
-        micAudioContextRef.current.suspend().catch(() => {});
+        micAudioContextRef.current.suspend().catch((err) => {
+          console.warn('[Mic] AudioContext.suspend() failed:', err);
+        });
       }
       isListeningRef.current = false;
       setIsListening(false);
@@ -886,7 +888,7 @@ const OracleConversation = forwardRef(
         lastVadState: debugInfo.current.lastVadState,
         lastVadRms: debugInfo.current.lastVadRms,
         connectedAt: debugInfo.current.connectedAt,
-        endpoint: import.meta.env.VITE_SUPABASE_URL?.replace('https://', '') || 'velmmplevfrtrtrypoch.supabase.co',
+        endpoint: import.meta.env.VITE_SUPABASE_URL?.replace('https://', '') || '(VITE_SUPABASE_URL not configured)',
         lastError: debugInfo.current.lastError,
 
         recentMessages: debugInfo.current.recentMessages,

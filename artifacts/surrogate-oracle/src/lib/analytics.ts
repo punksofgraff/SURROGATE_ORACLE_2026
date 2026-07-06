@@ -46,6 +46,6 @@ export const trackOracleEvent = (event: OracleAnalyticsEvent) => {
         ts:         Date.now(),
         env:        'prod',
       }),
-    }).catch(() => {});
+    }).catch((err) => console.warn('[analytics] log-event POST failed:', err));
   }
 };

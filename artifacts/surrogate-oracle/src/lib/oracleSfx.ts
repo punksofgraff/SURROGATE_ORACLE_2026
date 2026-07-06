@@ -30,7 +30,9 @@ export function getAudioContext(): AudioContext {
     }
   }
   if (_ctx.state === 'suspended') {
-    _ctx.resume().catch(() => {});
+    _ctx.resume().catch((err) => {
+      console.warn('[oracleSfx] AudioContext.resume() failed:', err);
+    });
   }
   return _ctx;
 }

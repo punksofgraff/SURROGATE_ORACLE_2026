@@ -67,7 +67,7 @@ export function useRadioAtmosphere({
       // iOS Safari requires audio element play() to be called synchronously inside the
       // gesture handler — the useEffect path (setIsAudioPlaying → play()) fires after
       // paint and is outside iOS's gesture window, so the element stays silent.
-      audioRef.current.play().catch(() => {});
+      audioRef.current.play().catch((err) => console.warn('[Radio] Initial play() failed:', err));
       setIsAudioPlaying(true);
       logStep('AUDIO SPINE INITIALIZED', 'ok');
     } catch (e) {
@@ -107,7 +107,7 @@ export function useRadioAtmosphere({
 
       // Resume element if it was paused
       if (audioRef.current && audioRef.current.paused) {
-        audioRef.current.play().catch(() => {});
+        audioRef.current.play().catch((err) => console.warn('[Radio] Resume play() failed:', err));
       }
     }
   }, []);
@@ -117,7 +117,7 @@ export function useRadioAtmosphere({
     const wasPlaying = !audioRef.current.paused;
     audioRef.current.src = defaultAudioTracks[idx].url;
     audioRef.current.load();
-    if (wasPlaying) audioRef.current.play().catch(() => {});
+    if (wasPlaying) audioRef.current.play().catch((err) => console.warn('[Radio] Station-switch play() failed:', err));
     setCurrentStation(idx);
   }, [currentStation]);
 
@@ -163,7 +163,7 @@ export function useRadioAtmosphere({
 
   useEffect(() => {
     if (!audioRef.current) return;
-    if (isAudioPlaying) audioRef.current.play().catch(() => {});
+    if (isAudioPlaying) audioRef.current.play().catch((err) => console.warn('[Radio] play()/pause sync failed:', err));
     else audioRef.current.pause();
   }, [isAudioPlaying]);
 

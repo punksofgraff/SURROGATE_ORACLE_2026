@@ -257,12 +257,22 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
   }, []);
 
   const connectToGemini = useCallback(() => {
+    // Fail closed rather than silently falling back to a hardcoded project URL —
+    // a stale/wrong default would route audio to the wrong backend without any signal.
+    const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (!rawSupabaseUrl) {
+      console.error('[useGeminiSession] VITE_SUPABASE_URL is not configured — cannot connect to the Gemini Live proxy.');
+      logStep('GEMINI WS SKIPPED — VITE_SUPABASE_URL missing', 'err');
+      setReconnecting(false);
+      setReconnectExhausted(true); // surfaces the existing "tap to reconnect" affordance
+      return;
+    }
+
     if (wsRef.current) wsRef.current.close();
     pendingMessagesRef.current = []; // Clear queue on fresh connect
     handlersRef.current.onConnectStart();
 
-    // Use environment variable for Supabase URL to avoid hardcoding dev project
-    let supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://velmmplevfrtrtrypoch.supabase.co';
+    let supabaseUrl = rawSupabaseUrl;
     // Ensure we have a protocol, defaulting to https if missing
     if (!supabaseUrl.startsWith('http')) supabaseUrl = 'https://' + supabaseUrl;
     // Convert to WebSocket protocol

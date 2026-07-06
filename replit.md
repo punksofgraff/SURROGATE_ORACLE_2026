@@ -92,6 +92,11 @@ Radio stream: `MediaElementSource` → `GainNode(SESSION_AMBIENT=0.008)` → `Sp
 - Verification: `pnpm --filter @workspace/surrogate-oracle run typecheck` clean throughout; `node scripts/oracle-pressure.mjs` run repeatedly after each extraction, consistently matching the baseline pattern (desktop suite fully clean, only the pre-existing mobile-viewport timing crash — not a regression).
 - Docs: fixed stale `smoke-test-full.mjs` script name below → `scripts/oracle-pressure.mjs` (script was renamed at some point; docs hadn't caught up).
 
+**Code-review follow-up (same task, post-rejection round):**
+- Removed a hardcoded fallback Supabase project URL that had leaked into `useGeminiSession.ts` (WS connect) and `OracleConversation.tsx` (debug `endpoint` field) during the split. Both now fail closed with an explicit console error + `logStep` if `VITE_SUPABASE_URL` is unset, and the WS path surfaces the existing "tap to reconnect" affordance instead of silently defaulting to an unrelated project.
+- Extended the error-handling sweep to the remaining silent `catch(() => {})` blocks: `useXRMode.ts` (camera preview `video.play()`, FaceDetector fallback — rate-limited to one log per session), `oracleSfx.ts` (`AudioContext.resume()`), `OracleConversation.tsx` (mic `AudioContext.suspend()`, conversation-turn Supabase upload/restore), `useRadioAtmosphere.ts` (all four `audioRef.play()` call sites), `analytics.ts` / `CodeAuditor.tsx` (fire-and-forget log POSTs), `SurrogateOracleImmersion.tsx` (DeviceOrientation permission request). All now `console.warn` on failure with no change to fallback control flow.
+- Re-verified after both fix rounds: typecheck clean; pressure test consistently matches baseline (desktop suite fully clean, only the pre-existing mobile-viewport timing crash).
+
 ## Session Overhaul: 2026-06-14
 
 **Alley background + XR mode fix:**

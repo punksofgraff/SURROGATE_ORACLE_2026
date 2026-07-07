@@ -168,10 +168,31 @@ const OracleConversation = forwardRef(
     // Ref mirror of isOracleSpeaking — used in audio processing callback to avoid stale closure.
     // Updated synchronously before setState so the audio callback sees the latest value.
     const isOracleSpeakingRef = useRef(false);
+
+    // Vision cost gate — true while a conversation turn is active, false during
+    // extended silences. Driven by Oracle/user speaking events below; the hold-off
+    // timer prevents frames cutting off the instant speech ends (gives 8 s of
+    // continued capture after the last activity). Passed to useVisionFrames so
+    // JPEG frames pause automatically during long idle gaps, reducing Gemini token spend.
+    const visionConversationActiveRef = useRef(false);
+    const visionHoldOffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const signalVisionActivity = useCallback(() => {
+      visionConversationActiveRef.current = true;
+      if (visionHoldOffTimerRef.current !== null) clearTimeout(visionHoldOffTimerRef.current);
+      visionHoldOffTimerRef.current = setTimeout(() => {
+        visionConversationActiveRef.current = false;
+      }, 8_000);
+    }, []);
+    // Cleanup hold-off timer on unmount.
+    useEffect(() => () => {
+      if (visionHoldOffTimerRef.current !== null) clearTimeout(visionHoldOffTimerRef.current);
+    }, []);
+
     const setOracleSpeaking = useCallback((val: boolean) => {
       isOracleSpeakingRef.current = val;
       _setIsOracleSpeaking(val);
-    }, []);
+      if (val) signalVisionActivity();
+    }, [signalVisionActivity]);
     // true between Seeker turn-end and first Oracle audio chunk (the "contemplative" gap)
     const [isOracleThinking, setIsOracleThinking] = useState(false);
     const [turns, setTurns] = useState<Turn[]>(() => {
@@ -675,6 +696,7 @@ const OracleConversation = forwardRef(
       active: cameraActive,
       wsRef,
       sessionBootedRef,
+      conversationActiveRef: visionConversationActiveRef,
       onFrameSent: () => { debugInfo.current.frameChunksSent++; },
     });
 
@@ -798,6 +820,7 @@ const OracleConversation = forwardRef(
 
           if (result.isTurnEnd) {
             setIsOracleThinking(true);
+            signalVisionActivity(); // user finished speaking — hold vision feed open during thinking gap
           }
 
           // Continuous stream: MUST send while Oracle is speaking to enable native Gemini VAD barge-in.
@@ -835,6 +858,7 @@ const OracleConversation = forwardRef(
 
           if (result.isOnsetStart) {
             navigator.vibrate?.([15]);
+            signalVisionActivity(); // user started speaking — activate vision feed
           }
         };
 

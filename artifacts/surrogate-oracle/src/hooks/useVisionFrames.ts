@@ -33,6 +33,13 @@ export interface UseVisionFramesParams {
   active?: boolean;
   wsRef: MutableRefObject<WebSocket | null>;
   sessionBootedRef: MutableRefObject<boolean>;
+  /**
+   * Optional cost-reduction gate. When provided, frames are skipped unless this
+   * ref is `true`. Intended to be driven by conversational activity (user/Oracle
+   * speaking) so frames pause during extended silences and resume immediately when
+   * either party speaks. When omitted, frames flow continuously (original behaviour).
+   */
+  conversationActiveRef?: MutableRefObject<boolean>;
   /** Ms between frame captures. Default 2000 (0.5 fps) — enough for "what am I
    *  holding up" style prompts without meaningfully taxing bandwidth/tokens. */
   intervalMs?: number;
@@ -53,6 +60,7 @@ export function useVisionFrames({
   active,
   wsRef,
   sessionBootedRef,
+  conversationActiveRef,
   intervalMs = 2000,
   maxDimension = 768,
   quality = 0.65,
@@ -75,6 +83,10 @@ export function useVisionFrames({
     const tick = () => {
       const ws = wsRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN || !sessionBootedRef.current) return;
+      // Cost gate: skip frame if a conversationActiveRef is wired up but currently false.
+      // This pauses vision during extended silences — frames resume the moment either
+      // party speaks. When the ref is absent the hook behaves as before (always on).
+      if (conversationActiveRef && !conversationActiveRef.current) return;
 
       const video = videoRef.current;
       if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) return;
@@ -109,5 +121,5 @@ export function useVisionFrames({
 
     const id = setInterval(tick, intervalMs);
     return () => clearInterval(id);
-  }, [videoRef, active, wsRef, sessionBootedRef, intervalMs, maxDimension, quality]);
+  }, [videoRef, active, wsRef, sessionBootedRef, conversationActiveRef, intervalMs, maxDimension, quality]);
 }

@@ -669,7 +669,7 @@ export function SurrogateOracleImmersion() {
       }
       const seed = `[MANIFEST — The Seeker has drawn their blade. Standby mode ends. You are fully present now. CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}).${memoryBlock} Reply directly to the Seeker's drawn question with your deep Oracle insight: "${q}". Speak with weight and presence, deliver slowly (10% slower than normal). Do NOT repeat the question back to them. Pause naturally, give your full answer, then close with a single spoken line — one sentence — that opens the channel for the Seeker to speak. Not "your turn." Speak it the way a door sounds when it opens.]`;
       oracleConversationRef.current?.startSession(seed);
-    }, 1200);
+    }, 2200);
   };
 
   // ── Effects ─────────────────────────────────────────────────────────────
@@ -1320,29 +1320,31 @@ export function SurrogateOracleImmersion() {
                   zIndex: 3,
                 }}
               >
-                <OracleErrorBoundary>
-                  <Suspense fallback={canvasWarmed ? null : <OracleAvatarFallback />}>
-                    <Canvas
-                      camera={{ position: [0, 0, 1.8], fov: 55 }}
-                      dpr={isDegraded ? [1, 1] : [1, Math.min(window.devicePixelRatio, 2)]}
-                      gl={{ antialias: !isDegraded, alpha: true }}
-                      style={{ width: '100%', height: '100%', background: 'transparent' }}
-                      frameloop="always"
-                    >
-                      <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
-                      {!isDegraded && (
-                        <EffectComposer>
-                          <DepthOfField
-                            focusDistance={0.012}
-                            focalLength={0.022}
-                            bokehScale={2.0}
-                            height={480}
-                          />
-                        </EffectComposer>
-                      )}
-                    </Canvas>
-                  </Suspense>
-                </OracleErrorBoundary>
+                <div className="oracle-avatar-headroom-hook" style={{ width: '100%', height: '100%' }}>
+                  <OracleErrorBoundary>
+                    <Suspense fallback={canvasWarmed ? null : <OracleAvatarFallback />}>
+                      <Canvas
+                        camera={{ position: [0, 0, 1.8], fov: 55 }}
+                        dpr={isDegraded ? [1, 1] : [1, Math.min(window.devicePixelRatio, 2)]}
+                        gl={{ antialias: !isDegraded, alpha: true }}
+                        style={{ width: '100%', height: '100%', background: 'transparent' }}
+                        frameloop="always"
+                      >
+                        <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
+                        {!isDegraded && (
+                          <EffectComposer>
+                            <DepthOfField
+                              focusDistance={0.012}
+                              focalLength={0.022}
+                              bokehScale={2.0}
+                              height={480}
+                            />
+                          </EffectComposer>
+                        )}
+                      </Canvas>
+                    </Suspense>
+                  </OracleErrorBoundary>
+                </div>
               </div>
             )}
             {/* Portrait-state overlays — only visible during pre-oracle awakened phase */}
@@ -1676,7 +1678,7 @@ export function SurrogateOracleImmersion() {
           </motion.div>
         )}
 
-        {scenePhase === 'awakened' && !journey.selectedKnifeQuestion && !showStage00 && (
+        {scenePhase === 'awakened' && !showStage00 && (
           <motion.div key="awakened-layer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none' }}>
             {showArchiveOpen && (
               <div style={{ position: 'absolute', inset: 0, zIndex: 105, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>

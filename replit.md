@@ -1,6 +1,6 @@
 # SURROGATE — Replit Integration
 
-Last updated: 2026-07-06. Live camera vision for Oracle (Task #25) complete.
+Last updated: 2026-07-07. Camera-vision verification (Task #26) done as far as sandbox allows; real-device check still recommended.
 
 ---
 
@@ -78,6 +78,20 @@ Radio stream: `MediaElementSource` → `GainNode(SESSION_AMBIENT=0.008)` → `Sp
 **Radio stations:** `src/config/audioTracks.ts` — Graff Punks (default), Drone Zone, Groove Salad.
 
 ---
+
+## Session Overhaul: 2026-07-07 (Camera Vision Verification, Task #26)
+
+**Goal:** confirm Task #25's camera-vision path (periodic frames → Gemini Live) actually works end-to-end, since the sandbox has no real camera and the Playwright pressure test never exercises it.
+
+**What was confirmed:**
+- Through the real app UI (Playwright, fake-camera device): camera activation (`data-camera-active="true"`), Gemini WS session connect, and `frameChunksSent` actively incrementing — `useVisionFrames.ts` is genuinely capturing and sending JPEG frames over the live session, not a no-op.
+- Via a standalone raw-WebSocket script (`scripts/oracle-vision-raw-ws-test.mjs`) that speaks the app's exact `client.realtimeInput`/`media_chunks` (image) and `realtimeInput.text` (question) envelope directly against the **real** `gemini-live-proxy` edge function and real Gemini Live API (no mocks): the proxy and model accept a real JPEG frame + follow-up question with zero protocol errors — full `session.config` → `session.created` → frame → text handshake succeeds.
+
+**What was NOT fully confirmed (sandbox limitation, not a known bug):**
+- A verified semantic reply (Oracle's spoken answer actually naming the object) — the raw-WS script's own session (VAD disabled, single-shot text turn) timed out waiting for audio back from the native-audio model within 90s. This looks like a turn-completion quirk of manually disabling `automaticActivityDetection` without sending explicit turn-boundary signals, not evidence the vision feature itself is broken — the frame-delivery and protocol layers underneath it are confirmed working per above.
+- **Recommendation:** do a real 30-second manual check on an actual device/browser with camera permission (hold up an object, ask the Oracle what it sees) before relying on this in front of users. This task cannot be closed out with 100% automated confidence without real camera hardware.
+
+**Note:** raw Node `WebSocket` scripts hitting Supabase edge functions from a plain script (not the app, which already has its own error handling) should install `process.on('unhandledRejection'/'uncaughtException')` — without them, this session saw the process die silently with zero output partway through the handshake on several attempts, which had been misdiagnosed as sandbox instability.
 
 ## Session Overhaul: 2026-07-06 (Live Camera Vision, Task #25)
 

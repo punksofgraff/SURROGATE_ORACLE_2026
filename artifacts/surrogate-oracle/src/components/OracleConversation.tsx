@@ -908,6 +908,7 @@ const OracleConversation = forwardRef(
         turnCount: debugInfo.current.turnCount,
         audioChunksReceived: debugInfo.current.audioChunksReceived,
         audioChunksSent: debugInfo.current.audioChunksSent,
+        frameChunksSent: debugInfo.current.frameChunksSent,
         lastVadState: debugInfo.current.lastVadState,
         lastVadRms: debugInfo.current.lastVadRms,
         connectedAt: debugInfo.current.connectedAt,

@@ -14,7 +14,7 @@
  */
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+import { X, Camera, CameraOff } from 'lucide-react';
 
 // Components
 import { BackendControlPanel } from './BackendControlPanel';
@@ -198,6 +198,7 @@ export function SurrogateOracleImmersion() {
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
   const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
   const [showWallet, setShowWallet]             = useState(false);
+  const [visionPaused, setVisionPaused]         = useState(false);
   const [walletIframeUrl, setWalletIframeUrl]   = useState('https://wallet.thesurrogate.me');
   const [isGuidedTour, setIsGuidedTour]     = useState(false);
   const [showStage00, setShowStage00]       = useState(false);
@@ -1403,6 +1404,22 @@ export function SurrogateOracleImmersion() {
       {isOracleMode && (
         <div className="oracle-bottom-bar">
           <GraffPunksRadio isPlaying={isAudioPlaying} onToggle={() => setIsAudioPlaying(!isAudioPlaying)} stations={defaultAudioTracks} currentStation={currentStation} onStationChange={switchStation} />
+          {cameraActive && (
+            <motion.div
+              onClick={() => setVisionPaused(p => !p)}
+              className={`oracle-bottom-btn${visionPaused ? '' : ' oracle-bottom-btn--active'}`}
+              title={visionPaused ? 'Vision paused — tap to resume' : 'Vision active — tap to pause'}
+              style={visionPaused ? { borderColor: 'rgba(255,160,0,0.38)', boxShadow: '0 4px 20px rgba(0,0,0,0.55), 0 0 18px rgba(255,160,0,0.18)' } : {}}
+            >
+              {visionPaused
+                ? <CameraOff size={28} strokeWidth={1.5} color="rgba(255,160,0,0.70)" />
+                : <Camera size={28} strokeWidth={1.5} color="#00ff88" style={{ filter: 'drop-shadow(0 0 6px rgba(0,255,136,0.55))' }} />
+              }
+              <span className="oracle-bottom-btn__label" style={visionPaused ? { color: 'rgba(255,160,0,0.70)' } : {}}>
+                {visionPaused ? 'VISION OFF' : 'VISION ON'}
+              </span>
+            </motion.div>
+          )}
           <motion.div onPointerDown={() => startHold('WALLET', 'Your wallet.')} onPointerUp={endHold} onPointerLeave={endHold} onClick={() => {
             console.log('👉 WALLET CLICK RECEIVED');
             if (!consumeHold()) {
@@ -1708,6 +1725,7 @@ export function SurrogateOracleImmersion() {
           sessionId={currentSessionId}
           cameraVideoRef={cameraVideoRef}
           cameraActive={cameraActive}
+          visionPaused={visionPaused}
           onOracleResponse={connection.handleOracleResponse}
           onCoinsEarned={(amt) => setSessionCoins(s => s + amt)}
           onSessionEnd={handleSessionEnd}

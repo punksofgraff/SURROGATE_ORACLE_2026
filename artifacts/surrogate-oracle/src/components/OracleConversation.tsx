@@ -83,6 +83,9 @@ interface OracleConversationProps {
   cameraVideoRef?: React.RefObject<HTMLVideoElement | null>;
   /** Mirrors useXRMode's cameraActive — camera permission granted and stream attached. */
   cameraActive?: boolean;
+  /** When true, suppresses JPEG frame sending to Gemini without affecting local
+   *  face-tracking gaze. Seeker-controlled session toggle — defaults to false. */
+  visionPaused?: boolean;
 }
 
 export interface OracleConversationHandle {
@@ -161,6 +164,7 @@ const OracleConversation = forwardRef(
       onTypeModeChange,
       cameraVideoRef,
       cameraActive,
+      visionPaused = false,
     } = props;
 
     const [isListening, setIsListening] = useState(false);
@@ -693,7 +697,7 @@ const OracleConversation = forwardRef(
     // active (audio-only journey is completely unaffected).
     useVisionFrames({
       videoRef: cameraVideoRef,
-      active: cameraActive,
+      active: cameraActive && !visionPaused,
       wsRef,
       sessionBootedRef,
       conversationActiveRef: visionConversationActiveRef,

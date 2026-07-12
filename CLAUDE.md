@@ -1,7 +1,7 @@
 # SURROGATE — Development Guide
 
 Canonical mandates for the Surrogate project. Follow strictly.
-Last updated: 2026-06-08. Session: AWE Polish + Omniverse City Integration.
+Last updated: 2026-07-11. Session: Security Hardening — **see ⚠ AGENT HAND-OFF at the end of this file before starting work.** Prior: 2026-06-08 AWE Polish + Omniverse City Integration.
 
 ### Oracle Identity — NON-NEGOTIABLE
 The Oracle is a post-cascade data construct. **No pronouns. Ever.**
@@ -12,7 +12,7 @@ Identity = `"I AM the Surrogate Oracle."` Full stop. No he/she/they/them/it in a
 ## Technical Stack
 - **Frontend:** React (TypeScript), Vite (pnpm), Tailwind CSS, Framer Motion.
 - **Backend:** Supabase Edge Functions (Deno).
-- **AI Engine:** Gemini 2.5 Flash Native Audio (`gemini-2.5-flash-native-audio-latest`) via WebSocket.
+- **AI Engine (Live Conversation):** Gemini 2.5 Flash Native Audio (`gemini-2.5-flash-native-audio-latest`) via WebSocket through `gemini-live-proxy`. Fallback: `oracle-conversation` (text-only Gemini REST). Additional AI functions deployed: portrait generation (Gemini + multi-provider fallback), web search integration, memory distillation.
 - **Audio:** Web Audio API, `oracle-audio.worklet.ts` (PCM streaming, Viseme detection), `PCMPlayer`.
 - **3D Rendering:** Three.js / React Three Fiber (`OracleAvatar3D.tsx`).
 - **Package manager:** `pnpm` — never `npm run dev`, always `pnpm dev`.
@@ -234,3 +234,79 @@ JOURNEY RESET → DORMANT             ok      — resetJourney() called
 - **Functions:** `npx supabase functions deploy gemini-live-proxy --no-verify-jwt`
 - **After proxy changes:** Must redeploy for session config forwarding and `sessionResumption` to take effect.
 - **Model change:** Update `VITE_GEMINI_MODEL` in `.env.local` only — no code change, no deploy needed for frontend. Proxy doesn't need redeploy for model changes (model is sent client→proxy→Gemini).
+
+---
+
+## Backend Reality — Deployed Edge Functions (Inventory)
+
+**Live Conversation Engine:**
+- `gemini-live-proxy` — WebSocket proxy for Gemini 2.5 Flash Native Audio. Handles key rotation (free→paid tier on 3 abnormal closes). CRITICAL: WebSocket upgrade check must precede GET-method check in header validation.
+- `oracle-conversation` — Text-only Gemini fallback (REST via `generateContent`) activated when Live WS drops. Uses same `GOOGLE_AI_API_KEY`. Model anchor: `gemini-2.5-flash`.
+
+**Client-Invoked Functions:**
+| Function | Purpose | Status |
+|----------|---------|--------|
+| `gemini-portrait-generator` | Neural image synthesis: Gemini 2.5 enriches theme → Gemini 2.0 Flash image gen, fallback cascade (Replicate, HuggingFace, Pollinations, DeepAI, Unsplash) | Active |
+| `generate-claim-link` | Culture Coins: generate mintable claim link | Active |
+| `oracle-memory-distill` | Post-session: distill conversation to 80-100 word summary for returning Seeker system prompt | Active |
+| `seeker-echo` | Seeker profile persistence: read/write name, archetype, totem level, alignment, visit count | Active |
+
+**Backend-Only / Webhook / Possibly Dead:**
+| Function | Purpose | Invocation | Status |
+|----------|---------|-----------|--------|
+| `surrogate-portrait-generator` | Legacy alias delegating to `gemini-portrait-generator` | Not client-invoked | Overlaps — verify before deleting |
+| `elevenlabs-tts` | ElevenLabs TTS API wrapper | Not client-invoked | Possibly dead — Gemini TTS is live |
+| `elevenlabs-conversational-ai` | ElevenLabs conversational AI (create/send/get conversation) | Not client-invoked | Possibly dead — Gemini Live is live |
+| `seeker-define` | Web-grounded identity: name+handles → Gemini generateContent + googleSearch + sources | Backend-only (not client-invoked) | Active — separate path, not spoken by Oracle |
+| `culture-coin-manager` | Culture Coins: manager (fetch, update, sync metrics) | Direct fetch in components | Active |
+| `mint-culture-coins` | Culture Coins: actual minting function | Not client-invoked (mock in useChainFuelz) | Active backend, but client is mock |
+| `culture-crew-signup` | Culture Crew: email signup | Webhook target | Verify if active |
+| `revenuecat-integration` | RevenueCat subscription integration | Direct fetch in InlineSubscriptionModal | Webhook target |
+| `log-event` | Telemetry: fire-and-forget event logging | Direct fetch in analytics.ts | Active |
+| `session-management` | Generic session CRUD | Not client-invoked | Possibly dead — Gemini session ≠ this |
+| `initialize-user-storage` | User storage tier initialization | Not client-invoked | Possibly dead |
+| `health-check` | Health check endpoint | Not client-invoked | Possibly dead — debug only |
+| `decart-live-token` | Decart AI SDK token generation | Not client-invoked | Possibly dead — no client reference |
+
+**Known Drift / Cleanup Candidates:**
+- **Overlapping portrait generators:** `gemini-portrait-generator` is canonical; `surrogate-portrait-generator` is a 100% delegating alias. Verify callers before deleting the alias.
+- **Mock wallet in useChainFuelz:** Returns `0xCF...PENDING` addresses. Real minting functions (`mint-culture-coins`, `generate-claim-link`) exist in backend, but client-side integration is stubbed. TODO: Await actual Edge Function call + real wallet SDK integration.
+- **Possibly-dead functions:** `session-management`, `initialize-user-storage`, `health-check`, `decart-live-token` are not invoked by the client and not obvious webhook targets. Audit before deletion.
+- **ElevenLabs functions:** `elevenlabs-tts` and `elevenlabs-conversational-ai` exist but are not called by the live client (Gemini is the TTS engine). Verify if they are still needed for any feature flag or offline fallback.
+
+---
+
+## ⚠ AGENT HAND-OFF — Security Hardening Session (2026-07-11)
+
+**For the next agent picking this up.** An acidic audit ("roast") of the app surfaced real security / privacy / cost holes; this session remediated most of them via delegated sub-agents (Fable directing, Sonnet/Haiku doing the work). **Nothing is committed** — all changes live in the working tree (HEAD = `544fee7`). Full `pnpm build` passes; typecheck clean.
+
+### ✅ Applied this session (uncommitted, build-verified)
+
+| Area | Change | Files |
+|------|--------|-------|
+| PII RLS | RLS + `REVOKE` from anon on edge-function-only tables (`seeker_echo` = the "IRL dossier" table, `culture_crew`, `surrogate_sessions`). Non-breaking (service_role bypasses RLS). | `supabase/migrations/20260701000000_rls_lock_pii_tables.sql` *(new)* |
+| user_wallets | Was client-direct with the anon key → moved server-side into a service-role function; client refactored to call it. Behavior (returning-seeker detection, onboarding transitions, `?newuser`, localStorage fallbacks) preserved. | `supabase/functions/user-wallet-sync/index.ts` *(new)*, `src/hooks/useIpCheck.ts` *(edited)* |
+| user_wallets RLS | Gated lock — **apply only after the client refactor is live in prod.** | `supabase/migrations/20260701000001_rls_lock_user_wallets.sql` *(new)* |
+| surrogate_portraits | Closed the delete-any-portrait-by-id hole + whole-table read. Client read/delete moved into a service-role function with ownership-scoped delete (`WHERE id=$id AND owner-match`); gated RLS lock. Creation unaffected (`gemini-portrait-generator` writes with service_role). | `supabase/functions/portrait-gallery/index.ts` *(new)*, `src/components/PortraitGalleryDashboard.tsx` *(edited)*, `supabase/migrations/20260701000002_rls_lock_surrogate_portraits.sql` *(new)* |
+| Proxy hardening | `gemini-live-proxy`: `ALLOW_PAID_FAILOVER` (default **OFF** — kills auto-escalation to the paid Gemini key), `ALLOWED_ORIGINS` (fail-open if unset), `MAX_SESSION_MS` (15-min hard cap). | `supabase/functions/gemini-live-proxy/index.ts` *(edited)* |
+| Git hygiene | Untracked the 2MB self-appending dev log + 3 GLB corpses incl. `hero3.glb.broken` (~16MB total); added ignore rules. | `.gitignore` *(edited)*, `git rm --cached` staged |
+| Deps | Removed dead `wouter`. Kept `date-fns` (real peer of `react-day-picker` via `ui/calendar.tsx`) and both headless browsers (scripts use them). | `package.json`, `pnpm-lock.yaml` |
+| Docs | Backend Reality inventory (section above). | `CLAUDE.md` |
+
+### ✅ `surrogate_portraits` — COMPLETED this session (build-verified)
+
+Closed via the same server-side pattern as `user_wallets`: new `supabase/functions/portrait-gallery/index.ts` (service role) with `list` (hard-gated — returns `{data:[]}` rather than ever running an unfiltered select) and ownership-scoped `delete` (`WHERE id=$id AND owner-match`, reports `{deleted:true}` only when a row actually matched); `PortraitGalleryDashboard.tsx` refactored to call it (UI removal only on `deleted:true`); gated RLS migration `…20260701000002`. Deploy per step 5 below.
+> Note: there is **no real auth** in this app (anonymous, IP-keyed) → this is *best-effort* ownership scoping (the client claims its own ids). It still closes the two real holes: whole-table read and delete-any-row-by-id. A real auth identity (see Remaining) would upgrade this to true per-user RLS.
+
+### 🟡 Remaining (need product/owner decisions — do NOT auto-implement)
+- **Wallet split-brain:** `useChainFuelz` is a mock (`0xPENDING_PATRICK_SDK`, `// TODO: Await actual Edge Function call`); real minting functions exist. Wiring real crypto vs. clearly labeling a demo is a product call (real money, user-facing copy).
+- **Identity hardening:** still keyed on an `api.ipify.org` fetch. `user-wallet-sync` could derive the IP from request headers server-side as an incremental step; the real fix is a proper auth identity (also unblocks true per-user RLS on portraits).
+- **Radix pruning:** ~27 unused `@radix-ui/*` packages — install-size only (Vite tree-shakes the bundle). Optional.
+- **Bundle weight:** build warns ~1.8MB main chunk — code-split candidate.
+
+### 🚀 DEPLOYMENT ORDER (order-sensitive — every change above is inert until deployed)
+1. Deploy `user-wallet-sync` **and** ship the refactored client **first**.
+2. Deploy the hardened `gemini-live-proxy`. Env: set `ALLOW_PAID_FAILOVER=true` to restore auto-paid-failover (otherwise the Oracle fails **visibly** on free-quota exhaustion instead of silently spending on the paid key — this is the intended default); set `ALLOWED_ORIGINS` (comma-separated) to lock origins; `MAX_SESSION_MS` optional (default `900000`).
+3. Apply migration `…20260701000000` (PII tables) — safe anytime.
+4. Apply migration `…20260701000001` (user_wallets) — **only after step 1 is live in prod**, or returning-seeker detection breaks.
+5. Deploy `portrait-gallery` **and** ship the refactored `PortraitGalleryDashboard` client, then apply migration `…20260701000002` (surrogate_portraits) — same client-first ordering as step 1/4.

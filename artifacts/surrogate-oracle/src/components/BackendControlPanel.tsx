@@ -6,7 +6,7 @@
 import './BackendControlPanel.css';
 import { useState, useEffect, useRef, RefObject, useCallback } from 'react';
 import { X, Wallet, Radio, Image, Cpu, Database, Layers, RefreshCw } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { CultureCoinDisplay } from './CultureCoinDisplay';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { PortraitGalleryDashboard } from './PortraitGalleryDashboard';
@@ -35,16 +35,24 @@ const FREQUENCIES: {
 const ACCENT: Record<string, string> = { green: '#00ff88', cyan: '#00ffcc', purple: '#b026ff' };
 
 // ── Oscilloscope ───────────────────────────────────────────────────────────────
+// Bar heights and animation durations are deterministic (index + sine distribution)
+// so they don't reset on every parent re-render. Height envelope is driven by live rms.
 function Oscilloscope({ rms }: { rms: number }) {
+  const NUM_BARS = 24;
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 44 }}>
-      {Array.from({ length: 24 }).map((_, i) => {
-        const h = Math.max(5, rms * 100 * (0.3 + Math.random() * 0.7));
+      {Array.from({ length: NUM_BARS }).map((_, i) => {
+        // Deterministic envelope — each bar has a fixed shape in the frequency spectrum
+        const envelope = 0.28 + 0.72 * Math.abs(Math.sin(i * 0.72 + 0.5));
+        // When rms is present, bars reflect signal level; when idle, show gentle ambient motion
+        const peak = rms > 0.004 ? Math.max(4, rms * 110 * envelope) : 3 + envelope * 5;
+        // Duration varies by index only — no random, no reshuffle on re-render
+        const dur = 0.055 + (i % 6) * 0.028;
         return (
           <motion.div key={i}
-            animate={{ height: [h * 0.7, h, h * 0.8] }}
-            transition={{ repeat: Infinity, duration: 0.08 + Math.random() * 0.24 }}
-            style={{ width: 4, borderRadius: 2, background: i % 3 === 0 ? '#00ff88' : '#00ffcc', opacity: 0.4 + (i / 24) * 0.6 }}
+            animate={{ height: [peak * 0.55, peak, peak * 0.72, peak * 0.88] }}
+            transition={{ repeat: Infinity, duration: dur, ease: 'easeInOut', repeatType: 'mirror' }}
+            style={{ width: 4, borderRadius: 2, background: i % 3 === 0 ? '#00ff88' : '#00ffcc', opacity: 0.38 + (i / NUM_BARS) * 0.62 }}
           />
         );
       })}
@@ -262,6 +270,7 @@ export const BackendControlPanel = ({
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [geminiInfo, setGeminiInfo]   = useState<ReturnType<OracleConversationHandle['getWsDebugInfo']> | null>(null);
   const pollRef                       = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dragStartRef                  = useRef<{ x: number; y: number } | null>(null);
   const supabaseUrl                   = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const chainFuelz                    = useChainFuelz(userEmail, pendingCoins);
 
@@ -271,6 +280,26 @@ export const BackendControlPanel = ({
     setActiveIdx(clamped);
     localStorage.setItem('oracle_crate_active_freq', FREQUENCIES[clamped].id);
   };
+
+  // ── Horizontal swipe to change frequency tab ────────────────────────────
+  // Only fires when horizontal movement is dominant (dx > dy × 1.5, dx > 60px).
+  // Vertical scrolling inside ec-page is unaffected.
+  const handlePagePointerDown = useCallback((e: React.PointerEvent) => {
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
+  }, []);
+  const handlePagePointerUp = useCallback((e: React.PointerEvent) => {
+    if (!dragStartRef.current) return;
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+    dragStartRef.current = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      goTo(activeIdx + (dx < 0 ? 1 : -1));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIdx]);
+  // Cancel handler — browser cancels pointer events during native vertical scroll on mobile.
+  // Without this, dragStartRef stays non-null and the next tap could mis-fire a tab switch.
+  const handlePagePointerCancel = useCallback(() => { dragStartRef.current = null; }, []);
 
   useEffect(() => {
     const m: Record<string, Frequency> = { vault: 'RESONANCE', coins: 'RESONANCE', gemini: 'CORE_DIAG', debug: 'SALVAGE', dev: 'SALVAGE' };
@@ -352,21 +381,33 @@ export const BackendControlPanel = ({
           style={{ height: 2, background: `linear-gradient(90deg, transparent, ${accentHex}, transparent)`, filter: 'blur(1px)', transformOrigin: 'left', flexShrink: 0 }}
         />
 
-        {/* ── Tab nav ─────────────────────────────────────────────────────── */}
-        <nav className="ec-nav" role="tablist">
-          {FREQUENCIES.map((freq, i) => {
-            const isOn = i === activeIdx;
-            let cls = 'ec-nav__btn';
-            if (isOn) cls += freq.accent === 'purple' ? ' ec-nav__btn--on-purple' : freq.accent === 'cyan' ? ' ec-nav__btn--on-cyan' : ' ec-nav__btn--on';
-            const testId = freq.id==='RESONANCE' ? 'tab-vault' : freq.id==='SQUAD' ? 'tab-squad' : freq.id==='PRINTS' ? 'tab-portraits' : freq.id==='CORE_DIAG' ? 'tab-gemini' : freq.id==='SALVAGE' ? 'tab-dev' : 'tab-manifest';
-            return (
-              <button key={freq.id} role="tab" aria-selected={isOn} data-testid={testId} className={cls} onClick={() => goTo(i)}>
-                <freq.Icon size={20} />
-                <span className="ec-nav__label">{freq.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+        {/* ── Tab nav — sliding pill indicator via framer-motion layoutId ──── */}
+        <LayoutGroup id="ec-tab-nav">
+          <nav className="ec-nav" role="tablist">
+            {FREQUENCIES.map((freq, i) => {
+              const isOn = i === activeIdx;
+              let cls = 'ec-nav__btn';
+              if (isOn) cls += freq.accent === 'purple' ? ' ec-nav__btn--on-purple' : freq.accent === 'cyan' ? ' ec-nav__btn--on-cyan' : ' ec-nav__btn--on';
+              const testId = freq.id==='RESONANCE' ? 'tab-vault' : freq.id==='SQUAD' ? 'tab-squad' : freq.id==='PRINTS' ? 'tab-portraits' : freq.id==='CORE_DIAG' ? 'tab-gemini' : freq.id==='SALVAGE' ? 'tab-dev' : 'tab-manifest';
+              const pillColor = ACCENT[freq.accent];
+              return (
+                <button key={freq.id} role="tab" aria-selected={isOn} data-testid={testId} className={cls} onClick={() => goTo(i)}>
+                  {/* Sliding pill — framer-motion FLIP-animates it between tab buttons */}
+                  {isOn && (
+                    <motion.div
+                      layoutId="ec-tab-pill"
+                      className="ec-nav__pill"
+                      style={{ background: `${pillColor}18`, boxShadow: `0 0 16px ${pillColor}22, inset 0 1px 0 ${pillColor}22` }}
+                      transition={{ type: 'spring', damping: 30, stiffness: 420, mass: 0.7 }}
+                    />
+                  )}
+                  <span className="ec-nav__icon"><freq.Icon size={20} /></span>
+                  <span className="ec-nav__label">{freq.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </LayoutGroup>
 
         {/* ── Page content — domino card scroll ───────────────────────────── */}
         <AnimatePresence mode="wait" initial={false}>
@@ -377,6 +418,9 @@ export const BackendControlPanel = ({
             animate={{ x: 0,             opacity: 1, filter: 'blur(0px)' }}
             exit={{   x: -slideDir * 48, opacity: 0, filter: 'blur(8px)' }}
             transition={{ type: 'spring', damping: 26, stiffness: 260, mass: 0.85 }}
+            onPointerDown={handlePagePointerDown}
+            onPointerUp={handlePagePointerUp}
+            onPointerCancel={handlePagePointerCancel}
           >
 
             {/* ════════════════════════════════════════════════════════════

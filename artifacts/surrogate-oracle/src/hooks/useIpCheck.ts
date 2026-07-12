@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { logStep } from '../components/CodeAuditor';
 
+// All user_wallets reads/writes go through the user-wallet-sync edge function
+// (service_role key) so the table can be RLS-locked against the anon key.
+
 export function useIpCheck() {
   // ?newuser — dev override: skip DB + localStorage check, force fresh-user flow
   const forceNew = new URLSearchParams(window.location.search).has('newuser');
@@ -48,12 +51,11 @@ export function useIpCheck() {
 
         // 3. Optional: check database if we want a hard backend check
         // We do a soft fail here so the experience doesn't block on DB
-        const { data: walletData, error } = await supabase
-          .from('user_wallets')
-          .select('ip_address, onboarding_status')
-          .eq('ip_address', ip)
-          .limit(1)
-          .single();
+        const { data: fnData, error } = await supabase.functions.invoke('user-wallet-sync', {
+          body: { action: 'get', ip_address: ip },
+        });
+
+        const walletData = fnData?.data as { ip_address: string; onboarding_status: string } | null;
 
         if (walletData && !error) {
           setIsReturning(true);
@@ -72,7 +74,6 @@ export function useIpCheck() {
           
           logStep('IP CHECK: RETURN TRIP VERIFIED', 'ok');
         } else {
-          // If not in DB but we are here, we might just be new.
           logStep('IP CHECK: NEW SIGNAL DETECTED', 'ok');
         }
       } catch (err) {
@@ -92,11 +93,9 @@ export function useIpCheck() {
     setIsReturning(true);
     
     try {
-      // Upsert basic IP record to start tracking onboarding
-      await supabase.from('user_wallets').upsert({
-        ip_address: ipAddress,
-        onboarding_status: 'visited'
-      }, { onConflict: 'ip_address' });
+      await supabase.functions.invoke('user-wallet-sync', {
+        body: { action: 'upsert', ip_address: ipAddress, onboarding_status: 'visited' },
+      });
     } catch (e) {
       // ignore
     }
@@ -109,10 +108,9 @@ export function useIpCheck() {
     setIsReturning(true); // Implied
 
     try {
-      await supabase.from('user_wallets').upsert({
-        ip_address: ipAddress,
-        onboarding_status: 'lore_completed'
-      }, { onConflict: 'ip_address' });
+      await supabase.functions.invoke('user-wallet-sync', {
+        body: { action: 'upsert', ip_address: ipAddress, onboarding_status: 'lore_completed' },
+      });
       logStep('LORE STATUS: COMPLETED (Persisted)', 'ok');
     } catch (e) {
       // ignore
@@ -138,10 +136,14 @@ export function useIpCheck() {
     localStorage.setItem(`oracle_wallet_signed_${ipAddress}`, 'true');
     localStorage.setItem(`surrogate_lore_completed_${ipAddress}`, 'true');
     try {
-      await supabase.from('user_wallets').upsert({
-        ip_address: ipAddress,
-        onboarding_status: 'wallet_signed'
-      }, { onConflict: 'ip_address' });
+      await supabase.functions.invoke('user-wallet-sync', {
+        body: {
+          action: 'upsert',
+          ip_address: ipAddress,
+          onboarding_status: 'wallet_signed',
+          ...(walletAddress ? { wallet_address: walletAddress } : {}),
+        },
+      });
       logStep('WALLET SIGNED: ALLEY ACCESS PERSISTED', 'ok');
     } catch (e) { /* ignore */ }
   };

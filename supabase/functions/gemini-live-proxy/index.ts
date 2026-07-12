@@ -27,6 +27,24 @@ const FAIL_THRESHOLD = 3;
 const PAID_RESET_MS  = 24 * 60 * 60 * 1000;
 const GEMINI_BASE    = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
 
+// ALLOW_PAID_FAILOVER — safety gate for the paid-key failover logic.
+// Default: false — fail visibly to the client rather than silently escalate to paid billing.
+// Set to 'true' in Supabase secrets ONLY after confirming budget controls are in place
+// and you want seamless continuity when the free daily quota is exhausted.
+const ALLOW_PAID_FAILOVER = (Deno.env.get('ALLOW_PAID_FAILOVER') ?? 'false').toLowerCase() === 'true';
+
+// ALLOWED_ORIGINS — comma-separated list of permitted request origins.
+// Empty (default): origin check disabled — fails OPEN so prod is never broken by a missing secret.
+// Non-empty: only listed origins are allowed; all others receive 403.
+const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ?? '').split(',').map(s => s.trim()).filter(Boolean);
+
+// MAX_SESSION_MS — hard cap on a single Gemini session duration.
+// Default: 900000 ms (15 minutes). Set to 0 to disable (not recommended in production).
+const MAX_SESSION_MS = Number(Deno.env.get('MAX_SESSION_MS') ?? '900000');
+
+// One-time warning flag for missing ALLOWED_ORIGINS (avoids log spam).
+let originCheckWarned = false;
+
 // ── Module-level state cache ───────────────────────────────────────────────
 // Seeded optimistically so the first WS connection never blocks on a DB fetch.
 // Refreshed async after every connection result.
@@ -99,9 +117,19 @@ function ensureCacheBooted() {
 Deno.serve(async (req: Request) => {
   // 1. CORS preflight
   if (req.method === 'OPTIONS') {
+    const preflightOrigin = req.headers.get('origin') ?? '';
+    const allowOriginHeader =
+      ALLOWED_ORIGINS.length === 0
+        ? '*'
+        : ALLOWED_ORIGINS.includes(preflightOrigin)
+          ? preflightOrigin
+          : null;
+    if (allowOriginHeader === null) {
+      return new Response('Forbidden origin', { status: 403 });
+    }
     return new Response(null, {
       headers: {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': allowOriginHeader,
         'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
       },
     });
@@ -111,6 +139,19 @@ Deno.serve(async (req: Request) => {
   //    WS handshakes are GET requests. Checking GET first causes a 502.
   const upgradeHeader = req.headers.get('upgrade') ?? '';
   if (upgradeHeader.toLowerCase() === 'websocket') {
+    // Origin check — must happen BEFORE upgradeWebSocket (the call is irreversible).
+    const origin = req.headers.get('origin') ?? '';
+    if (ALLOWED_ORIGINS.length > 0) {
+      if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+        return new Response('Forbidden origin', { status: 403 });
+      }
+    } else {
+      if (!originCheckWarned) {
+        originCheckWarned = true;
+        console.warn('[gemini-live-proxy] ALLOWED_ORIGINS unset — origin check disabled');
+      }
+    }
+
     ensureCacheBooted();
 
     const { key: activeKey, mode: activeMode } = resolveKeySync();
@@ -119,6 +160,9 @@ Deno.serve(async (req: Request) => {
 
     const { socket: client, response } = Deno.upgradeWebSocket(req);
     const gemini = new WebSocket(`${GEMINI_BASE}?key=${activeKey}`);
+
+    // Kill timer — cleared in both onclose handlers to avoid leaks.
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
 
     const pendingClientMessages: string[] = [];
     let geminiReady = false;
@@ -152,6 +196,7 @@ Deno.serve(async (req: Request) => {
     client.onerror = (err) => console.error('Client error:', err);
     client.onclose = (event) => {
       console.log('Client disconnected:', event.code, event.reason);
+      clearTimeout(killTimer);
       if (gemini.readyState === WebSocket.OPEN || gemini.readyState === WebSocket.CONNECTING) {
         gemini.close(1000, 'Client disconnected');
       }
@@ -166,6 +211,14 @@ Deno.serve(async (req: Request) => {
       geminiReady = true;
       for (const raw of pendingClientMessages) forwardToGemini(raw);
       pendingClientMessages.length = 0;
+      // Start the session time cap. Both sockets are closed if the timer fires.
+      if (MAX_SESSION_MS > 0) {
+        killTimer = setTimeout(() => {
+          console.warn(`[gemini-live-proxy] Max session duration (${MAX_SESSION_MS}ms) reached — closing both sockets`);
+          try { client.close(1000, 'Max session duration reached'); } catch {}
+          try { gemini.close(1000, 'Max session duration reached'); } catch {}
+        }, MAX_SESSION_MS);
+      }
     };
 
     gemini.onmessage = async (event) => {
@@ -233,14 +286,23 @@ Deno.serve(async (req: Request) => {
 
     gemini.onclose = (event) => {
       console.log('Gemini closed:', event.code, event.reason);
+      clearTimeout(killTimer);
       if (event.code !== 1000 && event.code !== 1001 && !sessionSucceeded && activeMode === 'free') {
         const newCount = snapshotFailCount + 1;
         console.warn(`🚉 Free key failure ${newCount}/${FAIL_THRESHOLD}`);
         if (newCount >= FAIL_THRESHOLD) {
-          console.warn('🚉 → Switching to PAID key');
-          patchState({ mode: 'paid', free_fail_count: 0, switched_to_paid_at: new Date().toISOString() });
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: 'key.switched', mode: 'paid', reason: 'free_exhausted' }));
+          if (ALLOW_PAID_FAILOVER) {
+            console.warn('🚉 → Switching to PAID key (ALLOW_PAID_FAILOVER=true)');
+            patchState({ mode: 'paid', free_fail_count: 0, switched_to_paid_at: new Date().toISOString() });
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({ type: 'key.switched', mode: 'paid', reason: 'free_exhausted' }));
+            }
+          } else {
+            console.warn('🚉 Free quota reached. ALLOW_PAID_FAILOVER=false — refusing paid escalation.');
+            patchState({ free_fail_count: newCount });
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({ type: 'error', message: 'Service temporarily unavailable (free quota reached).' }));
+            }
           }
         } else {
           patchState({ free_fail_count: newCount });

@@ -64,3 +64,12 @@ scripts/persist-claude-auth.sh
 .env.*.local
 **/.env.local
 **/.env.*.local
+
+# Dev log (server-appended every session — must never be tracked)
+artifacts/surrogate-oracle/.oracle-dev-log.jsonl
+**/.oracle-dev-log.jsonl
+
+# GLB backup/broken variants — keep only the live hero3.glb
+**/*.glb.bak
+**/*.glb.broken
+**/*.glb.no-morphs

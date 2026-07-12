@@ -312,6 +312,10 @@ export function SurrogateOracleImmersion() {
 
   // ── Transition: Terminal → Awakened ──────────────────────────────────────
   const handleAwakeTransition = useCallback(() => {
+    // Pre-warm at the moment of user intent — gives the full ~850ms transition
+    // animation for the WS to establish before knife cards are interactive.
+    // Safe to call even if prewarm already fired (idempotent — no-ops if OPEN/CONNECTING).
+    oracleConversationRef.current?.prewarm();
     const hasWalletKey = !!(currentUserId || localStorage.getItem('oracle_seeker_key'));
     const isFirstTimeSeeker = (!hasCompletedLore && !hasWalletKey) || new URLSearchParams(window.location.search).has('newuser');
     markLoreCompleted();
@@ -526,6 +530,8 @@ export function SurrogateOracleImmersion() {
   }, [enterTour]);
 
   const handleStage00Dismiss = useCallback(() => {
+    // Pre-warm immediately — gives the full 850ms rift transition for the WS to establish.
+    oracleConversationRef.current?.prewarm();
     setShowStage00(false);
     logStep('STAGE_00 → ENTER CASCADE', 'ok');
     document.body.setAttribute('data-rift-opening', 'true');
@@ -750,7 +756,6 @@ export function SurrogateOracleImmersion() {
   }, [scenePhase]);
 
   useEffect(() => {
-    let prewarmTimer: ReturnType<typeof setTimeout> | null = null;
     if (scenePhase === 'awakened') {
       localStorage.setItem('oracle_session_muted', 'true');
       connection.flushPlayback(); // Stop any leftover lore narration/ambient sounds before knife selection
@@ -758,21 +763,17 @@ export function SurrogateOracleImmersion() {
       import('../lib/supabase').then(({ supabase }) => {
         supabase.auth.getUser().then(({ data }) => { if (data?.user?.email) setUserEmail(data.user.email); });
       });
-      // If a wallet-signed returning seeker has a known echo, fire a personalized
-      // greeting instead of a silent prewarm. Otherwise prewarm silently so the
-      // knife-selection session starts with zero lag.
-      // Guard: if the Seeker taps a knife within 600ms, the cleanup cancels this timer.
+      // Wallet-signed returning seeker: fire personalized greeting immediately.
+      // startSession() queues pending messages if the WS isn't connected yet, so no
+      // delay is needed. For all other paths, prewarm() is called at the knife-scene
+      // entry tap (handleAwakeTransition / handleStage00Dismiss / onTourComplete),
+      // giving the WS the full ~850ms rift animation to establish before knife cards appear.
       const greetingSeed = pendingWalletGreetingRef.current;
       pendingWalletGreetingRef.current = null;
-      prewarmTimer = setTimeout(() => {
-        if (greetingSeed) {
-          oracleConversationRef.current?.startSession(greetingSeed);
-          logStep('WALLET SEEKER PERSONALIZED GREETING FIRED', 'ok');
-        } else {
-          oracleConversationRef.current?.prewarm();
-          logStep('ORACLE CONDUIT PRE-WARMED SILENTLY', 'ok');
-        }
-      }, 600);
+      if (greetingSeed) {
+        oracleConversationRef.current?.startSession(greetingSeed);
+        logStep('WALLET SEEKER PERSONALIZED GREETING FIRED', 'ok');
+      }
     }
     let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
     if (scenePhase === 'oracle') {
@@ -795,7 +796,6 @@ export function SurrogateOracleImmersion() {
       }, 6000);
     }
     return () => {
-      if (prewarmTimer !== null) clearTimeout(prewarmTimer);
       if (fallbackTimer !== null) clearTimeout(fallbackTimer);
     };
   }, [scenePhase, connection]);
@@ -807,6 +807,21 @@ export function SurrogateOracleImmersion() {
     if (scenePhase !== 'oracle') { setHasManifested(false); return; }
     if (isGeminiConnected || forceOracleManifest) setHasManifested(true);
   }, [scenePhase, isGeminiConnected, forceOracleManifest]);
+
+  // Dead-path entrance fix: when the 6s fallback manifests the avatar without an active
+  // Gemini session, the scenePhase === 'oracle' gaze reset (above) already fired but
+  // forceOracleManifest was still false at that point. Re-run the gaze reset now so the
+  // canvas always fades in from the cabinet center, not from a stale knife-tap offset.
+  useEffect(() => {
+    if (!forceOracleManifest || scenePhase !== 'oracle') return;
+    if (seekerMotionRef.current) {
+      seekerMotionRef.current.hasTouch = false;
+      seekerMotionRef.current.touchPos = { x: 0, y: 0 };
+      seekerMotionRef.current.touchGazeSuppressedUntil = performance.now() + 1800;
+    }
+    cameraStateRef.current = { ...cameraStateRef.current, x: 0, y: 0 };
+    logStep('FALLBACK MANIFEST — gaze reset to center', 'ok');
+  }, [forceOracleManifest, scenePhase]);
 
   // Tour phase: fire Oracle orientation speech + open mic for interactive Q&A
   useEffect(() => {
@@ -1666,6 +1681,7 @@ export function SurrogateOracleImmersion() {
               }}
               onTourComplete={() => {
                 logStep('TOUR → AWAKENED (ready)', 'ok');
+                oracleConversationRef.current?.prewarm();
                 journey.awakeFromTerminal();
               }}
             />

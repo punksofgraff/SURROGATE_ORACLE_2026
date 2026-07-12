@@ -44,19 +44,21 @@ export function PortraitGalleryDashboard({
     setIsLoading(true);
     setImageErrors(new Set());
     try {
-      if (!userId && !userEmail && !sessionId) {
-        setPortraits([]);
-        setIsLoading(false);
-        return;
-      }
+      let query = supabase
+        .from('surrogate_portraits')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(maxPortraits);
 
-      const { data: fnData, error: fnError } = await supabase.functions.invoke('portrait-gallery', {
-        body: { action: 'list', userId, email: userEmail, sessionId, limit: maxPortraits },
-      });
-      if (fnError) throw fnError;
+      if (userId)        query = query.eq('user_id', userId);
+      else if (userEmail) query = query.eq('email', userEmail);
+      else if (sessionId) query = query.eq('session_id', sessionId);
+      else { setPortraits([]); setIsLoading(false); return; }
 
-      const rows: Portrait[] = fnData?.data ?? [];
-      const normalized = rows.map((p: Portrait) => ({
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const normalized = (data || []).map((p: Portrait) => ({
         ...p,
         portrait_url: p.image_url || p.portrait_url,
         conversation_themes: p.conversation_themes || [],
@@ -74,7 +76,7 @@ export function PortraitGalleryDashboard({
     } finally {
       setIsLoading(false);
     }
-  }, [userId, userEmail, sessionId, maxPortraits]);
+  }, [userId, userEmail, maxPortraits]);
 
   useEffect(() => { fetchPortraits(); }, [fetchPortraits]);
 
@@ -115,16 +117,10 @@ export function PortraitGalleryDashboard({
   const deletePortrait = async (portrait: Portrait) => {
     if (!confirm('Delete this portrait permanently?')) return;
     try {
-      const { data: fnData, error: fnError } = await supabase.functions.invoke('portrait-gallery', {
-        body: { action: 'delete', id: portrait.id, userId, email: userEmail, sessionId },
-      });
-      if (fnError) throw fnError;
-      if (fnData?.deleted === true) {
-        setPortraits((prev) => prev.filter((p) => p.id !== portrait.id));
-        showSuccessNotification('Portrait deleted.');
-      } else {
-        showErrorNotification('Delete failed.');
-      }
+      const { error } = await supabase.from('surrogate_portraits').delete().eq('id', portrait.id);
+      if (error) throw error;
+      setPortraits((prev) => prev.filter((p) => p.id !== portrait.id));
+      showSuccessNotification('Portrait deleted.');
     } catch { showErrorNotification('Delete failed.'); }
   };
 

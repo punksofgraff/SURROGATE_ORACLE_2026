@@ -53,3 +53,11 @@
 {"label":"CONTEXT COMPRESSION ACTIVE","status":"ok","_t":1783824663870}
 {"label":"GEMINI SESSION CREATED","status":"ok","_t":1783824664049}
 {"label":"IP CHECK: NEW SIGNAL DETECTED","status":"ok","_t":1783824664181}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1783824786365}
+{"label":"TAB BACKGROUNDED","status":"warn","_t":1783824786585}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1783824863615}
+{"label":"GEMINI WS CLOSED (1006)","status":"err","_t":1783824865216}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1783825017701}
+{"label":"NEURAL LINK AWAKENING","status":"ok","_t":1783825017964}
+{"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1783825019130}
+{"label":"IP CHECK: RETURN TRIP VERIFIED","status":"ok","_t":1783825019604}

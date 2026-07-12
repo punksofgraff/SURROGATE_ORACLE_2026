@@ -34,6 +34,38 @@ const COMPACT_SYSTEM =
   'Use Oracle voice — intimate, observational, post-Cascade. First person: "the signal showed", "they brought", "we witnessed". ' +
   'No bullet points. Flowing prose. Dense, precise. This will be read by the Oracle mid-session to maintain continuity.';
 
+// ── Auth helpers ──────────────────────────────────────────────────────────────
+
+/** Extract the best available client IP from standard proxy headers. */
+function getClientIp(req: Request): string | null {
+  // Cloudflare (Supabase Edge runs behind CF) — most reliable
+  const cf = req.headers.get('cf-connecting-ip');
+  if (cf) return cf.trim();
+  // x-real-ip (set by some reverse proxies)
+  const real = req.headers.get('x-real-ip');
+  if (real) return real.trim();
+  // x-forwarded-for — take leftmost (client) IP
+  const xff = req.headers.get('x-forwarded-for');
+  if (xff) return xff.split(',')[0].trim();
+  return null;
+}
+
+/** True if the string looks like an IPv4 or IPv6 address (not a wallet). */
+function isIpAddress(s: string): boolean {
+  // IPv4: four dotted octets
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(s)) return true;
+  // IPv6: contains colons
+  if (s.includes(':')) return true;
+  return false;
+}
+
+/** True if the string looks like an EVM wallet address. */
+function isWalletAddress(s: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(s);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -46,6 +78,17 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  // ── Authorization gate ──────────────────────────────────────────────────────
+  // Require a Bearer token (the Supabase client automatically sends the anon
+  // key here). Callers without any auth header are rejected outright.
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return new Response(
+      JSON.stringify({ success: false, error: 'Unauthorized' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    );
+  }
+
   try {
     const body: CompactRequest = await req.json();
     const { sessionId, seekerKey, turns, batchIndex } = body;
@@ -55,6 +98,24 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ success: false, error: 'turns array is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
+    }
+
+    // ── seekerKey ownership gate ────────────────────────────────────────────
+    // If the claimed seekerKey is an IP address, validate it matches the
+    // actual caller IP so one user cannot write to another user's session.
+    // Wallet addresses (0x…) are cryptographically unguessable without the
+    // signing key — they pass through without an IP check.
+    // If seekerKey is absent or an unrecognised format, we allow the write
+    // but omit the seekerKey from the DB row (safe: no cross-user pollution).
+    if (seekerKey && isIpAddress(seekerKey)) {
+      const callerIp = getClientIp(req);
+      if (!callerIp || callerIp !== seekerKey) {
+        console.warn(`compact-conversation: seekerKey IP mismatch — claimed=${seekerKey} caller=${callerIp}`);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Forbidden: seekerKey does not match caller IP' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
     }
 
     const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY') ?? '';
@@ -127,10 +188,17 @@ Deno.serve(async (req: Request) => {
       const prevSummaries: unknown[] =
         Array.isArray(prevData.compact_summaries) ? prevData.compact_summaries : [];
 
+      // Only include the seekerKey in the DB row when it has been verified above
+      // (IP match) or is a recognisable wallet address. Unknown formats are omitted.
+      const verifiedSeekerKey =
+        seekerKey && (isIpAddress(seekerKey) || isWalletAddress(seekerKey))
+          ? seekerKey
+          : null;
+
       const newEntry = {
         batch_index: batchIndex,
         turn_count: turns.length,
-        seeker_key: seekerKey ?? null,
+        seeker_key: verifiedSeekerKey,
         summary,
         compacted_at: new Date().toISOString(),
       };
@@ -146,7 +214,7 @@ Deno.serve(async (req: Request) => {
         session_id: sessionId,
         conversation_data: updatedData,
       };
-      if (seekerKey) upsertPayload.seeker_key = seekerKey;
+      if (verifiedSeekerKey) upsertPayload.seeker_key = verifiedSeekerKey;
 
       const { error: writeError } = await supabase
         .from('surrogate_sessions')

@@ -24,6 +24,7 @@ import { getAudioContext, playSignalLockedSfx } from '../lib/oracleSfx';
 import { createAudioContext } from '../lib/browserCapabilities';
 import { useGeminiSession, GEMINI_MODEL, type GeminiSessionHandlers } from '../hooks/useGeminiSession';
 import { useVisionFrames } from '../hooks/useVisionFrames';
+import { useConversationCompactor } from '../hooks/useConversationCompactor';
 
 // GEMINI_MODEL, ORACLE_SYSTEM_PROMPT and its supporting prompt blocks moved to
 // useGeminiSession.ts — they are pure inputs to the WS session.config payload
@@ -702,6 +703,21 @@ const OracleConversation = forwardRef(
       sessionBootedRef,
       conversationActiveRef: visionConversationActiveRef,
       onFrameSent: () => { debugInfo.current.frameChunksSent++; },
+    });
+
+    // Rolling context-window manager — compacts the oldest 25 turns whenever
+    // the buffer reaches 100. Transparent to the Seeker: no UI pause, no
+    // interruption. Compact summaries are persisted to surrogate_sessions and
+    // re-injected into the live Gemini session as hidden context messages.
+    // lastSupabaseTurnCountRef is passed so the upload watermark stays correct
+    // after the in-memory buffer is trimmed.
+    useConversationCompactor({
+      turns,
+      setTurns,
+      sendText,
+      sessionId,
+      userId,
+      lastSupabaseTurnCountRef,
     });
 
     const startMic = async () => {

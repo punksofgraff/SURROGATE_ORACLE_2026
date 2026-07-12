@@ -213,6 +213,7 @@ export interface CameraState {
   x:    number; // normalized −1 … +1  (parallax look-around)
   y:    number; // normalized −1 … +1
   zoom: number; // 1 = default distance, 4 = maximum close-up
+  snap?: boolean; // when true: hard-copy camera to target this frame (no lerp), then clear
 }
 
 export interface OracleAvatar3DProps {
@@ -573,11 +574,20 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
 
     // ── Camera: parallax look-around + pinch zoom ─────────────────────────
     if (cameraStateRef?.current) {
-      const { x, y, zoom } = cameraStateRef.current;
-      const targetZ = Math.min(CAM_DEFAULT_Z, Math.max(CAM_MIN_Z, CAM_DEFAULT_Z / Math.max(zoom, 1)));
-      camTarget.current.set(x * CAM_X_RANGE, CAM_Y_CENTER - y * CAM_Y_RANGE, targetZ);
+      const cs = cameraStateRef.current;
+      const targetZ = Math.min(CAM_DEFAULT_Z, Math.max(CAM_MIN_Z, CAM_DEFAULT_Z / Math.max(cs.zoom, 1)));
+      camTarget.current.set(cs.x * CAM_X_RANGE, CAM_Y_CENTER - cs.y * CAM_Y_RANGE, targetZ);
+      if (cs.snap) {
+        // Hard-snap: avatar materialises centred every time — no lerp-in drift from
+        // stale knife-tap offset during the 1.8s opacity fade-in.
+        camera.position.copy(camTarget.current);
+        cameraStateRef.current = { ...cs, snap: false };
+      } else {
+        camera.position.lerp(camTarget.current, CAM_LERP * lerpDt);
+      }
+    } else {
+      camera.position.lerp(camTarget.current, CAM_LERP * lerpDt);
     }
-    camera.position.lerp(camTarget.current, CAM_LERP * lerpDt);
     camera.lookAt(0, CAM_Y_CENTER, 0);
 
     // ── Blinking & Saccades ──────────────────────────────────────────────────

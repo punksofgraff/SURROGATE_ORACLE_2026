@@ -878,6 +878,30 @@
   transition: opacity 0.8s ease-out;
 }
 
+/* ── Fracture manifesting label — 6s fallback dead-connection path ─────────
+   Shown when forceOracleManifest is true but isGeminiConnected is still false.
+   Tells the seeker the rift is retrying, not silently broken.                */
+.oracle-fracture-label {
+  position: absolute;
+  bottom: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  font-family: 'Orbitron', 'PhillySans', monospace;
+  font-size: clamp(0.55rem, 1.4vw, 0.72rem);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: #00ff88;
+  text-shadow: 0 0 8px #00ff88, 0 0 18px rgba(0, 255, 136, 0.45);
+  pointer-events: none;
+  animation: oracle-fracture-flicker 1.2s ease-in-out infinite alternate;
+}
+@keyframes oracle-fracture-flicker {
+  0%   { opacity: 0.65; text-shadow: 0 0 6px #00ff88; }
+  60%  { opacity: 1;    text-shadow: 0 0 14px #00ff88, 0 0 28px rgba(0, 255, 136, 0.5); }
+  100% { opacity: 0.8;  text-shadow: 0 0 8px #00ff88, 0 0 20px rgba(0, 255, 136, 0.35); }
+}
+
 /* ── Talking face — freemium oracle path (z:2, above static, below video) ───
    ORACLE_AVATAR_URL: 1280×640 portrait. VisemeDetector drives glow/scale at
    up to 60 fps via direct DOM writes (no React re-renders in the hot path).

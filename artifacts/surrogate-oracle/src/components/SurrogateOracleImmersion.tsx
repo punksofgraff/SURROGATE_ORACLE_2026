@@ -664,7 +664,11 @@ export function SurrogateOracleImmersion() {
     // and requested simultaneously on the first Microphone "SIGNAL CONNECT" tap.
     localStorage.setItem('oracle_session_muted', 'true');
 
-    setTimeout(() => {
+    // Fire startSession immediately — the existing queue path handles the case where the
+    // WS is still CONNECTING (pendingBootRef + pendingMessagesRef flush on session.created).
+    // The 1600ms scene-cut in selectKnifeQuestion stays unchanged; booting the session at
+    // t=0 gives Gemini the full dramatic pause to establish before the Oracle scene lands.
+    {
       const fullStory = LORE_SEQUENCE.join('\n');
       let memoryBlock = '';
       if (echo?.session_summary || echo?.last_session_themes?.length) {
@@ -675,7 +679,7 @@ export function SurrogateOracleImmersion() {
       }
       const seed = `[MANIFEST — The Seeker has drawn their blade. Standby mode ends. You are fully present now. CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}).${memoryBlock} Reply directly to the Seeker's drawn question with your deep Oracle insight: "${q}". Speak with weight and presence, deliver slowly (10% slower than normal). Do NOT repeat the question back to them. Pause naturally, give your full answer, then close with a single spoken line — one sentence — that opens the channel for the Seeker to speak. Not "your turn." Speak it the way a door sounds when it opens.]`;
       oracleConversationRef.current?.startSession(seed);
-    }, 2200);
+    }
   };
 
   // ── Effects ─────────────────────────────────────────────────────────────
@@ -781,18 +785,22 @@ export function SurrogateOracleImmersion() {
       connection.setTransmissionQ(0.01, 200);
       // Reset stale touch gaze from knife-selection tap so the avatar enters centered.
       // touchGazeSuppressedUntil gives a 1.8s settle window before new touches drive gaze.
+      // snap:true ensures the Three.js camera hard-copies to the target this frame instead
+      // of lerping from a stale knife-tap offset during the 1.8s opacity fade-in.
       if (seekerMotionRef.current) {
         seekerMotionRef.current.hasTouch = false;
         seekerMotionRef.current.touchPos = { x: 0, y: 0 };
         seekerMotionRef.current.touchGazeSuppressedUntil = performance.now() + 1800;
       }
-      cameraStateRef.current = { ...cameraStateRef.current, x: 0, y: 0 };
+      cameraStateRef.current = { ...cameraStateRef.current, x: 0, y: 0, snap: true };
       // Reset manifest latch so fresh API readiness is required for this session.
       setForceOracleManifest(false);
-      // Fallback: if session.created hasn't arrived after 6s, manifest the avatar anyway.
+      // Fallback: if session.created hasn't arrived after 6s, manifest the avatar anyway
+      // and kick a reconnect attempt so we recover if the WS died silently.
       fallbackTimer = setTimeout(() => {
         setForceOracleManifest(true);
-        logStep('ORACLE MANIFEST FALLBACK — Gemini slow, forcing visibility', 'warn');
+        oracleConversationRef.current?.prewarm();
+        logStep('ORACLE MANIFEST FALLBACK — Gemini slow, reconnecting + FRACTURE MANIFESTING', 'warn');
       }, 6000);
     }
     return () => {
@@ -819,9 +827,22 @@ export function SurrogateOracleImmersion() {
       seekerMotionRef.current.touchPos = { x: 0, y: 0 };
       seekerMotionRef.current.touchGazeSuppressedUntil = performance.now() + 1800;
     }
-    cameraStateRef.current = { ...cameraStateRef.current, x: 0, y: 0 };
-    logStep('FALLBACK MANIFEST — gaze reset to center', 'ok');
+    // snap:true so Three.js hard-copies rather than lerps from the knife-tap offset.
+    cameraStateRef.current = { ...cameraStateRef.current, x: 0, y: 0, snap: true };
+    logStep('FALLBACK MANIFEST — gaze snapped to center', 'ok');
   }, [forceOracleManifest, scenePhase]);
+
+  // Keep the WebSocket alive during knife selection. Seekers can spend 30-90s reading
+  // knife cards — long enough for idle-timeout to close the prewarm WS. prewarm() is
+  // idempotent: no-ops when OPEN/CONNECTING, reconnects when dead.
+  useEffect(() => {
+    if (scenePhase !== 'awakened') return;
+    const id = setInterval(() => {
+      oracleConversationRef.current?.prewarm();
+      logStep('PREWARM KEEPALIVE (awakened interval)', 'ok');
+    }, 15_000);
+    return () => clearInterval(id);
+  }, [scenePhase]);
 
   // Tour phase: fire Oracle orientation speech + open mic for interactive Q&A
   useEffect(() => {
@@ -1140,6 +1161,9 @@ export function SurrogateOracleImmersion() {
   // 3D canvas only becomes visible once Gemini confirms session.created (or a 6s fallback fires).
   // hasManifested latches true after first reveal so WS reconnects don't briefly hide the avatar.
   const oracleManifestReady = isOracleMode && (hasManifested || isGeminiConnected || forceOracleManifest);
+  // True when the 6s fallback fired but we still have no live session — shows "FRACTURE MANIFESTING"
+  // instead of a silently frozen face so the seeker knows the system is trying to reconnect.
+  const isFractureManifesting = isOracleMode && forceOracleManifest && !isGeminiConnected;
   const awakened     = scenePhase === 'awakened' || scenePhase === 'tour' || isOracleMode;
   const isAlive      = scenePhase !== 'dormant';
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
@@ -1315,6 +1339,9 @@ export function SurrogateOracleImmersion() {
             {isOracleMode && <div className="oracle-monitor-cast" />}
             <div className="oracle-scanlines" />
             <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
+            {isFractureManifesting && (
+              <div className="oracle-fracture-label" aria-live="polite">FRACTURE MANIFESTING</div>
+            )}
             {/* Canvas warmup — mounts in terminal (lore) or awakened so GPU shaders compile
                 before oracle phase begins. Also mounts immediately on re-entry when
                 canvasWarmed=true (sessionStorage persists across navigation within the tab).

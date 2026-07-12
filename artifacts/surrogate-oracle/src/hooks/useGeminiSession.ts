@@ -465,7 +465,9 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
       // isSessionReconnectRef covers the case where a reconnect attempt is rejected by
       // Gemini before session.created fires (e.g. stale resume handle) — sessionBootedRef
       // is already false at that point so wasActive would be false without this guard.
-      const wasActive = sessionBootedRef.current || isSessionReconnectRef.current;
+      // pendingBootRef: a prewarmed-never-booted WS that died during knife selection has
+      // a queued knife seed — treat it as active so it retries instead of silently dying.
+      const wasActive = sessionBootedRef.current || isSessionReconnectRef.current || pendingBootRef.current;
       // If a reconnect attempt was rejected before session.created (stale handle), clear
       // it so the next attempt falls back to blind context injection instead of looping.
       if (isSessionReconnectRef.current && !sessionBootedRef.current) {
@@ -564,8 +566,9 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
         return;
       }
       if (wsState !== WebSocket.OPEN) {
-        pendingMessagesRef.current.push({ text: bootMessage, isHidden: true });
+        // connectToGemini() wipes pendingMessagesRef — push AFTER so the message survives.
         connectToGemini();
+        pendingMessagesRef.current.push({ text: bootMessage, isHidden: true });
         return;
       }
       sendText(bootMessage, true);
@@ -582,8 +585,9 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     if (wsState !== WebSocket.OPEN) {
       logStep('RECONNECTING FOR SESSION', 'pending');
       pendingBootRef.current = true;
-      if (bootMessage) pendingMessagesRef.current.push({ text: bootMessage, isHidden: true });
+      // connectToGemini() wipes pendingMessagesRef — push AFTER so the knife seed survives.
       connectToGemini();
+      if (bootMessage) pendingMessagesRef.current.push({ text: bootMessage, isHidden: true });
       return;
     }
     if (!sessionBootedRef.current) {

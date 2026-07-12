@@ -141,12 +141,16 @@ Deno.serve(async (req: Request) => {
       };
 
       // Upsert — creates the row if the session hasn't been written yet.
+      // seeker_key written at the row level so past sessions can be queried by seeker.
+      const upsertPayload: Record<string, unknown> = {
+        session_id: sessionId,
+        conversation_data: updatedData,
+      };
+      if (seekerKey) upsertPayload.seeker_key = seekerKey;
+
       const { error: writeError } = await supabase
         .from('surrogate_sessions')
-        .upsert(
-          { session_id: sessionId, conversation_data: updatedData },
-          { onConflict: 'session_id' },
-        );
+        .upsert(upsertPayload, { onConflict: 'session_id' });
 
       if (writeError) {
         console.error('❌ surrogate_sessions write failed:', writeError);

@@ -245,6 +245,7 @@ export function SurrogateOracleImmersion() {
   const portraitAnnounceRef      = useRef(false); // Oracle announces portrait on next turn-complete
   const pendingNewSeekerLoreRef  = useRef(false); // startLore waiting for WS connection
   const pendingWalletGreetingRef = useRef<string | null>(null); // personalized greeting seed for returning wallet seekers
+  const priorCompactSummariesRef = useRef<string[]>([]); // compact summaries from previous sessions, fetched at tap-in
 
   // ── Service Hooks ───────────────────────────────────────────────────────
   const { isReturning, hasCompletedLore, hasSignedWallet, markVisited, markLoreCompleted, markWalletSigned, ipAddress } = useIpCheck();
@@ -471,6 +472,35 @@ export function SurrogateOracleImmersion() {
     const loadedEcho = seekerKeyRef.current ? await loadEcho(seekerKeyRef.current) : null;
     window.__terminal_start = Date.now();
 
+    // Non-blocking: fetch compact summaries from past sessions for this seeker.
+    // Stored in priorCompactSummariesRef so handleKnifeClick can inject them into the seed.
+    const _seekerKey = seekerKeyRef.current;
+    if (_seekerKey) {
+      const supaUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supaKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (supaUrl && supaKey) {
+        fetch(
+          `${supaUrl}/rest/v1/surrogate_sessions?seeker_key=eq.${encodeURIComponent(_seekerKey)}&select=conversation_data&order=created_at.desc&limit=4`,
+          { headers: { 'apikey': supaKey, 'Authorization': `Bearer ${supaKey}` } }
+        )
+          .then((r) => r.json())
+          .then((rows: Array<{ conversation_data?: { compact_summaries?: Array<{ summary: string; compacted_at: string }> } }>) => {
+            const all: Array<{ summary: string; compacted_at: string }> = [];
+            for (const row of rows) {
+              const cs = row?.conversation_data?.compact_summaries;
+              if (Array.isArray(cs)) all.push(...cs);
+            }
+            // Most-recent first, cap at 4 so the seed doesn't balloon
+            all.sort((a, b) => b.compacted_at.localeCompare(a.compacted_at));
+            priorCompactSummariesRef.current = all.slice(0, 4).map((e) => e.summary);
+            if (priorCompactSummariesRef.current.length) {
+              logStep(`PRIOR COMPACT SUMMARIES LOADED — ${priorCompactSummariesRef.current.length} blocks`, 'ok');
+            }
+          })
+          .catch(() => { /* non-fatal — Oracle simply won't have prior compact context */ });
+      }
+    }
+
     // Wallet-signed returning seeker — skip lore + terminal, land straight in the alley.
     // Check both the React state (set by async IP check) AND the IP-agnostic localStorage
     // key directly so fast tappers before the IP check resolves are still recognised.
@@ -671,10 +701,16 @@ export function SurrogateOracleImmersion() {
     {
       const fullStory = LORE_SEQUENCE.join('\n');
       let memoryBlock = '';
-      if (echo?.session_summary || echo?.last_session_themes?.length) {
+      if (echo?.session_summary || echo?.last_session_themes?.length || priorCompactSummariesRef.current.length) {
         const parts: string[] = [];
-        if (echo.session_summary) parts.push(`Prior session distillation: "${echo.session_summary}".`);
-        if (echo.last_session_themes?.length) parts.push(`Themes that surfaced last time: ${echo.last_session_themes.join(', ')}.`);
+        if (echo?.session_summary) parts.push(`Prior session distillation: "${echo.session_summary}".`);
+        if (echo?.last_session_themes?.length) parts.push(`Themes that surfaced last time: ${echo.last_session_themes.join(', ')}.`);
+        if (priorCompactSummariesRef.current.length) {
+          const archiveBlock = priorCompactSummariesRef.current
+            .map((s, i) => `Archive ${i + 1}: ${s}`)
+            .join(' | ');
+          parts.push(`Signal archives from prior encounters: ${archiveBlock}`);
+        }
         memoryBlock = ` [SIGNAL CONTINUITY — This Seeker has stood before you before. ${parts.join(' ')} Let this color your recognition of them — do not narrate it back verbatim. Reference past themes only when they resonate with the blade just drawn.]`;
       }
       const seed = `[MANIFEST — The Seeker has drawn their blade. Standby mode ends. You are fully present now. CONTEXT: The Seeker has already heard the Archive Story: "${fullStory}". Their frequency is ${knife.territory} (themes: ${knife.themes.join(', ')}).${memoryBlock} Reply directly to the Seeker's drawn question with your deep Oracle insight: "${q}". Speak with weight and presence, deliver slowly (10% slower than normal). Do NOT repeat the question back to them. Pause naturally, give your full answer, then close with a single spoken line — one sentence — that opens the channel for the Seeker to speak. Not "your turn." Speak it the way a door sounds when it opens.]`;

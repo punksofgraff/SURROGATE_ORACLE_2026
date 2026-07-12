@@ -274,7 +274,7 @@ async function testTerminal(page, viewport, pass, fail) {
   // Silent pre-warm fires after awakened — wait for it before asserting
   await page.waitForTimeout(1600);
   steps = await getSteps(page);
-             assertStep(steps, 'ORACLE CONDUIT PRE-WARMED SILENTLY', pass, fail, 'step: ORACLE CONDUIT PRE-WARMED SILENTLY');
+             assertStep(steps, 'prewarm() CALLED', pass, fail, 'step: prewarm() CALLED — silent pre-warm');
 
   // Order: TAP before AWAKENED
   if (sTap && sAwk) assertBefore(sTap, sAwk, pass, fail, 'TAP fires before AWAKENED');
@@ -381,7 +381,9 @@ async function testOracle(page, pass, fail) {
   var sStart  = assertStep(steps, 'startSession() CALLED',      pass, fail, 'step: startSession() CALLED');
 
   if (sKnife && sEnter)  assertBefore(sKnife, sEnter,  pass, fail, 'KNIFE before ORACLE ENTERED');
-  if (sEnter && sStart)  assertBefore(sEnter, sStart,  pass, fail, 'ORACLE ENTERED before startSession');
+  // startSession() now fires at t=0 (knife click) — before oracle phase entry.
+  // The assertion was flipped when startSession was moved to t=0 in the prewarm timing fix.
+  if (sStart && sEnter)  assertBefore(sStart, sEnter,  pass, fail, 'startSession before ORACLE ENTERED (t=0 knife click)');
 
   // startSession should either fire __ORACLE_BOOT__ (first boot) or confirm the
   // session was already booted in terminal phase (no-op path).

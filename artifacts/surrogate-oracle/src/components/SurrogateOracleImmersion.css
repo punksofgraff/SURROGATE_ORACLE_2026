@@ -300,7 +300,33 @@
   white-space: normal;
   word-break: break-word;
   transition: opacity 1.4s ease, filter 1.4s ease;
-  /* Shadow moves to container but we use text-shadow on content for precision */
+  /* Gradient border — same mask trick as knife cards */
+  border-radius: 10px;
+  padding: 0.3em 0.75em;
+}
+
+/* Gradient border pseudo — cyan top → purple bottom */
+.ghost-tx::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  padding: 1px;
+  background: linear-gradient(
+    to bottom,
+    #00ff88 0%,
+    rgba(0, 255, 136, 0.35) 38%,
+    rgba(176, 38, 255, 0.35) 62%,
+    #b026ff 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
 }
 
 .ghost-tx__content {
@@ -2114,37 +2140,6 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   filter:
     drop-shadow(0 0 10px rgba(0,255,136,0.75))
     drop-shadow(0 0 24px rgba(0,255,136,0.40));
-  /* Gradient border — same mask trick as knife cards */
-  border-radius: 14px;
-  padding: 0.55em 1.4em;
-}
-
-/* Gradient border pseudo — cyan top → purple bottom, same spec as knife cards */
-.oracle-marquee::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 14px;
-  padding: 1px;
-  background: linear-gradient(
-    to bottom,
-    #00ff88 0%,
-    rgba(0, 255, 136, 0.35) 38%,
-    rgba(176, 38, 255, 0.35) 62%,
-    #b026ff 100%
-  );
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  opacity: 0.65;
-  transition: opacity 0.3s ease;
-}
-
-.oracle-marquee:hover::before {
-  opacity: 1;
 }
 
 @media (max-width: 480px) {

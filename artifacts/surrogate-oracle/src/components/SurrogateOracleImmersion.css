@@ -300,38 +300,11 @@
   white-space: normal;
   word-break: break-word;
   transition: opacity 1.4s ease, filter 1.4s ease;
-  /* Gradient border — same mask trick as knife cards */
-  border-radius: 10px;
-  padding: 0.3em 0.75em;
-}
-
-/* Gradient border pseudo — cyan top → purple bottom */
-.ghost-tx::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 10px;
-  padding: 1px;
-  background: linear-gradient(
-    to bottom,
-    #00ff88 0%,
-    rgba(0, 255, 136, 0.35) 38%,
-    rgba(176, 38, 255, 0.35) 62%,
-    #b026ff 100%
-  );
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  opacity: 0.7;
-  transition: opacity 0.3s ease;
 }
 
 .ghost-tx__content {
   display: inline-block;
-  background-image: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%) !important;
+  background-image: linear-gradient(90deg, #00ffcc 0%, #7b6fff 55%, #b026ff 100%) !important;
   background-clip: text !important;
   -webkit-background-clip: text !important;
   -webkit-text-fill-color: transparent !important;

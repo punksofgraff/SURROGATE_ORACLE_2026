@@ -304,13 +304,11 @@
 
 .ghost-tx__content {
   display: inline-block;
-  background-image: linear-gradient(90deg, #00ffcc 0%, #7b6fff 55%, #b026ff 100%) !important;
+  background-image: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%) !important;
   background-clip: text !important;
   -webkit-background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
   color: transparent !important;
-  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.55);
-  paint-order: stroke fill;
   /* NO text-shadow or filter here — it breaks background-clip: text in many browsers */
   padding: 2px 0; /* slight vertical bleed prevents clipping on descenders */
 }

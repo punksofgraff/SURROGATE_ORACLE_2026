@@ -1789,7 +1789,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  align-items: center;          /* centred manifesto, not console output */
+  align-items: center;
   padding: clamp(24px, 6vw, 60px) clamp(20px, 8vw, 120px);
   pointer-events: none;
   background: linear-gradient(
@@ -1832,38 +1832,15 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   max-width: min(900px, 90vw);
   text-align: center;
   width: 100%;
-  /* Gradient border — same mask trick as knife cards */
-  position: relative;
-  border-radius: 16px;
-  padding: clamp(18px, 3vw, 36px) clamp(16px, 4vw, 40px);
-}
-
-/* Gradient border pseudo — same spec as oracle-knife-card::before */
-.oracle-lore-text::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 16px;
-  padding: 1px;
-  background: linear-gradient(
-    to bottom,
-    #00ff88 0%,
-    rgba(0, 255, 136, 0.35) 38%,
-    rgba(176, 38, 255, 0.35) 62%,
-    #b026ff 100%
-  );
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  opacity: 0.72;
-  transition: opacity 0.3s ease;
-}
-
-.oracle-lore-text:hover::before {
-  opacity: 1;
+  /* Star Wars crawl — anchor lines to the bottom so the final line is always
+     visible. As lines accumulate past max-height, older ones scroll off the
+     top (overflow hidden). "THE SIGNAL IS YOURS." is never clipped. */
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  max-height: calc(100vh - clamp(50px, 13vh, 130px));
+  overflow: hidden;
+  padding: 0 clamp(16px, 4vw, 40px) clamp(20px, 4vh, 40px);
 }
 
 /* First line (system ID) is larger — commands immediate attention */
@@ -2137,6 +2114,37 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   filter:
     drop-shadow(0 0 10px rgba(0,255,136,0.75))
     drop-shadow(0 0 24px rgba(0,255,136,0.40));
+  /* Gradient border — same mask trick as knife cards */
+  border-radius: 14px;
+  padding: 0.55em 1.4em;
+}
+
+/* Gradient border pseudo — cyan top → purple bottom, same spec as knife cards */
+.oracle-marquee::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  padding: 1px;
+  background: linear-gradient(
+    to bottom,
+    #00ff88 0%,
+    rgba(0, 255, 136, 0.35) 38%,
+    rgba(176, 38, 255, 0.35) 62%,
+    #b026ff 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.65;
+  transition: opacity 0.3s ease;
+}
+
+.oracle-marquee:hover::before {
+  opacity: 1;
 }
 
 @media (max-width: 480px) {

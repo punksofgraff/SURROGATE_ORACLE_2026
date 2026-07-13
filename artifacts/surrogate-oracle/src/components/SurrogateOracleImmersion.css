@@ -309,7 +309,7 @@
   -webkit-background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
   color: transparent !important;
-  -webkit-text-stroke: 0.5px rgba(255, 255, 255, 0.4);
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.55);
   paint-order: stroke fill;
   /* NO text-shadow or filter here — it breaks background-clip: text in many browsers */
   padding: 2px 0; /* slight vertical bleed prevents clipping on descenders */

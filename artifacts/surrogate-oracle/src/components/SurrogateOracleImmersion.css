@@ -4992,7 +4992,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   opacity: 1;
   filter: none;
   transition: none !important;
-  animation: oracle-phase-manifest 1.5s cubic-bezier(0.19, 1, 0.22, 1) both;
+  animation: oracle-phase-manifest 2.5s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-headroom-hook {

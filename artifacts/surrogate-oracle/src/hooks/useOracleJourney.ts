@@ -114,10 +114,12 @@ export function useOracleJourney({
     sessionStorage.setItem('oracle_selected_knife_index', String(index));
     
     // Transition to full Oracle mode after a dramatic pause
+    // 3800ms: fills the Gemini session warmup gap so the avatar coalesces
+    // while the API is locking in, not after a rushed 1.6s blink-in.
     setTimeout(() => {
       setScenePhase('oracle');
       logStep('ORACLE PHASE ENTERED', 'ok');
-    }, 1600);
+    }, 3800);
   }, []);
 
   const resetJourney = useCallback(() => {

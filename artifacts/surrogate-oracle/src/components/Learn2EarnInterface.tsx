@@ -148,7 +148,7 @@ export const Learn2EarnInterface = ({ userId: _userId, navigateToDebug }: Learn2
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[
                 ['OracleAvatar3D', 'Three.js / React Three Fiber 3D avatar with OVR lip sync'],
-                ['Gemini 2.5 Flash Live', 'Neural voice synthesis (Charon voice)'],
+                ['Gemini 2.5 Flash Live', 'Neural voice synthesis (Sadaltager voice)'],
                 ['Google AI Studio', 'Portrait generation'],
                 ['Supabase', 'Backend & authentication'],
                 ['Culture Coins', 'Gamification layer'],

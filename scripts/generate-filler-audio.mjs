@@ -52,8 +52,8 @@ if (!GEMINI_API_KEY || !SUPABASE_URL || !SUPABASE_KEY) {
 }
 
 const TTS_MODEL = 'gemini-2.5-flash-preview-tts';
-// Charon: measured, dark tone — closest Gemini voice to the Oracle's atmosphere
-const TTS_VOICE = 'Charon';
+// Sadaltager: matches the live Oracle session voice (VITE_ORACLE_VOICE default in useGeminiSession.ts)
+const TTS_VOICE = 'Sadaltager';
 
 const PHRASES = [
   // Note: "Hmmm..." (2 tokens) is rejected by Gemini TTS with finishReason:OTHER.

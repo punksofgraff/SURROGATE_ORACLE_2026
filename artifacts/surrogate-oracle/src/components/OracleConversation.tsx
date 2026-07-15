@@ -87,6 +87,10 @@ interface OracleConversationProps {
   /** When true, suppresses JPEG frame sending to Gemini without affecting local
    *  face-tracking gaze. Seeker-controlled session toggle — defaults to false. */
   visionPaused?: boolean;
+  /** Pre-rendered filler phrase audio URLs keyed by type. When set, a phrase is
+   *  played after 1200ms of post-turn silence and cancelled the instant real
+   *  Oracle audio arrives (barge-in style flush). */
+  fillerPhrases?: { thinking: string[]; vision: string[] };
 }
 
 export interface OracleConversationHandle {
@@ -166,6 +170,7 @@ const OracleConversation = forwardRef(
       cameraVideoRef,
       cameraActive,
       visionPaused = false,
+      fillerPhrases,
     } = props;
 
     const [isListening, setIsListening] = useState(false);
@@ -411,6 +416,22 @@ const OracleConversation = forwardRef(
     const micAutoRestartAllowedRef = useRef(false);
     useEffect(() => { micAutoRestartAllowedRef.current = micAutoRestartAllowed; }, [micAutoRestartAllowed]);
 
+    // ── Filler phrase refs ─────────────────────────────────────────────────
+    // All accessed inside handlersRef closures — must be refs to avoid stale values.
+    // fillerTimerRef: pending setTimeout id (null when no timer is active)
+    // isFillerPlayingRef: true between the URL being passed to onOracleResponse and the
+    //   first real PCM chunk arriving (the window where we need to flush on barge-in)
+    const fillerPhrasesRef = useRef<{ thinking: string[]; vision: string[] } | null>(null);
+    useEffect(() => { fillerPhrasesRef.current = fillerPhrases ?? null; }, [fillerPhrases]);
+    const cameraActiveFillerRef = useRef(cameraActive);
+    useEffect(() => { cameraActiveFillerRef.current = cameraActive; }, [cameraActive]);
+    const fillerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isFillerPlayingRef = useRef(false);
+    // Cleanup on unmount — prevent timer fire after component is gone
+    useEffect(() => () => {
+      if (fillerTimerRef.current !== null) clearTimeout(fillerTimerRef.current);
+    }, []);
+
     // Silent-mic recovery — a hands-on attendee with no staff needs to KNOW the mic
     // died (muted/permission glitch/hardware), not just stare at a "TRANSMITTING" label
     // that's secretly capturing digital silence. SILENCE_FLOOR (0.001) is true digital
@@ -485,6 +506,8 @@ const OracleConversation = forwardRef(
         // via the {...msg} spread). Capture token telemetry when present.
         if (msg.usageMetadata?.totalTokenCount) debugInfo.current.lastTokenCount = msg.usageMetadata.totalTokenCount;
         if (msg.serverContent?.interrupted) {
+          if (fillerTimerRef.current !== null) { clearTimeout(fillerTimerRef.current); fillerTimerRef.current = null; }
+          isFillerPlayingRef.current = false;
           logStep('ORACLE INTERRUPTED (barge-in)', 'warn');
           trackOracleEvent({
             event: 'oracle_barge_in',
@@ -503,6 +526,13 @@ const OracleConversation = forwardRef(
           if (part.text) currentResponseText.current += part.text;
           if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
             if (debugInfo.current.audioChunksReceived === 0) {
+              // Real Oracle audio has arrived — cancel the filler timer or flush any
+              // already-playing filler phrase so real audio plays without overlap.
+              if (fillerTimerRef.current !== null) { clearTimeout(fillerTimerRef.current); fillerTimerRef.current = null; }
+              if (isFillerPlayingRef.current) {
+                isFillerPlayingRef.current = false;
+                onBargeInRef.current?.(); // flush PCMPlayer ring buffer so filler cuts cleanly
+              }
               logStep('ORACLE AUDIO START', 'ok');
               window.__oracle_speech_start = Date.now();
               trackOracleEvent({
@@ -539,6 +569,9 @@ const OracleConversation = forwardRef(
         }
 
         if (msg.serverContent?.turnComplete) {
+          // Cancel any pending filler (e.g. text-only turn with no audio chunks)
+          if (fillerTimerRef.current !== null) { clearTimeout(fillerTimerRef.current); fillerTimerRef.current = null; }
+          isFillerPlayingRef.current = false;
           logStep('ORACLE TURN COMPLETE', 'ok');
           trackOracleEvent({
             event: 'oracle_turn_completed',
@@ -841,6 +874,22 @@ const OracleConversation = forwardRef(
           if (result.isTurnEnd) {
             setIsOracleThinking(true);
             signalVisionActivity(); // user finished speaking — hold vision feed open during thinking gap
+            // Start filler delay — if Gemini is slow, play a pre-rendered phrase to
+            // bridge the silence. Cancelled immediately if real audio arrives first.
+            if (fillerTimerRef.current !== null) clearTimeout(fillerTimerRef.current);
+            isFillerPlayingRef.current = false;
+            fillerTimerRef.current = setTimeout(() => {
+              fillerTimerRef.current = null;
+              const phrases = fillerPhrasesRef.current;
+              if (!phrases) return;
+              const type = cameraActiveFillerRef.current ? 'vision' : 'thinking';
+              const pool = phrases[type];
+              if (!pool.length) return;
+              const url = pool[Math.floor(Math.random() * pool.length)];
+              isFillerPlayingRef.current = true;
+              onOracleResponseRef.current?.(url);
+              logStep('FILLER PHRASE — bridging Gemini processing gap', 'ok');
+            }, 1200);
           }
 
           // Continuous stream: MUST send while Oracle is speaking to enable native Gemini VAD barge-in.

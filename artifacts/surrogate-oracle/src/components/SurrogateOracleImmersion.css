@@ -4943,6 +4943,34 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   to   { transform: rotateY(360deg); }
 }
 
+/* ── Oracle thinking pulse — halo ring breathes while answer forms ──────────
+   Fires immediately at Seeker turn-end; cancelled the instant the first Oracle
+   audio chunk arrives (data-oracle-thinking is removed by React state update).
+   Smooth fade-out is handled by the transition on .oracle-halo-ring below. */
+@keyframes oracle-thinking-halo-pulse {
+  0%, 100% { opacity: 0.72; filter: brightness(0.85) saturate(0.7); }
+  50%       { opacity: 1.0;  filter: brightness(1.65) saturate(1.5) drop-shadow(0 0 18px rgba(0,255,136,0.55)); }
+}
+
+/* Transition applied unconditionally so the return to normal state fades
+   rather than snapping (matches "no jarring cut" requirement). */
+.oracle-halo-ring {
+  transition: filter 0.55s ease, opacity 0.55s ease;
+}
+
+.oracle-stage[data-oracle-thinking="true"] .oracle-halo-ring {
+  animation: oracle-thinking-halo-pulse 1.8s ease-in-out infinite;
+}
+
+/* Reduced-motion: skip pulse but still reflect the thinking state visibly */
+@media (prefers-reduced-motion: reduce) {
+  .oracle-stage[data-oracle-thinking="true"] .oracle-halo-ring {
+    animation: none;
+    opacity: 1;
+    filter: brightness(1.4) saturate(1.2);
+  }
+}
+
 /* ── Max Headroom glitch-phase — unconditional, every oracle session ────────
    Two signal-dropout bursts per 14s cycle. Pure CSS, data-oracle-state driven.
    Applied to oracle-avatar-smoke-hook (the canvas wrapper) so transform glitch

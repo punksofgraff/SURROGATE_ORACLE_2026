@@ -91,6 +91,10 @@ interface OracleConversationProps {
    *  played after 1200ms of post-turn silence and cancelled the instant real
    *  Oracle audio arrives (barge-in style flush). */
   fillerPhrases?: { thinking: string[]; vision: string[] };
+  /** Fires when the Oracle enters or exits the contemplative thinking gap
+   *  (between Seeker turn-end and first Oracle audio). Use to drive visual
+   *  feedback in the parent (e.g. halo ring pulse). */
+  onThinkingChange?: (isThinking: boolean) => void;
 }
 
 export interface OracleConversationHandle {
@@ -171,6 +175,7 @@ const OracleConversation = forwardRef(
       cameraActive,
       visionPaused = false,
       fillerPhrases,
+      onThinkingChange,
     } = props;
 
     const [isListening, setIsListening] = useState(false);
@@ -205,6 +210,8 @@ const OracleConversation = forwardRef(
     }, [signalVisionActivity]);
     // true between Seeker turn-end and first Oracle audio chunk (the "contemplative" gap)
     const [isOracleThinking, setIsOracleThinking] = useState(false);
+    // Notify parent so it can drive visual feedback (e.g. halo ring pulse)
+    useEffect(() => { onThinkingChange?.(isOracleThinking); }, [isOracleThinking, onThinkingChange]);
     const [turns, setTurns] = useState<Turn[]>(() => {
       try {
         const saved = localStorage.getItem(`oracle_turns_${sessionId}`);

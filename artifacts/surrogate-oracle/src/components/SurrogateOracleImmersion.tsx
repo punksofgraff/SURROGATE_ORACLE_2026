@@ -196,6 +196,7 @@ export function SurrogateOracleImmersion() {
   const [profanePulse, setProfanePulse] = useState(0);
   const [sacredPulse, setSacredPulse]   = useState(0);
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
+  const [isOracleThinking, setIsOracleThinking] = useState(false);
   const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
   const [showWallet, setShowWallet]             = useState(false);
   const [visionPaused, setVisionPaused]         = useState(false);
@@ -1265,6 +1266,7 @@ export function SurrogateOracleImmersion() {
       data-exiting={journey.isExiting ? 'true' : undefined}
       data-oracle-manifesting={(isOracleMode && !oracleManifestReady) ? 'true' : undefined}
       data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
+      data-oracle-thinking={isOracleThinking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
       data-camera-active={cameraActive ? 'true' : undefined}
       data-audio-target-vol={targetVol}
@@ -1888,6 +1890,7 @@ export function SurrogateOracleImmersion() {
           onConnected={() => setIsGeminiConnected(true)}
           onDisconnected={() => setIsGeminiConnected(false)}
           onListeningChange={setIsMicActive}
+          onThinkingChange={setIsOracleThinking}
           onMicWillStart={() => fadeToVolume(0, 80)}
           onTypeModeChange={setIsTypeMode}
           onMicClick={async (willListen) => {

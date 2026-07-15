@@ -15,12 +15,14 @@ CREATE TABLE IF NOT EXISTS oracle_filler_phrases (
 -- Public read (anon key can fetch phrase list at runtime)
 GRANT SELECT ON oracle_filler_phrases TO anon, authenticated;
 
--- Storage: oracle-assets bucket (public, for filler WAV files)
+-- Storage: oracle-assets bucket (public-read, no public write path)
 INSERT INTO storage.buckets (id, name, public, created_at, updated_at)
 VALUES ('oracle-assets', 'oracle-assets', true, now(), now())
 ON CONFLICT (id) DO UPDATE SET public = true;
 
--- Public read policy for storage objects
+-- Public read policy: anyone can GET the pre-rendered WAV files at runtime.
+-- Upload is intentionally excluded — the generation script authenticates
+-- with the service-role key via the Management API, not the public anon key.
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -33,23 +35,6 @@ BEGIN
       ON storage.objects FOR SELECT
       TO anon, authenticated
       USING (bucket_id = ''oracle-assets'')
-    ';
-  END IF;
-END $$;
-
--- Anon INSERT policy (allows generate-filler-audio.mjs to upload with the anon key)
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'storage' AND tablename = 'objects'
-    AND policyname = 'oracle-assets anon upload filler'
-  ) THEN
-    EXECUTE '
-      CREATE POLICY "oracle-assets anon upload filler"
-      ON storage.objects FOR INSERT
-      TO anon
-      WITH CHECK (bucket_id = ''oracle-assets'')
     ';
   END IF;
 END $$;

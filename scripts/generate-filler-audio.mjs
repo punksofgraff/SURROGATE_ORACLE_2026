@@ -12,7 +12,13 @@
  * Required env (auto-loaded from artifacts/surrogate-oracle/.env.local):
  *   GEMINI_API_KEY         — Google AI Studio key
  *   VITE_SUPABASE_URL      — Supabase project URL
- *   VITE_SUPABASE_ANON_KEY — Supabase anon key (bucket has permissive upload policy)
+ *   VITE_SUPABASE_ANON_KEY — Supabase anon key (used only for DB upsert reads)
+ *
+ * Required for storage uploads (admin-only operation):
+ *   SUPABASE_ACCESS_TOKEN  — Supabase Management API token (fetches service-role key)
+ *
+ * Storage uploads use the service-role key (fetched via Management API at runtime).
+ * The oracle-assets bucket has no public write policy — anon cannot upload.
  */
 
 import { readFileSync } from 'fs';
@@ -135,13 +141,18 @@ async function generateAudio(phraseText) {
   return { buf: rawBuf, contentType: mimeType.split(';')[0] || 'audio/mpeg', ext: 'mp3', durationMs: 3000 };
 }
 
+// Resolved during bootstrapBucket(); used by uploadToStorage.
+// Never logged — treated as a credential.
+let serviceRoleKey = null;
+
 async function uploadToStorage(filename, buf, contentType) {
+  if (!serviceRoleKey) throw new Error('Service-role key not available — run bootstrapBucket() first or set SUPABASE_ACCESS_TOKEN');
   const url = `${SUPABASE_URL}/storage/v1/object/oracle-assets/filler/${filename}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
-      'apikey':         SUPABASE_KEY,
+      'Authorization': `Bearer ${serviceRoleKey}`,
+      'apikey':         serviceRoleKey,
       'Content-Type':   contentType,
       'x-upsert':       'true',
     },
@@ -152,11 +163,14 @@ async function uploadToStorage(filename, buf, contentType) {
 }
 
 async function upsertRow(phraseText, audioUrl, phraseType, durationMs) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/oracle_filler_phrases`, {
+  // Uses service-role key (the migration only grants anon SELECT, not INSERT).
+  // on_conflict=phrase_text tells PostgREST which unique column to use for
+  // resolution=merge-duplicates so re-runs update existing rows cleanly.
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/oracle_filler_phrases?on_conflict=phrase_text`, {
     method: 'POST',
     headers: {
-      'apikey':         SUPABASE_KEY,
-      'Authorization':  `Bearer ${SUPABASE_KEY}`,
+      'apikey':         serviceRoleKey,
+      'Authorization':  `Bearer ${serviceRoleKey}`,
       'Content-Type':   'application/json',
       'Prefer':         'resolution=merge-duplicates,return=minimal',
     },
@@ -166,14 +180,30 @@ async function upsertRow(phraseText, audioUrl, phraseType, durationMs) {
 }
 
 async function bootstrapBucket() {
-  // Create oracle-assets bucket + RLS policies if they don't exist.
-  // Requires SUPABASE_ACCESS_TOKEN (Supabase management API token).
+  // Fetch service-role key and ensure oracle-assets bucket + read-only policy exist.
+  // Requires SUPABASE_ACCESS_TOKEN (Supabase Management API personal access token).
+  // Storage uploads use the service-role key — the bucket has NO public write policy.
   const mgmtToken = process.env.SUPABASE_ACCESS_TOKEN;
   const projectRef = SUPABASE_URL?.match(/\/\/([^.]+)\.supabase\.co/)?.[1];
   if (!mgmtToken || !projectRef) {
-    console.warn('[Filler] SUPABASE_ACCESS_TOKEN not set — skipping bucket bootstrap. Ensure oracle-assets bucket exists manually.');
-    return;
+    console.error('[Filler] ✗ SUPABASE_ACCESS_TOKEN not set. Storage uploads require the service-role key which is fetched via the Management API. Set SUPABASE_ACCESS_TOKEN and re-run.');
+    process.exit(1);
   }
+
+  // Fetch service-role key from Management API
+  const keysRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/api-keys`, {
+    headers: {
+      'Authorization': `Bearer ${mgmtToken}`,
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+    },
+  });
+  if (!keysRes.ok) throw new Error(`Management API /api-keys HTTP ${keysRes.status}: ${await keysRes.text()}`);
+  const keys = await keysRes.json();
+  const srKey = Array.isArray(keys) ? keys.find(k => k.name === 'service_role')?.api_key : null;
+  if (!srKey) throw new Error('Could not find service_role key in Management API response');
+  serviceRoleKey = srKey; // stored in module-level var; never logged
+
+  // Bootstrap bucket + read-only public policy via SQL
   const sql = `
     INSERT INTO storage.buckets (id, name, public, created_at, updated_at)
     VALUES ('oracle-assets', 'oracle-assets', true, now(), now())
@@ -182,9 +212,6 @@ async function bootstrapBucket() {
     DO $$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='storage' AND tablename='objects' AND policyname='oracle-assets public read') THEN
         EXECUTE 'CREATE POLICY "oracle-assets public read" ON storage.objects FOR SELECT TO anon, authenticated USING (bucket_id = ''oracle-assets'')';
-      END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='storage' AND tablename='objects' AND policyname='oracle-assets anon upload filler') THEN
-        EXECUTE 'CREATE POLICY "oracle-assets anon upload filler" ON storage.objects FOR INSERT TO anon WITH CHECK (bucket_id = ''oracle-assets'')';
       END IF;
     END $$;
   `;
@@ -200,7 +227,7 @@ async function bootstrapBucket() {
   if (!res.ok) {
     console.warn(`[Filler] Bucket bootstrap warning (${res.status}): ${await res.text()}`);
   } else {
-    console.log('[Filler] oracle-assets bucket ready ✓\n');
+    console.log('[Filler] oracle-assets bucket ready (public-read, no public write) ✓\n');
   }
 }
 

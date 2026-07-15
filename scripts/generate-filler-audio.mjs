@@ -50,6 +50,10 @@ const TTS_MODEL = 'gemini-2.5-flash-preview-tts';
 const TTS_VOICE = 'Charon';
 
 const PHRASES = [
+  // Note: "Hmmm..." (2 tokens) is rejected by Gemini TTS with finishReason:OTHER.
+  // Keep it in the list so intent is documented; the ✗ path handles the failure gracefully.
+  // "Hmm. The signal is speaking." is the seeded replacement already in the DB.
+  { text: 'Hmmm...',                                  type: 'thinking' },
   { text: 'Hmm. The signal is speaking.',              type: 'thinking' },
   { text: 'Manifesting that now...',                  type: 'thinking' },
   { text: 'Interesting, let me think about that...',  type: 'thinking' },
@@ -161,7 +165,47 @@ async function upsertRow(phraseText, audioUrl, phraseType, durationMs) {
   if (!res.ok) throw new Error(`DB upsert HTTP ${res.status}: ${await res.text()}`);
 }
 
+async function bootstrapBucket() {
+  // Create oracle-assets bucket + RLS policies if they don't exist.
+  // Requires SUPABASE_ACCESS_TOKEN (Supabase management API token).
+  const mgmtToken = process.env.SUPABASE_ACCESS_TOKEN;
+  const projectRef = SUPABASE_URL?.match(/\/\/([^.]+)\.supabase\.co/)?.[1];
+  if (!mgmtToken || !projectRef) {
+    console.warn('[Filler] SUPABASE_ACCESS_TOKEN not set — skipping bucket bootstrap. Ensure oracle-assets bucket exists manually.');
+    return;
+  }
+  const sql = `
+    INSERT INTO storage.buckets (id, name, public, created_at, updated_at)
+    VALUES ('oracle-assets', 'oracle-assets', true, now(), now())
+    ON CONFLICT (id) DO UPDATE SET public = true;
+
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='storage' AND tablename='objects' AND policyname='oracle-assets public read') THEN
+        EXECUTE 'CREATE POLICY "oracle-assets public read" ON storage.objects FOR SELECT TO anon, authenticated USING (bucket_id = ''oracle-assets'')';
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='storage' AND tablename='objects' AND policyname='oracle-assets anon upload filler') THEN
+        EXECUTE 'CREATE POLICY "oracle-assets anon upload filler" ON storage.objects FOR INSERT TO anon WITH CHECK (bucket_id = ''oracle-assets'')';
+      END IF;
+    END $$;
+  `;
+  const res = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${mgmtToken}`,
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+    },
+    body: JSON.stringify({ query: sql }),
+  });
+  if (!res.ok) {
+    console.warn(`[Filler] Bucket bootstrap warning (${res.status}): ${await res.text()}`);
+  } else {
+    console.log('[Filler] oracle-assets bucket ready ✓\n');
+  }
+}
+
 async function main() {
+  await bootstrapBucket();
   console.log(`[Filler] Model: ${TTS_MODEL} | Voice: ${TTS_VOICE} | ${PHRASES.length} phrases\n`);
 
   for (const { text, type } of PHRASES) {

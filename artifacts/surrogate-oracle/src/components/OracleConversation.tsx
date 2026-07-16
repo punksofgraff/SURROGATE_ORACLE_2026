@@ -87,10 +87,6 @@ interface OracleConversationProps {
   /** When true, suppresses JPEG frame sending to Gemini without affecting local
    *  face-tracking gaze. Seeker-controlled session toggle — defaults to false. */
   visionPaused?: boolean;
-  /** Pre-rendered filler phrase audio URLs keyed by type. When set, a phrase is
-   *  played after 1200ms of post-turn silence and cancelled the instant real
-   *  Oracle audio arrives (barge-in style flush). */
-  fillerPhrases?: { thinking: string[]; vision: string[] };
   /** Fires when the Oracle enters or exits the contemplative thinking gap
    *  (between Seeker turn-end and first Oracle audio). Use to drive visual
    *  feedback in the parent (e.g. halo ring pulse). */
@@ -174,7 +170,6 @@ const OracleConversation = forwardRef(
       cameraVideoRef,
       cameraActive,
       visionPaused = false,
-      fillerPhrases,
       onThinkingChange,
     } = props;
 
@@ -423,20 +418,19 @@ const OracleConversation = forwardRef(
     const micAutoRestartAllowedRef = useRef(false);
     useEffect(() => { micAutoRestartAllowedRef.current = micAutoRestartAllowed; }, [micAutoRestartAllowed]);
 
-    // ── Filler phrase refs ─────────────────────────────────────────────────
-    // All accessed inside handlersRef closures — must be refs to avoid stale values.
-    // fillerTimerRef: pending setTimeout id (null when no timer is active)
-    // isFillerPlayingRef: true between the URL being passed to onOracleResponse and the
-    //   first real PCM chunk arriving (the window where we need to flush on barge-in)
-    const fillerPhrasesRef = useRef<{ thinking: string[]; vision: string[] } | null>(null);
-    useEffect(() => { fillerPhrasesRef.current = fillerPhrases ?? null; }, [fillerPhrases]);
-    const cameraActiveFillerRef = useRef(cameraActive);
-    useEffect(() => { cameraActiveFillerRef.current = cameraActive; }, [cameraActive]);
-    const fillerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // ── Filler TTS refs ────────────────────────────────────────────────────
+    // Prefetch-and-gate approach: TTS fetch fires at Seeker turn-end; audio plays
+    // only when BOTH (a) fetch resolved AND (b) elapsed ≥ 2000ms AND (c) no real
+    // Oracle PCM has arrived yet. Aborted immediately on first real PCM chunk.
+    const fillerAbortRef   = useRef<AbortController | null>(null);
+    const fillerBlobUrlRef = useRef<string | null>(null);
+    const fillerTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isFillerPlayingRef = useRef(false);
-    // Cleanup on unmount — prevent timer fire after component is gone
+    // Cleanup on unmount — abort in-flight fetch, revoke blob URL, clear timer
     useEffect(() => () => {
       if (fillerTimerRef.current !== null) clearTimeout(fillerTimerRef.current);
+      fillerAbortRef.current?.abort();
+      if (fillerBlobUrlRef.current) { URL.revokeObjectURL(fillerBlobUrlRef.current); fillerBlobUrlRef.current = null; }
     }, []);
 
     // Silent-mic recovery — a hands-on attendee with no staff needs to KNOW the mic
@@ -514,6 +508,8 @@ const OracleConversation = forwardRef(
         if (msg.usageMetadata?.totalTokenCount) debugInfo.current.lastTokenCount = msg.usageMetadata.totalTokenCount;
         if (msg.serverContent?.interrupted) {
           if (fillerTimerRef.current !== null) { clearTimeout(fillerTimerRef.current); fillerTimerRef.current = null; }
+          fillerAbortRef.current?.abort(); fillerAbortRef.current = null;
+          if (fillerBlobUrlRef.current) { URL.revokeObjectURL(fillerBlobUrlRef.current); fillerBlobUrlRef.current = null; }
           isFillerPlayingRef.current = false;
           logStep('ORACLE INTERRUPTED (barge-in)', 'warn');
           trackOracleEvent({
@@ -533,9 +529,11 @@ const OracleConversation = forwardRef(
           if (part.text) currentResponseText.current += part.text;
           if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
             if (debugInfo.current.audioChunksReceived === 0) {
-              // Real Oracle audio has arrived — cancel the filler timer or flush any
+              // Real Oracle audio has arrived — abort TTS fetch + cancel timer + flush any
               // already-playing filler phrase so real audio plays without overlap.
               if (fillerTimerRef.current !== null) { clearTimeout(fillerTimerRef.current); fillerTimerRef.current = null; }
+              fillerAbortRef.current?.abort(); fillerAbortRef.current = null;
+              if (fillerBlobUrlRef.current) { URL.revokeObjectURL(fillerBlobUrlRef.current); fillerBlobUrlRef.current = null; }
               if (isFillerPlayingRef.current) {
                 isFillerPlayingRef.current = false;
                 onBargeInRef.current?.(); // flush PCMPlayer ring buffer so filler cuts cleanly
@@ -576,8 +574,10 @@ const OracleConversation = forwardRef(
         }
 
         if (msg.serverContent?.turnComplete) {
-          // Cancel any pending filler (e.g. text-only turn with no audio chunks)
+          // Cancel any pending filler fetch / timer (e.g. text-only turn with no audio chunks)
           if (fillerTimerRef.current !== null) { clearTimeout(fillerTimerRef.current); fillerTimerRef.current = null; }
+          fillerAbortRef.current?.abort(); fillerAbortRef.current = null;
+          if (fillerBlobUrlRef.current) { URL.revokeObjectURL(fillerBlobUrlRef.current); fillerBlobUrlRef.current = null; }
           isFillerPlayingRef.current = false;
           logStep('ORACLE TURN COMPLETE', 'ok');
           trackOracleEvent({
@@ -881,22 +881,65 @@ const OracleConversation = forwardRef(
           if (result.isTurnEnd) {
             setIsOracleThinking(true);
             signalVisionActivity(); // user finished speaking — hold vision feed open during thinking gap
-            // Start filler delay — if Gemini is slow, play a pre-rendered phrase to
-            // bridge the silence. Cancelled immediately if real audio arrives first.
-            if (fillerTimerRef.current !== null) clearTimeout(fillerTimerRef.current);
+
+            // Cancel any previous filler in-flight
+            if (fillerTimerRef.current !== null) { clearTimeout(fillerTimerRef.current); fillerTimerRef.current = null; }
+            fillerAbortRef.current?.abort(); fillerAbortRef.current = null;
+            if (fillerBlobUrlRef.current) { URL.revokeObjectURL(fillerBlobUrlRef.current); fillerBlobUrlRef.current = null; }
             isFillerPlayingRef.current = false;
-            fillerTimerRef.current = setTimeout(() => {
-              fillerTimerRef.current = null;
-              const phrases = fillerPhrasesRef.current;
-              if (!phrases) return;
-              const type = cameraActiveFillerRef.current ? 'vision' : 'thinking';
-              const pool = phrases[type];
-              if (!pool.length) return;
-              const url = pool[Math.floor(Math.random() * pool.length)];
-              isFillerPlayingRef.current = true;
-              onOracleResponseRef.current?.(url);
-              logStep('FILLER PHRASE — bridging Gemini processing gap', 'ok');
-            }, 1200);
+
+            // Prefetch-and-gate: fire TTS immediately; play only when BOTH
+            //   (a) the fetch resolved   AND   (b) elapsed ≥ 2000ms
+            // Fast Oracle replies → silence. Slow ones → fresh thinking vocalization.
+            // If TTS fails or real audio arrives first → silent no-op.
+            const supaUrl = import.meta.env.VITE_SUPABASE_URL;
+            if (supaUrl) {
+              const abortCtrl = new AbortController();
+              fillerAbortRef.current = abortCtrl;
+              const turnEndMs = Date.now();
+
+              // Safety timeout — abort TTS fetch after 8 s regardless
+              const safetyTimer = setTimeout(() => abortCtrl.abort(), 8000);
+
+              fetch(`${supaUrl}/functions/v1/oracle-filler-tts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: 'low, slow contemplative murmur — Hmmm... mmm' }),
+                signal: abortCtrl.signal,
+              })
+                .then(async (res) => {
+                  clearTimeout(safetyTimer);
+                  if (!res.ok || abortCtrl.signal.aborted) return;
+                  const blob = await res.blob();
+                  if (abortCtrl.signal.aborted || debugInfo.current.audioChunksReceived > 0) return;
+                  const url = URL.createObjectURL(blob);
+                  fillerBlobUrlRef.current = url;
+                  const elapsed = Date.now() - turnEndMs;
+                  const delay   = Math.max(0, 2000 - elapsed);
+                  if (delay === 0) {
+                    if (!isFillerPlayingRef.current && debugInfo.current.audioChunksReceived === 0) {
+                      isFillerPlayingRef.current = true;
+                      onOracleResponseRef.current?.(url);
+                      logStep('ORACLE THINKING SOUND — immediate', 'ok');
+                    }
+                  } else {
+                    fillerTimerRef.current = setTimeout(() => {
+                      fillerTimerRef.current = null;
+                      if (!abortCtrl.signal.aborted && debugInfo.current.audioChunksReceived === 0) {
+                        isFillerPlayingRef.current = true;
+                        onOracleResponseRef.current?.(url);
+                        logStep('ORACLE THINKING SOUND — after gap', 'ok');
+                      }
+                    }, delay);
+                  }
+                })
+                .catch((err: unknown) => {
+                  clearTimeout(safetyTimer);
+                  if ((err as Error).name !== 'AbortError') {
+                    console.warn('[OracleConversation] Filler TTS failed (non-fatal):', err);
+                  }
+                });
+            }
           }
 
           // Continuous stream: MUST send while Oracle is speaking to enable native Gemini VAD barge-in.

@@ -211,7 +211,6 @@ export function SurrogateOracleImmersion() {
   const [showArchiveOpen, setShowArchiveOpen] = useState(false);
   const [showNamePrompt, setShowNamePrompt]   = useState(false);
   const [nameInput, setNameInput]             = useState('');
-  const [fillerPhrases, setFillerPhrases]     = useState<{ thinking: string[]; vision: string[] } | null>(null);
 
   // ── Refs ────────────────────────────────────────────────────────────────
   const visemeStateRef = useRef<VisemeState>(SILENCE_VISEME_STATE);
@@ -862,27 +861,6 @@ export function SurrogateOracleImmersion() {
       cameraStateRef.current = { ...cameraStateRef.current, x: 0, y: 0, snap: true };
       // Reset manifest latch so fresh API readiness is required for this session.
       setForceOracleManifest(false);
-      // Fetch pre-rendered filler phrases (one lightweight REST call per oracle session)
-      {
-        const supaUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supaKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        if (supaUrl && supaKey) {
-          fetch(`${supaUrl}/rest/v1/oracle_filler_phrases?select=audio_url,phrase_type`, {
-            headers: { 'apikey': supaKey, 'Authorization': `Bearer ${supaKey}` },
-          })
-            .then(r => r.json())
-            .then((rows: Array<{ audio_url: string; phrase_type: string }>) => {
-              if (!Array.isArray(rows) || rows.length === 0) return;
-              const thinking = rows.filter(r => r.phrase_type === 'thinking').map(r => r.audio_url);
-              const vision   = rows.filter(r => r.phrase_type === 'vision').map(r => r.audio_url);
-              if (thinking.length || vision.length) {
-                setFillerPhrases({ thinking, vision });
-                logStep(`FILLER PHRASES LOADED — ${thinking.length} thinking, ${vision.length} vision`, 'ok');
-              }
-            })
-            .catch((err) => console.warn('[Filler] Failed to load phrases:', err));
-        }
-      }
       // Fallback: if session.created hasn't arrived after 6s, manifest the avatar anyway
       // and kick a reconnect attempt so we recover if the WS died silently.
       fallbackTimer = setTimeout(() => {
@@ -1943,7 +1921,6 @@ export function SurrogateOracleImmersion() {
             return lines.join('\n');
           })()}
           isGuidedTour={isGuidedTour}
-          fillerPhrases={fillerPhrases ?? undefined}
         />
       )}
 

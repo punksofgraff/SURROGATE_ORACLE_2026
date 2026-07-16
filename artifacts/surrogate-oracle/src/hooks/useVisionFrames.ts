@@ -100,17 +100,32 @@ export function useVisionFrames({
 
       try {
         ctx.drawImage(video, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
-        const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
-        if (!base64) return;
+        // Async JPEG encode via toBlob — runs off the main thread so it never
+        // blocks the Three.js rAF loop. The synchronous toDataURL alternative
+        // can block for 10-30ms on mobile, causing periodic animation hitches.
+        canvas.toBlob((blob) => {
+          if (!blob) return;
+          // Re-check gates: WS state or session may have changed during async encode.
+          const currentWs = wsRef.current;
+          if (!currentWs || currentWs.readyState !== WebSocket.OPEN || !sessionBootedRef.current) return;
 
-        ws.send(JSON.stringify({
-          type: 'client.realtimeInput',
-          realtimeInput: {
-            media_chunks: [{ data: base64, mimeType: 'image/jpeg' }],
-          },
-        }));
-        onFrameSentRef.current?.();
+          const reader = new FileReader();
+          reader.onload = () => {
+            const dataUrl = reader.result as string;
+            const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+            if (!base64) return;
+            const ws2 = wsRef.current;
+            if (!ws2 || ws2.readyState !== WebSocket.OPEN) return;
+            ws2.send(JSON.stringify({
+              type: 'client.realtimeInput',
+              realtimeInput: {
+                media_chunks: [{ data: base64, mimeType: 'image/jpeg' }],
+              },
+            }));
+            onFrameSentRef.current?.();
+          };
+          reader.readAsDataURL(blob);
+        }, 'image/jpeg', quality);
       } catch (err) {
         // Non-fatal — a single dropped frame (e.g. transient canvas/security error)
         // should never interrupt the voice conversation. Rate-limited via console.warn

@@ -41,6 +41,17 @@ export class PCMPlayer {
   private compressor: DynamicsCompressorNode | null = null;
   private transmissionFilter: BiquadFilterNode | null = null;
 
+  // ── Viseme watchdog / analyser fallback ────────────────────────────────────
+  // When the AudioWorklet fails to load (flaky mobile network, Safari quirk),
+  // workletNode stays null and _feedLegacy() plays audio with no viseme output.
+  // When the worklet loads but its processor fails silently, messages stop.
+  // In both cases, analyserFallbackActive drives a rAF loop that derives amplitude
+  // from the AnalyserNode so the avatar animates every session without exception.
+  private analyserFallbackActive = false;
+  private analyserRafId: number | null = null;
+  private lastVisemeTime = 0;           // performance.now() of last worklet viseme msg
+  private watchdogTimerId: ReturnType<typeof setTimeout> | null = null;
+
   constructor(sampleRate: number = 24000, playbackRate: number = 1.0, existingContext?: AudioContext) {
     this.sampleRate = sampleRate;
     this.playbackRate = playbackRate;
@@ -147,6 +158,13 @@ export class PCMPlayer {
         this.workletNode = new AudioWorkletNode(this.context, 'oracle-audio-processor');
         this.workletNode.port.onmessage = (e) => {
           if (e.data.type === 'viseme' && this.onViseme) {
+            this.lastVisemeTime = performance.now();
+            // Worklet is delivering — cancel any pending watchdog and stop fallback if active.
+            if (this.watchdogTimerId !== null) {
+              clearTimeout(this.watchdogTimerId);
+              this.watchdogTimerId = null;
+            }
+            if (this.analyserFallbackActive) this.stopAnalyserFallback();
             this.onViseme(e.data.state);
           } else if (e.data.type === 'ended') {
             this.isPlaying = false;
@@ -310,12 +328,73 @@ export class PCMPlayer {
 
     if (this.workletNode) {
       this.workletNode.port.postMessage({ type: 'feed', pcm: data });
+      // Arm a one-shot 500ms watchdog on the first chunk of each utterance.
+      // If no viseme message arrives within that window the worklet is silent
+      // (bad addModule race, AudioWorkletProcessor crash, iOS quirk) — engage
+      // the analyser fallback so the avatar is never static for a full session.
+      if (this.lastVisemeTime === 0 && this.watchdogTimerId === null && !this.analyserFallbackActive) {
+        this.watchdogTimerId = setTimeout(() => {
+          this.watchdogTimerId = null;
+          if (this.isPlaying && this.lastVisemeTime === 0) {
+            console.warn('[PCMPlayer] Worklet silent for 500ms — engaging analyser amplitude fallback');
+            this.startAnalyserFallback();
+          }
+        }, 500);
+      }
     } else {
       this._feedLegacy(data);
     }
   }
 
+  // ── Analyser amplitude fallback ──────────────────────────────────────────────
+  // Runs a rAF loop that reads the AnalyserNode's time-domain data and derives a
+  // synthetic VisemeState. Engages automatically in two scenarios:
+  //   1. workletNode is null (legacy fallback) — starts on first _feedLegacy() call
+  //   2. workletNode exists but emits no visemes for 500ms (watchdog fires)
+  // In both cases the avatar receives amplitude/openness data every frame, so
+  // lip-sync, emotes, and head physics work the same as the normal worklet path.
+  private startAnalyserFallback(): void {
+    if (this.analyserFallbackActive) return;
+    this.analyserFallbackActive = true;
+    const buf = new Uint8Array(this.analyser.fftSize);
+    const tick = () => {
+      if (!this.analyserFallbackActive) return;
+      this.analyserRafId = requestAnimationFrame(tick);
+      if (!this.onViseme) return;
+      this.analyser.getByteTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) {
+        const s = (buf[i] - 128) / 128;
+        sum += s * s;
+      }
+      const rms = Math.sqrt(sum / buf.length);
+      // Scale up from typical speech RMS range (0–0.25) to viseme amplitude range (0–1)
+      const amplitude = Math.min(1, rms * 4);
+      const openness  = Math.min(1, amplitude * 1.1);
+      this.onViseme({
+        viseme:    amplitude > 0.035 ? 'A' : 'X',
+        amplitude,
+        openness,
+        rounded:   0,
+        spread:    0,
+        intensity: amplitude,
+      });
+    };
+    this.analyserRafId = requestAnimationFrame(tick);
+  }
+
+  private stopAnalyserFallback(): void {
+    this.analyserFallbackActive = false;
+    if (this.analyserRafId !== null) {
+      cancelAnimationFrame(this.analyserRafId);
+      this.analyserRafId = null;
+    }
+  }
+
   private _feedLegacy(data: Int16Array) {
+    // Worklet unavailable — ensure the analyser fallback is running so the avatar
+    // receives amplitude data and can animate (lip-sync, emotes, head physics).
+    this.startAnalyserFallback();
     const float32 = new Float32Array(data.length);
     for (let i = 0; i < data.length; i++) {
       float32[i] = data[i] / 32768.0;
@@ -362,6 +441,14 @@ export class PCMPlayer {
 
   public stop() {
     this.onProcessingChange?.(false);
+    // Clear watchdog and stop analyser fallback loop; reset viseme timer so the
+    // watchdog can re-arm on the next Oracle utterance after a journey reset.
+    if (this.watchdogTimerId !== null) {
+      clearTimeout(this.watchdogTimerId);
+      this.watchdogTimerId = null;
+    }
+    this.lastVisemeTime = 0;
+    this.stopAnalyserFallback();
     if (this.workletNode) {
       this.workletNode.port.postMessage({ type: 'stop' });
     }

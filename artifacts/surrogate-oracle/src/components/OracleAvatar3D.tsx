@@ -280,6 +280,15 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     lastAmp: 0,
   });
 
+  // Forearm spring-damper state — secondary follow-through during speech gestures.
+  // Each arm has an independent spring that tracks the upper arm's angular velocity
+  // with a ~60-80ms lag, producing wrist/forearm overshoot as gestures land.
+  // Same spring-damper pattern as head nod/tilt physics — stiffness=28, damping=5.5.
+  const forearmSpringRef = useRef({
+    L: { angle: 0, vel: 0 },
+    R: { angle: 0, vel: 0 },
+  });
+
   // Stateful animation crossfader with fast-attack, slow-decay amplitude envelopes
   const blendStateRef = useRef({
     currentTalkWeight: 0,
@@ -818,7 +827,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       );
     }
 
-    // ── Arm rest-pose pin ────────────────────────────────────────────────────
+    // ── Arm rest-pose pin + shoulder breathing + forearm spring ──────────────
     // Arm pin: smoothly blend between rest-pose (idle) and clip-driven (speech).
     // armPinWeightRef lerps toward 0 when speaking so talk-clip gesture tracks
     // take over, then back to 1 when silent to re-pin to the neutral at-sides pose.
@@ -841,6 +850,64 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
           const q = armRestPose.get(key);
           if (bone && q) (bone as THREE.Bone).quaternion.slerp(q, w);
         }
+
+        // ── Shoulder breathing cascade ─────────────────────────────────────
+        // Additive on top of the rest-pose slerp: shoulders subtly follow the
+        // spine's breathCycle. Left leads right by a ~0.4s phase offset,
+        // mimicking the natural asymmetric sway of a person standing still.
+        // All deltas are scaled by w so they vanish smoothly during speech.
+        const shoulderBreathe = breathCycle * 0.006 * w;
+        // Right side uses a slightly delayed breathCycle (phase -0.54 rad ≈ 0.4s at 1.35Hz)
+        const rightBreathe    = Math.sin(t * breathSpeed - 0.54) * 0.006 * w;
+        const weightShiftL    =  Math.sin(t * 0.94)        * 0.004 * w;
+        const weightShiftR    = -Math.sin(t * 0.94 + 0.50) * 0.004 * w;
+
+        if (meshData.leftShoulderBone) {
+          (meshData.leftShoulderBone  as THREE.Bone).rotation.y +=  shoulderBreathe;
+          (meshData.leftShoulderBone  as THREE.Bone).rotation.z +=  weightShiftL;
+        }
+        if (meshData.rightShoulderBone) {
+          (meshData.rightShoulderBone as THREE.Bone).rotation.y -= rightBreathe * 0.7;
+          (meshData.rightShoulderBone as THREE.Bone).rotation.z +=  weightShiftR;
+        }
+      }
+
+      // ── Forearm spring follow-through during speech ────────────────────────
+      // When the gesture clip drives the upper arm, the forearm adds a lagged
+      // spring response — same spring-damper pattern as head nod/tilt physics.
+      // stiffness=28, damping=5.5: underdamped (ζ≈0.52) for visible follow-through.
+      // The spring target is proportional to the upper arm's Y rotation so the
+      // forearm lags behind gestures and overshoots slightly before settling.
+      const fs    = forearmSpringRef.current;
+      const armDt = Math.min(delta, 0.03);
+
+      if (tw > 0.02) {
+        const lArmY = meshData.leftArmBone  ? (meshData.leftArmBone  as THREE.Bone).rotation.y : 0;
+        const rArmY = meshData.rightArmBone ? (meshData.rightArmBone as THREE.Bone).rotation.y : 0;
+
+        // Left forearm spring
+        const forceL  = (lArmY * 0.12 - fs.L.angle) * 28 - fs.L.vel * 5.5;
+        fs.L.vel      += forceL * armDt;
+        fs.L.angle    += fs.L.vel * armDt;
+        fs.L.angle     = THREE.MathUtils.clamp(fs.L.angle, -0.08, 0.08);
+        if (meshData.leftForeArmBone) {
+          (meshData.leftForeArmBone  as THREE.Bone).rotation.z += fs.L.angle * tw;
+        }
+
+        // Right forearm spring (mirror)
+        const forceR  = (rArmY * 0.12 - fs.R.angle) * 28 - fs.R.vel * 5.5;
+        fs.R.vel      += forceR * armDt;
+        fs.R.angle    += fs.R.vel * armDt;
+        fs.R.angle     = THREE.MathUtils.clamp(fs.R.angle, -0.08, 0.08);
+        if (meshData.rightForeArmBone) {
+          (meshData.rightForeArmBone as THREE.Bone).rotation.z += fs.R.angle * tw;
+        }
+      } else {
+        // Decay spring naturally when idle — no hard reset so there's no snap
+        // on the first frame of speech; spring just stops being fed and dies out.
+        const decay = Math.max(0, 1 - armDt * 8);
+        fs.L.vel *= decay;  fs.L.angle *= decay;
+        fs.R.vel *= decay;  fs.R.angle *= decay;
       }
     }
 

@@ -835,7 +835,12 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       const bs = blendStateRef.current;
       const tw = bs.currentTalkWeight;
       const targetPin = 1.0 - tw;
-      armPinWeightRef.current += (targetPin - armPinWeightRef.current) * Math.min(1, delta * 8.0);
+      // Slow re-engagement when the forearm spring still has energy so gestures
+      // coast to a stop rather than snapping hard back to the rest pose.
+      const _fs = forearmSpringRef.current;
+      const springEnergy = Math.abs(_fs.L.angle) + Math.abs(_fs.R.angle);
+      const pinSpeed = springEnergy > 0.01 ? 3.5 : 8.0;
+      armPinWeightRef.current += (targetPin - armPinWeightRef.current) * Math.min(1, delta * pinSpeed);
       const w = armPinWeightRef.current;
       if (w > 0.005) {
         const armBoneMap: Array<[THREE.Object3D | null, string]> = [

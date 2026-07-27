@@ -36,6 +36,7 @@ import { TourSelection } from './TourSelection';
 import { OracleHaloRing } from './OracleHaloRing';
 import { Canvas } from '@react-three/fiber';
 import { OracleAvatar3D } from './OracleAvatar3D';
+import { AlleyEnvironment, AlleyLighting, ArcadeCabinet } from './AlleyScene';
 import { EffectComposer, DepthOfField } from '@react-three/postprocessing';
 
 // Hooks
@@ -1417,14 +1418,18 @@ export function SurrogateOracleImmersion() {
                 CSS opacity + transition handles the same 1.2 s fade-in that motion.div gave.
                 Suspense fallback: transparent (null) when canvasWarmed, so re-entering seekers
                 never see a "frozen static image" flash during WebGL context init. */}
+            {/* 3-D scene — mounts from terminal/awakened or on warm re-entry.
+                Alley environment + cabinet are always visible inside the canvas
+                once it mounts. Avatar group is gated by oracleManifestReady so
+                the static-image cross-dissolve completes before the 3D face
+                appears. */}
             {(awakened || scenePhase === 'terminal' || canvasWarmed) && (
               <div
                 className="oracle-avatar-canvas oracle-avatar-smoke-hook"
                 style={{
                   width: '100%', height: '100%',
                   position: 'absolute', top: 0, left: 0,
-                  opacity: oracleManifestReady ? 1 : 0,
-                  transition: 'opacity 1.8s ease-out',
+                  opacity: 1,
                   pointerEvents: oracleManifestReady ? 'auto' : 'none',
                   zIndex: 3,
                 }}
@@ -1435,11 +1440,36 @@ export function SurrogateOracleImmersion() {
                       <Canvas
                         camera={{ position: [0, 0, 1.8], fov: 55 }}
                         dpr={isDegraded ? [1, 1] : [1, Math.min(window.devicePixelRatio, 2)]}
-                        gl={{ antialias: !isDegraded, alpha: true }}
-                        style={{ width: '100%', height: '100%', background: 'transparent' }}
+                        gl={{ antialias: !isDegraded, alpha: false }}
+                        style={{ width: '100%', height: '100%', background: '#000200' }}
                         frameloop="always"
                       >
-                        <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
+                        {/* Background: dark canvas clear colour */}
+                        <color attach="background" args={['#000200']} />
+
+                        {/* Alley lighting — always on */}
+                        <AlleyLighting />
+
+                        {/* Alley environment GLB — fades in as it loads */}
+                        <Suspense fallback={null}>
+                          <AlleyEnvironment />
+                        </Suspense>
+
+                        {/* Arcade cabinet prop — always visible once loaded,
+                            tapping it opens the Enculturate Crate */}
+                        <Suspense fallback={null}>
+                          <ArcadeCabinet onPointerDown={() => {
+                            const btn = document.querySelector<HTMLElement>('[data-enculturate-trigger]');
+                            btn?.click();
+                          }} />
+                        </Suspense>
+
+                        {/* Oracle avatar — hidden until manifest-ready so the
+                            static-image cross-dissolve can complete first */}
+                        <group visible={oracleManifestReady}>
+                          <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
+                        </group>
+
                         {!isDegraded && (
                           <EffectComposer>
                             <DepthOfField

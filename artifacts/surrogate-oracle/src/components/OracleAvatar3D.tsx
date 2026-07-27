@@ -695,7 +695,14 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
 
     // ── Head: organic conversational movement ─────────────────────────────
     if (meshData.headBone) {
-      const headLerpF = lerpDt * 0.12;
+      // speakPresence: 0 when silent/listening → 1 when Oracle is mid-delivery.
+      // Ramps up fast (currentTalkWeight × 2.5 saturates at 1 by ~40% talk weight)
+      // and decays at the same rate as currentTalkWeight (slow gestural hang).
+      // Used to gate/dampen anything that fights direct eye contact during speech.
+      const speakPresence = Math.min(1.0, blendStateRef.current.currentTalkWeight * 2.5);
+
+      // headLerpF: faster tracking while speaking so head settles on seeker quickly
+      const headLerpF = lerpDt * (0.12 + speakPresence * 0.12); // 0.12 idle → 0.24 speaking
       const hp = headPhysRef.current;
       const dt = Math.min(delta, 0.03); // clamp to avoid physics explosion during lag
 
@@ -714,8 +721,10 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         // Tilt left/right randomly based on emphasis.
         // Grace period: suppress tilt for first 2 s after mount so the opening
         // greeting doesn't trigger max-headroom oscillation before the avatar settles.
+        // Also suppressed while speakPresence is high — mid-delivery the head should
+        // hold toward the seeker, not tilt from emphasis bursts.
         const graceElapsed = t - mountTimeRef.current;
-        if (ampDiff > 0.01 && Math.random() < 0.5 && graceElapsed > 2.0) {
+        if (ampDiff > 0.01 && Math.random() < 0.5 && graceElapsed > 2.0 && speakPresence < 0.6) {
           hp.tiltVel += (Math.random() - 0.5) * ampDiff * 3.5;
         }
       }
@@ -742,8 +751,11 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       let ty = gy * 0.32;
       let tz = 0;
 
-      // Alive idle drift — two incommensurate freqs (~0.11Hz + ~0.18Hz)
-      tx += Math.sin(t * 0.71 + 0.4) * 0.025 + Math.sin(t * 1.13 + 1.7) * 0.016;
+      // Alive idle drift — two incommensurate freqs (~0.11Hz + ~0.18Hz).
+      // Scaled down during speech so the head stays on the seeker mid-delivery.
+      // ~18% of drift survives at peak speakPresence (not robotic, just quieter).
+      const driftScale = 1 - speakPresence * 0.82;
+      tx += (Math.sin(t * 0.71 + 0.4) * 0.025 + Math.sin(t * 1.13 + 1.7) * 0.016) * driftScale;
       
       // Apply biological physics offsets to head rotation
       ty += hp.nodAngle;

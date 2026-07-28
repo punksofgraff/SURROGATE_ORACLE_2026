@@ -296,6 +296,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     fadeDirection: 'idle' as 'idle' | 'talking',
     lastSpeakTime: 0,
     smoothedAmp: 0,
+    lastArmGestureTime: 0, // tracks last frame arms were actively gesturing (tw > 0.1)
   });
 
   // Resolve each action from its distinct clip OBJECT (not by name): separate
@@ -834,7 +835,16 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     {
       const bs = blendStateRef.current;
       const tw = bs.currentTalkWeight;
-      const targetPin = 1.0 - tw;
+
+      // Gestural hang: keep arms in their current gesture pose for ~0.4s after
+      // talk weight drops between sentences, mirroring the head lastSpeakTime hang.
+      // Without this, the pin re-engages as soon as tw dips during an inter-sentence
+      // pause, causing a brief partial arm reset before the next gesture drives them.
+      const ARM_GESTURE_HANG = 0.40; // seconds — matches head-nod hang duration
+      if (tw > 0.10) bs.lastArmGestureTime = t;
+      const timeSinceGesture = t - bs.lastArmGestureTime;
+      const targetPin = timeSinceGesture < ARM_GESTURE_HANG ? 0.0 : 1.0 - tw;
+
       // Slow re-engagement when the forearm spring still has energy so gestures
       // coast to a stop rather than snapping hard back to the rest pose.
       const _fs = forearmSpringRef.current;

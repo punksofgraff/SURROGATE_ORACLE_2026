@@ -356,29 +356,86 @@ export class PCMPlayer {
   private startAnalyserFallback(): void {
     if (this.analyserFallbackActive) return;
     this.analyserFallbackActive = true;
-    const buf = new Uint8Array(this.analyser.fftSize);
+
+    const timeBuf  = new Uint8Array(this.analyser.fftSize);           // 1024 — RMS
+    const freqBuf  = new Uint8Array(this.analyser.frequencyBinCount); // 512  — spectral
+
+    // Bin boundaries for 24 kHz / fftSize-1024 (≈23.4 Hz per bin).
+    // Recalculated each time the fallback starts so Safari/iOS rate changes are safe.
+    const sr  = this.context.sampleRate || 24000;
+    const bw  = sr / this.analyser.fftSize;
+    const bAt = (hz: number) => Math.max(0, Math.min(freqBuf.length - 1, Math.round(hz / bw)));
+
+    // Low F1 vowel zone (100–600 Hz) — open/back vowels, A/O
+    const bLoLo = bAt(100),  bLoHi = bAt(600);
+    // Core speech formants (600–2000 Hz) — mid vowels, E/I
+    const bMidLo = bAt(600), bMidHi = bAt(2000);
+    // Front / upper-mid (2000–4500 Hz) — bright front vowels, fricative body
+    const bUpLo  = bAt(2000), bUpHi = bAt(4500);
+    // Sibilant / hiss band (4500–8000 Hz) — S, Z, SH, F
+    const bHiLo  = bAt(4500), bHiHi = bAt(8000);
+
+    const bandAvg = (lo: number, hi: number): number => {
+      const len = Math.max(1, hi - lo);
+      let s = 0;
+      for (let i = lo; i < hi; i++) s += freqBuf[i];
+      return (s / len) / 255; // normalised 0–1
+    };
+
     const tick = () => {
       if (!this.analyserFallbackActive) return;
       this.analyserRafId = requestAnimationFrame(tick);
       if (!this.onViseme) return;
-      this.analyser.getByteTimeDomainData(buf);
-      let sum = 0;
-      for (let i = 0; i < buf.length; i++) {
-        const s = (buf[i] - 128) / 128;
-        sum += s * s;
+
+      // ── Amplitude from time-domain RMS ──────────────────────────────────
+      this.analyser.getByteTimeDomainData(timeBuf);
+      let sumSq = 0;
+      for (let i = 0; i < timeBuf.length; i++) {
+        const s = (timeBuf[i] - 128) / 128;
+        sumSq += s * s;
       }
-      const rms = Math.sqrt(sum / buf.length);
-      // Scale up from typical speech RMS range (0–0.25) to viseme amplitude range (0–1)
+      const rms = Math.sqrt(sumSq / timeBuf.length);
       const amplitude = Math.min(1, rms * 4);
-      const openness  = Math.min(1, amplitude * 1.1);
-      this.onViseme({
-        viseme:    amplitude > 0.035 ? 'A' : 'X',
-        amplitude,
-        openness,
-        rounded:   0,
-        spread:    0,
-        intensity: amplitude,
-      });
+
+      if (amplitude < 0.025) {
+        this.onViseme({ viseme: 'X', amplitude: 0, openness: 0, rounded: 0, spread: 0, intensity: 0 });
+        return;
+      }
+
+      // ── Spectral band energies ───────────────────────────────────────────
+      this.analyser.getByteFrequencyData(freqBuf);
+      const eLow  = bandAvg(bLoLo,  bLoHi);   // F1 low — open/back vowels
+      const eMid  = bandAvg(bMidLo, bMidHi);  // F1+F2 core
+      const eUp   = bandAvg(bUpLo,  bUpHi);   // F2 front / fricative body
+      const eHigh = bandAvg(bHiLo,  bHiHi);   // sibilant / hiss
+
+      // ── Classify primary viseme from spectral balance ────────────────────
+      // Viseme tokens must match ORACLE_TO_OVR keys in OracleAvatar3D.tsx:
+      //   X=sil  A=aa  E=E+ih  I=ih  O=oh+ou  U=ou  C=SS+CH  F=FF
+      let viseme: string;
+      let rounded = 0;
+      let spread  = 0;
+
+      if (eHigh > 0.10 && eHigh > eLow * 1.4) {
+        // Fricative-dominant (s, z, sh, f, th)
+        viseme = eUp > eMid ? 'C' : 'F';        // C = SS/CH sibilant, F = FF labiodental
+        spread = Math.min(1, eHigh * 6);
+      } else if (eUp > eMid * 1.35) {
+        // High-F2: front vowels (E, I)
+        viseme  = amplitude > 0.45 ? 'E' : 'I';
+        spread  = Math.min(1, (eUp - eMid) * 5);
+      } else if (eLow > eMid * 0.75 && amplitude > 0.30) {
+        // Low-F1: open/back vowels (A, O)
+        viseme  = amplitude > 0.50 ? 'A' : 'O';
+        rounded = viseme === 'O' ? Math.min(1, eLow * 3.5) : 0;
+      } else {
+        // Balanced / mid — generic vowel; let CO_ARTIC drive expressiveness
+        viseme = 'A';
+        spread = Math.min(0.5, eMid * 2.5);
+      }
+
+      const openness = Math.min(1, amplitude * 1.2);
+      this.onViseme({ viseme, amplitude, openness, rounded, spread, intensity: amplitude });
     };
     this.analyserRafId = requestAnimationFrame(tick);
   }

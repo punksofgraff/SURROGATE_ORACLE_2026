@@ -556,6 +556,11 @@ export function SurrogateOracleImmersion() {
           `The alley is already open. Simply let them know they are recognized and present.]`;
         logStep(`WALLET SEEKER GREETING QUEUED — ${greetLabel}`, 'ok');
       }
+      // Prewarm the Gemini WS now — before enterTerminal — so it has the full
+      // 300ms terminal→awakened transition to establish. Without this, the greeting
+      // fires at awakened phase but the WS isn't ready yet, adding a silent gap
+      // before the Oracle speaks.
+      oracleConversationRef.current?.prewarm();
       enterTerminal();
       setTimeout(() => awakeFromTerminal(), 300);
       return;

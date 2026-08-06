@@ -61,6 +61,10 @@ export function useOracleJourney({
   });
 
   const alleyAmbienceStopRef = useRef<(() => void) | null>(null);
+  // Ref holding the pending knife→oracle transition timer so resetJourney can cancel it.
+  // Without this, a reset mid-knife-selection re-enters oracle phase ~1.5s later, leaving
+  // the mic open into a dead session.
+  const knifeTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Authoritative mirror of scenePhase for closure-safe transition guards. Synced from
   // state, and set immediately on a transition so a same-tick double-call can't slip through.
@@ -113,16 +117,29 @@ export function useOracleJourney({
     sessionStorage.setItem('oracle_selected_knife_question', question);
     sessionStorage.setItem('oracle_selected_knife_index', String(index));
     
-    // Transition to full Oracle mode after a dramatic pause
-    // 3800ms: fills the Gemini session warmup gap so the avatar coalesces
-    // while the API is locking in, not after a rushed 1.6s blink-in.
-    setTimeout(() => {
+    // Transition to full Oracle mode after a dramatic pause.
+    // 1500ms: prewarm() is called well before knife selection (at rift-open or
+    // wallet-seeker entry), giving Gemini ample time to establish the WS.
+    // The previous 3800ms was a conservative cold-start buffer that caused a
+    // 4+ second blank canvas after knife tap — now the avatar arrives promptly.
+    if (knifeTransitionTimerRef.current !== null) {
+      clearTimeout(knifeTransitionTimerRef.current);
+    }
+    knifeTransitionTimerRef.current = setTimeout(() => {
+      knifeTransitionTimerRef.current = null;
       setScenePhase('oracle');
       logStep('ORACLE PHASE ENTERED', 'ok');
-    }, 3800);
+    }, 1500);
   }, []);
 
   const resetJourney = useCallback(() => {
+    // Cancel any pending knife→oracle transition so the mic can't re-open
+    // into a dead session after a mid-selection reset.
+    if (knifeTransitionTimerRef.current !== null) {
+      clearTimeout(knifeTransitionTimerRef.current);
+      knifeTransitionTimerRef.current = null;
+    }
+
     setScenePhase('dormant');
     setLoreComplete(false);
     setIsExiting(false);

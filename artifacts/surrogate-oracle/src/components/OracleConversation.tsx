@@ -207,6 +207,15 @@ const OracleConversation = forwardRef(
     const [isOracleThinking, setIsOracleThinking] = useState(false);
     // Notify parent so it can drive visual feedback (e.g. halo ring pulse)
     useEffect(() => { onThinkingChange?.(isOracleThinking); }, [isOracleThinking, onThinkingChange]);
+    // true while seeker's VAD is in onset|speaking|trailing — drives mic button label/animation
+    const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+    const isUserSpeakingRef = useRef(false); // ref to gate per-frame updates — only set state on transitions
+    // Briefly true after seeker turn-end to confirm signal was received before thinking state shows
+    const [signalReceived, setSignalReceived] = useState(false);
+    const signalReceivedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => {
+      if (signalReceivedTimerRef.current !== null) clearTimeout(signalReceivedTimerRef.current);
+    }, []);
     const [turns, setTurns] = useState<Turn[]>(() => {
       try {
         const saved = localStorage.getItem(`oracle_turns_${sessionId}`);
@@ -484,8 +493,8 @@ const OracleConversation = forwardRef(
 
     const vadRef = useRef(createVADProcessor({
       rmsThreshold: 0.052,   // raised from 0.035 — filters breathing/ambient noise
-      hangoverFrames: 35,
-      onsetFrames: 4,        // ~1s of sustained speech before local barge-in triggers
+      hangoverFrames: 25,    // ~25 × 43ms ≈ 1.07s trailing — responsive without clipping pauses
+      onsetFrames: 4,        // ~4 × 43ms ≈ 171ms onset confirmation before committing
     }));
     // Consecutive-frames counter for Gemini barge-in gate (prevents sneezes from
     // reaching Gemini's native VAD while Oracle is speaking)
@@ -668,13 +677,13 @@ const OracleConversation = forwardRef(
 
           if (!isListeningRef.current && micAutoRestartEnabledRef.current && micAutoRestartAllowedRef.current) {
             setTimeout(() => {
-              // Re-check after 1800ms delay — phase may have changed (e.g. oracle → dormant on reset)
+              // Re-check after 900ms delay — phase may have changed (e.g. oracle → dormant on reset)
               if (micAutoRestartAllowedRef.current) {
                 startMicRef.current?.().catch((err) => {
                   logStep(`MIC FAILED: ${(err as Error)?.message ?? err}`, 'err');
                 });
               }
-            }, 1800);
+            }, 900);
           }
         }
       },
@@ -871,6 +880,11 @@ const OracleConversation = forwardRef(
             ].slice(0, 20);
           }
           onUserSpeakingChangeRef.current?.(result.isSpeaking, result.vadScore);
+          // Update local speaking state on transitions only — avoids per-frame React re-renders
+          if (result.isSpeaking !== isUserSpeakingRef.current) {
+            isUserSpeakingRef.current = result.isSpeaking;
+            setIsUserSpeaking(result.isSpeaking);
+          }
 
           // NOTE: Do NOT call onBargeIn here on raw isSpeaking.
           // The sustained 3-frame gate below is the correct local flush trigger.
@@ -881,6 +895,10 @@ const OracleConversation = forwardRef(
           if (result.isTurnEnd) {
             setIsOracleThinking(true);
             signalVisionActivity(); // user finished speaking — hold vision feed open during thinking gap
+            // "Signal received" flash — gives seeker immediate confirmation before thinking indicator
+            setSignalReceived(true);
+            if (signalReceivedTimerRef.current !== null) clearTimeout(signalReceivedTimerRef.current);
+            signalReceivedTimerRef.current = setTimeout(() => setSignalReceived(false), 900);
 
             // Cancel any previous filler in-flight
             if (fillerTimerRef.current !== null) { clearTimeout(fillerTimerRef.current); fillerTimerRef.current = null; }
@@ -915,7 +933,7 @@ const OracleConversation = forwardRef(
                   const url = URL.createObjectURL(blob);
                   fillerBlobUrlRef.current = url;
                   const elapsed = Date.now() - turnEndMs;
-                  const delay   = Math.max(0, 2000 - elapsed);
+                  const delay   = Math.max(0, 1400 - elapsed);
                   if (delay === 0) {
                     if (!isFillerPlayingRef.current && debugInfo.current.audioChunksReceived === 0) {
                       isFillerPlayingRef.current = true;
@@ -1159,24 +1177,47 @@ const OracleConversation = forwardRef(
             }}
             className="oc-mic-trigger"
             animate={{
-              scale: isListening ? [1, 1.05, 1] : 1,
-              boxShadow: isListening
-                ? '0 0 20px rgba(0, 255, 136, 0.6)'
+              scale: isUserSpeaking
+                ? [1, 1.09, 1]
+                : isListening ? [1, 1.03, 1] : 1,
+              boxShadow: isUserSpeaking
+                ? '0 0 28px rgba(0, 255, 136, 0.95)'
+                : isListening
+                ? '0 0 14px rgba(0, 255, 136, 0.4)'
                 : '0 0 0px rgba(0, 255, 136, 0)',
             }}
-            transition={isListening ? { repeat: Infinity, duration: 2 } : {}}
+            transition={isListening
+              ? { repeat: Infinity, duration: isUserSpeaking ? 0.55 : 2.4 }
+              : {}}
           >
             {isListening ? <Mic size={32} /> : <MicOff size={32} className="opacity-50" />}
             <div className="oc-mic-label">
-              {isListening ? 'TRANSMITTING' : 'OPEN FREQUENCY'}
+              {isUserSpeaking ? 'TRANSMITTING' : isListening ? 'LISTENING' : 'OPEN FREQUENCY'}
             </div>
           </motion.button>
           </div>
 
 
+          {/* Signal received flash — briefly confirms the Oracle heard the seeker before thinking state */}
+          <AnimatePresence>
+            {signalReceived && !isOracleSpeaking && (
+              <motion.div
+                key="signal-received"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.18 }}
+                className="oc-status-pill"
+                style={{ color: 'rgba(0,255,136,1)', borderColor: 'rgba(0,255,136,0.55)', fontWeight: 600 }}
+              >
+                <span>◈ SIGNAL RECEIVED</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Contemplative filler — shown during the gap between Seeker turn-end and Oracle audio */}
           <AnimatePresence>
-            {isOracleThinking && !isOracleSpeaking && (
+            {isOracleThinking && !isOracleSpeaking && !signalReceived && (
               <motion.div
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: [0.4, 1, 0.4], y: 0 }}

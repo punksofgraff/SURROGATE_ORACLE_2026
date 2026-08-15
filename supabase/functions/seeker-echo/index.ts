@@ -9,13 +9,16 @@ const corsHeaders = {
 // Seeker Echo persistence (design §I.5 / §I.3 totem ladder).
 // GET  ?seeker_key=<wallet|ip>           → { success, echo: <row|null> }
 // POST { op: 'read', seekerKey }          → { success, echo: <row|null> }
+// POST { op: 'fragments' }               → { success, phrases: string[] }
+//      → returns ghost_phrase values from recent records (no PII columns).
+//        Raw session content is NEVER read or returned by this branch.
 // POST { seekerKey, name?, lastArchetype?, totemLevel?, lastCost?, alignment? }
 //      → upsert: writes fields, increments visit_count, bumps last_seen_at.
 //
 // Note: the supabase-js client always invokes edge functions via POST, so the
 // `op: 'read'` POST branch mirrors the GET read for client (functions.invoke) use.
 interface SeekerEchoUpsert {
-  op?: 'read' | 'upsert';
+  op?: 'read' | 'upsert' | 'fragments';
   seekerKey?: string;
   name?: string | null;
   handles?: string[] | null;
@@ -82,7 +85,7 @@ Deno.serve(async (req: Request) => {
       return await readEcho(seekerKey);
     }
 
-    // ---- POST: read (op:'read') or upsert ----
+    // ---- POST: read (op:'read'), fragments (op:'fragments'), or upsert ----
     if (req.method === 'POST') {
       const body: SeekerEchoUpsert = await req.json();
       const seekerKey = body.seekerKey;
@@ -95,6 +98,41 @@ Deno.serve(async (req: Request) => {
           );
         }
         return await readEcho(seekerKey);
+      }
+
+      // ── op: 'fragments' — alley ghost-text pool ───────────────────────────
+      // Returns ONLY the ghost_phrase column — a short poetic fragment (8-14 words)
+      // that oracle-memory-distill generates with explicit instructions to contain
+      // no seeker-identifying information (metaphor and archetype only).
+      //
+      // Raw session_summary and last_session_themes are NEVER read or transmitted
+      // by this branch. ghost_phrase is safe to display publicly by construction.
+      if (body.op === 'fragments') {
+        const { data, error: fragErr } = await supabase
+          .from('seeker_echo')
+          .select('ghost_phrase')
+          .not('ghost_phrase', 'is', null)
+          .order('last_seen_at', { ascending: false })
+          .limit(40);
+
+        if (fragErr) {
+          console.error('❌ Seeker Echo fragments fetch failed:', fragErr);
+          return new Response(
+            JSON.stringify({ success: false, error: fragErr.message }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Shuffle so the alley doesn't always show the same most-recent phrases.
+        const all = (data ?? [])
+          .map((r: { ghost_phrase: string }) => r.ghost_phrase)
+          .filter(Boolean);
+        const shuffled = all.sort(() => Math.random() - 0.5);
+
+        return new Response(
+          JSON.stringify({ success: true, phrases: shuffled }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
 
       if (!seekerKey) {

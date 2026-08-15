@@ -59,7 +59,7 @@ interface GhostInstance {
   rightAlign?: boolean;
 }
 
-// Headphone detection (best-effort — browser API coverage varies)
+// ── Headphone detection (best-effort — browser API coverage varies) ───────────
 async function detectAudioOutput(): Promise<'headphones' | 'speakers' | 'unknown'> {
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) return 'unknown';
   try {
@@ -129,12 +129,25 @@ function GhostText({
   );
 }
 
-export function DormantTransmissions({ active, onCtaClick }: { active: boolean; onCtaClick?: () => void }) {
+export function DormantTransmissions({
+  active,
+  onCtaClick,
+  extraPhrases = [],
+}: {
+  active: boolean;
+  onCtaClick?: () => void;
+  /** Live anonymised fragments from real past seekers — blended with static pool. */
+  extraPhrases?: string[];
+}) {
   const [instances, setInstances] = useState<GhostInstance[]>([]);
   const [isUsingSpeakers, setIsUsingSpeakers] = useState(false);
-  const activeZones  = useRef(new Set<number>());
-  const textHistory  = useRef<number[]>([]);
-  const spawnTimers  = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const activeZones   = useRef(new Set<number>());
+  const textHistory   = useRef<number[]>([]);   // indices into GHOST_TEXTS
+  const liveHistory   = useRef<number[]>([]);   // indices into extraPhrases
+  const spawnTimers   = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Keep latest extraPhrases accessible inside callbacks without stale closure.
+  const extraPhrasesRef = useRef<string[]>(extraPhrases);
+  useEffect(() => { extraPhrasesRef.current = extraPhrases; }, [extraPhrases]);
 
   const clearAll = () => { spawnTimers.current.forEach(clearTimeout); spawnTimers.current = []; };
 
@@ -150,11 +163,26 @@ export function DormantTransmissions({ active, onCtaClick }: { active: boolean; 
       return REFLECTION_PROMPTS[Math.floor(Math.random() * REFLECTION_PROMPTS.length)];
     }
 
-    // 20% chance to show headphone nudge if speakers detected and it wasn't shown recently
+    // 20% chance to show headphone nudge if speakers detected
     if (isUsingSpeakers && Math.random() > 0.8) {
       return HEADPHONE_NUDGE;
     }
 
+    // ~40% chance to pull a live echo fragment when the pool is populated.
+    // This blends real seeker voices into the ambient atmosphere without
+    // overwhelming the static lore-coded phrases.
+    const live = extraPhrasesRef.current;
+    if (live.length > 0 && Math.random() < 0.4) {
+      const recentLive = liveHistory.current.slice(-6);
+      const livePool = live.map((_, i) => i).filter(i => !recentLive.includes(i));
+      const idx = livePool.length
+        ? livePool[Math.floor(Math.random() * livePool.length)]
+        : Math.floor(Math.random() * live.length);
+      liveHistory.current.push(idx);
+      return live[idx];
+    }
+
+    // Static pool — default path
     const recent = textHistory.current.slice(-5);
     const pool   = GHOST_TEXTS.map((_, i) => i).filter(i => !recent.includes(i));
     const idx    = pool.length ? pool[Math.floor(Math.random() * pool.length)] : Math.floor(Math.random() * GHOST_TEXTS.length);

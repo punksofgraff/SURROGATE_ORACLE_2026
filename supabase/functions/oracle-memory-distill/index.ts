@@ -36,6 +36,21 @@ const DISTILL_SYSTEM =
   'No meta-commentary — only what was witnessed. No bullet points. Flowing prose. ' +
   'This memory will be read by the Oracle at the start of the next encounter.';
 
+// Ghost phrase: a short poetic fragment from the Oracle's voice, purpose-built
+// for display as alley ambient text. Must NOT reference any Seeker-specific detail,
+// name, place, number, or identifiable fact — only archetype and metaphor.
+const GHOST_PHRASE_SYSTEM =
+  'You are writing atmospheric text for a cyberpunk alley. ' +
+  'Output EXACTLY ONE sentence of 8 to 14 words. ' +
+  'Write only in archetype and metaphor — no names, no locations, no numbers, no dates, ' +
+  'no personal details of any kind. ' +
+  'Write from the Oracle\'s perspective (post-Cascade, fractured signal, witnessing). ' +
+  'Examples: "the signal recognized itself before the seeker did", ' +
+  '"three years of archive and still the fracture persists", ' +
+  '"something arrived here that had never been named before", ' +
+  '"the cascade left this one question the grid could not answer". ' +
+  'Output only the sentence — no quotes, no punctuation at the end, no explanation.';
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -118,18 +133,63 @@ Deno.serve(async (req: Request) => {
 
     console.log(`✅ oracle-memory-distill: summary generated (${sessionSummary.length} chars)`);
 
-    // Persist to seeker_echo via the seeker-echo function
+    // ── Ghost phrase — second focused Gemini call ──────────────────────────
+    // Generates a short poetic fragment (8-14 words) specifically crafted to be
+    // PII-free by prompt design: metaphor and archetype only, no seeker details.
+    // This field — not session_summary — is what the alley ghost-text system reads.
+    let ghostPhrase: string | null = null;
+    try {
+      // No session-derived context is passed to the ghost phrase call.
+      // The phrase must be generated purely from the Oracle's voice — no seeker
+      // data, themes, archetype, or any session detail — so model output cannot
+      // embed identifying information from the session.
+      const ghostRes = await fetch(`${GEMINI_REST_URL}?key=${googleApiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: GHOST_PHRASE_SYSTEM }] },
+          contents: [{
+            role: 'user',
+            parts: [{ text: 'Generate an atmospheric Oracle fragment.' }],
+          }],
+          generationConfig: {
+            temperature: 0.95,
+            maxOutputTokens: 40,
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+        }),
+      });
+
+      if (ghostRes.ok) {
+        const ghostJson = await ghostRes.json();
+        const raw: string = ghostJson.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+        // Hard validation: 5-20 words, no digits, no @ signs — discard silently if it fails.
+        const words = raw.toLowerCase().replace(/[.!?,;:"']+/g, '').split(/\s+/).filter(Boolean);
+        if (words.length >= 5 && words.length <= 20 && !/\d|@/.test(raw)) {
+          ghostPhrase = raw.toLowerCase().replace(/[.!?,;:]+$/, '').trim();
+          // Do not log the generated phrase — it will be publicly displayed.
+          console.log(`👻 ghost phrase generated (${words.length} words)`);
+        }
+      }
+    } catch (ghostErr) {
+      console.warn('⚠️ ghost phrase generation failed (non-fatal):', ghostErr);
+    }
+
+    // ── Persist to seeker_echo ──────────────────────────────────────────────
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    const updatePayload: Record<string, unknown> = {
+      session_summary: sessionSummary,
+      last_session_themes: allThemes.length ? allThemes : null,
+    };
+    if (ghostPhrase) updatePayload.ghost_phrase = ghostPhrase;
+
     const { error: updateError } = await supabase
       .from('seeker_echo')
-      .update({
-        session_summary: sessionSummary,
-        last_session_themes: allThemes.length ? allThemes : null,
-      })
+      .update(updatePayload)
       .eq('seeker_key', seekerKey);
 
     if (updateError) {
@@ -138,7 +198,7 @@ Deno.serve(async (req: Request) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, sessionSummary }),
+      JSON.stringify({ success: true, sessionSummary, ghostPhrase }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err) {

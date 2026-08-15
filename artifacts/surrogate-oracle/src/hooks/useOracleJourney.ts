@@ -167,6 +167,15 @@ export function useOracleJourney({
       : [60, 30, 60];
     if (typeof navigator !== 'undefined') navigator.vibrate?.(haptic);
 
+    // ── Alignment verdict: paint the environment with the Oracle's judgment ──
+    // Sets body[data-exit-alignment] so CSS keyframes can animate the alley,
+    // cabinet, and scanlines to reflect sacred/profane for ~3 seconds.
+    // Null/missing alignment = neutral exit, no environmental effect.
+    if (typeof document !== 'undefined' && (alignment === 'sacred' || alignment === 'profane')) {
+      document.body.dataset.exitAlignment = alignment;
+      setTimeout(() => { delete document.body.dataset.exitAlignment; }, 3200);
+    }
+
     setTimeout(() => {
       setScenePhase('dormant');
       setLoreComplete(false);

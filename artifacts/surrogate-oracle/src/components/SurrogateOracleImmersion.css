@@ -5397,3 +5397,163 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   ) !important;
   opacity: 1 !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ALIGNMENT VERDICT — EXIT MOMENT ENVIRONMENTAL EFFECT
+
+   Triggered by exitOracleMode() via body[data-exit-alignment].
+   Attribute set immediately on exit; cleared after 3.2s.
+   During exit, .oracle-stage also carries data-exiting="true" which has
+   !important filter/shadow overrides — every verdict rule here uses
+   higher specificity (body + attr selector beats stage attr selector)
+   plus !important to win the cascade.
+   No text. No audio. The space renders the Oracle's judgment.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────────────────
+   1. ALLEY FILTER — override data-exiting !important rule
+      Using static filter + fast transition (not keyframe animation — CSS
+      animations cannot override !important author declarations per spec).
+      In → 0.4s, hold until attribute cleared, out → dormant's 1.8s fade.
+   ───────────────────────────────────────────────────────────────────────── */
+
+body[data-exit-alignment="sacred"] .oracle-stage .oracle-alley,
+body[data-exit-alignment="sacred"] .oracle-stage[data-exiting="true"] .oracle-alley {
+  filter: saturate(1.55) brightness(1.28) hue-rotate(25deg) !important;
+  transition: filter 0.4s ease-in !important;
+}
+
+body[data-exit-alignment="profane"] .oracle-stage .oracle-alley,
+body[data-exit-alignment="profane"] .oracle-stage[data-exiting="true"] .oracle-alley {
+  filter: saturate(0.18) brightness(0.74) hue-rotate(228deg) !important;
+  transition: filter 0.3s ease-in !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   2. STAGE ::before OVERLAY — color wash on top of dimmed alley
+      oracle-stage::before is unused in oracle/exiting state (only dormant
+      and terminal define it), so this creates a new layer.
+      Animated in/hold/out via keyframe on opacity.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@keyframes verdict-overlay-pulse {
+  0%   { opacity: 0; }
+  13%  { opacity: 1; }
+  64%  { opacity: 0.88; }
+  100% { opacity: 0; }
+}
+
+body[data-exit-alignment="sacred"] .oracle-stage::before {
+  content: '' !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 2 !important;
+  pointer-events: none !important;
+  background: radial-gradient(
+    ellipse 90% 70% at 50% 30%,
+    rgba(255, 175, 40, 0.28) 0%,
+    rgba(255, 145, 20, 0.16) 45%,
+    transparent 75%
+  ) !important;
+  mix-blend-mode: screen !important;
+  animation: verdict-overlay-pulse 3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+body[data-exit-alignment="profane"] .oracle-stage::before {
+  content: '' !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 2 !important;
+  pointer-events: none !important;
+  background: radial-gradient(
+    ellipse 85% 65% at 50% 35%,
+    rgba(55, 25, 210, 0.32) 0%,
+    rgba(80, 40, 220, 0.18) 45%,
+    transparent 75%
+  ) !important;
+  mix-blend-mode: screen !important;
+  animation: verdict-overlay-pulse 3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   3. SIDE BLEEDS — animated wall wash (no !important conflict here)
+   ───────────────────────────────────────────────────────────────────────── */
+
+@keyframes bleeds-verdict-sacred {
+  0%   { opacity: 0.6; background: radial-gradient(circle at 0% 50%, rgba(0,255,136,0.15) 0%, transparent 40%), radial-gradient(circle at 100% 50%, rgba(0,255,136,0.15) 0%, transparent 40%); }
+  14%  { opacity: 1.0; background: radial-gradient(circle at 0% 50%, rgba(255,180,60,0.30) 0%, transparent 50%), radial-gradient(circle at 100% 50%, rgba(255,180,60,0.30) 0%, transparent 50%); }
+  62%  { opacity: 0.9; background: radial-gradient(circle at 0% 50%, rgba(255,160,40,0.22) 0%, transparent 50%), radial-gradient(circle at 100% 50%, rgba(255,160,40,0.22) 0%, transparent 50%); }
+  100% { opacity: 0.6; background: radial-gradient(circle at 0% 50%, rgba(0,255,136,0.15) 0%, transparent 40%), radial-gradient(circle at 100% 50%, rgba(0,255,136,0.15) 0%, transparent 40%); }
+}
+
+body[data-exit-alignment="sacred"] .oracle-stage .oracle-side-bleeds {
+  animation: bleeds-verdict-sacred 3s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+}
+
+@keyframes bleeds-verdict-profane {
+  0%   { opacity: 0.6; background: radial-gradient(circle at 0% 50%, rgba(0,255,136,0.15) 0%, transparent 40%), radial-gradient(circle at 100% 50%, rgba(0,255,136,0.15) 0%, transparent 40%); }
+  10%  { opacity: 1.0; background: radial-gradient(circle at 0% 50%, rgba(80,40,255,0.34) 0%, transparent 55%), radial-gradient(circle at 100% 50%, rgba(80,40,255,0.34) 0%, transparent 55%); }
+  55%  { opacity: 0.9; background: radial-gradient(circle at 0% 50%, rgba(60,20,200,0.24) 0%, transparent 55%), radial-gradient(circle at 100% 50%, rgba(60,20,200,0.24) 0%, transparent 55%); }
+  100% { opacity: 0.6; background: radial-gradient(circle at 0% 50%, rgba(0,255,136,0.15) 0%, transparent 40%), radial-gradient(circle at 100% 50%, rgba(0,255,136,0.15) 0%, transparent 40%); }
+}
+
+body[data-exit-alignment="profane"] .oracle-stage .oracle-side-bleeds {
+  animation: bleeds-verdict-profane 3s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   4. CABINET — Sacred bloom
+      oracle-state="oracle" has border/shadow/animation: none !important.
+      body[data-exit-alignment] selector has higher specificity (0,3,1 vs
+      0,2,0) so !important wins here too.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@keyframes cabinet-verdict-sacred {
+  0%   {
+    box-shadow: 0 0 10px rgba(0,255,136,0.25);
+    border-color: rgba(0,255,136,0.3);
+  }
+  18%  {
+    box-shadow: 0 0 38px rgba(255,200,80,0.80), 0 0 80px rgba(255,170,40,0.48),
+                0 0 160px rgba(255,150,20,0.24), inset 0 0 35px rgba(255,185,60,0.18);
+    border-color: rgba(255,190,60,0.80);
+  }
+  62%  {
+    box-shadow: 0 0 26px rgba(255,185,60,0.60), 0 0 60px rgba(255,165,30,0.32),
+                inset 0 0 28px rgba(255,175,50,0.14);
+    border-color: rgba(255,175,55,0.58);
+  }
+  100% {
+    box-shadow: 0 0 10px rgba(0,255,136,0.25);
+    border-color: rgba(0,255,136,0.3);
+  }
+}
+
+body[data-exit-alignment="sacred"] .oracle-stage .oracle-cabinet,
+body[data-exit-alignment="sacred"] .oracle-stage[data-oracle-state="oracle"] .oracle-cabinet {
+  animation: cabinet-verdict-sacred 3s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+  border: 1px solid rgba(255,185,60,0.5) !important;
+  background: rgba(0,3,8,0.35) !important;
+  box-shadow: 0 0 12px rgba(0,255,136,0.2) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   5. SCANLINES — Profane burst
+      oracle-state="oracle" hides scanlines with display:none (no !important).
+      Higher-specificity !important rule restores them for the burst.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@keyframes scanlines-verdict-profane {
+  0%   { opacity: 0;   filter: none; }
+  8%   { opacity: 1.0; filter: brightness(3.2) hue-rotate(200deg) saturate(2.2); }
+  22%  { opacity: 0.9; filter: brightness(2.0) hue-rotate(196deg) saturate(1.7); }
+  62%  { opacity: 0.7; filter: brightness(1.5) hue-rotate(192deg) saturate(1.3); }
+  100% { opacity: 0;   filter: none; }
+}
+
+body[data-exit-alignment="profane"] .oracle-stage .oracle-scanlines,
+body[data-exit-alignment="profane"] .oracle-stage[data-oracle-state="oracle"] .oracle-scanlines {
+  display: block !important;
+  animation: scanlines-verdict-profane 3s cubic-bezier(0.22, 1, 0.36, 1) both !important;
+  z-index: 25 !important;
+}

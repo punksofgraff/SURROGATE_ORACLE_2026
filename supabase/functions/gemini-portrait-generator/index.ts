@@ -82,12 +82,12 @@ Deno.serve(async (req: Request) => {
 
   const googleAiApiKey = Deno.env.get('GOOGLE_AI_API_KEY');
 
-  // ── STEP 1: Enhance prompt with Gemini 2.5 Flash (text-only) ──────────────
+  // ── STEP 1: Enhance prompt with Gemini 3.7 Flash (text-only) ──────────────
   let enhancedPrompt = basePrompt;
   if (googleAiApiKey) {
     try {
       const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${googleAiApiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=${googleAiApiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

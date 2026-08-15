@@ -26,7 +26,7 @@ interface CompactRequest {
 }
 
 const GEMINI_REST_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent';
 
 const COMPACT_SYSTEM =
   'You are the Oracle\'s memory indexer. Condense the following conversation excerpt into a 60-80 word signal log from the Oracle\'s perspective. ' +

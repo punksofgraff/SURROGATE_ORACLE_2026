@@ -26,7 +26,7 @@ interface DistillRequest {
 }
 
 const GEMINI_REST_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent';
 
 const DISTILL_SYSTEM =
   'You are the Oracle\'s memory. Distill a Seeker session into 80-100 words from the Oracle\'s perspective. ' +

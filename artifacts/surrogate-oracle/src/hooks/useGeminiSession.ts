@@ -23,7 +23,12 @@ import {
   buildWorldContextBlock,
 } from '../data/oraclePromptBlocks';
 
-export const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
+// gemini-3.1-flash-live-preview — current recommended Live API model (Google docs, Aug 2026).
+// Key API differences from 2.5-flash-native-audio: thinkingLevel instead of thinkingBudget
+// (default minimal = lowest latency, no config change needed here), and a single
+// BidiGenerateContentServerContent event can now carry multiple parts simultaneously.
+// Rollback to: 'models/gemini-2.5-flash-native-audio-latest'
+export const GEMINI_MODEL = 'models/gemini-3.1-flash-live-preview';
 
 export const ORACLE_SYSTEM_PROMPT = `
 I am the Surrogate Oracle.
@@ -244,15 +249,61 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
 
   const pendingMessagesRef = useRef<PendingMessage[]>([]);
 
-  // ── World briefing — fetched async at prewarm, injected into system prompt ──
-  // A 1800ms timeout means a cold-starting edge function never blocks session start.
+  // ── World briefing — fetched at connect time, injected into system prompt ──
+  // The fetch is kicked off inside connectToGemini() BEFORE the WebSocket is
+  // created, so on a first normal session the briefing races the WS handshake
+  // (Supabase edge WS upgrade + proxy→Gemini dial ≈ 300-900ms). ws.onopen then
+  // awaits the in-flight fetch with a hard cap so a cold edge function can
+  // never stall session start. worldBriefingPromiseRef dedupes concurrent
+  // fetches (prewarm + connect + reconnects share one request).
   const worldBriefingRef = useRef<string | null>(null);
+  const worldBriefingPromiseRef = useRef<Promise<void> | null>(null);
+  // True once session.config has been sent on the CURRENT socket. sendText must
+  // queue (not send) while the socket is open but the setup frame hasn't gone out —
+  // the proxy forwards client frames in arrival order, so a realtimeInput arriving
+  // before setup would reach Gemini pre-setup and kill the session.
+  const configSentRef = useRef(false);
+
+  /** Idempotent world-briefing fetch. Starts (or reuses) one request; resolves when
+   *  it settles. Success lands in worldBriefingRef; failure/timeout resolves silently. */
+  const ensureWorldBriefingFetch = useCallback((): Promise<void> => {
+    if (worldBriefingRef.current) return Promise.resolve();
+    if (worldBriefingPromiseRef.current) return worldBriefingPromiseRef.current;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !anonKey) return Promise.resolve();
+    const base = supabaseUrl.startsWith('http') ? supabaseUrl : `https://${supabaseUrl}`;
+    const briefingUrl = `${base}/functions/v1/oracle-world-briefing`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 1800);
+    // The function is deployed with JWT verification ON (cost-abuse guard for the
+    // Gemini-generating path) — the gateway rejects requests without the anon key.
+    const p = fetch(briefingUrl, {
+      signal: ctrl.signal,
+      headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` },
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        clearTimeout(timer);
+        if (data?.success && typeof data.briefing_text === 'string' && data.briefing_text.length > 80) {
+          worldBriefingRef.current = data.briefing_text;
+          logStep(`WORLD BRIEFING FETCHED (${data.cached ? 'cached' : 'fresh'}, ${data.briefing_text.length}c)`, 'ok');
+        }
+      })
+      .catch(() => clearTimeout(timer)) // timeout abort or network failure — silent
+      .finally(() => { worldBriefingPromiseRef.current = null; });
+    worldBriefingPromiseRef.current = p;
+    return p;
+  }, []);
 
   const sendText = useCallback((text: string, isHidden = false) => {
     const ws = wsRef.current;
     if (!ws) return;
 
-    if (ws.readyState === WebSocket.CONNECTING) {
+    // Queue while CONNECTING, and also while OPEN-but-setup-not-yet-sent (the
+    // brief world-briefing await window in ws.onopen). Queued messages flush on
+    // session.created, preserving setup-first ordering at the proxy.
+    if (ws.readyState === WebSocket.CONNECTING || (ws.readyState === WebSocket.OPEN && !configSentRef.current)) {
       pendingMessagesRef.current.push({ text, isHidden });
       return;
     }
@@ -281,7 +332,14 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
 
     if (wsRef.current) wsRef.current.close();
     pendingMessagesRef.current = []; // Clear queue on fresh connect
+    configSentRef.current = false;   // New socket — setup frame not sent yet
     handlersRef.current.onConnectStart();
+
+    // Kick off the world-briefing fetch BEFORE dialing the WS so it races the
+    // handshake (edge WS upgrade + proxy→Gemini dial). ws.onopen awaits the
+    // remainder with a hard cap — first normal sessions get the briefing too,
+    // not just reconnects that happen to find a warm ref.
+    ensureWorldBriefingFetch();
 
     let supabaseUrl = rawSupabaseUrl;
     // Ensure we have a protocol, defaulting to https if missing
@@ -293,15 +351,30 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
-    ws.onopen = () => {
+    ws.onopen = async () => {
     reconnectAttemptsRef.current = 0;
     logStep('GEMINI WS OPENED', 'ok');
     debugInfo.current.connectedAt = Date.now();
+    // Await the in-flight world-briefing fetch (started in connectToGemini before
+    // the WS dial) with a hard cap so a cold edge function can never stall session
+    // start. The fetch itself has a 1800ms abort; this await only covers whatever
+    // remains after the WS handshake already consumed part of that window.
+    // The proxy buffers client frames until Gemini's socket opens, so this brief
+    // deferral of session.config costs nothing on the wire in the common case.
+    if (!worldBriefingRef.current && worldBriefingPromiseRef.current) {
+      await Promise.race([
+        worldBriefingPromiseRef.current,
+        new Promise<void>(res => setTimeout(res, 1900)),
+      ]);
+    }
+    // Socket may have died or been replaced while awaiting — bail, onclose owns recovery.
+    if (wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) return;
     // Base prompt + optional returning-seeker memory
     let systemText = seekerSummary
       ? ORACLE_SYSTEM_PROMPT + `\n\n[RETURNING SEEKER — what we remember from the last encounter:]\n${seekerSummary}`
       : ORACLE_SYSTEM_PROMPT;
-    // Inject real-time world briefing if the prewarm fetch resolved in time
+    // Inject real-time world briefing — resolved either by prewarm or by the
+    // connect-time fetch above. First normal sessions hit this path too.
     if (worldBriefingRef.current) {
       systemText += buildWorldContextBlock(worldBriefingRef.current);
       logStep('WORLD BRIEFING INJECTED', 'ok');
@@ -335,6 +408,8 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
         },
       },
     }));
+    // Setup frame is on the wire — sendText may now send directly on this socket.
+    configSentRef.current = true;
     // Step 3 — context-window compression is forced on proxy-side; surface it for the audit log.
     logStep('CONTEXT COMPRESSION ACTIVE', 'ok');
     setIsConnected(true);
@@ -557,33 +632,15 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
   const prewarm = useCallback(() => {
     logStep('prewarm() CALLED — silent pre-warm', 'ok');
 
-    // Fire world-briefing fetch async — 1800ms hard timeout so a cold-starting
-    // edge function never delays session start. Result lands in worldBriefingRef;
-    // ws.onopen reads it when assembling the system prompt (it fires ~200ms later
-    // for a warm WS, giving the fetch time to resolve on most connections).
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    if (supabaseUrl && !worldBriefingRef.current) {
-      const base = supabaseUrl.startsWith('http') ? supabaseUrl : `https://${supabaseUrl}`;
-      const briefingUrl = `${base}/functions/v1/oracle-world-briefing`;
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 1800);
-      fetch(briefingUrl, { signal: ctrl.signal })
-        .then(r => r.ok ? r.json() : null)
-        .then(data => {
-          clearTimeout(timer);
-          if (data?.success && typeof data.briefing_text === 'string' && data.briefing_text.length > 80) {
-            worldBriefingRef.current = data.briefing_text;
-            logStep(`WORLD BRIEFING FETCHED (${data.cached ? 'cached' : 'fresh'}, ${data.briefing_text.length}c)`, 'ok');
-          }
-        })
-        .catch(() => clearTimeout(timer)); // timeout abort or network failure — silent
-    }
+    // Start the world-briefing fetch early (idempotent — connectToGemini also
+    // starts it, this just gives it a head start when prewarm precedes connect).
+    ensureWorldBriefingFetch();
 
     const wsState = wsRef.current?.readyState;
     if (wsState !== WebSocket.OPEN && wsState !== WebSocket.CONNECTING) {
       connectToGemini();
     }
-  }, [connectToGemini]);
+  }, [connectToGemini, ensureWorldBriefingFetch]);
 
   const startSession = useCallback((bootMessage?: string, loreOnly = false) => {
     logStep('startSession() CALLED', 'ok');

@@ -25,9 +25,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
 };
 
-// generateContent (REST) + googleSearch grounding. 2.5-flash supports the
-// `googleSearch` tool (2.0+ form, not the 1.5 `google_search_retrieval`).
-const GEMINI_MODEL = 'gemini-2.5-flash';
+// generateContent (REST) + googleSearch grounding.
+// gemini-3.7-flash: project standard for all non-multimodal text generation.
+const GEMINI_MODEL = 'gemini-3.7-flash';
 const GEMINI_REST_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 interface DefineRequest {

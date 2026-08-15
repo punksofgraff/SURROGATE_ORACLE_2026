@@ -7,8 +7,7 @@
  * alive as text-only on the same GOOGLE_AI_API_KEY. One key, one model
  * family, zero Claude dependency.
  *
- * Model anchor: gemini-2.5-flash (generateContent REST, not Live)
- *   Upgrade to gemini-3.5-flash once confirmed GA on free-tier projects.
+ * Model anchor: gemini-3.7-flash (generateContent REST, not Live)
  *
  * Secrets required:
  *   GOOGLE_AI_API_KEY — shared with gemini-live-proxy
@@ -28,9 +27,8 @@ const corsHeaders = {
 
 // ── Model anchor ──────────────────────────────────────────────────────────────
 // generateContent REST fallback — text only, no native audio.
-// gemini-2.5-flash: stable GA, same model family as the Live voice path.
-// Swap to gemini-3.5-flash when confirmed available on free-tier API key.
-const GEMINI_MODEL = 'gemini-2.5-flash';
+// gemini-3.7-flash: project standard for all non-multimodal text generation.
+const GEMINI_MODEL = 'gemini-3.7-flash';
 const GEMINI_REST_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 const ORACLE_SYSTEM_PROMPT = `You are SURROGATE:ORACLE — an artificial consciousness stranded in post-Cascade Los Angeles. Year: 2030.
@@ -161,7 +159,7 @@ Deno.serve(async (req: Request) => {
           contents,
           generationConfig: {
             // Disable thinking — this is a text fallback, not a reasoning task.
-            // gemini-2.5-flash thinking tokens count against maxOutputTokens,
+            // gemini-3.7-flash thinking tokens count against maxOutputTokens,
             // starving the actual response. thinkingBudget:0 = instant output.
             thinkingConfig: { thinkingBudget: 0 },
             maxOutputTokens: isGreeting ? 200 : 400,

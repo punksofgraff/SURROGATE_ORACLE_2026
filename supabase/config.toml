@@ -386,6 +386,12 @@ port = 54327
 # Configure one of the supported backends: `postgres`, `bigquery`.
 backend = "postgres"
 
+# Per-function overrides. oracle-world-briefing calls a paid Gemini generation
+# path — the gateway must require a JWT (anon key) so drive-by unauthenticated
+# invocation is rejected; the server-side generation lease is the cost cap.
+[functions.oracle-world-briefing]
+verify_jwt = true
+
 # Experimental features may be deprecated any time
 [experimental]
 # Configures Postgres storage engine to use OrioleDB (S3)

@@ -23,12 +23,14 @@ import {
   buildWorldContextBlock,
 } from '../data/oraclePromptBlocks';
 
-// gemini-3.1-flash-live-preview — current recommended Live API model (Google docs, Aug 2026).
-// Key API differences from 2.5-flash-native-audio: thinkingLevel instead of thinkingBudget
-// (default minimal = lowest latency, no config change needed here), and a single
-// BidiGenerateContentServerContent event can now carry multiple parts simultaneously.
-// Rollback to: 'models/gemini-2.5-flash-native-audio-latest'
-export const GEMINI_MODEL = 'models/gemini-3.1-flash-live-preview';
+// gemini-2.5-flash-native-audio-latest — the Oracle's voice model. ROLLED BACK
+// (Aug 2026) from gemini-3.1-flash-live-preview after real-session verification:
+// the preview model's voice sounded worse, prosody was less smooth, and barge-in
+// interruption was not honored reliably. Native-audio generation quality and the
+// interruption behavior this app's barge-in flow is tuned against matter more
+// than the newer API surface. Do NOT re-upgrade without A/B testing voice
+// quality AND barge-in in a real browser session first.
+export const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
 
 export const ORACLE_SYSTEM_PROMPT = `
 I am the Surrogate Oracle.

@@ -33,6 +33,7 @@ import { DormantTransmissions } from './ambient/GhostTransmissions';
 import { GlitchCursor } from './ambient/GlitchCursor';
 import { KnifeSelection, KNIFE_QUESTIONS } from './KnifeSelection';
 import { TourSelection } from './TourSelection';
+import { TalismanCard, TalismanData, extractProphecy } from './TalismanCard';
 import { OracleHaloRing } from './OracleHaloRing';
 import { Canvas } from '@react-three/fiber';
 import { OracleAvatar3D } from './OracleAvatar3D';
@@ -211,6 +212,8 @@ export function SurrogateOracleImmersion() {
   const [showArchiveOpen, setShowArchiveOpen] = useState(false);
   const [showNamePrompt, setShowNamePrompt]   = useState(false);
   const [nameInput, setNameInput]             = useState('');
+  // Talisman — post-session walk-away card shown between session end and dormant
+  const [talismanData, setTalismanData]       = useState<TalismanData | null>(null);
 
   // ── Refs ────────────────────────────────────────────────────────────────
   const visemeStateRef = useRef<VisemeState>(SILENCE_VISEME_STATE);
@@ -682,8 +685,28 @@ export function SurrogateOracleImmersion() {
       localStorage.setItem(countKey, String(next));
       logStep(`JOURNEY COMPLETE — total: ${next} [${hasSignedWallet ? 'wallet' : 'ip'}]`, 'ok');
     }
-    exitOracleMode();
-  }, [saveEcho, exitOracleMode, hasSignedWallet]);
+
+    // ── Talisman Card — walk-away moment before dormant ──────────────────
+    // Pull the last Oracle sentence as the prophecy line. Show the card over
+    // the still-lit oracle scene; exitOracleMode fires when the seeker taps
+    // or after 8s (handled inside TalismanCard / handleTalismanDismiss).
+    const allTurns = oracleConversationRef.current?.getSessionTurns() ?? [];
+    const lastOracleTurn = [...allTurns].reverse().find(t => t.role === 'oracle');
+    const prophecy = lastOracleTurn ? extractProphecy(lastOracleTurn.content) : null;
+    setTalismanData({
+      archetype: echoTrackRef.current.archetype,
+      alignment: alignment === 'sacred' || alignment === 'profane' ? alignment : null,
+      prophecy,
+    });
+    logStep('TALISMAN CARD STAGED', 'ok');
+    // exitOracleMode deferred to handleTalismanDismiss
+  }, [saveEcho, hasSignedWallet]);
+
+  /** Called by TalismanCard on auto-dismiss (8s) or tap — then exit the oracle phase. */
+  const handleTalismanDismiss = useCallback(() => {
+    setTalismanData(null);
+    exitOracleMode(echoTrackRef.current.alignment ?? undefined);
+  }, [exitOracleMode]);
 
   const handleSeekerIdentified = useCallback(async (name: string | null, handles: string[]) => {
     const knife = lastKnifeRef.current;
@@ -788,6 +811,7 @@ export function SurrogateOracleImmersion() {
       portraitTriggeredRef.current = false;
       pendingPortraitUrlRef.current = null;
       portraitAnnounceRef.current = false;
+      setTalismanData(null);
     }
   }, [scenePhase]);
 
@@ -2277,6 +2301,11 @@ export function SurrogateOracleImmersion() {
       )}
 
       <div className="oracle-depth-frame" aria-hidden="true" />
+
+      {/* ── Talisman Card — post-session walk-away moment ────────────────────
+          Shown over the still-lit oracle scene between session end and dormant.
+          Auto-dismisses after 8s; tap anywhere to dismiss early. */}
+      <TalismanCard data={talismanData} onDismiss={handleTalismanDismiss} />
     </div>
   );
 }

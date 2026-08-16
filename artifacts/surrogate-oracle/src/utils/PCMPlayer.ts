@@ -10,6 +10,15 @@
 
 import { createAudioContext, isTouchPrimaryDevice } from '../lib/browserCapabilities';
 
+// The Oracle's baseline loudness. Applied as post-compression makeup gain
+// (mid-graph), NOT master gain. Previously this was a 2.5x master-gain boost
+// set from the first-audio path — but master gain also gets probed by
+// reassertPlayback() around mic toggles, and on iOS the voice-processing
+// session flip changes effective loudness *below* Web Audio, so a master-gain
+// boost read as "one volume muted, another unmuted". Living mid-graph, this is
+// a fixed graph param the mic gesture never touches.
+const DEFAULT_MAKEUP_GAIN = 2.5;
+
 export class PCMPlayer {
   private context: AudioContext;
   private sampleRate: number;
@@ -37,6 +46,9 @@ export class PCMPlayer {
 
   private panner: PannerNode | null = null;
   private masterGain: GainNode | null = null;
+  // Post-compression makeup gain — owns the Oracle's baseline loudness.
+  // Mid-graph, fixed, never touched by mic open/close or reassertPlayback().
+  private makeupGain: GainNode | null = null;
   // Last explicitly-requested output level. Re-applied by reassertPlayback()
   // after OS audio-session changes (mobile mic toggle) so playback loudness
   // never drifts from what the app last asked for.
@@ -78,6 +90,23 @@ export class PCMPlayer {
     } catch (err) {
       console.warn('[PCMPlayer] DynamicsCompressor unavailable, skipping:', err);
       this.compressor = null;
+    }
+
+    // ── Makeup gain — the Oracle's loudness lives HERE, not in masterGain.
+    // Sits mid-graph (compressor → makeupGain → analyser), so it is never
+    // touched by the mic-tap gesture and never re-ramped on mic open/close.
+    // masterGain stays at unity (1.0) exactly like our other Vertex live-voice
+    // apps, so muting/unmuting the mic can never produce two different output
+    // levels. Boosting perceived loudness is the compressor's job (post-
+    // compression makeup), which is stable across the iOS voice-processing
+    // session flip because it is a fixed AudioParam in the graph, not the OS DSP.
+    try {
+      const mk = this.context.createGain();
+      mk.gain.setValueAtTime(DEFAULT_MAKEUP_GAIN, this.context.currentTime);
+      this.makeupGain = mk;
+    } catch (err) {
+      console.warn('[PCMPlayer] Makeup GainNode unavailable, skipping:', err);
+      this.makeupGain = null;
     }
 
     // ── Transmission filter — sci-fi tunnel voice for knife phase
@@ -141,18 +170,22 @@ export class PCMPlayer {
       this.panner = null;
     }
 
-    // ── Build the processing chain (Filter → Compressor → Analyser → Output)
+    // ── Build the processing chain (Filter → Compressor → Makeup → Analyser → Output)
     // We connect these statically in the constructor so the signal path is ready 
     // for both AudioWorklet and legacy fallback.
     
+    // The node feeding the analyser: makeup gain when available, else direct.
+    const preAnalyser: AudioNode = this.makeupGain ?? this.analyser;
+    if (this.makeupGain) this.makeupGain.connect(this.analyser);
+
     // Start with the nodes that are always present or optional but early in chain
     if (this.transmissionFilter && this.compressor) {
       this.transmissionFilter.connect(this.compressor);
-      this.compressor.connect(this.analyser);
+      this.compressor.connect(preAnalyser);
     } else if (this.transmissionFilter) {
-      this.transmissionFilter.connect(this.analyser);
+      this.transmissionFilter.connect(preAnalyser);
     } else if (this.compressor) {
-      this.compressor.connect(this.analyser);
+      this.compressor.connect(preAnalyser);
     }
 
     // Connect Analyser to the output stage
@@ -202,7 +235,7 @@ export class PCMPlayer {
         } else if (this.compressor) {
           this.workletNode.connect(this.compressor);
         } else {
-          this.workletNode.connect(this.analyser);
+          this.workletNode.connect(this.makeupGain ?? this.analyser);
         }
       }).catch(err => {
         console.error('❌ Failed to load OracleAudioWorklet (falling back to legacy):', err);
@@ -277,6 +310,11 @@ export class PCMPlayer {
   /** Effective master-gain value right now (instrumentation only). */
   public getCurrentGain(): number {
     return this.masterGain ? this.masterGain.gain.value : -1;
+  }
+
+  /** Fixed mid-graph makeup gain (instrumentation only). -1 when unavailable. */
+  public getMakeupGain(): number {
+    return this.makeupGain ? this.makeupGain.gain.value : -1;
   }
 
   /** True when the HRTF spatial panner is in the chain (desktop only). */
@@ -528,7 +566,7 @@ export class PCMPlayer {
     } else if (this.compressor) {
       source.connect(this.compressor);
     } else {
-      source.connect(this.analyser);
+      source.connect(this.makeupGain ?? this.analyser);
     }
 
     const currentTime = this.context.currentTime;

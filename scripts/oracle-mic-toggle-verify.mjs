@@ -60,7 +60,12 @@ async function sampleAudio(page) {
   return page.evaluate(() => {
     const d = window.__oracleAudioDebug;
     if (!d) return null;
-    return { gain: d.getGain(), ctx: d.getContextState(), panner: d.hasSpatialPanner() };
+    return {
+      gain: d.getGain(),
+      makeup: d.getMakeupGain ? d.getMakeupGain() : -1,
+      ctx: d.getContextState(),
+      panner: d.hasSpatialPanner(),
+    };
   });
 }
 
@@ -109,8 +114,12 @@ async function run(label, contextOpts, expectPanner) {
     await ctx.close();
     return;
   }
-  console.log(`  baseline: gain=${base.gain.toFixed(4)} ctx=${base.ctx} panner=${base.panner}`);
+  console.log(`  baseline: gain=${base.gain.toFixed(4)} makeup=${base.makeup.toFixed(2)} ctx=${base.ctx} panner=${base.panner}`);
   check(base.panner === expectPanner, `spatial panner ${expectPanner ? 'present (desktop)' : 'ABSENT (mobile)'}`);
+  // Unity-master-gain architecture: master gain must sit at 1.0 for the whole
+  // session (loudness lives in the fixed 2.5x mid-graph makeup gain instead).
+  check(Math.abs(base.gain - 1.0) < 0.01, `baseline master gain is UNITY (${base.gain.toFixed(4)})`);
+  check(Math.abs(base.makeup - 2.5) < 0.01, `makeup gain fixed at 2.5 (${base.makeup.toFixed(3)})`);
 
   // EVERY sample — first unmute included — must match the pre-tap baseline.
   // The mic tap is not allowed to change Oracle loudness at all.
@@ -124,9 +133,10 @@ async function run(label, contextOpts, expectPanner) {
     await tapMic(page);
     await page.waitForTimeout(1600);
     const off = await sampleAudio(page);
-    console.log(`  toggle ${i + 1}: on(gain=${on.gain.toFixed(4)} ctx=${on.ctx}) off(gain=${off.gain.toFixed(4)} ctx=${off.ctx})`);
+    console.log(`  toggle ${i + 1}: on(gain=${on.gain.toFixed(4)} mk=${on.makeup.toFixed(2)} ctx=${on.ctx}) off(gain=${off.gain.toFixed(4)} mk=${off.makeup.toFixed(2)} ctx=${off.ctx})`);
     check(Math.abs(on.gain - base.gain) < TOL, `toggle ${i + 1}: unmute gain == pre-tap baseline (Δ=${Math.abs(on.gain - base.gain).toFixed(5)})`);
     check(Math.abs(off.gain - base.gain) < TOL, `toggle ${i + 1}: mute gain == pre-tap baseline (Δ=${Math.abs(off.gain - base.gain).toFixed(5)})`);
+    check(Math.abs(on.makeup - base.makeup) < TOL && Math.abs(off.makeup - base.makeup) < TOL, `toggle ${i + 1}: makeup gain untouched by toggle`);
     check(off.ctx === 'running', `toggle ${i + 1}: playback ctx running after mute`);
   }
 

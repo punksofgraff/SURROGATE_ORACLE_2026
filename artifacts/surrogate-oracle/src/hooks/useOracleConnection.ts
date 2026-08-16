@@ -47,6 +47,7 @@ export function useOracleConnection({
       if (devui) {
         (window as any).__oracleAudioDebug = {
           getGain: () => player.getCurrentGain(),
+          getMakeupGain: () => player.getMakeupGain(),
           getContextState: () => player.getContext().state,
           hasSpatialPanner: () => player.hasSpatialPanner(),
         };
@@ -91,7 +92,16 @@ export function useOracleConnection({
       // UI tap (which requests mic/camera/gyro). The oracle_session_muted flag previously
       // gated audio on that tap, but that path was decoupled in a13de3e; keeping the
       // 0.0001 branch silences Oracle for type-mode users and anyone who misses the button.
-      player.setVolume(2.50, 40);
+      //
+      // UNITY MASTER GAIN — the Oracle's loudness now lives in PCMPlayer's fixed
+      // mid-graph makeup gain (2.5x post-compression), NOT here. Master gain stays
+      // at 1.0 for the whole session, matching our other Vertex live-voice apps.
+      // The old `setVolume(2.50)` boost made the iOS voice-processing session flip
+      // audible: the OS changes effective loudness below Web Audio, so a boosted
+      // master gain read as one volume muted, another unmuted — and
+      // reassertPlayback() couldn't correct it because the app-side gain value
+      // never actually drifted. Assert unity so any stale ramp is cleared.
+      player.setVolume(1.0, 40);
       localStorage.setItem('oracle_session_muted', 'false');
     }
 

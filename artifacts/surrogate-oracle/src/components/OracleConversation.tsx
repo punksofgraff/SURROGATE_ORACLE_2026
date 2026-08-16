@@ -64,6 +64,12 @@ interface OracleConversationProps {
   onListeningChange?: (isListening: boolean) => void;
   onMicWillStart?: () => void;
   onMicClick?: (willListen: boolean) => void;
+  /** Fired after mic capture opens or closes — the two moments the mobile OS
+   *  audio session gets reconfigured (iOS voice-processing / Android comms
+   *  routing). Parent uses this to re-assert Oracle playback state (context
+   *  running + master gain at its last requested target) so mic toggles can't
+   *  shift Oracle loudness. No-op when nothing drifted, so desktop is unaffected. */
+  onAudioSessionChanged?: (phase: 'mic-started' | 'mic-stopped') => void;
   onTypeModeChange?: (isTypeMode: boolean) => void;
   initialTotemLevel?: number;
   isVisible?: boolean;
@@ -167,6 +173,7 @@ const OracleConversation = forwardRef(
       onSessionEnd, onTurnComplete, onPortraitRequest, onSeekerProgress, onSeekerIdentified,
       onMicWillStart,
       onMicClick,
+      onAudioSessionChanged,
       onTypeModeChange,
       cameraVideoRef,
       cameraActive,
@@ -388,6 +395,9 @@ const OracleConversation = forwardRef(
 
     const onMicWillStartRef = useRef(onMicWillStart);
     useEffect(() => { onMicWillStartRef.current = onMicWillStart; }, [onMicWillStart]);
+
+    const onAudioSessionChangedRef = useRef(onAudioSessionChanged);
+    useEffect(() => { onAudioSessionChangedRef.current = onAudioSessionChanged; }, [onAudioSessionChanged]);
 
     const onMicClickRef = useRef(onMicClick);
     useEffect(() => { onMicClickRef.current = onMicClick; }, [onMicClick]);
@@ -1043,6 +1053,10 @@ const OracleConversation = forwardRef(
         setMicSignalLost(false);
         onListeningChangeRef.current?.(true);
         logStep('MIC STARTED', 'ok');
+        // Mic open reconfigures the mobile OS audio session (iOS voice-processing
+        // mode / Android comms routing) — give the parent a hook to re-assert
+        // Oracle playback state after the session settles.
+        onAudioSessionChangedRef.current?.('mic-started');
       } catch (e) {
         const err = e as Error;
         logStep(`MIC FAILED: ${err.message ?? err}`, 'err');
@@ -1052,6 +1066,9 @@ const OracleConversation = forwardRef(
     startMicRef.current = startMic;
 
     const stopMic = () => {
+      // Capture teardown ONLY — never touch the shared Oracle playback context
+      // here. Suspending or reconfiguring playback on mute is exactly the class
+      // of side effect that shifts Oracle loudness/routing on mobile.
       processorRef.current?.disconnect();
       processorRef.current = null;
       mediaStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -1072,6 +1089,9 @@ const OracleConversation = forwardRef(
       vadRef.current.reset();
       onUserSpeakingChangeRef.current?.(false, 0);
       logStep('MIC STOPPED', 'ok');
+      // Track stop flips the mobile OS audio session back to playback mode —
+      // let the parent re-assert Oracle playback state after it settles.
+      onAudioSessionChangedRef.current?.('mic-stopped');
     };
 
     // sessionContext / initialKnifeThemes are intentionally NOT injected as hidden

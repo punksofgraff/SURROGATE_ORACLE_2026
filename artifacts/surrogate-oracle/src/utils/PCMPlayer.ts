@@ -8,7 +8,7 @@
  * back with minimal jitter and zero intermediate file creation.
  */
 
-import { createAudioContext } from '../lib/browserCapabilities';
+import { createAudioContext, isTouchPrimaryDevice } from '../lib/browserCapabilities';
 
 export class PCMPlayer {
   private context: AudioContext;
@@ -37,6 +37,10 @@ export class PCMPlayer {
 
   private panner: PannerNode | null = null;
   private masterGain: GainNode | null = null;
+  // Last explicitly-requested output level. Re-applied by reassertPlayback()
+  // after OS audio-session changes (mobile mic toggle) so playback loudness
+  // never drifts from what the app last asked for.
+  private lastVolumeTarget: number = 1.0;
   private analyser: AnalyserNode;
   private compressor: DynamicsCompressorNode | null = null;
   private transmissionFilter: BiquadFilterNode | null = null;
@@ -102,7 +106,18 @@ export class PCMPlayer {
     }
 
     // ── Spatial panner — Oracle voice follows head-tracking movement
+    // DESKTOP ONLY. On touch devices the head-tracking source is the gyroscope,
+    // whose permission is granted during the mic-tap gesture — so HRTF panning
+    // would switch on exactly when the Seeker unmutes, heard as a sudden
+    // "spatial audio" shift in the Oracle's voice (task: mic tap must be
+    // side-effect-free for playback). Mobile therefore plays through a fixed,
+    // non-spatialized chain; desktop keeps HRTF (mouse parallax runs from the
+    // start, so there is no toggle-correlated onset).
     try {
+      if (isTouchPrimaryDevice()) {
+        console.log('[PCMPlayer] Touch device — HRTF spatial panner disabled (fixed playback chain)');
+        throw new Error('skip-panner-on-touch');
+      }
       const panner = this.context.createPanner();
       panner.panningModel  = 'HRTF';
       panner.distanceModel = 'inverse';
@@ -120,7 +135,9 @@ export class PCMPlayer {
       }
       this.panner = panner;
     } catch (err) {
-      console.warn('[PCMPlayer] PannerNode (HRTF) unavailable, skipping:', err);
+      if ((err as Error).message !== 'skip-panner-on-touch') {
+        console.warn('[PCMPlayer] PannerNode (HRTF) unavailable, skipping:', err);
+      }
       this.panner = null;
     }
 
@@ -208,6 +225,7 @@ export class PCMPlayer {
     if (!this.masterGain) return;
     const now = this.context.currentTime;
     const safeTarget = Math.max(0.0001, target);
+    this.lastVolumeTarget = safeTarget;
     this.masterGain.gain.cancelScheduledValues(now);
     
     const startVal = Math.max(0.0001, this.masterGain.gain.value);
@@ -221,9 +239,49 @@ export class PCMPlayer {
     // Ensure current value is non-zero before multiplication/ramp
     const startVal = Math.max(0.0001, this.masterGain.gain.value);
     const newTarget = startVal * multiplier;
+    this.lastVolumeTarget = Math.max(0.0001, newTarget);
     this.masterGain.gain.cancelScheduledValues(now);
     this.masterGain.gain.setValueAtTime(startVal, now);
     this.masterGain.gain.linearRampToValueAtTime(Math.max(0.0001, newTarget), now + rampMs / 1000);
+  }
+
+  /**
+   * Re-assert the playback path after an OS audio-session change (mobile mic
+   * open/close flips iOS into/out of voice-processing mode, which re-routes
+   * output and can leave the context suspended or the gain at a shifted
+   * effective level). Resumes the context if needed and snaps the master gain
+   * back to the last explicitly-requested target. Idempotent and cheap —
+   * safe to call multiple times while the session settles.
+   * Returns true when a correction was actually applied (for instrumentation).
+   */
+  public reassertPlayback(rampMs: number = 120): boolean {
+    let corrected = false;
+    if (this.context.state === 'suspended') {
+      corrected = true;
+      this.context.resume().catch((err) => {
+        console.warn('[PCMPlayer] reassertPlayback resume() failed:', err);
+      });
+    }
+    if (!this.masterGain) return corrected;
+    const now = this.context.currentTime;
+    const current = Math.max(0.0001, this.masterGain.gain.value);
+    // Only touch the ramp when the effective value has actually drifted —
+    // avoids clicks from redundant cancel/ramp cycles on healthy sessions.
+    if (Math.abs(current - this.lastVolumeTarget) < 0.001) return corrected;
+    this.masterGain.gain.cancelScheduledValues(now);
+    this.masterGain.gain.setValueAtTime(current, now);
+    this.masterGain.gain.linearRampToValueAtTime(this.lastVolumeTarget, now + rampMs / 1000);
+    return true;
+  }
+
+  /** Effective master-gain value right now (instrumentation only). */
+  public getCurrentGain(): number {
+    return this.masterGain ? this.masterGain.gain.value : -1;
+  }
+
+  /** True when the HRTF spatial panner is in the chain (desktop only). */
+  public hasSpatialPanner(): boolean {
+    return this.panner !== null;
   }
 
   public getAnalyser(): AnalyserNode {

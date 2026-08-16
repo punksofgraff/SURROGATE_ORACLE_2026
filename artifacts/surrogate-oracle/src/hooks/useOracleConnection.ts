@@ -36,6 +36,22 @@ export function useOracleConnection({
     player.setProcessingCallback(onProcessingChange);
     pcmPlayerRef.current = player;
     logStep('ENTERPRISE AUDIO WORKLET ACTIVE', 'ok');
+    // Dev-only introspection for headless verification (?devui / step-log flag —
+    // same visibility contract as CodeAuditor). Lets automated tests read the
+    // effective playback gain, context state, and spatial-panner presence
+    // around mic toggles. Never exposed in normal seeker sessions.
+    try {
+      const devui =
+        new URLSearchParams(window.location.search).has('devui') ||
+        localStorage.getItem('oracle_step_log') === '1';
+      if (devui) {
+        (window as any).__oracleAudioDebug = {
+          getGain: () => player.getCurrentGain(),
+          getContextState: () => player.getContext().state,
+          hasSpatialPanner: () => player.hasSpatialPanner(),
+        };
+      }
+    } catch { /* SSR/storage guards — non-fatal */ }
   }, [playbackRate, onViseme, onProcessingChange]);
 
   const initializeOracle = useCallback(async () => {
@@ -44,6 +60,19 @@ export function useOracleConnection({
 
   const setVolume = useCallback((vol: number, rampMs = 150) => {
     pcmPlayerRef.current?.setVolume(vol, rampMs);
+  }, []);
+
+  // Re-assert the Oracle playback path after an OS audio-session change
+  // (mobile mic open/close). Logs only when a correction was actually needed,
+  // so the step trace shows exactly which toggle caused drift.
+  const reassertPlayback = useCallback((label = '') => {
+    const player = pcmPlayerRef.current;
+    if (!player) return;
+    const before = player.getCurrentGain();
+    const corrected = player.reassertPlayback();
+    if (corrected) {
+      logStep(`PLAYBACK REASSERTED${label ? ' (' + label + ')' : ''}: gain ${before.toFixed(3)} → target`, 'warn');
+    }
   }, []);
 
   // ── Audio response handler ────────────────────────────────────────────────
@@ -184,12 +213,13 @@ export function useOracleConnection({
     getLorePlaybackMs,
     getLoreBufferedMs,
     setVolume,
+    reassertPlayback,
   }), [
     error,
     initializePCMPlayer, initializeOracle,
     handleOracleResponse, resetFirstChunk, cleanup, boostMicVolume, getAnalyser, setTransmissionQ,
     flushPlayback, startQuestionTracking, getQuestionPlaybackMs, getQuestionBufferedMs,
-    startLoreTracking, getLorePlaybackMs, getLoreBufferedMs, setVolume,
+    startLoreTracking, getLorePlaybackMs, getLoreBufferedMs, setVolume, reassertPlayback,
   ]);
 
   return value;

@@ -1924,14 +1924,27 @@ export function SurrogateOracleImmersion() {
           onListeningChange={setIsMicActive}
           onThinkingChange={setIsOracleThinking}
           onMicWillStart={() => fadeToVolume(0, 80)}
+          onAudioSessionChanged={(phase) => {
+            // Mobile OS audio-session reconfiguration (mic open/close) settles
+            // asynchronously — re-assert Oracle playback state now and again
+            // shortly after. reassertPlayback is idempotent and no-ops when
+            // nothing drifted, so this is free on desktop and healthy sessions.
+            connection.reassertPlayback(phase);
+            setTimeout(() => connection.reassertPlayback(`${phase}+250ms`), 250);
+            setTimeout(() => connection.reassertPlayback(`${phase}+1s`), 1000);
+          }}
           onTypeModeChange={setIsTypeMode}
           onMicClick={async (willListen) => {
             if (willListen) {
               setIsAudioPlaying(false);
               
-              // Unmute the Oracle's voice, request gyro and camera permissions in a single unified user gesture
+              // Request gyro and camera permissions in a single unified user gesture.
+              // NOTE: deliberately NO setVolume() here — mic activation must preserve
+              // the pre-tap Oracle playback level (task #80: mic tap must not shift
+              // Oracle volume). Audibility is guaranteed by the first-audio-chunk path
+              // in useOracleConnection ("always start audible"), which owns the one
+              // intentional volume set at session start.
               localStorage.setItem('oracle_session_muted', 'false');
-              connection.setVolume(2.50, 300);
               
               // Enable mic auto-restart for subsequent speech turns
               oracleConversationRef.current?.enableMicAutoRestart();

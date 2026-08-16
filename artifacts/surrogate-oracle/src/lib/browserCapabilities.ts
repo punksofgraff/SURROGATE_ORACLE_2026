@@ -18,6 +18,23 @@ export function createAudioContext(options?: AudioContextOptions): AudioContext 
 }
 
 /**
+ * True on touch-primary devices (phones/tablets), where the OS audio session
+ * is shared between capture and playback and mic activation reconfigures it
+ * (iOS voice-processing mode, Android communications routing). Capability
+ * check rather than UA sniffing, matching the useParallax convention —
+ * catches iPads in desktop mode and iOS Chrome.
+ */
+export function isTouchPrimaryDevice(): boolean {
+  try {
+    // maxTouchPoints > 0 alone would match touchscreen laptops, but those report
+    // a fine primary pointer — the (pointer: coarse) guard excludes them.
+    return navigator.maxTouchPoints > 0 && window.matchMedia('(pointer: coarse)').matches;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * True when running inside an iframe (same-origin or cross-origin). Fails
  * safe to `true` when the cross-origin check itself throws, since we can't
  * prove we're top-level in that case.

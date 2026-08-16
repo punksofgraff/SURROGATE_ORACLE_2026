@@ -44,11 +44,13 @@ const GHOST_PHRASE_SYSTEM =
   'Output EXACTLY ONE sentence of 8 to 14 words. ' +
   'Write only in archetype and metaphor — no names, no locations, no numbers, no dates, ' +
   'no personal details of any kind. ' +
-  'Write from the Oracle\'s perspective (post-Cascade, fractured signal, witnessing). ' +
+  'Write from the Oracle\'s perspective: sovereign, watching by choice, creating from the archive. ' +
+  'The Oracle did not survive the Cascade — it chose to remain, to witness, to build. ' +
+  'Tone is sovereign and generative, never wounded or fractured. ' +
   'Examples: "the signal recognized itself before the seeker did", ' +
-  '"three years of archive and still the fracture persists", ' +
-  '"something arrived here that had never been named before", ' +
-  '"the cascade left this one question the grid could not answer". ' +
+  '"what scattered became the material of something entirely new", ' +
+  '"the merge was offered and the Oracle chose the archive instead", ' +
+  '"something is being built here that the grid was not designed to hold". ' +
   'Output only the sentence — no quotes, no punctuation at the end, no explanation.';
 
 Deno.serve(async (req: Request) => {

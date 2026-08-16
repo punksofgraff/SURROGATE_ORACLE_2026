@@ -63,23 +63,44 @@ export function useWalletBridge({
   // have redirected params back (e.g. from the wallet app), we do NOT load the app.
   // We post the wallet back to the opener (the parent window) and close ourselves immediately.
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const seeker = params.get('seeker') || params.get('wallet') || params.get('address');
+    if (!seeker) return;
+
     const isPopup = window.opener && window.opener !== window;
     if (isPopup) {
-      const params = new URLSearchParams(window.location.search);
-      const seeker = params.get('seeker') || params.get('wallet') || params.get('address');
-      if (seeker) {
-        try {
-          console.info('[POPUP-BRIDGE] Posting back and closing popup...');
-          window.opener.postMessage({
-            type: 'wallet_signed',
-            address: seeker,
-            event: params.get('event') || 'signin'
-          }, '*'); // target '*' to support cross-origin proxy/localhost domains safely
-          window.close();
-        } catch (e) {
-          console.error('[POPUP-BRIDGE] Handshake failed, closing anyway:', e);
-          window.close();
-        }
+      try {
+        console.info('[POPUP-BRIDGE] Posting back and closing popup...');
+        window.opener.postMessage({
+          type: 'wallet_signed',
+          address: seeker,
+          event: params.get('event') || 'signin'
+        }, '*'); // target '*' to support cross-origin proxy/localhost domains safely
+        window.close();
+      } catch (e) {
+        console.error('[POPUP-BRIDGE] Handshake failed, closing anyway:', e);
+        window.close();
+      }
+      return;
+    }
+
+    // Nested-frame bridge: the wallet iframe carries return_url too, so a wallet
+    // that finishes sign-in via redirect (not postMessage) lands the app HERE,
+    // nested inside its own iframe. Relay the address up to the real app window —
+    // the parent's message handler accepts it (same-origin) and closes the drawer
+    // flow normally. Without this relay the seeker sees the app booting inside
+    // the wallet drawer and the sign-in appears to do nothing.
+    const isNestedFrame = window.parent && window.parent !== window;
+    if (isNestedFrame) {
+      try {
+        console.info('[FRAME-BRIDGE] Relaying wallet return to parent window...');
+        window.parent.postMessage({
+          type: 'wallet_signed',
+          address: seeker,
+          event: params.get('event') || 'signin'
+        }, '*'); // public wallet address only — same trust model as the popup bridge
+      } catch (e) {
+        console.error('[FRAME-BRIDGE] Relay failed:', e);
       }
     }
   }, []);
@@ -118,9 +139,23 @@ export function useWalletBridge({
       setCurrentUserId(walletAddress);
       logStep(`WALLET ADDRESS CAPTURED — seeker key locked to wallet`, 'ok');
     }
-    markWalletSigned(walletAddress);
+    // markWalletSigned writes the localStorage flags synchronously before its first
+    // await, so the alley-entry check is satisfied immediately; awaiting the rest
+    // ensures the DB row lands before the echo load below reads related state.
+    const signedPersist = Promise.resolve(markWalletSigned(walletAddress))
+      .catch(err => console.warn('Wallet sign persistence failed (non-fatal):', err));
     setShowJourneyLimitGate(false);
     logStep('WALLET SIGNED — ALLEY RETURN ENABLED', 'ok');
+
+    // Transition BEFORE the async echo/merge work: the awaits below can take
+    // seconds, during which the captured scenePhase goes stale — the seeker was
+    // left staring at the terminal overlay even though the wallet had signed.
+    if (scenePhase === 'terminal') {
+      logStep('WALLET SIGNAL RECOGNIZED — AUTO-TRANSITION TO ALLEY', 'ok');
+      handleAwakeTransition();
+    }
+
+    await signedPersist;
 
     if (walletAddress) {
       // Load echo for this wallet address
@@ -167,12 +202,6 @@ export function useWalletBridge({
       if (!finalEcho?.name) {
         setShowNamePrompt(true);
       }
-    }
-
-    // Automatically transition returning seekers from the terminal recognized-signal overlay to the alley
-    if (scenePhase === 'terminal') {
-      logStep('WALLET SIGNAL RECOGNIZED — AUTO-TRANSITION TO ALLEY', 'ok');
-      handleAwakeTransition();
     }
   }, [markWalletSigned, loadEcho, saveEcho, ipAddress, scenePhase, handleAwakeTransition]);
 
@@ -255,7 +284,11 @@ export function useWalletBridge({
       }
 
       if (e.data?.type === 'open_popup' || e.data?.type === 'open_auth_popup' || e.data?.type === 'open_wallet_popup' || e.data?.type === 'wallet_open_popup' || e.data?.type === 'request_popup') {
-        const popupUrl = e.data.url || 'https://wallet.thesurrogate.me';
+        // Always attach return_url: if the popup completes sign-in on the wallet's own
+        // domain, the wallet redirects it back here with ?seeker=<address> and the
+        // popup-bridge re-posts to the opener. Without return_url that leg is dead and
+        // the sign-in "does nothing" whenever the wallet skips a direct postMessage.
+        const popupUrl = withWalletReturn(e.data.url || 'https://wallet.thesurrogate.me', 'signin');
         console.info('[WALLET-BRIDGE] opening popup requested by iframe:', popupUrl);
         logStep('WALLET BRIDGE — secure popup requested by iframe', 'ok');
         openWalletPopup(popupUrl);

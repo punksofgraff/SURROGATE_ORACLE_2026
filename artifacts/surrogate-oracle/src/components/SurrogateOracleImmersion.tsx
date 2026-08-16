@@ -1136,7 +1136,11 @@ export function SurrogateOracleImmersion() {
     portraitAnnounceRef.current = true; // Oracle speaks about it on next turn-complete
     // Non-wallet seekers: first portrait is the natural session gate — show wallet CTA,
     // disconnect Gemini. The portrait stays visible as the hook.
-    if (!hasSignedWallet) {
+    // Check localStorage as well as React state (same rule as session entry): the
+    // async IP-check can lag a wallet sign-in that happened this page load, and a
+    // signed seeker must NEVER be disconnected mid-session by the journey gate.
+    const walletSigned = hasSignedWallet || !!localStorage.getItem('oracle_wallet_signed');
+    if (!walletSigned) {
       oracleConversationRef.current?.disconnect();
       setShowJourneyLimitGate(true);
       logStep('PORTRAIT GATE — non-wallet seeker, session ended', 'warn');
@@ -1218,8 +1222,18 @@ export function SurrogateOracleImmersion() {
           logStep('PORTRAIT ALREADY TRIGGERED THIS SESSION — SKIPPED', 'warn');
           return;
         }
+        // Latch optimistically to dedupe rapid double-unlocks, but RESET on failure —
+        // a single failed provider call must never silently disable portraits for the
+        // rest of the session (the seeker can simply ask again).
         portraitTriggeredRef.current = true;
-        portraitRef.current.generatePortrait(themes || portraitRef.current.getThemes());
+        void portraitRef.current
+          .generatePortrait(themes || portraitRef.current.getThemes())
+          .then((ok) => {
+            if (!ok) {
+              portraitTriggeredRef.current = false;
+              logStep('PORTRAIT TRIGGER RE-ARMED AFTER FAILURE', 'warn');
+            }
+          });
       } else {
         if (userId) setCurrentUserId(userId);
         if (sessionId) setCurrentSessionId(sessionId);
@@ -1596,7 +1610,10 @@ export function SurrogateOracleImmersion() {
             console.log('👉 WALLET CLICK RECEIVED');
             if (!consumeHold()) {
               console.log('👉 WALLET TRIGGERED');
-              setWalletIframeUrl('https://wallet.thesurrogate.me');
+              // return_url matters here too: if the wallet completes sign-in by
+              // redirecting (instead of postMessage), the bridge's nested-frame
+              // handler relays ?seeker= back to this window.
+              setWalletIframeUrl(withWalletReturn('https://wallet.thesurrogate.me', 'signin'));
               setShowWallet(true);
             }
           }} className="oracle-bottom-btn oracle-bottom-btn--active">
@@ -1781,7 +1798,7 @@ export function SurrogateOracleImmersion() {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <button
-                      onClick={() => openWalletPopup('https://wallet.thesurrogate.me')}
+                      onClick={() => openWalletPopup(withWalletReturn('https://wallet.thesurrogate.me', 'signin'))}
                       style={{
                         background: '#00ff88', color: '#000', padding: '1rem', border: 'none',
                         cursor: 'pointer', fontWeight: 900, borderRadius: 4,
@@ -1988,8 +2005,19 @@ export function SurrogateOracleImmersion() {
           onPortraitRequest={() => {
             if (portraitViewerUrl) {
               setShowPortraitCard(true);   // re-surface existing portrait
+            } else if (portrait.isGenerating) {
+              logStep('PORTRAIT REQUEST — generation already in flight', 'warn');
             } else {
-              portrait.generatePortrait(portrait.getThemes()); // generate if not yet
+              // Mirror the unlock path's dedupe latch so an explicit seeker request
+              // and a score-block unlock can't double-generate; reset on failure so
+              // asking again always retries.
+              portraitTriggeredRef.current = true;
+              void portrait.generatePortrait(portrait.getThemes()).then((ok) => {
+                if (!ok) {
+                  portraitTriggeredRef.current = false;
+                  logStep('PORTRAIT TRIGGER RE-ARMED AFTER FAILURE', 'warn');
+                }
+              });
             }
           }}
           seekerSummary={(() => {
@@ -2008,7 +2036,9 @@ export function SurrogateOracleImmersion() {
         <WalletGateCard
           onRegister={() => {
             setShowJourneyLimitGate(false);
-            openWalletPopup('https://wallet.thesurrogate.me');
+            // return_url is load-bearing: without it the wallet has nowhere to send
+            // the seeker after sign-in, and the return journey silently dies.
+            openWalletPopup(withWalletReturn('https://wallet.thesurrogate.me', 'signin'));
           }}
         />
       )}

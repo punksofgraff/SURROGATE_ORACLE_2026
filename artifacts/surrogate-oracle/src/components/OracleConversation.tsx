@@ -51,6 +51,20 @@ export type OracleScore = {
 const PORTRAIT_INTENT =
   /\b(manifest|portrait|my\s+(image|portrait|picture|record|likeness)|show\s+me|show\s+(image|portrait|picture|me)|create\s+(my|a|it|portrait|image|me|the)|see\s+(it|my|the|portrait|image)|render\s+(me|my|the)|synthesize(\s+me)?|generate\s+(portrait|image|me|my|it)|make\s+(portrait|image|me|my)|procedural|frequency\s+record|signal\s+impression)\b/i;
 
+// EXPLICIT portrait commands — an unmistakable verb+object pair ("generate my
+// portrait", "make me an image", "show my picture"). These fire REGARDLESS of
+// the entry count: a seeker who directly asks must never be silently ignored
+// while the Oracle's persona claims it is "already generating". The broader
+// fuzzy PORTRAIT_INTENT above stays behind the ≥5-entry gate so casual mentions
+// of "image"/"see it" early in a session don't misfire.
+const PORTRAIT_INTENT_EXPLICIT =
+  /\b(generate|create|make|render|draw|synthesize|manifest|show(?:\s+me)?)\b[^.!?]{0,40}?\b(portrait|image|picture|likeness|avatar|frequency\s+record|signal\s+impression)\b/i;
+
+// Shared by the typed and voice entry paths — one place for the gating rule.
+const isPortraitRequest = (text: string, entryCount: number): boolean =>
+  PORTRAIT_INTENT_EXPLICIT.test(text) ||
+  (entryCount >= 5 && PORTRAIT_INTENT.test(text));
+
 type Turn = {
   role: 'user' | 'oracle';
   content: string;
@@ -615,7 +629,7 @@ const OracleConversation = forwardRef(
           setSeekerCount(seekerEntryCountRef.current);
           onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
           if (seekerEntryCountRef.current === SEEKER_MAX) playSignalLockedSfx();
-          if (seekerEntryCountRef.current >= 5 && PORTRAIT_INTENT.test(spoken)) {
+          if (isPortraitRequest(spoken, seekerEntryCountRef.current)) {
             logStep('PORTRAIT INTENT DETECTED (voice)', 'ok');
             onPortraitRequestRef.current?.();
           }
@@ -824,7 +838,8 @@ const OracleConversation = forwardRef(
         onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
         if (seekerEntryCountRef.current === SEEKER_MAX) playSignalLockedSfx();
 
-        if (seekerEntryCountRef.current >= 5 && PORTRAIT_INTENT.test(text)) {
+        if (isPortraitRequest(text, seekerEntryCountRef.current)) {
+          logStep('PORTRAIT INTENT DETECTED (typed)', 'ok');
           onPortraitRequestRef.current?.();
         }
       },
@@ -1155,11 +1170,17 @@ const OracleConversation = forwardRef(
           // Continuous stream: MUST send while Oracle is speaking to enable native Gemini VAD barge-in.
           if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
-          // Barge-in gate: require 3 consecutive above-threshold frames before sending
-          // audio to Gemini while Oracle speaks. Filters sneezes/breathing (brief bursts)
-          // without meaningfully delaying intentional speech barge-in (~750ms onset).
+          // Barge-in gate: require sustained above-threshold frames before sending
+          // audio to Gemini while Oracle speaks. Each ScriptProcessor frame is
+          // 2048 samples ≈ 43ms @48kHz, so the old CONFIRM=3 opened the gate after
+          // only ~129ms — speaker echo of the Oracle's OWN voice sustained that
+          // trivially, Gemini's VAD heard "speech", sent `interrupted`, and the
+          // Oracle clipped itself mid-sentence (session traces show repeated
+          // re-asked lines + "Assessing The Interruption" thought summaries).
+          // 12 frames ≈ 515ms of sustained sound = deliberate speech, and a real
+          // barge-in still lands in about half a second.
           const BARGE_IN_GATE_RMS = 0.065;
-          const BARGE_IN_CONFIRM = 3;
+          const BARGE_IN_CONFIRM = 12;
           if (isOracleSpeakingRef.current) {
             if (result.vadScore >= BARGE_IN_GATE_RMS) {
               bargeInFramesRef.current++;

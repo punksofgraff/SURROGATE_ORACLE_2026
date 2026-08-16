@@ -799,16 +799,6 @@ const OracleConversation = forwardRef(
               window.dispatchEvent(new CustomEvent('oracle:artifact', { detail: { archetypeTitle: score.archetypeTitle } }));
             }
 
-            // Dispatch unlock triggers (Portrait, Squad, Arcade)
-            if (score.unlockTrigger) {
-              logStep(`UNLOCK DISPATCHED: ${score.unlockTrigger}`, 'ok');
-              window.dispatchEvent(new CustomEvent('oracle:unlock', {
-                detail: {
-                  trigger: score.unlockTrigger,
-                  themes: score.themes
-                }
-              }));
-            }
           }
           setTurns(prev => [...prev, { role: 'oracle', content: clean, timestamp: Date.now(), score }]);
           currentResponseText.current = '';
@@ -817,6 +807,21 @@ const OracleConversation = forwardRef(
           }
           // Notify parent: turn number, score, any themes the Oracle tagged this turn
           onTurnCompleteRef.current?.(debugInfo.current.turnCount, score ?? null, score?.themes ?? []);
+
+          // Dispatch unlock triggers (Portrait, Squad, Arcade) — AFTER onTurnComplete
+          // so the parent has already tallied this turn's themes and recorded its
+          // score signals; a portrait generated from the unlock therefore sees the
+          // full weighted context including the unlocking turn (dispatching before
+          // onTurnComplete made unlock portraits blind to their own trigger turn).
+          if (score?.unlockTrigger) {
+            logStep(`UNLOCK DISPATCHED: ${score.unlockTrigger}`, 'ok');
+            window.dispatchEvent(new CustomEvent('oracle:unlock', {
+              detail: {
+                trigger: score.unlockTrigger,
+                themes: score.themes
+              }
+            }));
+          }
 
           if (!isListeningRef.current && micAutoRestartEnabledRef.current && micAutoRestartAllowedRef.current) {
             setTimeout(() => {

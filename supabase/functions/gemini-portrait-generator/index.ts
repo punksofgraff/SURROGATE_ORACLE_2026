@@ -28,10 +28,20 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
 };
 
+interface PortraitContext {
+  weightedThemes?: Array<{ theme: string; weight: number }>;
+  emotionalWeight?: string;
+  alignment?: string;
+  archetypeTitle?: string;
+  sessionPhase?: string;
+  seekerLines?: string[];
+}
+
 interface PortraitRequest {
   sessionId: string;
   email?: string;
   themes: string[];
+  context?: PortraitContext;
   style?: string;
   userPrompt?: string;
 }
@@ -62,7 +72,7 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const { sessionId, email, themes, style = 'freakdali-graff-punks', userPrompt } = body;
+  const { sessionId, email, themes, context, style = 'freakdali-graff-punks', userPrompt } = body;
 
   if (!sessionId || !themes?.length) {
     return new Response(
@@ -71,9 +81,17 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  console.log(`🎨 Portrait request — session: ${sessionId}, themes: ${themes.join(', ')}`);
+  const hasFluidContext = !!(
+    context && (
+      context.weightedThemes?.length ||
+      context.seekerLines?.length ||
+      context.emotionalWeight ||
+      context.archetypeTitle
+    )
+  );
+  console.log(`🎨 Portrait request — session: ${sessionId}, themes: ${themes.join(', ')}, fluid-context: ${hasFluidContext}`);
 
-  const basePrompt = userPrompt ?? buildBasePrompt(themes);
+  const basePrompt = userPrompt ?? buildBasePrompt(themes, hasFluidContext ? context : undefined);
   let portraitUrl = '';
   let generationMethod = 'themed-fallback';
   let googleAiGenerated = false;
@@ -83,9 +101,16 @@ Deno.serve(async (req: Request) => {
   const googleAiApiKey = Deno.env.get('GOOGLE_AI_API_KEY');
 
   // ── STEP 1: Enhance prompt with Gemini 3.7 Flash (text-only) ──────────────
+  // With fluid context this is a true DISTILLATION step: the seeker's own words
+  // and the session's scoring signals go into Gemini here, and only the distilled
+  // visual prompt travels onward to third-party image providers. Without context
+  // it degrades to the original theme-prompt rewrite.
   let enhancedPrompt = basePrompt;
   if (googleAiApiKey) {
     try {
+      const distillInstruction = hasFluidContext && context
+        ? buildDistillInstruction(basePrompt, context)
+        : `You are a visual art prompt engineer. Rewrite this for AI image generation. Keep under 280 characters. Focus on vivid visual details, cyberpunk street art, neon colours. Original: "${basePrompt}"`;
       const r = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=${googleAiApiKey}`,
         {
@@ -93,13 +118,12 @@ Deno.serve(async (req: Request) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{
-              parts: [{
-                text: `You are a visual art prompt engineer. Rewrite this for AI image generation. Keep under 280 characters. Focus on vivid visual details, cyberpunk street art, neon colours. Original: "${basePrompt}"`,
-              }],
+              parts: [{ text: distillInstruction }],
             }],
             // gemini-3.7-flash thought tokens count against this cap; 180 starved
             // the rewritten prompt. 1024 = thinking + the <280-char output.
-            generationConfig: { temperature: 0.85, maxOutputTokens: 1024 },
+            // Fluid-context distillation outputs up to ~400 chars → 1536 headroom.
+            generationConfig: { temperature: 0.85, maxOutputTokens: hasFluidContext ? 1536 : 1024 },
           }),
         }
       );
@@ -107,9 +131,17 @@ Deno.serve(async (req: Request) => {
       const json = await r.json();
       const candidate = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
       if (candidate) {
-        enhancedPrompt = candidate;
-        googleAiGenerated = true;
-        console.log('✅ Gemini enhanced:', enhancedPrompt.slice(0, 80) + '…');
+        // Deterministic privacy boundary: if the distilled prompt reproduces any
+        // seeker line (4-word n-gram), REJECT it — fall back to the context-aware
+        // base prompt, which is built purely from themes/signals and contains no
+        // seeker text. Instructions to the model are not a boundary; this check is.
+        if (context?.seekerLines?.length && promptLeaksSeekerLines(candidate, context.seekerLines, basePrompt)) {
+          console.warn('🛑 Distilled prompt leaked seeker line n-gram — rejected, using base prompt');
+        } else {
+          enhancedPrompt = candidate;
+          googleAiGenerated = true;
+          console.log(`✅ Gemini ${hasFluidContext ? 'distilled (fluid context)' : 'enhanced'}:`, enhancedPrompt.slice(0, 80) + '…');
+        }
       }
     } catch (e: unknown) {
       googleAiError = e instanceof Error ? e.message : String(e);
@@ -347,6 +379,11 @@ Deno.serve(async (req: Request) => {
       cyberpunk_aesthetic: true,
       themes,
       generation_method: generationMethod,
+      fluid_context: hasFluidContext,
+      ...(hasFluidContext && context?.weightedThemes?.length && {
+        weighted_themes: context.weightedThemes,
+      }),
+      ...(hasFluidContext && context?.emotionalWeight && { emotional_weight: context.emotionalWeight }),
       timestamp: new Date().toISOString(),
     },
   });
@@ -359,6 +396,11 @@ Deno.serve(async (req: Request) => {
       portraitUrl,
       googleAiGenerated,
       generationMethod,
+      // The distilled prompt actually sent to image providers — returned to the
+      // requesting session so differential verification can confirm two different
+      // conversations produce different prompts. Contains no raw transcript.
+      promptUsed: enhancedPrompt,
+      fluidContext: hasFluidContext,
       ...(googleAiError && { googleAiError }),
       ...(imageErrors.length && { imageErrors }),
       apiUsed: generationMethod,
@@ -369,7 +411,135 @@ Deno.serve(async (req: Request) => {
 
 // ── Prompt builder ────────────────────────────────────────────────────────────
 
-function buildBasePrompt(themes: string[]): string {
+// Emotional register → palette/mood language. The scoring system already tracks
+// these five states; each maps to a distinct visual treatment so the portrait's
+// atmosphere mirrors where the seeker ended up emotionally.
+const EMOTIONAL_PALETTES: Record<string, string> = {
+  raw:      'exposed nerve palette — bleeding reds, torn edges, dripping wet paint, unguarded open expression',
+  defended: 'armored palette — cold steel blues, layered stencil masks, geometric barriers over the face',
+  numb:     'desaturated fog palette — muted greys with one faint neon pulse, distant vacant gaze, static haze',
+  present:  'grounded luminous palette — warm amber and living green, direct steady gaze, crisp clean linework',
+  cracked:  'fracture palette — split-face composition, gold light leaking through broken porcelain seams, kintsugi veins',
+};
+
+/**
+ * Deterministic transcript-leakage guard. The distill instruction TELLS Gemini
+ * not to quote the seeker, but instructions are not a boundary — a model can
+ * reproduce input text (including via prompt injection inside a seeker line).
+ * Before the distilled prompt reaches ANY sink (image providers, DB row,
+ * response body, client logs), reject it if it contains:
+ *   - any sensitive token from a seeker line (email, URL, @handle, phone/ID
+ *     digit runs, Unicode-lettered words, long alphanumeric IDs), or
+ *   - any 3+ consecutive-word span of a seeker line, or
+ *   - any 2-word span / distinctive single token from a seeker line that is
+ *     NOT already part of the transcript-free base prompt vocabulary
+ *     (theme/brand words legitimately overlap; seeker-unique words must not).
+ * On rejection the caller falls back to the base prompt, which is built purely
+ * from themes/signals and contains no seeker text. Returns true if leaking.
+ */
+const GUARD_STOPWORDS = new Set([
+  'the','and','that','this','with','for','was','are','but','not','you','all','can','her','his','she','him','they',
+  'have','had','has','were','been','from','into','out','our','your','their','them','then','than','what','when',
+  'where','who','how','why','will','would','could','should','still','just','like','one','two','more','very',
+  'about','over','under','some','every','never','always','there','here','because','only','even','also','after','before',
+]);
+function promptLeaksSeekerLines(prompt: string, seekerLines: string[], basePrompt: string): boolean {
+  // Keep Unicode letters/digits — ASCII-only normalization would erase
+  // non-Latin identifiers and leave them unguarded.
+  const norm = (s: string) =>
+    s.toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+  const p = norm(prompt);
+  const pRaw = prompt.toLowerCase();
+  const baseVocab = new Set(norm(basePrompt).split(' '));
+
+  for (const line of seekerLines) {
+    const raw = line.toLowerCase();
+
+    // ── Sensitive tokens (pattern-based, checked against raw + normalized) ──
+    const sensitive: string[] = [
+      ...(raw.match(/[\w.+-]+@[\w-]+\.[\w.]{2,}/g) ?? []),      // emails
+      ...(raw.match(/(?:https?:\/\/|www\.)\S+/g) ?? []),         // URLs
+      ...(raw.match(/(?<![\w.])@[a-z0-9_]{3,}/g) ?? []),         // @handles
+      ...((raw.match(/\d[\d\s().-]{2,}\d/g) ?? [])
+        .filter(m => (m.match(/\d/g) ?? []).length >= 4)),       // phone / account digit runs
+    ];
+    for (const tok of sensitive) {
+      const nt = norm(tok);
+      if (pRaw.includes(tok) || (nt && p.includes(nt)) || (nt && p.includes(nt.replace(/\s/g, '')))) return true;
+    }
+
+    const words = norm(line).split(' ').filter(Boolean);
+
+    // ── Identifier-shaped single tokens: Unicode, digit-bearing, or long IDs ──
+    for (const w of words) {
+      const isUnicode = /[^\x00-\x7f]/.test(w);
+      const hasDigit = /\p{N}/u.test(w);
+      const isLongId = w.length >= 12;
+      if ((isUnicode || hasDigit || isLongId) && w.length >= 2 && p.includes(w)) return true;
+    }
+
+    // ── Distinctive single tokens not in the transcript-free base vocabulary ──
+    // (unique names like "zephrandius" — common theme/brand words are exempt
+    // because they already exist in the base prompt independent of the seeker)
+    for (const w of words) {
+      if (w.length >= 5 && !GUARD_STOPWORDS.has(w) && !baseVocab.has(w) && p.includes(w)) return true;
+    }
+
+    // ── Word-span n-grams ──
+    if (words.length === 1) continue; // single-word lines covered above
+    if (words.length === 2) {
+      if (p.includes(words.join(' '))) return true;
+      continue;
+    }
+    for (let i = 0; i + 3 <= words.length; i++) {
+      if (p.includes(words.slice(i, i + 3).join(' '))) return true;
+    }
+    for (let i = 0; i + 2 <= words.length; i++) {
+      const [a, b] = words.slice(i, i + 2);
+      if (!GUARD_STOPWORDS.has(a) && !GUARD_STOPWORDS.has(b) &&
+          !(baseVocab.has(a) && baseVocab.has(b)) &&
+          p.includes(`${a} ${b}`)) return true;
+    }
+  }
+  return false;
+}
+
+/** Build the distillation instruction for fluid-context requests. The seeker's
+ *  lines are distilled HERE (inside Gemini) — only the resulting visual prompt
+ *  travels onward to third-party image providers, never the raw transcript. */
+function buildDistillInstruction(basePrompt: string, ctx: PortraitContext): string {
+  const parts: string[] = [
+    'You are a visual art prompt engineer for a cyberpunk graffiti oracle. Create ONE image-generation prompt, under 400 characters, plain text only.',
+    `MANDATORY base style (always keep): "${basePrompt.slice(0, 300)}"`,
+  ];
+  if (ctx.weightedThemes?.length) {
+    const total = ctx.weightedThemes.reduce((s, t) => s + Math.max(1, t.weight), 0);
+    const ranked = ctx.weightedThemes
+      .slice(0, 6)
+      .map(t => `${t.theme} (${Math.round((Math.max(1, t.weight) / total) * 100)}%)`)
+      .join(', ');
+    parts.push(`Theme dominance — give each theme visual space PROPORTIONAL to its percentage; the top theme must visibly dominate: ${ranked}.`);
+  }
+  if (ctx.emotionalWeight && EMOTIONAL_PALETTES[ctx.emotionalWeight]) {
+    parts.push(`Emotional register "${ctx.emotionalWeight}" — infuse this mood: ${EMOTIONAL_PALETTES[ctx.emotionalWeight]}.`);
+  }
+  if (ctx.archetypeTitle) {
+    parts.push(`The subject's revealed archetype is "${ctx.archetypeTitle}" — let this title shape the figure's posture and iconography.`);
+  }
+  if (ctx.alignment) {
+    parts.push(`Alignment: ${ctx.alignment === 'sacred' ? 'sacred — halo geometry, ascending light' : 'profane — inverted glyphs, smoldering underglow'}.`);
+  }
+  if (ctx.seekerLines?.length) {
+    parts.push(
+      'What the seeker confessed (distill into 1-2 symbolic visual elements woven into the portrait — do NOT quote or transcribe their words into the prompt):',
+      ...ctx.seekerLines.map(l => `- "${l.replace(/"/g, "'")}"`),
+    );
+  }
+  parts.push('Output ONLY the final image prompt.');
+  return parts.join('\n');
+}
+
+function buildBasePrompt(themes: string[], context?: PortraitContext): string {
   const themeMap: Record<string, string> = {
     oracle:          'mystical digital consciousness with prophetic vision',
     cyberpunk:       'neon-lit digital rebellion and cyber aesthetic',
@@ -387,8 +557,26 @@ function buildBasePrompt(themes: string[]): string {
     transformation:  'metamorphosis with SNEAKAR branded wings',
     connection:      'interconnected culture networks pulsing with light',
   };
-  const desc = themes.map(t => themeMap[t] ?? t).filter(Boolean).join(', ');
-  return `FreakDali cyberpunk graffiti oracle portrait: ${desc}. SNEAKAR branded elements, Culture Coin golden accents, neon geometric face patterns, holographic effects. High quality digital art masterpiece, portrait orientation.`;
+  // With fluid context, order themes by session weight (heaviest first) and
+  // mark the dominant one — so even when Gemini distillation is unavailable,
+  // the raw prompt sent to image providers reflects the session's shape.
+  let ordered = themes;
+  let dominantClause = '';
+  if (context?.weightedThemes?.length) {
+    ordered = [...context.weightedThemes]
+      .sort((a, b) => b.weight - a.weight)
+      .map(t => t.theme);
+    const top = ordered[0];
+    dominantClause = ` Dominant motif (give it the most visual space): ${themeMap[top] ?? top}.`;
+  }
+  const desc = ordered.map(t => themeMap[t] ?? t).filter(Boolean).join(', ');
+  const mood = context?.emotionalWeight && EMOTIONAL_PALETTES[context.emotionalWeight]
+    ? ` Mood: ${EMOTIONAL_PALETTES[context.emotionalWeight]}.`
+    : '';
+  const archetype = context?.archetypeTitle
+    ? ` The figure embodies the archetype "${context.archetypeTitle}".`
+    : '';
+  return `FreakDali cyberpunk graffiti oracle portrait: ${desc}.${dominantClause}${mood}${archetype} SNEAKAR branded elements, Culture Coin golden accents, neon geometric face patterns, holographic effects. High quality digital art masterpiece, portrait orientation.`;
 }
 
 // ── Themed static fallbacks (used when all AI generation paths fail) ──────────

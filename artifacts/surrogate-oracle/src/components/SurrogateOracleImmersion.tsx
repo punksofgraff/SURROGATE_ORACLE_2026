@@ -659,6 +659,14 @@ export function SurrogateOracleImmersion() {
 
   const handleTurnComplete = useCallback((_turn: number, score: OracleScore | null) => {
     if (!score) return;
+    // Feed scoring signals into the portrait context — the portrait should
+    // mirror the session's emotional register, not just its topic list.
+    portraitRef.current.recordScoreSignals({
+      emotionalWeight: score.emotionalWeight,
+      alignment: score.alignment,
+      archetypeTitle: score.archetypeTitle,
+      sessionPhase: score.sessionPhase,
+    });
     echoTrackRef.current.alignment = score.alignment;
     if (score.totemLevel) {
       echoTrackRef.current.totemLevel = score.totemLevel;
@@ -1226,8 +1234,17 @@ export function SurrogateOracleImmersion() {
         // a single failed provider call must never silently disable portraits for the
         // rest of the session (the seeker can simply ask again).
         portraitTriggeredRef.current = true;
+        const seekerLines = (oracleConversationRef.current?.getSessionTurns() ?? [])
+          .filter(t => t.role === 'user')
+          .map(t => t.content);
+        // Merge the trigger turn's themes into the full session tally rather than
+        // replacing it — getThemes() returns the weight-sorted accumulated map
+        // (which, since unlock now fires after onTurnComplete, already includes
+        // this turn's themes). Event themes are a safety union for any stragglers.
+        const tallied = portraitRef.current.getThemes();
+        const merged = [...new Set([...tallied, ...((themes as string[] | undefined) ?? [])])];
         void portraitRef.current
-          .generatePortrait(themes || portraitRef.current.getThemes())
+          .generatePortrait(merged, seekerLines)
           .then((ok) => {
             if (!ok) {
               portraitTriggeredRef.current = false;
@@ -2012,7 +2029,10 @@ export function SurrogateOracleImmersion() {
               // and a score-block unlock can't double-generate; reset on failure so
               // asking again always retries.
               portraitTriggeredRef.current = true;
-              void portrait.generatePortrait(portrait.getThemes()).then((ok) => {
+              const seekerLines = (oracleConversationRef.current?.getSessionTurns() ?? [])
+                .filter(t => t.role === 'user')
+                .map(t => t.content);
+              void portrait.generatePortrait(portrait.getThemes(), seekerLines).then((ok) => {
                 if (!ok) {
                   portraitTriggeredRef.current = false;
                   logStep('PORTRAIT TRIGGER RE-ARMED AFTER FAILURE', 'warn');

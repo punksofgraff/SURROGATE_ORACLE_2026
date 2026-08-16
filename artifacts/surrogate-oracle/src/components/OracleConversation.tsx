@@ -367,6 +367,9 @@ const OracleConversation = forwardRef(
       audioChunksReceived: 0,
       audioChunksSent: 0,
       frameChunksSent: 0,
+      // One getUserMedia per Oracle session (task #99) — verify script asserts
+      // this stays at 1 across any number of mic toggles.
+      getUserMediaCalls: 0,
       connectedAt: null as number | null,
       lastError: null as string | null,
       recentMessages: [] as string[],
@@ -449,7 +452,24 @@ const OracleConversation = forwardRef(
     const seekerIdentifiedRef = useRef(false);
 
     const startMicRef = useRef<() => Promise<void>>(async () => {});
+    const releaseMicRef = useRef<(reason?: string) => void>(() => {});
     const isListeningRef = useRef(false);
+    // Capture gate — false while muted. The mic graph and MediaStream stay ALIVE
+    // across mute/unmute (task #99: stopping tracks flips the iOS audio session
+    // between play-and-record and playback modes, changing Oracle loudness and
+    // perspective on every toggle). This flag is checked at the top of the audio
+    // processing callback so nothing is processed or sent to Gemini while muted.
+    const captureEnabledRef = useRef(false);
+    // Acquisition race guards — getUserMedia can take seconds (permission prompt,
+    // slow hardware). While it's in flight: (a) another startMic (tap + auto-
+    // restart racing) must NOT trigger a second acquisition, and (b) any number
+    // of mute/unmute taps during the wait must be resolved by LATEST intent when
+    // the promise settles — a one-shot flag inverts on odd tap counts.
+    // micDesiredOnRef is that latest intent; every tap updates it. A release
+    // request (real teardown) always wins over both.
+    const micAcquiringRef = useRef(false);
+    const micDesiredOnRef = useRef(false);
+    const releaseDuringAcquireRef = useRef<string | null>(null);
     // Set true the first time startMic succeeds — gates the turnComplete auto-restart
     // so knife-phase Oracle voice-overs don't trigger mic before oracle phase starts.
     const micAutoRestartEnabledRef = useRef(false);
@@ -458,7 +478,17 @@ const OracleConversation = forwardRef(
     // from a prior session. This ref mirrors the prop and blocks getUserMedia in any
     // non-oracle phase (terminal/lore, dormant, awakened) regardless of the stale flag.
     const micAutoRestartAllowedRef = useRef(false);
-    useEffect(() => { micAutoRestartAllowedRef.current = micAutoRestartAllowed; }, [micAutoRestartAllowed]);
+    useEffect(() => {
+      const was = micAutoRestartAllowedRef.current;
+      micAutoRestartAllowedRef.current = micAutoRestartAllowed;
+      // Leaving the oracle phase (exit ceremony, journey reset, dormant) is a real
+      // session end — fully release the mic (tracks stopped) so capture never
+      // survives past the Oracle encounter (task #99 / #3).
+      if (was && !micAutoRestartAllowed) releaseMicRef.current('phase-exit');
+    }, [micAutoRestartAllowed]);
+
+    // Full mic release on unmount — never leave capture running after the component is gone.
+    useEffect(() => () => { releaseMicRef.current('unmount'); }, []);
 
     // ── Filler TTS refs ────────────────────────────────────────────────────
     // Prefetch-and-gate approach: TTS fetch fires at Seeker turn-end; audio plays
@@ -802,10 +832,60 @@ const OracleConversation = forwardRef(
       lastSupabaseTurnCountRef,
     });
 
+    // Marks the mic as live in React/ref state and clears the silent-mic watchdog.
+    // Shared by the acquisition and retained-track unmute paths.
+    const markListening = () => {
+      setIsListening(true);
+      isListeningRef.current = true;
+      captureEnabledRef.current = true;
+      micAutoRestartEnabledRef.current = true;
+      silentSinceRef.current = null;
+      micSignalLostRef.current = false;
+      setMicSignalLost(false);
+      vadRef.current.reset();
+      bargeInFramesRef.current = 0;
+      onListeningChangeRef.current?.(true);
+    };
+
     const startMic = async () => {
       if (isListeningRef.current) return;
+      // Acquisition already in flight (tap + auto-restart racing, or rapid
+      // taps) — never fire a second getUserMedia. Record the latest intent;
+      // the in-flight acquisition applies it when it resolves.
+      if (micAcquiringRef.current) {
+        micDesiredOnRef.current = true;
+        return;
+      }
+
+      // ── Retained-track unmute (task #99) ─────────────────────────────────
+      // If the session's MediaStream is still alive, DO NOT call getUserMedia
+      // again — re-enabling the existing track keeps the iOS audio session in
+      // one steady play-and-record mode, so Oracle loudness/perspective never
+      // shifts on toggles. No permission prompt, no OS session flip, instant.
+      const retained = mediaStreamRef.current?.getAudioTracks().some(t => t.readyState === 'live');
+      if (retained && processorRef.current) {
+        try {
+          const ctx = getAudioContext();
+          if (ctx.state === 'suspended') await ctx.resume();
+          if (micAudioContextRef.current && micAudioContextRef.current.state === 'suspended') {
+            await micAudioContextRef.current.resume();
+          }
+          mediaStreamRef.current!.getAudioTracks().forEach(t => { t.enabled = true; });
+          markListening();
+          logStep('MIC UNMUTED (retained track — no session flip)', 'ok');
+        } catch (e) {
+          const err = e as Error;
+          logStep(`MIC UNMUTE FAILED: ${err.message ?? err}`, 'err');
+          console.error('[Mic] Unmute failed:', e);
+        }
+        return;
+      }
+
+      micAcquiringRef.current = true;
+      micDesiredOnRef.current = true;
+      releaseDuringAcquireRef.current = null;
       try {
-        console.log('[startMic] called, onMicWillStartRef.current=', onMicWillStartRef.current);
+        console.log('[startMic] acquiring mic, onMicWillStartRef.current=', onMicWillStartRef.current);
         // Notify parent to duck music BEFORE getUserMedia — iOS audio session change
         // (which happens on mic activation) causes speaker volume boost for voice.
         // Ducking first minimizes the perceived loudness spike.
@@ -819,6 +899,20 @@ const OracleConversation = forwardRef(
           await ctx.resume();
         }
 
+        // iOS 17+ audio-session hint — declare play-and-record intent BEFORE the
+        // capture starts so WebKit picks the final session mode once, instead of
+        // upgrading from playback mode mid-stream. Guarded: no-op elsewhere.
+        try {
+          const audioSession = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+          if (audioSession && audioSession.type !== 'play-and-record') {
+            audioSession.type = 'play-and-record';
+            logStep('AUDIO SESSION HINT: play-and-record (iOS 17+)', 'ok');
+          }
+        } catch { /* non-fatal — hint only */ }
+
+        // ONE getUserMedia per Oracle session — the stream is retained across
+        // mute/unmute and only released on real teardown (exit/reset/unmount).
+        debugInfo.current.getUserMediaCalls++;
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: { 
             echoCancellation: true, 
@@ -850,6 +944,10 @@ const OracleConversation = forwardRef(
         processorRef.current = micCtx.createScriptProcessor(2048, 1, 1);
 
         processorRef.current.onaudioprocess = (e) => {
+          // Capture gate (task #99) — while muted the graph stays alive (so the
+          // iOS audio session never flips) but NOTHING is processed or sent:
+          // no VAD, no UI events, no frames to Gemini.
+          if (!captureEnabledRef.current) return;
           const input = e.inputBuffer.getChannelData(0);
 
           // Resample from hardware rate to Gemini's required 16 kHz
@@ -1043,32 +1141,96 @@ const OracleConversation = forwardRef(
         processorRef.current.connect(keepAliveGain);
         keepAliveGain.connect(micCtx.destination);
         
-        setIsListening(true);
-        isListeningRef.current = true;
-        micAutoRestartEnabledRef.current = true;
-        // Fresh capture — reset the silent-mic watchdog so a prior dead episode's
-        // affordance/timestamp can't leak into this session.
-        silentSinceRef.current = null;
-        micSignalLostRef.current = false;
-        setMicSignalLost(false);
-        onListeningChangeRef.current?.(true);
-        logStep('MIC STARTED', 'ok');
-        // Mic open reconfigures the mobile OS audio session (iOS voice-processing
-        // mode / Android comms routing) — give the parent a hook to re-assert
-        // Oracle playback state after the session settles.
+        // A release (phase exit/reset/unmount) arrived while getUserMedia was in
+        // flight — honor it now: stop the fresh tracks immediately, stay muted.
+        if (releaseDuringAcquireRef.current) {
+          const reason = releaseDuringAcquireRef.current;
+          releaseDuringAcquireRef.current = null;
+          micAcquiringRef.current = false;
+          releaseMicRef.current(reason);
+          return;
+        }
+
+        // Taps landed while getUserMedia was in flight — apply the LATEST
+        // intent. If the final tap said "muted", keep the track (retained-mute
+        // architecture) but land in the muted state.
+        if (!micDesiredOnRef.current) {
+          stream.getAudioTracks().forEach(t => { t.enabled = false; });
+          clearListeningState();
+          logStep('MIC ACQUIRED → landed muted (latest tap during acquisition)', 'ok');
+          onAudioSessionChangedRef.current?.('mic-started');
+          return;
+        }
+
+        markListening();
+        logStep('MIC STARTED (session capture acquired)', 'ok');
+        // First (and only) mic open of the session reconfigures the mobile OS
+        // audio session (iOS voice-processing mode / Android comms routing) —
+        // give the parent a hook to re-assert Oracle playback state after the
+        // session settles. Subsequent toggles retain the track, so this fires
+        // ONCE per session, not on every unmute.
         onAudioSessionChangedRef.current?.('mic-started');
       } catch (e) {
         const err = e as Error;
         logStep(`MIC FAILED: ${err.message ?? err}`, 'err');
         console.error('[Mic] Failed:', e);
+      } finally {
+        micAcquiringRef.current = false;
       }
     };
     startMicRef.current = startMic;
 
+    // Shared mute/UI state reset used by both stopMic (mute) and releaseMic (teardown).
+    const clearListeningState = () => {
+      isListeningRef.current = false;
+      captureEnabledRef.current = false;
+      setIsListening(false);
+      micAutoRestartEnabledRef.current = false; // Disable auto-restart on manual stop!
+      // Clear the silent-mic watchdog — no mic, no "signal lost" affordance.
+      silentSinceRef.current = null;
+      micSignalLostRef.current = false;
+      setMicSignalLost(false);
+      onListeningChangeRef.current?.(false);
+      vadRef.current.reset();
+      bargeInFramesRef.current = 0;
+      onUserSpeakingChangeRef.current?.(false, 0);
+    };
+
+    // MUTE (task #99) — the MediaStream, capture graph, and mic context all stay
+    // ALIVE. Tracks are disabled (delivers silence at near-zero cost per spec) and
+    // the capture gate blocks all processing/transmission. Because no track stops,
+    // the iOS audio session never flips back to playback mode — Oracle loudness
+    // and spatial perspective stay identical across any number of toggles.
     const stopMic = () => {
-      // Capture teardown ONLY — never touch the shared Oracle playback context
-      // here. Suspending or reconfiguring playback on mute is exactly the class
-      // of side effect that shifts Oracle loudness/routing on mobile.
+      // Mute tapped while getUserMedia is still in flight — record the intent;
+      // the acquisition path lands the stream in whatever state the LAST tap
+      // requested (a later unmute tap can flip this back to on).
+      if (micAcquiringRef.current) {
+        micDesiredOnRef.current = false;
+        clearListeningState();
+        logStep('MIC MUTE QUEUED (acquisition in flight)', 'ok');
+        return;
+      }
+      mediaStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = false; });
+      clearListeningState();
+      logStep('MIC MUTED (track retained — no session flip)', 'ok');
+      // Deliberately NO onAudioSessionChanged here: nothing about the OS audio
+      // session changed, so there is nothing to re-assert.
+    };
+
+    // FULL RELEASE — real teardown only: phase exit, journey reset, unmount,
+    // or dead-mic recovery. Stops tracks, drops the graph, suspends the mic
+    // context. After this, the next startMic() reacquires via getUserMedia.
+    const releaseMic = (reason = 'teardown') => {
+      // Release requested while getUserMedia is still in flight — flag it; the
+      // acquisition path stops the fresh tracks the moment the promise resolves.
+      if (micAcquiringRef.current) {
+        releaseDuringAcquireRef.current = reason;
+        clearListeningState();
+        logStep(`MIC RELEASE QUEUED (${reason}) — acquisition in flight`, 'warn');
+        return;
+      }
+      const hadStream = !!mediaStreamRef.current;
       processorRef.current?.disconnect();
       processorRef.current = null;
       mediaStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -1078,21 +1240,15 @@ const OracleConversation = forwardRef(
           console.warn('[Mic] AudioContext.suspend() failed:', err);
         });
       }
-      isListeningRef.current = false;
-      setIsListening(false);
-      micAutoRestartEnabledRef.current = false; // Disable auto-restart on manual stop!
-      // Clear the silent-mic watchdog — no mic, no "signal lost" affordance.
-      silentSinceRef.current = null;
-      micSignalLostRef.current = false;
-      setMicSignalLost(false);
-      onListeningChangeRef.current?.(false);
-      vadRef.current.reset();
-      onUserSpeakingChangeRef.current?.(false, 0);
-      logStep('MIC STOPPED', 'ok');
-      // Track stop flips the mobile OS audio session back to playback mode —
-      // let the parent re-assert Oracle playback state after it settles.
-      onAudioSessionChangedRef.current?.('mic-stopped');
+      clearListeningState();
+      if (hadStream) {
+        logStep(`MIC RELEASED (${reason})`, 'ok');
+        // Track stop flips the mobile OS audio session back to playback mode —
+        // let the parent re-assert Oracle playback state after it settles.
+        onAudioSessionChangedRef.current?.('mic-stopped');
+      }
     };
+    releaseMicRef.current = releaseMic;
 
     // sessionContext / initialKnifeThemes are intentionally NOT injected as hidden
     // messages here. Any client.realtimeInput text to Gemini Live triggers a full
@@ -1104,6 +1260,9 @@ const OracleConversation = forwardRef(
       getSessionCoins: () => sessionCoinsRef.current,
       getSessionTurns: () => turnsRef.current,
       disconnect: () => {
+        // Real session end (portrait gate, parent-driven teardown) — fully
+        // release the mic so capture never outlives the Gemini session.
+        releaseMic('session disconnect');
         disconnect();
       },
       getWsDebugInfo: () => ({
@@ -1113,6 +1272,7 @@ const OracleConversation = forwardRef(
         audioChunksReceived: debugInfo.current.audioChunksReceived,
         audioChunksSent: debugInfo.current.audioChunksSent,
         frameChunksSent: debugInfo.current.frameChunksSent,
+        getUserMediaCalls: debugInfo.current.getUserMediaCalls,
         lastVadState: debugInfo.current.lastVadState,
         lastVadRms: debugInfo.current.lastVadRms,
         connectedAt: debugInfo.current.connectedAt,
@@ -1214,7 +1374,14 @@ const OracleConversation = forwardRef(
           <motion.button
             onClick={(e) => {
               e.stopPropagation();
-              const nextState = !isListening;
+              // During an in-flight acquisition the effective state is the
+              // LATEST queued intent (micDesiredOnRef) — otherwise rapid taps
+              // during the getUserMedia wait compute the wrong direction from
+              // stale isListening and the final state inverts user intent.
+              const micOn = micAcquiringRef.current
+                ? micDesiredOnRef.current
+                : isListeningRef.current;
+              const nextState = !micOn;
               onMicClickRef.current?.(nextState);
               nextState ? startMic() : stopMic();
             }}
@@ -1291,7 +1458,7 @@ const OracleConversation = forwardRef(
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
                 className="oc-status-pill"
-                onClick={(e) => { e.stopPropagation(); stopMic(); startMic(); }}
+                onClick={(e) => { e.stopPropagation(); releaseMic('dead-mic recovery'); startMic(); }}
                 style={{
                   pointerEvents: 'auto', cursor: 'pointer',
                   color: '#b026ff', borderColor: 'rgba(176,38,255,0.5)',

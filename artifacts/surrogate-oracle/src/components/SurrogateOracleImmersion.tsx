@@ -246,6 +246,9 @@ export function SurrogateOracleImmersion() {
   const knifeSelectedRef         = useRef(false);
   const oracleHasSpokenRef       = useRef(false);
   const sessionEndedRef          = useRef(false);
+  // One-time joint mic+camera permission warm-up per page load (task #99) —
+  // repeating it on later mic taps added iOS audio-session flips.
+  const jointPermsWarmedRef      = useRef(false);
   const mirrorRevealedRef        = useRef(false); // fire the Mirror reveal once per session
   const portraitTriggeredRef     = useRef(false); // fire portrait generation once per session
   const pendingPortraitUrlRef    = useRef<string | null>(null); // staged portrait URL — released at turn-complete
@@ -1953,12 +1956,18 @@ export function SurrogateOracleImmersion() {
               const _DE = (DeviceOrientationEvent as any);
               if (typeof _DE?.requestPermission === 'function') _DE.requestPermission().catch((err: unknown) => console.warn('[Parallax] DeviceOrientation permission request failed:', err));
               
-              // 2. Request Consolidated Mic + Camera permissions concurrently in a single native prompt
-              try {
-                const jointStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-                jointStream.getTracks().forEach(t => t.stop()); // release tracks immediately
-              } catch (err) {
-                console.warn('[Consolidated Perms] Joint prompt denied or error:', err);
+              // 2. One-time consolidated Mic + Camera permission warm-up (single native prompt).
+              // STRICTLY once per page load (task #99): opening and stopping a combined
+              // audio+video stream flips the iOS audio session; doing it on every mic
+              // toggle added extra session transitions that shifted Oracle loudness.
+              if (!jointPermsWarmedRef.current) {
+                jointPermsWarmedRef.current = true;
+                try {
+                  const jointStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+                  jointStream.getTracks().forEach(t => t.stop()); // release tracks immediately
+                } catch (err) {
+                  console.warn('[Consolidated Perms] Joint prompt denied or error:', err);
+                }
               }
 
               // 3. Camera for face tracking (starts instantly with 0 prompts because of the joint warmer above)

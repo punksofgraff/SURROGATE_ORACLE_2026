@@ -46,6 +46,33 @@ interface PortraitRequest {
   userPrompt?: string;
 }
 
+const DISTILL_TOKEN_CAPS = [1536, 768, 384] as const;
+const DISTILL_RECOVERY_MS = 5 * 60 * 1000;
+const DISTILL_COOLDOWN_MS = 30 * 1000;
+let distillThrottleLevel = 0;
+let distillCooldownUntil = 0;
+let distillLastThrottleAt = 0;
+
+function getDistillTokenCap(): number | null {
+  const now = Date.now();
+  if (distillCooldownUntil > now) return null;
+  if (distillThrottleLevel > 0 && now - distillLastThrottleAt >= DISTILL_RECOVERY_MS) {
+    distillThrottleLevel = 0;
+  }
+  return DISTILL_TOKEN_CAPS[distillThrottleLevel];
+}
+
+function noteDistillThrottle(status: number): void {
+  const now = Date.now();
+  if (status === 429) {
+    distillThrottleLevel = Math.min(distillThrottleLevel + 1, DISTILL_TOKEN_CAPS.length - 1);
+    distillLastThrottleAt = now;
+    distillCooldownUntil = now + DISTILL_COOLDOWN_MS * (distillThrottleLevel + 1);
+  } else if (status === 503) {
+    distillCooldownUntil = now + DISTILL_COOLDOWN_MS;
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -86,7 +113,8 @@ Deno.serve(async (req: Request) => {
       context.weightedThemes?.length ||
       context.seekerLines?.length ||
       context.emotionalWeight ||
-      context.archetypeTitle
+      context.archetypeTitle ||
+      context.alignment
     )
   );
   console.log(`🎨 Portrait request — session: ${sessionId}, themes: ${themes.join(', ')}, fluid-context: ${hasFluidContext}`);
@@ -107,7 +135,11 @@ Deno.serve(async (req: Request) => {
   // it degrades to the original theme-prompt rewrite.
   let enhancedPrompt = basePrompt;
   if (googleAiApiKey) {
-    try {
+    const tokenCap = getDistillTokenCap();
+    if (tokenCap === null) {
+      googleAiError = 'Gemini distillation temporarily throttled; using base prompt';
+      console.warn('⚠️ Gemini distillation cooldown active — using base prompt');
+    } else try {
       const distillInstruction = hasFluidContext && context
         ? buildDistillInstruction(basePrompt, context)
         : `You are a visual art prompt engineer. Rewrite this for AI image generation. Keep under 280 characters. Focus on vivid visual details, cyberpunk street art, neon colours. Original: "${basePrompt}"`;
@@ -123,11 +155,14 @@ Deno.serve(async (req: Request) => {
             // gemini-3.7-flash thought tokens count against this cap; 180 starved
             // the rewritten prompt. 1024 = thinking + the <280-char output.
             // Fluid-context distillation outputs up to ~400 chars → 1536 headroom.
-            generationConfig: { temperature: 0.85, maxOutputTokens: hasFluidContext ? 1536 : 1024 },
+            generationConfig: { temperature: 0.85, maxOutputTokens: hasFluidContext ? tokenCap : Math.min(tokenCap, 768) },
           }),
         }
       );
-      if (!r.ok) throw new Error(`Gemini text ${r.status}: ${await r.text()}`);
+      if (!r.ok) {
+        noteDistillThrottle(r.status);
+        throw new Error(`Gemini text ${r.status}: ${await r.text()}`);
+      }
       const json = await r.json();
       const candidate = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
       if (candidate) {
@@ -576,7 +611,12 @@ function buildBasePrompt(themes: string[], context?: PortraitContext): string {
   const archetype = context?.archetypeTitle
     ? ` The figure embodies the archetype "${context.archetypeTitle}".`
     : '';
-  return `FreakDali cyberpunk graffiti oracle portrait: ${desc}.${dominantClause}${mood}${archetype} SNEAKAR branded elements, Culture Coin golden accents, neon geometric face patterns, holographic effects. High quality digital art masterpiece, portrait orientation.`;
+  const alignment = context?.alignment === 'sacred'
+    ? ' Sacred alignment: halo geometry, ascending light, gilded reverence.'
+    : context?.alignment === 'profane'
+      ? ' Profane alignment: inverted glyphs, smoldering underglow, defiant shadow.'
+      : '';
+  return `FreakDali cyberpunk graffiti oracle portrait: ${desc}.${dominantClause}${mood}${archetype}${alignment} SNEAKAR branded elements, Culture Coin golden accents, neon geometric face patterns, holographic effects. High quality digital art masterpiece, portrait orientation.`;
 }
 
 // ── Themed static fallbacks (used when all AI generation paths fail) ──────────

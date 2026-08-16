@@ -141,7 +141,9 @@ Deno.serve(async (req: Request) => {
         contents: [{ role: 'user', parts: [{ text: turnDump }] }],
         generationConfig: {
           temperature: 0.6,
-          maxOutputTokens: 180,
+          // gemini-3.7-flash: thought tokens count against maxOutputTokens even
+          // with thinkingBudget:0 — 180 starved the compaction. 1024 = thinking + output.
+          maxOutputTokens: 1024,
           thinkingConfig: { thinkingBudget: 0 },
         },
       }),

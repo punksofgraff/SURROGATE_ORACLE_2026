@@ -83,7 +83,9 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         tools: [{ googleSearch: {} }], // ← the web tool. Lives here, NOT in the live WS.
-        generationConfig: { temperature: 0.4, maxOutputTokens: 500 },
+        // gemini-3.7-flash thinking + grounded search both eat into this cap
+        // (grounded calls can spend 2000+ thought tokens); 500 would truncate.
+        generationConfig: { temperature: 0.4, maxOutputTokens: 3072 },
       }),
     });
 

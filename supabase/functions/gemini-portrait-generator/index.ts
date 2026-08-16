@@ -2,8 +2,8 @@
  * gemini-portrait-generator — Supabase Edge Function
  *
  * Generation cascade (first success wins):
- *   1. Gemini 2.5 Flash       → enriches the theme prompt into a vivid art description
- *   2. Gemini 2.0 Flash       → PRIMARY image generation (cheap, same key, no extra cost)
+ *   1. Gemini 3.7 Flash       → enriches the theme prompt into a vivid art description
+ *   2. Gemini 2.5 Flash Image → PRIMARY image generation (same key, no extra cost)
  *   3. Replicate flux-schnell → free-tier AI image gen
  *   4. HuggingFace FLUX.1     → free-tier AI image gen
  *   5. Pollinations.ai        → zero-config, no key needed
@@ -97,7 +97,9 @@ Deno.serve(async (req: Request) => {
                 text: `You are a visual art prompt engineer. Rewrite this for AI image generation. Keep under 280 characters. Focus on vivid visual details, cyberpunk street art, neon colours. Original: "${basePrompt}"`,
               }],
             }],
-            generationConfig: { temperature: 0.85, maxOutputTokens: 180 },
+            // gemini-3.7-flash thought tokens count against this cap; 180 starved
+            // the rewritten prompt. 1024 = thinking + the <280-char output.
+            generationConfig: { temperature: 0.85, maxOutputTokens: 1024 },
           }),
         }
       );
@@ -118,13 +120,14 @@ Deno.serve(async (req: Request) => {
     console.warn('⚠️  GOOGLE_AI_API_KEY not set — skipping prompt enhancement');
   }
 
-  // ── STEP 2: Gemini 2.0 Flash Image Generation (PRIMARY — cheapest AI path) ─
+  // ── STEP 2: Gemini 2.5 Flash Image Generation (PRIMARY — cheapest AI path) ─
   // Uses the same GOOGLE_AI_API_KEY — no extra billing setup needed.
+  // NOTE: gemini-2.0-flash-preview-image-generation was retired (404 as of Aug 2026).
   if (googleAiApiKey && !portraitUrl) {
     try {
-      console.log('🎨 Trying Gemini 2.0 Flash image generation…');
+      console.log('🎨 Trying Gemini 2.5 Flash image generation…');
       const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${googleAiApiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${googleAiApiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -201,14 +204,23 @@ Deno.serve(async (req: Request) => {
       if (!startR.ok) throw new Error(`Replicate start ${startR.status}: ${await startR.text()}`);
       const pred = await startR.json();
 
-      let outputUrl: string | null = pred.output?.[0] ?? null;
+      // Replicate returns `output` as a string URL for single-output models and an
+      // array for multi-output ones. Indexing a string with [0] yields its first
+      // CHARACTER ("h") — which then gets persisted as the portrait URL. Handle both.
+      const firstUrl = (out: unknown): string | null => {
+        if (typeof out === 'string' && out.startsWith('http')) return out;
+        if (Array.isArray(out) && typeof out[0] === 'string') return out[0];
+        return null;
+      };
+
+      let outputUrl: string | null = firstUrl(pred.output);
       if (!outputUrl && pred.id) {
         const pollUrl = `https://api.replicate.com/v1/predictions/${pred.id}`;
         for (let i = 0; i < 15 && !outputUrl; i++) {
           await new Promise(r => setTimeout(r, 2000));
           const pollR = await fetch(pollUrl, { headers: { 'Authorization': `Bearer ${replicateToken}` } });
           const pollData = await pollR.json();
-          if (pollData.status === 'succeeded') outputUrl = pollData.output?.[0] ?? null;
+          if (pollData.status === 'succeeded') outputUrl = firstUrl(pollData.output);
           if (pollData.status === 'failed') throw new Error(`Replicate prediction failed: ${pollData.error}`);
         }
       }
@@ -228,8 +240,9 @@ Deno.serve(async (req: Request) => {
   if (hfKey && !portraitUrl) {
     try {
       console.log('🎨 Trying Hugging Face FLUX.1-schnell…');
+      // api-inference.huggingface.co no longer resolves — HF moved to router.huggingface.co
       const r = await fetch(
-        'https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell',
+        'https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell',
         {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${hfKey}`, 'Content-Type': 'application/json' },
@@ -308,13 +321,25 @@ Deno.serve(async (req: Request) => {
   }
 
   // ── Persist to database ───────────────────────────────────────────────────
+  // surrogate_portraits.session_id has an FK to surrogate_sessions.session_id, but the
+  // session row is only created when compact-conversation first persists (several turns
+  // in). A portrait minted before that would fail the FK and silently never persist —
+  // so ensure the session row exists first (no-op if it already does).
+  const { error: sessErr } = await supabase
+    .from('surrogate_sessions')
+    .upsert({ session_id: sessionId }, { onConflict: 'session_id', ignoreDuplicates: true });
+  if (sessErr) console.error('⚠️ session ensure failed (portrait insert may fail):', sessErr.message);
+
+  // NOTE: column is `dalle_generated` (legacy name from the DALL-E era) — there is
+  // no `google_ai_generated` column; inserting one fails with PGRST204 and the
+  // portrait is silently never persisted.
   const { error: dbError } = await supabase.from('surrogate_portraits').insert({
     session_id: sessionId,
     email: email ?? null,
     conversation_themes: themes,
     dalle_prompt: enhancedPrompt,
     image_url: portraitUrl,
-    google_ai_generated: googleAiGenerated,
+    dalle_generated: googleAiGenerated,
     procedural_framework: {
       style,
       sneakar_branded: true,

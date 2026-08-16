@@ -158,11 +158,12 @@ Deno.serve(async (req: Request) => {
           system_instruction: { parts: [{ text: ORACLE_SYSTEM_PROMPT }] },
           contents,
           generationConfig: {
-            // Disable thinking — this is a text fallback, not a reasoning task.
-            // gemini-3.7-flash thinking tokens count against maxOutputTokens,
-            // starving the actual response. thinkingBudget:0 = instant output.
+            // Minimize thinking — this is a text fallback, not a reasoning task.
+            // On gemini-3.7-flash thinkingBudget:0 does NOT fully disable thinking:
+            // ~200-800 thought tokens are still emitted and count against
+            // maxOutputTokens. Budgets below re-sized so the visible reply survives.
             thinkingConfig: { thinkingBudget: 0 },
-            maxOutputTokens: isGreeting ? 200 : 400,
+            maxOutputTokens: isGreeting ? 1024 : 1536,
             temperature: 0.92,
             topP: 0.95,
           },

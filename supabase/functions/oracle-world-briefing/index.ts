@@ -158,24 +158,40 @@ Deno.serve(async (req: Request) => {
     contents: [{ role: 'user', parts: [{ text: WORLD_BRIEFING_PROMPT }] }],
     ...(grounded ? { tools: [{ googleSearch: {} }] } : {}),
     // gemini-3.7-flash is a thinking model — thought tokens count against
-    // maxOutputTokens. 600 starved the visible briefing to a truncated fragment;
-    // 2048 leaves room for thinking plus the full 280-360 word briefing.
-    generationConfig: { temperature: 0.4, maxOutputTokens: 2048 },
+    // maxOutputTokens. Grounded calls were measured spending 2300+ thought
+    // tokens, so 2048 truncated to nothing; 4096 leaves room for grounded
+    // thinking plus the full 280-360 word briefing.
+    generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
   });
+
+  // Key escalation mirrors gemini-live-proxy: the default key's grounded-search
+  // quota is a separate (and much smaller) bucket than plain generateContent —
+  // it can be 429-exhausted while ungrounded calls on the same key still work.
+  // On 429 we retry the grounded call once on GOOGLE_AI_KEY_PAID before giving up.
+  const paidKey = Deno.env.get('GOOGLE_AI_KEY_PAID') ?? '';
+  const keys = [googleApiKey, ...(paidKey && paidKey !== googleApiKey ? [paidKey] : [])];
 
   let geminiRes: Response;
   let usedGrounding = true;
   try {
-    geminiRes = await fetch(`${GEMINI_GROUNDED_URL}?key=${googleApiKey}`, {
+    geminiRes = await fetch(`${GEMINI_GROUNDED_URL}?key=${keys[0]}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: makeBody(true),
     });
-    // Fall back to ungrounded gemini-2.5-flash if grounded model is unavailable
+    if (!geminiRes.ok && geminiRes.status === 429 && keys.length > 1) {
+      console.warn('⚠️ Grounded call 429 on default key — retrying grounded on paid key');
+      geminiRes = await fetch(`${GEMINI_GROUNDED_URL}?key=${keys[1]}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: makeBody(true),
+      });
+    }
+    // Fall back to an ungrounded call on the same model if grounding is rejected
     if (!geminiRes.ok && (geminiRes.status === 404 || geminiRes.status === 400)) {
       console.warn(`⚠️ Grounded call ${geminiRes.status} — retrying ungrounded on same model`);
       usedGrounding = false;
-      geminiRes = await fetch(`${GEMINI_FALLBACK_URL}?key=${googleApiKey}`, {
+      geminiRes = await fetch(`${GEMINI_FALLBACK_URL}?key=${keys[0]}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: makeBody(false),

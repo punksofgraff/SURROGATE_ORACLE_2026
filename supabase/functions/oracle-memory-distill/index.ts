@@ -105,7 +105,11 @@ Deno.serve(async (req: Request) => {
         contents: [{ role: 'user', parts: [{ text: userContent }] }],
         generationConfig: {
           temperature: 0.75,
-          maxOutputTokens: 200,
+          // gemini-3.7-flash: thinkingBudget:0 does NOT fully disable thinking —
+          // ~200-800 thought tokens still count against maxOutputTokens. 200
+          // starved the summary to a truncated fragment; 1200 leaves room for
+          // thinking plus the full 80-100 word summary.
+          maxOutputTokens: 1200,
           thinkingConfig: { thinkingBudget: 0 },
         },
       }),
@@ -154,7 +158,9 @@ Deno.serve(async (req: Request) => {
           }],
           generationConfig: {
             temperature: 0.95,
-            maxOutputTokens: 40,
+            // 3.7-flash thought tokens count against this cap even at budget 0;
+            // 40 left zero room for the actual sentence. 640 covers thinking + output.
+            maxOutputTokens: 640,
             thinkingConfig: { thinkingBudget: 0 },
           },
         }),

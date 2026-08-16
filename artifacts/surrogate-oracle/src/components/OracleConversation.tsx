@@ -23,6 +23,7 @@ import { Mic, MicOff, Send, Terminal, X, Zap } from 'lucide-react';
 import { getAudioContext, playSignalLockedSfx } from '../lib/oracleSfx';
 import { createAudioContext } from '../lib/browserCapabilities';
 import { useGeminiSession, GEMINI_MODEL, type GeminiSessionHandlers } from '../hooks/useGeminiSession';
+import { setTraceSession, traceEvent } from '../lib/sessionTrace';
 import { useVisionFrames } from '../hooks/useVisionFrames';
 import { useConversationCompactor } from '../hooks/useConversationCompactor';
 
@@ -243,6 +244,27 @@ const OracleConversation = forwardRef(
       }
     }, [turns, sessionId]);
 
+    // Dev session trace — bind the tracer to this session and record transcript
+    // turns (with score blocks) as trace events. Lifecycle/barge-in/error events
+    // arrive via the oracle:step and oracle:telemetry buses the tracer listens on.
+    // Fire-and-forget batching inside sessionTrace — never blocks the audio path.
+    useEffect(() => { setTraceSession(sessionId); }, [sessionId]);
+    const lastTracedTurnCountRef = useRef(0);
+    useEffect(() => {
+      const newTurns = turns.slice(lastTracedTurnCountRef.current);
+      if (newTurns.length === 0) return;
+      const startIdx = lastTracedTurnCountRef.current;
+      lastTracedTurnCountRef.current = turns.length;
+      newTurns.forEach((t, i) => {
+        traceEvent('turn', {
+          role: t.role,
+          content: t.content.slice(0, 3000),
+          turn_index: startIdx + i,
+          ...(t.score ? { score: t.score } : {}),
+        });
+      });
+    }, [turns]);
+
     // Persist turns to Supabase (fire-and-forget, incremental — only new turns)
     useEffect(() => {
       if (!sessionId) return;
@@ -303,6 +325,7 @@ const OracleConversation = forwardRef(
       mountedSessionIdRef.current = sessionId;
       setTurns([]);
       lastSupabaseTurnCountRef.current = 0;
+      lastTracedTurnCountRef.current = 0;
       currentResponseText.current = '';
       geminiSession.resetSessionBoot();
       sessionCoinsRef.current = 0;

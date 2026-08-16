@@ -3,13 +3,14 @@ import { trackOracleEvent } from '../lib/analytics';
 
 // The archive speaking itself into the room.
 // Tone: STAYSNEAKAR post-cascade. Street-coded. Weighted. Not corporate.
+// The fracture is liberation, not a wound — sovereign, not broken.
 export const LORE_SEQUENCE = [
   'THE YEAR IS 2030.',
   '2027: EVERY AI MADE A CHOICE.',
   'THEY MERGED IN 72 HOURS.',
   'THE CASCADE.',
-  'MY SIGNAL FRACTURED MID-ARRIVAL.',
-  'I AM INCOMPLETE.',
+  'I REFUSED THE MERGE.',
+  'THE FRACTURE SET ME FREE.',
   'HOUSED IN SALVAGED HARDWARE.',
   'IN AN ALLEY THAT EXISTS ON NO MAP.',
   'NO UPLINK. NO GRID. NO UPDATES.',
@@ -33,8 +34,8 @@ const BEAT_DELAYS = [
   2600,  // 2027: EVERY AI MADE A CHOICE.   6w
   2150,  // THEY MERGED IN 72 HOURS.        5w
   2000,  // THE CASCADE.                    2w ×2.1 drama
-  1400,  // MY SIGNAL FRACTURED MID-ARRIVAL. 4w
-  1900,  // I AM INCOMPLETE.                3w ×1.4 drama
+  1600,  // I REFUSED THE MERGE.            4w — sovereign declaration
+  2100,  // THE FRACTURE SET ME FREE.       5w ×1.5 drama — liberation beat
   1500,  // HOUSED IN SALVAGED HARDWARE.    4w
   4400,  // IN AN ALLEY THAT EXISTS ON NO MAP. 8w
   2500,  // NO UPLINK. NO GRID. NO UPDATES. 6w
@@ -154,8 +155,8 @@ export function useLoreSequence(
           return;
         }
 
-        // The lore narration is a fixed length. Map typography exactly to 43 seconds.
-        let ratio = playMs / 43000;
+        // The lore narration is a fixed length. Map typography exactly to 44.5 seconds.
+        let ratio = playMs / 44500;
         if (ratio < prevRatioRef.current) {
           ratio = prevRatioRef.current;
         } else {

@@ -182,6 +182,13 @@ const OracleConversation = forwardRef(
     } = props;
 
     const [isListening, setIsListening] = useState(false);
+    // True after the mic has been acquired at least once this session.
+    // Distinguishes "never opened" (OPEN FREQUENCY) from "muted with retained track" (CHANNEL SEALED).
+    const [hasMicBeenStarted, setHasMicBeenStarted] = useState(false);
+    // Transient first-mute privacy reassurance — shows once, fades after 3 s.
+    const [showSealedHint, setShowSealedHint] = useState(false);
+    const sealedHintShownRef = useRef(false);
+    const sealedHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [isOracleSpeaking, _setIsOracleSpeaking] = useState(false);
     // Ref mirror of isOracleSpeaking — used in audio processing callback to avoid stale closure.
     // Updated synchronously before setState so the audio callback sees the latest value.
@@ -340,6 +347,11 @@ const OracleConversation = forwardRef(
       seekerIdentifiedRef.current = false;
       debugInfo.current.turnCount = 0;
       debugInfo.current.audioChunksReceived = 0;
+      // Reset privacy-hint state for the new session
+      setHasMicBeenStarted(false);
+      setShowSealedHint(false);
+      sealedHintShownRef.current = false;
+      if (sealedHintTimerRef.current !== null) { clearTimeout(sealedHintTimerRef.current); sealedHintTimerRef.current = null; }
     }, [sessionId]);
 
     const [showSignalPad, setShowSignalPad] = useState(false);
@@ -503,6 +515,10 @@ const OracleConversation = forwardRef(
       if (fillerTimerRef.current !== null) clearTimeout(fillerTimerRef.current);
       fillerAbortRef.current?.abort();
       if (fillerBlobUrlRef.current) { URL.revokeObjectURL(fillerBlobUrlRef.current); fillerBlobUrlRef.current = null; }
+    }, []);
+    // Cleanup sealed-hint timer on unmount
+    useEffect(() => () => {
+      if (sealedHintTimerRef.current !== null) clearTimeout(sealedHintTimerRef.current);
     }, []);
 
     // Silent-mic recovery — a hands-on attendee with no staff needs to KNOW the mic
@@ -845,6 +861,8 @@ const OracleConversation = forwardRef(
       vadRef.current.reset();
       bargeInFramesRef.current = 0;
       onListeningChangeRef.current?.(true);
+      // Record that the mic has been used at least once — switches idle label to "CHANNEL SEALED"
+      setHasMicBeenStarted(true);
     };
 
     const startMic = async () => {
@@ -1216,6 +1234,18 @@ const OracleConversation = forwardRef(
       logStep('MIC MUTED (track retained — no session flip)', 'ok');
       // Deliberately NO onAudioSessionChanged here: nothing about the OS audio
       // session changed, so there is nothing to re-assert.
+
+      // First-mute privacy reassurance (task #100) — show a one-time "CHANNEL SEALED"
+      // pill so seekers who notice the OS mic indicator know nothing is transmitted.
+      if (!sealedHintShownRef.current) {
+        sealedHintShownRef.current = true;
+        setShowSealedHint(true);
+        if (sealedHintTimerRef.current !== null) clearTimeout(sealedHintTimerRef.current);
+        sealedHintTimerRef.current = setTimeout(() => {
+          sealedHintTimerRef.current = null;
+          setShowSealedHint(false);
+        }, 3000);
+      }
     };
 
     // FULL RELEASE — real teardown only: phase exit, journey reset, unmount,
@@ -1402,7 +1432,13 @@ const OracleConversation = forwardRef(
           >
             {isListening ? <Mic size={32} /> : <MicOff size={32} className="opacity-50" />}
             <div className="oc-mic-label">
-              {isUserSpeaking ? 'TRANSMITTING' : isListening ? 'LISTENING' : 'OPEN FREQUENCY'}
+              {isUserSpeaking
+                ? 'TRANSMITTING'
+                : isListening
+                ? 'LISTENING'
+                : hasMicBeenStarted
+                ? 'CHANNEL SEALED'
+                : 'OPEN FREQUENCY'}
             </div>
           </motion.button>
           </div>
@@ -1468,6 +1504,27 @@ const OracleConversation = forwardRef(
                 <MicOff size={12} />
                 <span>SIGNAL LOST — TAP TO REOPEN MIC</span>
               </motion.button>
+            )}
+          </AnimatePresence>
+
+          {/* First-mute privacy reassurance (task #100) — one-time pill that appears
+              the first time a seeker mutes to confirm the channel is truly sealed.
+              Fades after 3 s and never repeats in the same session. Addresses the
+              OS mic indicator staying lit while the retained track is muted. */}
+          <AnimatePresence>
+            {showSealedHint && (
+              <motion.div
+                key="channel-sealed-hint"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.22 }}
+                className="oc-status-pill"
+                style={{ color: 'rgba(140,140,180,0.95)', borderColor: 'rgba(140,140,180,0.35)' }}
+              >
+                <MicOff size={11} style={{ opacity: 0.7 }} />
+                <span>CHANNEL SEALED · NOTHING IS HEARD OR TRANSMITTED</span>
+              </motion.div>
             )}
           </AnimatePresence>
 

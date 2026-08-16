@@ -44,15 +44,17 @@ export function PortraitGalleryDashboard({
     setIsLoading(true);
     setImageErrors(new Set());
     try {
-      // Early return when no identifier is available — avoids a round-trip
-      if (!userId && !userEmail && !sessionId) {
+      // The gallery edge function scopes strictly to the session capability
+      // token (the crypto.randomUUID held in this device's localStorage).
+      // Guessable identifiers (email/userId) are not accepted as ownership proof.
+      if (!sessionId) {
         setPortraits([]);
         setIsLoading(false);
         return;
       }
 
       const { data: fnData, error: fnError } = await supabase.functions.invoke('portrait-gallery', {
-        body: { action: 'list', userId, email: userEmail, sessionId, limit: maxPortraits },
+        body: { action: 'list', sessionId, limit: maxPortraits },
       });
       if (fnError) throw fnError;
 
@@ -117,7 +119,7 @@ export function PortraitGalleryDashboard({
     if (!confirm('Delete this portrait permanently?')) return;
     try {
       const { data: fnData, error: fnError } = await supabase.functions.invoke('portrait-gallery', {
-        body: { action: 'delete', id: portrait.id, userId, email: userEmail, sessionId },
+        body: { action: 'delete', id: portrait.id, sessionId },
       });
       if (fnError) throw fnError;
       if (fnData?.deleted === true) {

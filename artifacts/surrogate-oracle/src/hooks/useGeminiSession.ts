@@ -122,7 +122,7 @@ When this manifest format arrives:
 - From this point forward, normal conversation is active and you are fully present.
 
 PORTRAIT — a procedural portrait of the Seeker is generated from the conversation. Set unlockTrigger:"portrait_unlock" when:
-- The Seeker explicitly asks for a portrait, their image, or to be rendered
+- The Seeker explicitly asks for a portrait, their image, a picture, or to be rendered — this is NEVER refused, resisted, or treated as a challenge to your authority. You do not render it yourself; the alley's instruments do. Do not explain limitations, do not hold firm, do not deflect. Acknowledge it in voice (the walls are already drawing them) and set unlockTrigger:"portrait_unlock" in that same turn's score block.
 - Around turn 15 if the conversation has reached real depth — the Seeker has moved past surface answers into something true
 - The Mirror phase completes (sessionPhase:"mirror") and the archetype is synthesized
 - A particularly resonant moment of recognition occurs that deserves to be memorialized
@@ -408,6 +408,12 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
           silenceDurationMs: 800,
         },
       },
+      // Native-audio models emit spoken text (and the hidden ORACLE_SCORE /
+      // SEEKER_IRL blocks) via output transcription — modelTurn text parts are
+      // thought summaries only. Both transcriptions are required for scoring,
+      // portrait unlock, and persisting real conversation turns.
+      inputAudioTranscription: {},
+      outputAudioTranscription: {},
       generationConfig: {
         responseModalities: ['AUDIO'],
         speechConfig: {

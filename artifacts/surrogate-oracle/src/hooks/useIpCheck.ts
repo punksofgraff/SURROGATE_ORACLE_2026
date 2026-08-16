@@ -4,6 +4,12 @@ import { logStep } from '../components/CodeAuditor';
 
 // All user_wallets reads/writes go through the user-wallet-sync edge function
 // (service_role key) so the table can be RLS-locked against the anon key.
+//
+// SECURITY: the edge function derives the caller's IP server-side from request
+// headers and only ever reads/writes that caller's own row. We never send an
+// IP in the body (a caller-supplied IP would let anyone touch anyone's row).
+// The server returns the IP it derived, and we use that as the canonical key
+// for localStorage so client and server always agree.
 
 export function useIpCheck() {
   // ?newuser — dev override: skip DB + localStorage check, force fresh-user flow
@@ -20,55 +26,51 @@ export function useIpCheck() {
 
     async function checkIp() {
       try {
-        // 1. Get IP
-        const res = await fetch('https://api.ipify.org?format=json');
-        const data = await res.json();
-        const ip = data.ip;
-        setIpAddress(ip);
-
-        // 2. Check local storage first for fast response
-        const localFlag = localStorage.getItem(`surrogate_visited_${ip}`);
-        if (localFlag) {
+        // Wallet sign flags are IP-agnostic-first: a stored wallet seeker key or the
+        // agnostic signed flag counts immediately, before any network round-trip.
+        const walletFlagEarly = localStorage.getItem('oracle_wallet_signed')
+          || localStorage.getItem('oracle_seeker_key');
+        if (walletFlagEarly) {
+          setHasSignedWallet(true);
+          setHasCompletedLore(true);
           setIsReturning(true);
         }
 
-        const loreFlag = localStorage.getItem(`surrogate_lore_completed_${ip}`);
-        if (loreFlag) {
-          setHasCompletedLore(true);
-        }
-
-        // Check IP-keyed key first; fall back to the IP-agnostic key written
-        // when the wallet signs before the IP check resolves.
-        // Also treat a stored wallet seeker key as proof of signing.
-        const walletFlag = localStorage.getItem(`oracle_wallet_signed_${ip}`)
-          || localStorage.getItem('oracle_wallet_signed')
-          || localStorage.getItem('oracle_seeker_key');
-        if (walletFlag) {
-          setHasSignedWallet(true);
-          // Upgrade to IP-keyed storage so future loads skip the agnostic fallback.
-          localStorage.setItem(`oracle_wallet_signed_${ip}`, 'true');
-        }
-
-        // 3. Optional: check database if we want a hard backend check
-        // We do a soft fail here so the experience doesn't block on DB
+        // Single round-trip: the edge function derives the caller IP server-side
+        // and returns it along with any existing row for that IP.
         const { data: fnData, error } = await supabase.functions.invoke('user-wallet-sync', {
-          body: { action: 'get', ip_address: ip },
+          body: { action: 'get' },
         });
+
+        const ip: string | null = fnData?.ip_address ?? null;
+        if (ip) setIpAddress(ip);
+
+        // Local storage check keyed by the server-derived IP
+        if (ip) {
+          if (localStorage.getItem(`surrogate_visited_${ip}`)) setIsReturning(true);
+          if (localStorage.getItem(`surrogate_lore_completed_${ip}`)) setHasCompletedLore(true);
+          const walletFlag = localStorage.getItem(`oracle_wallet_signed_${ip}`) || walletFlagEarly;
+          if (walletFlag) {
+            setHasSignedWallet(true);
+            // Upgrade to IP-keyed storage so future loads skip the agnostic fallback.
+            localStorage.setItem(`oracle_wallet_signed_${ip}`, 'true');
+          }
+        }
 
         const walletData = fnData?.data as { ip_address: string; onboarding_status: string } | null;
 
         if (walletData && !error) {
           setIsReturning(true);
-          localStorage.setItem(`surrogate_visited_${ip}`, 'true');
+          if (ip) localStorage.setItem(`surrogate_visited_${ip}`, 'true');
 
           if (walletData.onboarding_status === 'lore_completed' || walletData.onboarding_status === 'wallet_signed') {
             setHasCompletedLore(true);
-            localStorage.setItem(`surrogate_lore_completed_${ip}`, 'true');
+            if (ip) localStorage.setItem(`surrogate_lore_completed_${ip}`, 'true');
           }
 
           if (walletData.onboarding_status === 'wallet_signed') {
             setHasSignedWallet(true);
-            localStorage.setItem(`oracle_wallet_signed_${ip}`, 'true');
+            if (ip) localStorage.setItem(`oracle_wallet_signed_${ip}`, 'true');
             localStorage.setItem('oracle_wallet_signed', 'true');
           }
 
@@ -89,14 +91,13 @@ export function useIpCheck() {
   }, []);
 
   const markVisited = async () => {
-    if (!ipAddress) return;
-    localStorage.setItem(`surrogate_visited_${ipAddress}`, 'true');
+    if (ipAddress) localStorage.setItem(`surrogate_visited_${ipAddress}`, 'true');
     setIsReturning(true);
 
     try {
-      // Upsert basic IP record to start tracking onboarding
+      // Upsert the caller's own row (IP derived server-side)
       await supabase.functions.invoke('user-wallet-sync', {
-        body: { action: 'upsert', ip_address: ipAddress, onboarding_status: 'visited' },
+        body: { action: 'upsert', onboarding_status: 'visited' },
       });
     } catch (e) {
       // ignore
@@ -104,14 +105,13 @@ export function useIpCheck() {
   };
 
   const markLoreCompleted = async () => {
-    if (!ipAddress) return;
-    localStorage.setItem(`surrogate_lore_completed_${ipAddress}`, 'true');
+    if (ipAddress) localStorage.setItem(`surrogate_lore_completed_${ipAddress}`, 'true');
     setHasCompletedLore(true);
     setIsReturning(true); // Implied
 
     try {
       await supabase.functions.invoke('user-wallet-sync', {
-        body: { action: 'upsert', ip_address: ipAddress, onboarding_status: 'lore_completed' },
+        body: { action: 'upsert', onboarding_status: 'lore_completed' },
       });
       logStep('LORE STATUS: COMPLETED (Persisted)', 'ok');
     } catch (e) {
@@ -131,17 +131,16 @@ export function useIpCheck() {
     setHasCompletedLore(true);
     setIsReturning(true);
 
-    if (!ipAddress) {
-      logStep('WALLET SIGNED (IP pending — agnostic key written)', 'ok');
-      return; // IP-keyed write + Supabase will happen when checkIp re-runs or upgrades on next load
+    if (ipAddress) {
+      localStorage.setItem(`oracle_wallet_signed_${ipAddress}`, 'true');
+      localStorage.setItem(`surrogate_lore_completed_${ipAddress}`, 'true');
     }
-    localStorage.setItem(`oracle_wallet_signed_${ipAddress}`, 'true');
-    localStorage.setItem(`surrogate_lore_completed_${ipAddress}`, 'true');
     try {
+      // Server derives the caller IP itself — safe to call even before the
+      // local IP check resolves (no IP needed in the body anymore).
       await supabase.functions.invoke('user-wallet-sync', {
         body: {
           action: 'upsert',
-          ip_address: ipAddress,
           onboarding_status: 'wallet_signed',
           ...(walletAddress ? { wallet_address: walletAddress } : {}),
         },

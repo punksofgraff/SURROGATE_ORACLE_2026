@@ -1212,8 +1212,12 @@ export function SurrogateOracleImmersion() {
     window.addEventListener('oracle:auth:trigger', handleAuthTrigger);
     const handleOracleUnlock = (e: any) => {
       const { trigger, userId, sessionId, themes } = e.detail || {};
-      console.log(`[AUDIT] RECEIVED oracle:unlock EVENT in React! trigger=${trigger}`);
+      logStep(`UNLOCK RECEIVED: ${trigger}`, 'ok');
       if (trigger === 'portrait_unlock') {
+        if (portraitTriggeredRef.current) {
+          logStep('PORTRAIT ALREADY TRIGGERED THIS SESSION — SKIPPED', 'warn');
+          return;
+        }
         portraitTriggeredRef.current = true;
         portraitRef.current.generatePortrait(themes || portraitRef.current.getThemes());
       } else {

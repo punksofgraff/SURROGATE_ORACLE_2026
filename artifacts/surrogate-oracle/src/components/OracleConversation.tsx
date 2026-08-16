@@ -43,6 +43,14 @@ export type OracleScore = {
   emotionalWeight: 'raw' | 'defended' | 'numb' | 'present' | 'cracked';
 };
 
+// Portrait command detection — fuzzy-match seeker intent after ≥5 entries.
+// Patterns: "manifest", "create [portrait/image/me/it]", "show me [portrait/image]",
+// "see it/my", "render me", "make [my/portrait/image]", "show portrait",
+// "procedural portrait", "my portrait", "my image", etc. Shared by the typed
+// entry path (onUserEntry) and the voice transcript commit path.
+const PORTRAIT_INTENT =
+  /\b(manifest|portrait|my\s+(image|portrait|picture|record|likeness)|show\s+me|show\s+(image|portrait|picture|me)|create\s+(my|a|it|portrait|image|me|the)|see\s+(it|my|the|portrait|image)|render\s+(me|my|the)|synthesize(\s+me)?|generate\s+(portrait|image|me|my|it)|make\s+(portrait|image|me|my)|procedural|frequency\s+record|signal\s+impression)\b/i;
+
 type Turn = {
   role: 'user' | 'oracle';
   content: string;
@@ -362,6 +370,9 @@ const OracleConversation = forwardRef(
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const micAudioContextRef = useRef<AudioContext | null>(null);
     const currentResponseText = useRef('');
+    // Accumulates the Seeker's spoken words from inputTranscription frames.
+    // Committed as a user turn when the Oracle starts responding (turn boundary).
+    const currentUserTranscriptRef = useRef('');
     // Mirror of `turns` state — closure-safe ref for reconnect context injection
     const turnsRef = useRef<Turn[]>([]);
 
@@ -590,7 +601,25 @@ const OracleConversation = forwardRef(
         setSeekerCount(0);
         micAutoRestartEnabledRef.current = false; // Don't carry over armed mic from prior session
       },
+      // Flushes the buffered voice transcript as a real user turn. Mirrors the
+      // typed-entry path (onUserEntry) so voice input counts toward seeker
+      // entries and portrait-intent detection — previously voice turns left no
+      // text record at all with the native-audio model.
       onServerContent: (msg, sendText) => {
+        const commitUserTranscript = () => {
+          const spoken = currentUserTranscriptRef.current.trim();
+          currentUserTranscriptRef.current = '';
+          if (!spoken) return;
+          setTurns(prev => [...prev, { role: 'user', content: spoken, timestamp: Date.now() }]);
+          seekerEntryCountRef.current += 1;
+          setSeekerCount(seekerEntryCountRef.current);
+          onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
+          if (seekerEntryCountRef.current === SEEKER_MAX) playSignalLockedSfx();
+          if (seekerEntryCountRef.current >= 5 && PORTRAIT_INTENT.test(spoken)) {
+            logStep('PORTRAIT INTENT DETECTED (voice)', 'ok');
+            onPortraitRequestRef.current?.();
+          }
+        };
         // Step 2 — usageMetadata can ride along on a serverContent frame (proxy forwards it
         // via the {...msg} spread). Capture token telemetry when present.
         if (msg.usageMetadata?.totalTokenCount) debugInfo.current.lastTokenCount = msg.usageMetadata.totalTokenCount;
@@ -612,9 +641,23 @@ const OracleConversation = forwardRef(
           onBargeInRef.current?.();
         }
 
+        // Native-audio models: spoken text (and the hidden ORACLE_SCORE /
+        // SEEKER_IRL blocks) arrives via outputTranscription, NOT modelTurn text
+        // parts — those are now thought summaries (part.thought === true) and
+        // must never pollute the displayed turn or the score parser.
+        if (msg.serverContent?.outputTranscription?.text) {
+          currentResponseText.current += msg.serverContent.outputTranscription.text;
+        }
+        // Seeker's spoken words — the only text record of voice input. Buffered
+        // and committed as a user entry on turn boundaries so entry counting and
+        // portrait-intent detection work for voice, not just the type pad.
+        if (msg.serverContent?.inputTranscription?.text) {
+          currentUserTranscriptRef.current += msg.serverContent.inputTranscription.text;
+        }
+
         const parts = msg.serverContent?.modelTurn?.parts || [];
         for (const part of parts) {
-          if (part.text) currentResponseText.current += part.text;
+          if (part.text && part.thought !== true) currentResponseText.current += part.text;
           if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
             if (debugInfo.current.audioChunksReceived === 0) {
               // Real Oracle audio has arrived — abort TTS fetch + cancel timer + flush any
@@ -627,6 +670,9 @@ const OracleConversation = forwardRef(
                 onBargeInRef.current?.(); // flush PCMPlayer ring buffer so filler cuts cleanly
               }
               logStep('ORACLE AUDIO START', 'ok');
+              // Oracle is responding — whatever the Seeker said aloud is complete.
+              // Commit it now so the user turn lands BEFORE the oracle turn.
+              commitUserTranscript();
               window.__oracle_speech_start = Date.now();
               trackOracleEvent({
                 event: 'oracle_audio_start',
@@ -675,6 +721,9 @@ const OracleConversation = forwardRef(
           });
           navigator.vibrate?.([30]);
           setIsOracleThinking(false); // ensure cleared even on text-only turns
+          // Safety net for text-only turns (no audio chunk ever arrived) — commit
+          // any buffered voice transcript before the oracle turn is recorded.
+          commitUserTranscript();
           debugInfo.current.turnCount++;
           debugInfo.current.audioChunksReceived = 0; // reset for next turn
           const scored = parseScore(currentResponseText.current);
@@ -738,6 +787,7 @@ const OracleConversation = forwardRef(
 
             // Dispatch unlock triggers (Portrait, Squad, Arcade)
             if (score.unlockTrigger) {
+              logStep(`UNLOCK DISPATCHED: ${score.unlockTrigger}`, 'ok');
               window.dispatchEvent(new CustomEvent('oracle:unlock', {
                 detail: {
                   trigger: score.unlockTrigger,
@@ -773,13 +823,6 @@ const OracleConversation = forwardRef(
         setSeekerCount(seekerEntryCountRef.current);
         onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
         if (seekerEntryCountRef.current === SEEKER_MAX) playSignalLockedSfx();
-
-        // Portrait command detection — fuzzy-match seeker intent after ≥5 entries.
-        // Patterns: "manifest", "create [portrait/image/me/it]", "show me [portrait/image]",
-        // "see it/my", "render me", "make [my/portrait/image]", "show portrait",
-        // "procedural portrait", "my portrait", "my image", etc.
-        const PORTRAIT_INTENT =
-          /\b(manifest|portrait|my\s+(image|portrait|picture|record|likeness)|show\s+me|show\s+(image|portrait|picture|me)|create\s+(my|a|it|portrait|image|me|the)|see\s+(it|my|the|portrait|image)|render\s+(me|my|the)|synthesize(\s+me)?|generate\s+(portrait|image|me|my|it)|make\s+(portrait|image|me|my)|procedural|frequency\s+record|signal\s+impression)\b/i;
 
         if (seekerEntryCountRef.current >= 5 && PORTRAIT_INTENT.test(text)) {
           onPortraitRequestRef.current?.();

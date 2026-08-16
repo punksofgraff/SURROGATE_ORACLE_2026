@@ -10,58 +10,86 @@ const corsHeaders = {
 // All client reads/writes to user_wallets must go through this function so
 // that RLS can be fully locked down on that table (service_role bypasses RLS).
 //
-// POST { action: 'get',    ip_address: string }
-//   → { success: true, data: <row|null> }
+// SECURITY MODEL: the caller's IP address is derived SERVER-SIDE from the
+// request headers. It is never accepted from the request body — otherwise any
+// anonymous caller could read or overwrite any other visitor's onboarding
+// state just by supplying their IP. A caller can only ever touch their own row.
 //
-// POST { action: 'upsert', ip_address: string, onboarding_status: string, wallet_address?: string }
-//   → { success: true }
+// POST { action: 'get' }
+//   → { success: true, ip_address: <derived>, data: <row|null> }
+//   (ip_address is returned so the client can key localStorage consistently
+//    with the server's view instead of a separate ipify lookup.)
 //
-// The client already resolves the IP via ipify before calling here, so we
-// accept it in the body rather than deriving from headers to avoid any
-// discrepancy with the ipify value used for localStorage keys.
+// POST { action: 'upsert', onboarding_status: string, wallet_address?: string }
+//   → { success: true, ip_address: <derived> }
+//
+// MONOTONIC STATE: upserts go through the upsert_user_wallet_monotonic RPC,
+// which never downgrades onboarding_status (visited < lore_completed <
+// wallet_signed) and never nulls an existing wallet_address. Client lifecycle
+// writes (visited on tap, lore_completed at the terminal) therefore can NEVER
+// erase a prior wallet sign — durable wallet memory survives fresh devices,
+// cleared localStorage, and races between concurrent lifecycle writes.
 
 interface WalletSyncBody {
   action: 'get' | 'upsert';
-  ip_address: string;
   onboarding_status?: string;
   wallet_address?: string;
 }
 
+const VALID_STATUSES = new Set(['visited', 'lore_completed', 'wallet_signed']);
+
+/**
+ * Derive the real client IP from the ingress-controlled header ONLY.
+ *
+ * Supabase Edge Functions sit behind Cloudflare, which sets `cf-connecting-ip`
+ * itself and REJECTS (403 at the edge) any request that tries to supply its own
+ * value — verified empirically against this deployment:
+ *   - clean request        → cf-connecting-ip = real client IP
+ *   - forged XFF           → forged value stripped by ingress, cf unchanged
+ *   - forged cf-connecting-ip → 403 Forbidden before reaching the function
+ *
+ * `x-forwarded-for` / `x-real-ip` are deliberately NOT used: XFF is a
+ * client-appendable forwarding header in general, and trusting any part of it
+ * would let a caller impersonate another visitor's row.
+ */
+function deriveClientIp(req: Request): string | null {
+  return req.headers.get('cf-connecting-ip') || null;
+}
+
+function json(status: number, payload: unknown): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 Deno.serve(async (req: Request) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
+    if (req.method !== 'POST') {
+      return json(405, { success: false, error: 'Method not allowed' });
+    }
+
+    const ip_address = deriveClientIp(req);
+    if (!ip_address) {
+      return json(400, { success: false, error: 'Could not determine caller identity' });
+    }
+
+    const body: WalletSyncBody | null = await req.json().catch(() => null);
+    if (!body || !body.action) {
+      return json(400, { success: false, error: 'action is required' });
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    if (req.method !== 'POST') {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Method not allowed' }),
-        { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const body: WalletSyncBody = await req.json().catch(() => null);
-
-    if (!body || !body.action || !body.ip_address) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'action and ip_address are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const { action, ip_address } = body;
-
-    // ---- GET: look up a wallet row by ip_address ----
-    if (action === 'get') {
+    // ---- GET: look up the CALLER'S wallet row ----
+    if (body.action === 'get') {
       const { data, error } = await supabase
         .from('user_wallets')
         .select('ip_address, onboarding_status')
@@ -72,64 +100,45 @@ Deno.serve(async (req: Request) => {
       // PGRST116 = no rows found; treat as null (new visitor), not an error
       if (error && error.code !== 'PGRST116') {
         console.error('user-wallet-sync get failed:', error);
-        return new Response(
-          JSON.stringify({ success: false, error: `Failed to read wallet: ${error.message}` }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return json(500, { success: false, error: `Failed to read wallet: ${error.message}` });
       }
 
-      return new Response(
-        JSON.stringify({ success: true, data: data ?? null }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return json(200, { success: true, ip_address, data: data ?? null });
     }
 
-    // ---- UPSERT: create or update a wallet row ----
-    if (action === 'upsert') {
-      if (!body.onboarding_status) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'onboarding_status is required for upsert' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+    // ---- UPSERT: create or update the CALLER'S wallet row ----
+    if (body.action === 'upsert') {
+      if (!body.onboarding_status || !VALID_STATUSES.has(body.onboarding_status)) {
+        return json(400, { success: false, error: 'onboarding_status must be one of: visited, lore_completed, wallet_signed' });
       }
 
-      const row: Record<string, unknown> = {
-        ip_address,
-        onboarding_status: body.onboarding_status,
-        last_seen_at: new Date().toISOString(),
-      };
-
-      if (body.wallet_address !== undefined) {
-        row.wallet_address = body.wallet_address;
+      let wallet_address: string | null = null;
+      if (body.wallet_address !== undefined && body.wallet_address !== null) {
+        if (typeof body.wallet_address !== 'string' || body.wallet_address.length > 128) {
+          return json(400, { success: false, error: 'Invalid wallet_address' });
+        }
+        wallet_address = body.wallet_address;
       }
 
-      const { error } = await supabase
-        .from('user_wallets')
-        .upsert(row, { onConflict: 'ip_address' });
+      // Atomic, monotonic upsert — never downgrades onboarding_status and never
+      // nulls an existing wallet_address (see migration 20260816000001).
+      const { error } = await supabase.rpc('upsert_user_wallet_monotonic', {
+        p_ip_address: ip_address,
+        p_status: body.onboarding_status,
+        p_wallet_address: wallet_address,
+      });
 
       if (error) {
         console.error('user-wallet-sync upsert failed:', error);
-        return new Response(
-          JSON.stringify({ success: false, error: `Failed to write wallet: ${error.message}` }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return json(500, { success: false, error: `Failed to write wallet: ${error.message}` });
       }
 
-      return new Response(
-        JSON.stringify({ success: true }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return json(200, { success: true, ip_address });
     }
 
-    return new Response(
-      JSON.stringify({ success: false, error: `Unknown action: ${action}` }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return json(400, { success: false, error: `Unknown action: ${body.action}` });
   } catch (error) {
     console.error('user-wallet-sync error:', error);
-    return new Response(
-      JSON.stringify({ success: false, error: `Internal server error: ${error.message}` }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return json(500, { success: false, error: `Internal server error: ${(error as Error).message}` });
   }
 });

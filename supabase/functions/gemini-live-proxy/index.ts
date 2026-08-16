@@ -179,6 +179,11 @@ Deno.serve(async (req: Request) => {
           if (msg.toolConfig !== undefined)        setup.toolConfig           = msg.toolConfig;
           if (msg.sessionResumption !== undefined) setup.sessionResumption    = msg.sessionResumption;
           if (msg.realtimeInputConfig !== undefined) setup.realtimeInputConfig = msg.realtimeInputConfig;
+          // Transcription configs — native-audio models deliver spoken text (incl.
+          // hidden score blocks) only via outputTranscription; input transcription
+          // is the only text record of what the Seeker said aloud.
+          if (msg.inputAudioTranscription !== undefined)  setup.inputAudioTranscription  = msg.inputAudioTranscription;
+          if (msg.outputAudioTranscription !== undefined) setup.outputAudioTranscription = msg.outputAudioTranscription;
           setup.contextWindowCompression = { slidingWindow: {} };
           console.log('📤 setup → Gemini, model:', msg.model, '| key:', activeMode);
           gemini.send(JSON.stringify({ setup }));

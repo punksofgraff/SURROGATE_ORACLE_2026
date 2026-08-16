@@ -57,7 +57,6 @@ export function useWalletBridge({
 }: UseWalletBridgeParams) {
   const walletPopupRef = useRef<Window | null>(null);
   const walletReturnHandledRef = useRef(false); // top-level wallet-return URL (?seeker=) handled once per load
-  const pendingWalletDbSyncRef = useRef<string | null>(null); // wallet addr awaiting user_wallets upsert once IP resolves
 
   // ── Popup Bridge Autoclose ──────────────────────────────────────────────
   // If this instance is running inside a popup (opened via openWalletPopup) and we
@@ -310,9 +309,9 @@ export function useWalletBridge({
 
     logStep(`WALLET RETURN DETECTED${event ? ` (${event})` : ''} — activating seeker`, 'ok');
     void processWalletSignIn(seeker);
-    // If the IP check hasn't resolved yet, markWalletSigned can't persist to user_wallets.
-    // Queue the backend upsert to flush once the IP is known (see effect below).
-    if (!ipAddress) pendingWalletDbSyncRef.current = seeker;
+    // NOTE: no deferred DB flush needed anymore — user-wallet-sync derives the
+    // caller IP server-side, so markWalletSigned persists even before the local
+    // IP check resolves.
 
     // Strip wallet params but preserve any others (e.g. ?devui, ?newuser).
     params.delete('seeker');
@@ -324,14 +323,6 @@ export function useWalletBridge({
     const newUrl = window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash;
     window.history.replaceState({}, '', newUrl);
   }, [processWalletSignIn, ipAddress]);
-
-  // Flush the deferred user_wallets upsert once the IP resolves (return handled IP-first).
-  useEffect(() => {
-    if (ipAddress && pendingWalletDbSyncRef.current) {
-      markWalletSigned(pendingWalletDbSyncRef.current);
-      pendingWalletDbSyncRef.current = null;
-    }
-  }, [ipAddress, markWalletSigned]);
 
   return {
     processWalletSignIn,

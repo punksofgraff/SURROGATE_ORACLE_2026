@@ -2,12 +2,18 @@
  * gemini-portrait-generator — Supabase Edge Function
  *
  * Generation cascade (first success wins):
- *   1. Gemini 3.7 Flash       → distills conversation context into a visual prompt
- *   2. Vertex AI Imagen 3      → PRIMARY image generation (low cost per image)
- *   3. HuggingFace FLUX.1-dev → keyless free-tier; authenticated if HUGGINGFACE_API_KEY set
- *   4. Pollinations.ai         → zero-config, no key, always free
- *   5. DeepAI                  → optional key-gated fallback
- *   6. Themed Unsplash         → static fallback if every AI path fails
+ *   1. Gemini 3.7 Flash        → distills conversation context into a visual prompt
+ *   2a. Vertex AI Imagen       → PRIMARY image generation (low cost per image)
+ *       Guarded by a persistent circuit breaker: 3× 429/5xx opens it, with
+ *       escalating cool-downs of 15 min → 1 h → 4 h → 12 h → 24 h (persisted
+ *       in public.provider_breaker so cold starts don't reset the schedule).
+ *   2b. Gemini Flash image     → same GOOGLE_AI_API_KEY, modern image models
+ *   3. HuggingFace FLUX.1-schnell → keyless free-tier; authenticated if HUGGINGFACE_API_KEY set
+ *   4. DeepAI                  → optional key-gated fallback
+ *   5. Replicate flux-schnell  → last paid resort; output RE-HOSTED to the
+ *       portraits bucket (replicate.delivery URLs expire in ~1 h)
+ *   6. Pollinations.ai         → zero-config, no key, always free
+ *   7. Themed Unsplash         → static fallback if every AI path fails
  *
  * Secrets (set via Replit Secrets or: supabase secrets set KEY=value --project-ref <ref>):
  *   GOOGLE_AI_API_KEY   — Google AI Studio key for Gemini 3.7 Flash text distillation
@@ -15,6 +21,7 @@
  *   VERTEX_PROJECT_ID   — Google Cloud project ID (optional; defaults to key's linked project)
  *   HUGGINGFACE_API_KEY — HuggingFace token for authenticated inference (optional)
  *   DEEPAI_API_KEY      — DeepAI text2img key (optional)
+ *   REPLICATE_API_TOKEN — Replicate token for flux-schnell last-resort path (optional)
  *
  * Deploy:
  *   npx supabase functions deploy gemini-portrait-generator --project-ref <ref> --use-api
@@ -70,6 +77,86 @@ function noteDistillThrottle(status: number): void {
     distillCooldownUntil = now + DISTILL_COOLDOWN_MS * (distillThrottleLevel + 1);
   } else if (status === 503) {
     distillCooldownUntil = now + DISTILL_COOLDOWN_MS;
+  }
+}
+
+// ── Persistent provider circuit breaker ──────────────────────────────────────
+// Quota/server failures (429 or 5xx) increment a counter in public.provider_breaker.
+// Three strikes open the breaker with escalating cool-downs: 15 min → 1 h → 4 h →
+// 12 h → 24 h (then holds at 24 h). A success closes it and resets the schedule.
+// Persisted in the DB so edge-function cold starts don't forget the backoff level.
+// Auth errors (401/403) and other 4xx do NOT trip it — they fail fast per-request
+// and resolve the moment the key is fixed.
+const BREAKER_BACKOFF_MS = [
+  15 * 60 * 1000,       // 15 minutes
+  60 * 60 * 1000,       // 1 hour
+  4 * 60 * 60 * 1000,   // 4 hours
+  12 * 60 * 60 * 1000,  // 12 hours
+  24 * 60 * 60 * 1000,  // 24 hours (holds here)
+] as const;
+const BREAKER_TRIP_COUNT = 3;
+
+// deno-lint-ignore no-explicit-any
+type SupabaseLike = any;
+
+async function breakerIsOpen(supabase: SupabaseLike, provider: string): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from('provider_breaker')
+      .select('open_until')
+      .eq('provider', provider)
+      .maybeSingle();
+    return !!(data?.open_until && new Date(data.open_until).getTime() > Date.now());
+  } catch {
+    return false; // breaker storage unavailable → never block the provider
+  }
+}
+
+function breakerTripsOn(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+async function breakerRecordFailure(supabase: SupabaseLike, provider: string, status: number): Promise<void> {
+  if (!breakerTripsOn(status)) return;
+  try {
+    const { data } = await supabase
+      .from('provider_breaker')
+      .select('fail_count, backoff_level')
+      .eq('provider', provider)
+      .maybeSingle();
+    let failCount = (data?.fail_count ?? 0) + 1;
+    let backoffLevel = data?.backoff_level ?? 0;
+    let openUntil: string | null = null;
+    if (failCount >= BREAKER_TRIP_COUNT) {
+      const waitMs = BREAKER_BACKOFF_MS[Math.min(backoffLevel, BREAKER_BACKOFF_MS.length - 1)];
+      openUntil = new Date(Date.now() + waitMs).toISOString();
+      backoffLevel = Math.min(backoffLevel + 1, BREAKER_BACKOFF_MS.length - 1);
+      failCount = 0;
+      console.warn(`⛔ ${provider} breaker OPEN for ${Math.round(waitMs / 60000)} min (level ${backoffLevel})`);
+    }
+    await supabase.from('provider_breaker').upsert({
+      provider,
+      fail_count: failCount,
+      backoff_level: backoffLevel,
+      open_until: openUntil,
+      updated_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn('⚠️ breaker record-failure skipped:', e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function breakerRecordSuccess(supabase: SupabaseLike, provider: string): Promise<void> {
+  try {
+    await supabase.from('provider_breaker').upsert({
+      provider,
+      fail_count: 0,
+      backoff_level: 0,
+      open_until: null,
+      updated_at: new Date().toISOString(),
+    });
+  } catch {
+    // non-fatal
   }
 }
 
@@ -193,7 +280,10 @@ Deno.serve(async (req: Request) => {
   // always 401 with an API key. Requires a Vertex-express-enabled key in
   // VERTEX_AI_API_KEY; falls through cleanly if the key is absent or invalid.
   const vertexApiKey = Deno.env.get('VERTEX_AI_API_KEY');
-  if (vertexApiKey && !portraitUrl) {
+  if (vertexApiKey && !portraitUrl && await breakerIsOpen(supabase, 'vertex-imagen')) {
+    console.warn('⛔ Vertex Imagen breaker open — skipping this rung');
+    imageErrors.push('Vertex Imagen: circuit breaker open (cooling down after repeated 429/5xx)');
+  } else if (vertexApiKey && !portraitUrl) {
     try {
       console.log('🎨 Trying Vertex AI Imagen (express)…');
       const r = await fetch(
@@ -207,7 +297,10 @@ Deno.serve(async (req: Request) => {
           }),
         }
       );
-      if (!r.ok) throw new Error(`Vertex Imagen ${r.status}: ${await r.text()}`);
+      if (!r.ok) {
+        await breakerRecordFailure(supabase, 'vertex-imagen', r.status);
+        throw new Error(`Vertex Imagen ${r.status}: ${await r.text()}`);
+      }
       const json = await r.json();
       const b64 = json.predictions?.[0]?.bytesBase64Encoded;
       if (!b64) throw new Error('Vertex Imagen: no image in response');
@@ -227,6 +320,7 @@ Deno.serve(async (req: Request) => {
         console.log('✅ Vertex Imagen portrait uploaded:', publicUrl.slice(0, 60));
       }
       generationMethod = 'vertex-imagen';
+      await breakerRecordSuccess(supabase, 'vertex-imagen');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('❌ Vertex Imagen failed:', msg);
@@ -323,20 +417,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── STEP 4: Pollinations.ai — zero config, no key, always free ───────────
-  if (!portraitUrl) {
-    try {
-      const seed = Math.floor(Date.now() / 1000);
-      const encoded = encodeURIComponent(enhancedPrompt.slice(0, 400));
-      portraitUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
-      generationMethod = 'pollinations-flux';
-      console.log('✅ Pollinations.ai portrait URL constructed');
-    } catch (e: unknown) {
-      console.error('❌ Pollinations URL construction failed:', e);
-    }
-  }
-
-  // ── STEP 5: DeepAI (optional key) ─────────────────────────────────────────
+  // ── STEP 4: DeepAI (optional key) ─────────────────────────────────────────
   const deepAiKey = Deno.env.get('DEEPAI_API_KEY');
   if (deepAiKey && !portraitUrl) {
     try {
@@ -348,16 +429,100 @@ Deno.serve(async (req: Request) => {
         headers: { 'api-key': deepAiKey },
         body: form,
       });
-      if (!r.ok) throw new Error(`DeepAI ${r.status}: ${await r.text()}`);
+      if (!r.ok) {
+        await breakerRecordFailure(supabase, 'deepai', r.status);
+        throw new Error(`DeepAI ${r.status}: ${await r.text()}`);
+      }
       const json = await r.json();
       if (!json.output_url) throw new Error('No output_url in DeepAI response');
       portraitUrl = json.output_url;
       generationMethod = 'deepai';
+      await breakerRecordSuccess(supabase, 'deepai');
       console.log('✅ DeepAI portrait generated');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('❌ DeepAI failed:', msg);
       imageErrors.push(`DeepAI: ${msg}`);
+    }
+  }
+
+  // ── STEP 5: Replicate flux-schnell — last paid resort ────────────────────
+  // Runs only when Vertex/Gemini/HF/DeepAI all failed. Output MUST be re-hosted:
+  // replicate.delivery URLs expire in ~1 hour, so we download and upload to the
+  // portraits bucket; on upload failure we fall through to Pollinations rather
+  // than persist a URL that will go blank.
+  const replicateToken = Deno.env.get('REPLICATE_API_TOKEN') ?? Deno.env.get('REPLICATE_API_KEY');
+  if (replicateToken && !portraitUrl) {
+    try {
+      console.log('🎨 Trying Replicate flux-schnell…');
+      const r = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${replicateToken}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'wait',
+        },
+        body: JSON.stringify({
+          input: { prompt: enhancedPrompt, aspect_ratio: '1:1', output_format: 'jpg' },
+        }),
+      });
+      if (!r.ok) throw new Error(`Replicate ${r.status}: ${await r.text()}`);
+      let json = await r.json();
+      // `Prefer: wait` can return early with status "processing"/"starting" —
+      // poll the prediction URL until it settles (flux-schnell finishes in
+      // seconds, so a short poll budget is plenty).
+      const pollUrl = json.urls?.get;
+      for (let i = 0; i < 15 && pollUrl && (json.status === 'processing' || json.status === 'starting'); i++) {
+        await new Promise(res => setTimeout(res, 2000));
+        const pr = await fetch(pollUrl, { headers: { 'Authorization': `Bearer ${replicateToken}` } });
+        if (!pr.ok) throw new Error(`Replicate poll ${pr.status}`);
+        json = await pr.json();
+      }
+      if (json.status !== 'succeeded') {
+        throw new Error(`Replicate: prediction ${json.status}${json.error ? `: ${json.error}` : ''}`);
+      }
+      // flux-schnell may return output as a string OR an array of strings.
+      const outUrl = typeof json.output === 'string'
+        ? json.output
+        : Array.isArray(json.output) ? json.output[0] : null;
+      if (!outUrl || typeof outUrl !== 'string' || !outUrl.startsWith('http')) {
+        throw new Error(`Replicate: unexpected output shape (status ${json.status})`);
+      }
+      const imgResp = await fetch(outUrl);
+      if (!imgResp.ok) throw new Error(`Replicate image fetch ${imgResp.status}`);
+      const imgBuffer = await imgResp.arrayBuffer();
+      if (imgBuffer.byteLength < 1000) throw new Error('Replicate returned empty image');
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from('portraits')
+        .upload(`${sessionId}-replicate-${Date.now()}.jpg`, imgBuffer, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+      if (uploadErr) {
+        // Do NOT persist the raw replicate.delivery URL — it expires in ~1 h.
+        throw new Error(`Replicate re-host failed: ${uploadErr.message}`);
+      }
+      const { data: { publicUrl } } = supabase.storage.from('portraits').getPublicUrl(uploadData.path);
+      portraitUrl = publicUrl;
+      generationMethod = 'replicate-flux';
+      console.log('✅ Replicate portrait re-hosted:', publicUrl.slice(0, 60));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('❌ Replicate failed:', msg);
+      imageErrors.push(`Replicate: ${msg}`);
+    }
+  }
+
+  // ── STEP 6: Pollinations.ai — zero config, no key, always free ───────────
+  if (!portraitUrl) {
+    try {
+      const seed = Math.floor(Date.now() / 1000);
+      const encoded = encodeURIComponent(enhancedPrompt.slice(0, 400));
+      portraitUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&model=flux&seed=${seed}`;
+      generationMethod = 'pollinations-flux';
+      console.log('✅ Pollinations.ai portrait URL constructed');
+    } catch (e: unknown) {
+      console.error('❌ Pollinations URL construction failed:', e);
     }
   }
 

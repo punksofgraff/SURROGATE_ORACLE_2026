@@ -328,52 +328,65 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── STEP 2b: Gemini 3.1 Flash Image (modern; 2.5-image retires Sep 2026) ───
-  // Same GOOGLE_AI_API_KEY as text distillation. Lite variant as second try —
-  // separate quota bucket, cheaper.
-  if (googleAiApiKey && !portraitUrl) {
-    for (const model of ['gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image']) {
+  // ── STEP 2b: Gemini image API (fallback after Vertex) ─────────────────────
+  // Gemini API keys authenticate against generativelanguage.googleapis.com,
+  // not the Vertex endpoint. Try the primary shared key first, then any
+  // explicitly configured Gemini/Google aliases in case the primary key is
+  // quota-limited or rotated. No raw Seeker lines are sent here — only the
+  // privacy-checked enhanced prompt.
+  const googleImageApiKeys = [
+    googleAiApiKey,
+    Deno.env.get('GEMINI_API_KEY'),
+    Deno.env.get('GOOGLE_GENERATIVE_AI_API_KEY'),
+    Deno.env.get('GOOGLE_AI_KEY_PAID'),
+  ].filter((key): key is string => !!key).filter((key, index, all) => all.indexOf(key) === index);
+
+  if (googleImageApiKeys.length && !portraitUrl) {
+    for (const [keyIndex, imageKey] of googleImageApiKeys.entries()) {
       if (portraitUrl) break;
-      try {
-        console.log(`🎨 Trying ${model}…`);
-        const r = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${googleAiApiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: enhancedPrompt }] }],
-              generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
-            }),
+      for (const model of ['gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image']) {
+        if (portraitUrl) break;
+        try {
+          console.log(`🎨 Trying Gemini image API key ${keyIndex + 1}/${googleImageApiKeys.length} — ${model}…`);
+          const r = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${imageKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: enhancedPrompt }] }],
+                generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+              }),
+            }
+          );
+          if (!r.ok) throw new Error(`${model} ${r.status}: ${await r.text()}`);
+          const json = await r.json();
+          const parts = json.candidates?.[0]?.content?.parts ?? [];
+          const imgPart = parts.find((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
+          if (!imgPart?.inlineData?.data) throw new Error(`${model}: no inlineData in response`);
+          const mimeType = imgPart.inlineData.mimeType ?? 'image/png';
+          const b64 = imgPart.inlineData.data;
+          const imgBuffer = Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer;
+          const { data: uploadData, error: uploadErr } = await supabase.storage
+            .from('portraits')
+            .upload(`${sessionId}-gemini-${Date.now()}.png`, imgBuffer, {
+              contentType: mimeType,
+              upsert: true,
+            });
+          if (uploadErr) {
+            portraitUrl = `data:${mimeType};base64,${b64}`;
+            console.log(`✅ ${model} portrait as base64 data URL`);
+          } else {
+            const { data: { publicUrl } } = supabase.storage.from('portraits').getPublicUrl(uploadData.path);
+            portraitUrl = publicUrl;
+            console.log(`✅ ${model} portrait uploaded:`, publicUrl.slice(0, 60));
           }
-        );
-        if (!r.ok) throw new Error(`${model} ${r.status}: ${await r.text()}`);
-        const json = await r.json();
-        const parts = json.candidates?.[0]?.content?.parts ?? [];
-        const imgPart = parts.find((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
-        if (!imgPart?.inlineData?.data) throw new Error(`${model}: no inlineData in response`);
-        const mimeType = imgPart.inlineData.mimeType ?? 'image/png';
-        const b64 = imgPart.inlineData.data;
-        const imgBuffer = Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer;
-        const { data: uploadData, error: uploadErr } = await supabase.storage
-          .from('portraits')
-          .upload(`${sessionId}-gemini-${Date.now()}.png`, imgBuffer, {
-            contentType: mimeType,
-            upsert: true,
-          });
-        if (uploadErr) {
-          portraitUrl = `data:${mimeType};base64,${b64}`;
-          console.log(`✅ ${model} portrait as base64 data URL`);
-        } else {
-          const { data: { publicUrl } } = supabase.storage.from('portraits').getPublicUrl(uploadData.path);
-          portraitUrl = publicUrl;
-          console.log(`✅ ${model} portrait uploaded:`, publicUrl.slice(0, 60));
+          generationMethod = 'gemini-image';
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error(`❌ Gemini key ${keyIndex + 1} ${model} failed:`, msg.slice(0, 140));
+          imageErrors.push(`Gemini key ${keyIndex + 1} ${model}: ${msg}`);
         }
-        generationMethod = 'gemini-image';
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error(`❌ ${model} failed:`, msg.slice(0, 140));
-        imageErrors.push(`${model}: ${msg}`);
       }
     }
   }

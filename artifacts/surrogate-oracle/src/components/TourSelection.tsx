@@ -35,16 +35,27 @@ interface TourSelectionProps {
   isOracleSpeaking: boolean;
   onSpeakCard?: (text: string) => void;
   onCardProgress?: (charCount: number, total: number) => void;
+  onActiveCardChange?: () => void;
   onTourComplete: () => void;
 }
 
-export function TourSelection({ isOracleSpeaking, onSpeakCard, onCardProgress, onTourComplete }: TourSelectionProps) {
+const CARD_AUDIO_BREATH_MS = 650;
+
+export function TourSelection({ isOracleSpeaking, onSpeakCard, onCardProgress, onActiveCardChange, onTourComplete }: TourSelectionProps) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [isEmitting, setIsEmitting] = useState(false);
   const [landedChars, setLandedChars] = useState(0);
-  const intervalRef      = useRef<ReturnType<typeof setInterval> | null>(null);
-  const spokenCardRef    = useRef<string | null>(null);
-  const prevSpeakingRef  = useRef(false);
+  const intervalRef         = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startDelayRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spokenCardRef       = useRef<string | null>(null);
+  const previewRequestedRef = useRef<string | null>(null);
+  const prevSpeakingRef     = useRef(false);
+  // Stable ref to the latest onActiveCardChange callback. Reading from a ref
+  // inside the card-change effect means the effect dep array never includes the
+  // callback itself, so a new inline function from the parent (e.g. on an
+  // isOracleSpeaking re-render) cannot re-trigger the flush.
+  const onActiveCardChangeRef = useRef(onActiveCardChange);
+  useEffect(() => { onActiveCardChangeRef.current = onActiveCardChange; }, [onActiveCardChange]);
 
   // Emission glow on card cycle
   useEffect(() => {
@@ -55,21 +66,41 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onCardProgress, o
 
   const card = TOUR_CARDS[activeIdx];
 
-  // Letter-by-letter reveal — same pattern as KnifeSelection
+  // A card change is the only event that should flush playback. In particular,
+  // do not flush when isOracleSpeaking flips true after the preview request:
+  // that state transition is the normal arrival of the first audio chunk.
+  // onActiveCardChangeRef is a ref so its identity never changes — this effect
+  // fires exactly on card.text changes, nothing else.
   useEffect(() => {
-    if (spokenCardRef.current === card.text) return;
-
+    previewRequestedRef.current = null;
+    spokenCardRef.current = null;
     setLandedChars(0);
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    if (startDelayRef.current) { clearTimeout(startDelayRef.current); startDelayRef.current = null; }
+    onActiveCardChangeRef.current?.();
+
+    return () => {
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      if (startDelayRef.current) { clearTimeout(startDelayRef.current); startDelayRef.current = null; }
+    };
+  }, [card.text]); // ← no callback in deps; ref read is always current
+
+  // Letter-by-letter reveal — same pattern as KnifeSelection. The request is
+  // latched before the breath timer so an isOracleSpeaking state transition
+  // cannot resend the same card or interrupt its opening audio.
+  useEffect(() => {
+    if (spokenCardRef.current === card.text || previewRequestedRef.current === card.text) return;
 
     if (isOracleSpeaking) return;
 
     const total = card.text.length;
     let count = 0;
 
+    previewRequestedRef.current = card.text;
     onSpeakCard?.(card.text);
 
-    const startDelay = setTimeout(() => {
+    startDelayRef.current = setTimeout(() => {
+      startDelayRef.current = null;
       spokenCardRef.current = card.text;
       intervalRef.current = setInterval(() => {
         count++;
@@ -80,12 +111,8 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onCardProgress, o
           intervalRef.current = null;
         }
       }, 54);
-    }, 400);
+    }, CARD_AUDIO_BREATH_MS);
 
-    return () => {
-      clearTimeout(startDelay);
-      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-    };
   }, [activeIdx, card.text, isOracleSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-advance 5s after Oracle finishes speaking the card
@@ -106,6 +133,7 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onCardProgress, o
 
   const handleNext = () => {
     spokenCardRef.current = null;
+    previewRequestedRef.current = null;
     if (isLastCard) {
       onTourComplete();
     } else {
@@ -258,7 +286,7 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onCardProgress, o
           <button
             key={i}
             className={`oracle-knife-dot${i === activeIdx ? ' oracle-knife-dot--active' : ''}`}
-            onClick={() => { spokenCardRef.current = null; setActiveIdx(i); }}
+              onClick={() => { spokenCardRef.current = null; previewRequestedRef.current = null; setActiveIdx(i); }}
             aria-label={`Tour card ${i + 1}: ${TOUR_CARDS[i].territory}`}
           />
         ))}

@@ -81,14 +81,29 @@ interface KnifeSelectionProps {
   onActiveCardChange?: () => void;
 }
 
+// How long the new card's audio has to breathe before the typewriter starts.
+// Gemini's first PCM chunk typically arrives 1.5–3s after the request; 650ms
+// lets the opening word land audibly before text begins revealing.
+const CARD_AUDIO_BREATH_MS = 650;
+
 export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKnifeIndex, onSelect, onSpeakQuestion, onQuestionProgress, onStartTracking, onActiveCardChange }: KnifeSelectionProps) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [isEmitting, setIsEmitting] = useState(false);
   const [landedChars, setLandedChars] = useState(0);
   const rafRef                 = useRef<number | null>(null);
   const intervalRef            = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startDelayRef          = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spokenQuestionRef      = useRef<string | null>(null);
+  // Latched as soon as the preview request fires — prevents a duplicate request
+  // if isOracleSpeaking later flips true (first audio chunk arrival).
+  const previewRequestedRef    = useRef<string | null>(null);
   const prevOracleSpeakingRef  = useRef(false);
+  // Stable ref to the latest onActiveCardChange callback. Storing in a ref
+  // means the card-change effect dep array never includes the callback identity,
+  // so a new inline function from the parent on an isOracleSpeaking re-render
+  // cannot re-trigger the flush and cut off opening audio.
+  const onActiveCardChangeRef  = useRef(onActiveCardChange);
+  useEffect(() => { onActiveCardChangeRef.current = onActiveCardChange; }, [onActiveCardChange]);
 
   // Emission glow on every card cycle (sound removed)
   useEffect(() => {
@@ -98,46 +113,59 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
     return () => clearTimeout(t);
   }, [activeIdx]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Question text: letter-by-letter reveal driven by actual PCM playback position.
-  // Typewriter runs at fixed 54ms/char; Oracle is triggered before typing starts to
-  // absorb Gemini's ~3s response latency — voice arrives mid-type.
-  // Falls back to fixed 54ms/char interval when hooks are absent.
+  // ── Effect 1: card/selection change — stop stale timers and flush ────────────
+  // Fires only when the active question or selection state changes, NOT when
+  // isOracleSpeaking toggles. That separation is the key fix: the old single
+  // effect ran on every isOracleSpeaking flip, so the first audio chunk arriving
+  // (which sets isOracleSpeaking=true) re-entered the effect and called
+  // onActiveCardChange() → flushPlayback(), cutting off the opening syllables.
   const question = KNIFE_QUESTIONS[activeIdx].question;
   useEffect(() => {
-    if (selectedKnifeIndex !== null) {
-      spokenQuestionRef.current = null;
-      return;
-    }
-
-    // spokenQuestionRef is set inside startDelay (not before) so a cancelled delay
-    // doesn't block the retry when Oracle finishes speaking.
-    if (spokenQuestionRef.current === question) return;
-
-    // Card changed or Oracle finished — wipe state and any leftover interval.
-    // IMPORTANT: interval is cleared HERE (on card/state change), NOT in the cleanup
-    // function. Clearing in cleanup was killing the running typewriter every time
-    // isOracleSpeaking toggled true mid-type.
+    previewRequestedRef.current = null;
+    spokenQuestionRef.current = null;
     setLandedChars(0);
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    if (startDelayRef.current) { clearTimeout(startDelayRef.current); startDelayRef.current = null; }
 
-    onActiveCardChange?.();
+    if (selectedKnifeIndex === null) {
+      // Read from ref — never from the dep array — so a new inline callback from
+      // the parent on an isOracleSpeaking re-render cannot re-trigger this flush.
+      onActiveCardChangeRef.current?.();
+    }
 
-    // Wait for any ongoing Oracle speech (e.g. territories announcement on first card).
-    // isOracleSpeaking in deps means this re-runs when Oracle finishes, retrying automatically.
+    return () => {
+      if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      if (startDelayRef.current) { clearTimeout(startDelayRef.current); startDelayRef.current = null; }
+    };
+  }, [question, selectedKnifeIndex]); // ← no callback in deps; ref read is always current
+
+  // ── Effect 2: fire preview request + typewriter ───────────────────────────
+  // Depends on isOracleSpeaking to retry when Oracle finishes any prior speech,
+  // but the latch (previewRequestedRef) prevents double-firing once requested.
+  // startDelay is CARD_AUDIO_BREATH_MS so the typewriter starts only after the
+  // opening words have had a chance to arrive and play.
+  useEffect(() => {
+    if (selectedKnifeIndex !== null) return;
     if (isOracleSpeaking) return;
+    if (previewRequestedRef.current === question || spokenQuestionRef.current === question) return;
 
     const total = question.length;
     let count = 0;
 
-    // Fire Oracle immediately (before typing starts) to absorb Gemini's ~3s response latency.
-    // Voice arrives mid-type rather than seconds after the card finishes.
+    // Latch immediately so no re-entry happens while we wait for audio.
+    previewRequestedRef.current = question;
+
+    // Fire Oracle immediately to absorb Gemini's ~3s response latency —
+    // voice arrives during or after the breath window, never after the text.
     onStartTracking?.();
     onSpeakQuestion?.(question);
 
-    const startDelay = setTimeout(() => {
-      // Mark spoken here — inside the delay — so a cancelled startDelay doesn't prevent
-      // the retry path from calling onSpeakQuestion again when Oracle finishes speaking.
+    startDelayRef.current = setTimeout(() => {
+      startDelayRef.current = null;
+      // Mark typewriter started; auto-advance effect uses this to confirm the
+      // card was actually spoken before cycling.
       spokenQuestionRef.current = question;
       intervalRef.current = setInterval(() => {
         count++;
@@ -148,18 +176,11 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
           intervalRef.current = null;
         }
       }, 54);
-    }, 400);
-
-    return () => {
-      clearTimeout(startDelay);
-      // DO NOT clear intervalRef here. The running typewriter must survive
-      // isOracleSpeaking changes — the cleanup fires on every dep change, and
-      // clearing the interval here is what caused the text to stop mid-word.
-      // Interval lifecycle: started in startDelay above, cleared in effect body
-      // above on card change, auto-stopped when count >= total.
-      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
-    };
-  }, [activeIdx, selectedKnifeIndex, question, isOracleSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, CARD_AUDIO_BREATH_MS);
+    // No cleanup here: intervalRef lifecycle is managed by Effect 1 (card change)
+    // and the interval's own self-stop. Cleaning up here on every isOracleSpeaking
+    // transition was the original source of mid-word typewriter death.
+  }, [question, selectedKnifeIndex, isOracleSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Advance to next card after Oracle finishes speaking the current question.
   // Detects the isOracleSpeaking falling edge and only cycles if this card was actually spoken.

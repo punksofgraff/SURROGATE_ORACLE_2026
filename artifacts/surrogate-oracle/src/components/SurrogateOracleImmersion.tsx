@@ -1855,6 +1855,7 @@ export function SurrogateOracleImmersion() {
           <motion.div key="tour-layer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none' }}>
             <TourSelection
               isOracleSpeaking={isOracleSpeaking}
+              onActiveCardChange={() => connection.flushPlayback()}
               onSpeakCard={(text) => {
                 if (isOracleSpeaking) return;
                 connection.setTransmissionQ(12, 0);

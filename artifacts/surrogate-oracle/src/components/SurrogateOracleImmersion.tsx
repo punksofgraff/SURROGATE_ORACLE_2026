@@ -22,6 +22,9 @@ import { GoogleSignInOverlay } from './GoogleSignInOverlay';
 import { GraffPunksRadio } from './GraffPunksRadio';
 import { EnculturateCrate } from './EnculturateCrate';
 import OracleConversation, { OracleConversationHandle, OracleScore } from './OracleConversation';
+
+/** Snapshot of a session's turns, as returned by the conversation handle. */
+type SessionTurns = ReturnType<OracleConversationHandle['getSessionTurns']>;
 import { MatrixRain } from './MatrixRain';
 import { ArtifactCard } from './ArtifactCard';
 import { ScrambleFragment } from './ScrambleFragment';
@@ -256,6 +259,15 @@ export function SurrogateOracleImmersion() {
   const pendingNewSeekerLoreRef  = useRef(false); // startLore waiting for WS connection
   const pendingWalletGreetingRef = useRef<string | null>(null); // personalized greeting seed for returning wallet seekers
   const priorCompactSummariesRef = useRef<string[]>([]); // compact summaries from previous sessions, fetched at tap-in
+  // Holds the settled promise for post-session background writes (echo + distill).
+  // exitOracleMode waits on this before calling onCleanup so writes land before
+  // the session tears down. Reset to null at the start of each oracle phase.
+  const exitWritesRef = useRef<Promise<void> | null>(null);
+  // Idempotency for finalizeOracleSession — set on the FIRST exit path to run
+  // (mic exit, hamburger EXIT, or tier-gate close); later callers get the
+  // already-captured turn snapshot. Reset alongside sessionEndedRef.
+  const sessionFinalizedRef = useRef(false);
+  const finalTurnsRef = useRef<SessionTurns>([]);
 
   // ── Service Hooks ───────────────────────────────────────────────────────
   const { isReturning, hasCompletedLore, hasSignedWallet, markVisited, markLoreCompleted, markWalletSigned, ipAddress } = useIpCheck();
@@ -310,6 +322,10 @@ export function SurrogateOracleImmersion() {
   }, []);
 
   const handleCleanup = useCallback(() => {
+    // Last-resort teardown: no exit path may leave the Gemini WS or mic live.
+    // finalizeOracleSession normally disconnects first (both are idempotent),
+    // but a future direct caller of exitOracleMode still gets a dead session here.
+    oracleConversationRef.current?.disconnect();
     connection.cleanup();
     visemeStateRef.current = SILENCE_VISEME_STATE;
     const nextId = crypto.randomUUID();
@@ -317,9 +333,16 @@ export function SurrogateOracleImmersion() {
     setCurrentSessionId(nextId);
   }, [connection]);
 
+  // Awaited by exitOracleMode before onCleanup — resolves when the post-session
+  // background writes (echo + distill) settle, or immediately when none are staged.
+  const handleWritesSettled = useCallback((): Promise<void> => {
+    return exitWritesRef.current ?? Promise.resolve();
+  }, []);
+
   const journey = useOracleJourney({
     onStartSession: handleStartSession,
     onCleanup: handleCleanup,
+    onWritesSettled: handleWritesSettled,
   });
 
   const { scenePhase, enterTerminal, enterTour, awakeFromTerminal, exitOracleMode, selectKnifeQuestion, resetJourney } = journey;
@@ -684,32 +707,86 @@ export function SurrogateOracleImmersion() {
     }
   }, []);
 
-  const handleSessionEnd = useCallback((alignment: string, totemLevel: number, _coins: number) => {
-    if (sessionEndedRef.current) return; // guard: ignore double exit taps (reset on re-entering oracle)
-    sessionEndedRef.current = true;
+  /**
+   * Centralized, idempotent exit finalization — EVERY exit path must run this:
+   * mic-button exit (via handleSessionEnd), hamburger EXIT, tier-gate close.
+   * Captures the turn snapshot, silently kills the live session (WS + mic +
+   * buffered PCM) and stages the durable background writes on exitWritesRef.
+   * Safe to call twice: the second caller gets the already-captured snapshot.
+   */
+  const finalizeOracleSession = useCallback((alignment: string | null, totemLevel: number | null): SessionTurns => {
+    if (sessionFinalizedRef.current) return finalTurnsRef.current;
+    sessionFinalizedRef.current = true;
     const key = seekerKeyRef.current;
+
+    // ── Silent teardown FIRST — capture turns, then kill the live session ──
+    // Read turns BEFORE disconnect so the snapshot is complete, then close the
+    // Gemini WS + release the mic + flush any buffered PCM immediately. The
+    // in-flight turn stops speaking the moment the seeker exits — the session
+    // must not persist through the Talisman window or exit transition.
+    // releaseMic's 'session disconnect' path skips the audio-session re-assert
+    // hooks, so on mobile this teardown causes no playback-chain side effects.
+    const allTurns = oracleConversationRef.current?.getSessionTurns() ?? [];
+    finalTurnsRef.current = allTurns;
+    oracleConversationRef.current?.disconnect();
+    connection.flushPlayback();
+
     trackOracleEvent({ 
       event: 'oracle_exit', 
       phase_at_exit: scenePhase, 
-      turns: oracleConversationRef.current?.getSessionTurns().length || 0,
+      turns: allTurns.length,
       total_ms: Date.now() - (window.__session_start || Date.now())
     });
+
+    // ── Background writes — durable, non-blocking ─────────────────────────
+    // Both writes go out with keepalive so a fast navigation/tab close cannot
+    // drop them. Their settled promise is staged on exitWritesRef;
+    // exitOracleMode awaits it (alongside its 2.8s floor) before onCleanup.
     if (key) {
-      saveEcho({
-        seekerKey: key,
-        lastArchetype: echoTrackRef.current.archetype,
-        lastCost: echoTrackRef.current.cost,
-        totemLevel,
-        alignment,
-      });
-      const turns = oracleConversationRef.current?.getSessionTurns() ?? [];
-      if (turns.length >= 2) {
-        import('../lib/supabase').then(({ supabase }) => {
-          supabase.functions.invoke('oracle-memory-distill', {
-            body: { seekerKey: key, turns, archetype: echoTrackRef.current.archetype, alignment, totemLevel },
-          }).catch((err: unknown) => console.warn('[memory-distill] fire-and-forget failed:', err));
-        });
+      const writes: Promise<unknown>[] = [];
+
+      writes.push(
+        import('../lib/supabase').then(({ invokeFunctionKeepalive }) =>
+          invokeFunctionKeepalive('seeker-echo', {
+            seekerKey: key,
+            lastArchetype: echoTrackRef.current.archetype,
+            lastCost: echoTrackRef.current.cost,
+            totemLevel: totemLevel ?? echoTrackRef.current.totemLevel ?? 0,
+            alignment: alignment ?? undefined,
+          })
+        ).then(() => logStep('SEEKER ECHO SAVED', 'ok'))
+         .catch((err: unknown) => {
+           logStep('SEEKER ECHO SAVE FAILED', 'warn');
+           console.warn('Seeker Echo save error:', err);
+         })
+      );
+
+      if (allTurns.length >= 2) {
+        // Trim the distill transcript so the payload stays under the browser's
+        // ~64KB keepalive cap — a marathon session must not lose its unload
+        // durability. Drop oldest turns first; the distiller weighs recent
+        // turns most heavily anyway.
+        const basePayload = { seekerKey: key, archetype: echoTrackRef.current.archetype, alignment, totemLevel };
+        let distillTurns = allTurns;
+        while (distillTurns.length > 4 && JSON.stringify({ ...basePayload, turns: distillTurns }).length > 55_000) {
+          distillTurns = distillTurns.slice(2);
+        }
+        if (distillTurns !== allTurns) logStep(`DISTILL TRIMMED ${allTurns.length}→${distillTurns.length} turns (keepalive cap)`, 'warn');
+        writes.push(
+          import('../lib/supabase').then(({ invokeFunctionKeepalive }) =>
+            invokeFunctionKeepalive('oracle-memory-distill', { ...basePayload, turns: distillTurns })
+          ).then(() => logStep('MEMORY DISTILLED', 'ok'))
+           .catch((err: unknown) => console.warn('[memory-distill] background write failed:', err))
+        );
       }
+
+      // Settle with a 6s ceiling — writes landing is the goal, but the exit
+      // must never hang on a dead network. allSettled + timeout race.
+      exitWritesRef.current = Promise.race([
+        Promise.allSettled(writes).then(() => undefined),
+        new Promise<void>(r => setTimeout(r, 6000)),
+      ]);
+
       // Count completed journeys per seeker key (wallet address or IP).
       // Tracked for all users — wallet seekers hit the tier gate, IP seekers hit the wallet gate.
       const countKey = `surrogate_journeys_${key}`;
@@ -718,11 +795,18 @@ export function SurrogateOracleImmersion() {
       logStep(`JOURNEY COMPLETE — total: ${next} [${hasSignedWallet ? 'wallet' : 'ip'}]`, 'ok');
     }
 
+    return allTurns;
+  }, [hasSignedWallet, connection, scenePhase]);
+
+  const handleSessionEnd = useCallback((alignment: string, totemLevel: number, _coins: number) => {
+    if (sessionEndedRef.current) return; // guard: ignore double exit taps (reset on re-entering oracle)
+    sessionEndedRef.current = true;
+    const allTurns = finalizeOracleSession(alignment, totemLevel);
+
     // ── Talisman Card — walk-away moment before dormant ──────────────────
     // Pull the last Oracle sentence as the prophecy line. Show the card over
     // the still-lit oracle scene; exitOracleMode fires when the seeker taps
     // or after 8s (handled inside TalismanCard / handleTalismanDismiss).
-    const allTurns = oracleConversationRef.current?.getSessionTurns() ?? [];
     const lastOracleTurn = [...allTurns].reverse().find(t => t.role === 'oracle');
     const prophecy = lastOracleTurn ? extractProphecy(lastOracleTurn.content) : null;
     setTalismanData({
@@ -732,7 +816,7 @@ export function SurrogateOracleImmersion() {
     });
     logStep('TALISMAN CARD STAGED', 'ok');
     // exitOracleMode deferred to handleTalismanDismiss
-  }, [saveEcho, hasSignedWallet]);
+  }, [finalizeOracleSession]);
 
   /** Called by TalismanCard on auto-dismiss (8s) or tap — then exit the oracle phase. */
   const handleTalismanDismiss = useCallback(() => {
@@ -818,6 +902,8 @@ export function SurrogateOracleImmersion() {
     }
     if (scenePhase === 'oracle') {
       sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; pendingPortraitUrlRef.current = null;
+      exitWritesRef.current = null; // fresh session — no stale writes to wait on at next exit
+      sessionFinalizedRef.current = false; finalTurnsRef.current = []; // re-arm exit finalization
       // Journey gate: check seeker count (wallet address or IP) against the free limit.
       {
         const key = seekerKeyRef.current;
@@ -2068,6 +2154,9 @@ export function SurrogateOracleImmersion() {
         isOpen={showTierGate}
         onClose={() => {
           setShowTierGate(false);
+          // Silent teardown + background writes must run on this exit path too —
+          // idempotent, so a prior mic-button exit makes this a no-op.
+          finalizeOracleSession(echoTrackRef.current.alignment, echoTrackRef.current.totemLevel);
           exitOracleMode();
         }}
         userId={currentUserId ?? seekerKeyRef.current ?? ''}
@@ -2367,7 +2456,7 @@ export function SurrogateOracleImmersion() {
           <AnimatePresence>
           {hamburgerOpen && (
             <motion.div initial={{ opacity: 0, scale: 0.94, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.94, y: -6 }} style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'rgba(0,4,2,0.94)', border: '1px solid rgba(0,255,136,0.35)', borderRadius: '8px', overflow: 'hidden', minWidth: '160px', backdropFilter: 'blur(14px)' }}>
-              <button onClick={() => { exitOracleMode(echoTrackRef.current.alignment); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>EXIT</button>
+              <button onClick={() => { finalizeOracleSession(echoTrackRef.current.alignment, echoTrackRef.current.totemLevel); exitOracleMode(echoTrackRef.current.alignment); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>EXIT</button>
               <button onClick={() => { if (confirm('Reset?')) { resetJourney(); setHamburgerOpen(false); } }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>RESET</button>
               <button onClick={() => { if (isXRMode) deactivateXRMode(); else handleActivateXRMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#b026ff', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isXRMode ? '◈ EXIT AR' : '◈ AR MODE'}</button>
               <button onClick={() => { oracleConversationRef.current?.toggleTypeMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isTypeMode ? 'CLOSE PAD' : 'TYPE SIGNAL'}</button>

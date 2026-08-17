@@ -18,11 +18,16 @@ export type ScenePhase = 'dormant' | 'terminal' | 'tour' | 'awakened' | 'oracle'
 interface UseOracleJourneyProps {
   onStartSession: () => void;
   onCleanup: () => void;
+  /** Optional: returns a promise that resolves when post-session writes are
+   *  settled (or times out). exitOracleMode awaits this before calling onCleanup
+   *  so background writes land before the session is fully torn down. */
+  onWritesSettled?: () => Promise<void>;
 }
 
 export function useOracleJourney({
   onStartSession,
   onCleanup,
+  onWritesSettled,
 }: UseOracleJourneyProps) {
   const [scenePhase, setScenePhase] = useState<ScenePhase>(() => {
     // DEV-only: boot straight into a phase for visual debugging, e.g. ?phase=oracle
@@ -176,7 +181,25 @@ export function useOracleJourney({
       setTimeout(() => { delete document.body.dataset.exitAlignment; }, 3200);
     }
 
-    setTimeout(() => {
+    // ── Background writes settle window ─────────────────────────────────────
+    // onWritesSettled (supplied by the parent) resolves when the echo upsert
+    // and oracle-memory-distill calls have either landed or timed out. We race
+    // it against a 2.8s hard floor so the Talisman never lingers past its
+    // designed duration. The 2.8s floor is kept even when writes finish early
+    // so the alignment CSS animation always completes.
+    const floorMs = 2800;
+    // Never let a rejected/hung write block the dormant transition: swallow
+    // rejections here (the parent already logs failures) and cap the total
+    // wait at 6s even if the parent's settlement promise misbehaves.
+    const writesPromise = (onWritesSettled ? onWritesSettled() : Promise.resolve())
+      .catch(() => undefined);
+    const writesCapped  = Promise.race([
+      writesPromise,
+      new Promise<void>(r => setTimeout(r, 6000)),
+    ]);
+    const floorPromise  = new Promise<void>(r => setTimeout(r, floorMs));
+
+    Promise.all([writesCapped, floorPromise]).then(() => {
       setScenePhase('dormant');
       setLoreComplete(false);
       setSelectedKnifeQuestion(null);
@@ -190,12 +213,12 @@ export function useOracleJourney({
 
       onCleanup();
       logStep('DORMANT RESTORED', 'ok');
-    }, 2800);
+    });
 
     setTimeout(() => {
       setIsExiting(false);
     }, 3200);
-  }, [onCleanup]);
+  }, [onCleanup, onWritesSettled]);
 
   return useMemo(() => ({
     scenePhase,

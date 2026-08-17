@@ -36,6 +36,40 @@ export const supabaseEdgeFunctionHeaders: Record<string, string> = {
   'apikey': supabaseAnonKey || '',
 };
 
+/**
+ * Invoke an edge function via raw fetch with `keepalive: true`, so the request
+ * survives page unload/navigation. Use for post-session writes fired during
+ * exit teardown (seeker-echo upsert, oracle-memory-distill) — a fast exit or
+ * tab close must not drop them. Note: keepalive caps the body at ~64KB; both
+ * exit-path payloads are well under that.
+ *
+ * Same auth surface as supabase.functions.invoke (anon key), no client state.
+ */
+export function invokeFunctionKeepalive(name: string, body: unknown): Promise<Response> {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return Promise.reject(new Error(`[keepalive] Supabase env missing — cannot invoke ${name}`));
+  }
+  const payload = JSON.stringify(body);
+  // Browsers reject keepalive requests over ~64KB with a TypeError before the
+  // request is even sent. A marathon session's distill payload could cross
+  // that line — better to send it WITHOUT keepalive (still usually lands,
+  // since the Talisman window keeps the page alive ~3s) than not at all.
+  const useKeepalive = payload.length < 60_000;
+  return fetch(`${supabaseUrl}/functions/v1/${name}`, {
+    method: 'POST',
+    keepalive: useKeepalive,
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': supabaseAnonKey,
+      'Authorization': `Bearer ${supabaseAnonKey}`,
+    },
+    body: payload,
+  }).then((res) => {
+    if (!res.ok) throw new Error(`[keepalive] ${name} responded ${res.status}`);
+    return res;
+  });
+}
+
 export type Database = {
   public: {
     Tables: {

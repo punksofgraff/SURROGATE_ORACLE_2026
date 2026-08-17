@@ -1342,9 +1342,13 @@ const OracleConversation = forwardRef(
       clearListeningState();
       if (hadStream) {
         logStep(`MIC RELEASED (${reason})`, 'ok');
-        // Track stop flips the mobile OS audio session back to playback mode —
-        // let the parent re-assert Oracle playback state after it settles.
-        onAudioSessionChangedRef.current?.('mic-stopped');
+        // 'session disconnect' is silent teardown on exit — the Oracle playback
+        // chain is already stopped, so there is nothing to re-assert and calling
+        // onAudioSessionChanged here would add an unnecessary iOS audio-session
+        // flip (playback → voice-processing mode) right as we're shutting down.
+        if (reason !== 'session disconnect') {
+          onAudioSessionChangedRef.current?.('mic-stopped');
+        }
       }
     };
     releaseMicRef.current = releaseMic;

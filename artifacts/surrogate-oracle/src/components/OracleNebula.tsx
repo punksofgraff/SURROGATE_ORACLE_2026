@@ -48,16 +48,17 @@ interface OracleNebulaProps {
 let glowTexture: THREE.Texture | null = null;
 function getGlowTexture(): THREE.Texture {
   if (glowTexture) return glowTexture;
-  const size = 64;
+  const size = 128;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
   const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  grad.addColorStop(0.0, 'rgba(255,255,255,1)');
-  grad.addColorStop(0.25, 'rgba(255,255,255,0.55)');
-  grad.addColorStop(0.6, 'rgba(255,255,255,0.12)');
-  grad.addColorStop(1.0, 'rgba(255,255,255,0)');
+  grad.addColorStop(0.0, 'rgba(255,255,255,1.0)');
+  grad.addColorStop(0.2, 'rgba(230,255,245,0.92)');
+  grad.addColorStop(0.5, 'rgba(0,255,136,0.45)');
+  grad.addColorStop(0.75, 'rgba(0,255,204,0.15)');
+  grad.addColorStop(1.0, 'rgba(0,0,0,0)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, size, size);
   glowTexture = new THREE.CanvasTexture(canvas);
@@ -72,8 +73,7 @@ function makeSprite(color: number, opacity: number): THREE.Sprite {
     transparent: true,
     opacity,
     depthWrite: false,
-    // Particles sit behind the avatar; depthTest keeps them from bleeding
-    // through the face when the camera drifts.
+    // Particles depth-tested against the avatar geometry so they don't occlude the face
     depthTest: true,
   });
   return new THREE.Sprite(material);
@@ -81,9 +81,9 @@ function makeSprite(color: number, opacity: number): THREE.Sprite {
 
 /** Tier → particle budget. */
 const TIER_CONFIG = {
-  1: { dustParticles: [1, 1] as [number, number], dustEvery: [0.35, 0.6] as [number, number], energyParticles: [1, 2] as [number, number] },
-  2: { dustParticles: [1, 2] as [number, number], dustEvery: [0.18, 0.3] as [number, number], energyParticles: [2, 4] as [number, number] },
-  3: { dustParticles: [2, 3] as [number, number], dustEvery: [0.12, 0.22] as [number, number], energyParticles: [3, 6] as [number, number] },
+  1: { dustParticles: [2, 3] as [number, number], dustEvery: [0.18, 0.32] as [number, number], energyParticles: [3, 5] as [number, number] },
+  2: { dustParticles: [3, 6] as [number, number], dustEvery: [0.10, 0.20] as [number, number], energyParticles: [5, 9] as [number, number] },
+  3: { dustParticles: [5, 9] as [number, number], dustEvery: [0.06, 0.12] as [number, number], energyParticles: [8, 16] as [number, number] },
 } as const;
 
 /** Near-zero rate object reused when the Oracle falls silent. */
@@ -100,7 +100,7 @@ export function OracleNebula({ tier, speakingRef }: OracleNebulaProps) {
 
   // Rates are cheap to construct but we keep the two energy variants stable.
   const energyActiveRate = useMemo(
-    () => new Rate(new Span(cfg.energyParticles[0], cfg.energyParticles[1]), new Span(0.06, 0.12)),
+    () => new Rate(new Span(cfg.energyParticles[0], cfg.energyParticles[1]), new Span(0.04, 0.08)),
     [cfg],
   );
 
@@ -108,45 +108,45 @@ export function OracleNebula({ tier, speakingRef }: OracleNebulaProps) {
     const system = new System();
     system.addRenderer(new SpriteRenderer(scene, THREE));
 
-    // ── Ambient dust — fills the cabinet volume behind/around the bust ──────
+    // ── Ambient dust — clearly visible motes framing the cabinet & avatar ─────
     const dust = new Emitter()
       .setRate(new Rate(new Span(cfg.dustParticles[0], cfg.dustParticles[1]), new Span(cfg.dustEvery[0], cfg.dustEvery[1])))
       .addInitializers([
-        new Position(new BoxZone(0, 0, -0.45, 1.6, 1.7, 0.7)),
+        new Position(new BoxZone(0, 0, -0.35, 2.4, 2.2, 0.9)),
         new Mass(1),
-        new Radius(0.012, 0.035),
-        new Life(4, 8),
-        new Body(makeSprite(0x00ff88, 0.35)),
-        new RadialVelocity(new Span(0.008, 0.03), new Vector3D(0, 1, 0), 60),
+        new Radius(0.032, 0.072),
+        new Life(4.5, 8.0),
+        new Body(makeSprite(0x00ff88, 0.75)),
+        new RadialVelocity(new Span(0.015, 0.05), new Vector3D(0, 1, 0), 50),
       ])
       .addBehaviours([
-        new Alpha(0, 0.5, undefined),
-        new Scale(0.4, 1.1),
-        new Color('#00ff88', '#004433'),
-        new RandomDrift(0.02, 0.008, 0.008, 0.6),
+        new Alpha(0.15, 0.85, undefined),
+        new Scale(0.6, 1.35),
+        new Color('#00ff88', '#00ffcc'),
+        new RandomDrift(0.035, 0.015, 0.015, 0.5),
       ])
-      .setPosition({ x: 0, y: -0.1, z: -0.45 })
+      .setPosition({ x: 0, y: -0.1, z: -0.35 })
       .emit();
 
-    // ── Energy tendrils — rise around the silhouette while speaking ─────────
+    // ── Energy tendrils — bright rising bursts around avatar silhouette while speaking ──
     const energy = new Emitter()
       .setRate(silentRate())
       .addInitializers([
-        new Position(new BoxZone(0, 0, -0.25, 1.1, 0.35, 0.3)),
+        new Position(new BoxZone(0, 0, -0.2, 1.4, 0.5, 0.45)),
         new Mass(1),
-        new Radius(0.008, 0.022),
-        new Life(1.2, 2.4),
-        new Body(makeSprite(0xb026ff, 0.5)),
-        new RadialVelocity(new Span(0.12, 0.3), new Vector3D(0, 1, 0), 22),
+        new Radius(0.022, 0.052),
+        new Life(1.4, 2.6),
+        new Body(makeSprite(0xb026ff, 0.9)),
+        new RadialVelocity(new Span(0.22, 0.5), new Vector3D(0, 1, 0), 28),
       ])
       .addBehaviours([
-        new Alpha(0.8, 0),
-        new Scale(1, 0.25),
+        new Alpha(0.95, 0.05),
+        new Scale(1.2, 0.3),
         new Color('#b026ff', '#00ffcc'),
-        new RandomDrift(0.05, 0.01, 0.02, 0.25),
-        new Gravity(-0.02), // negative gravity: gentle extra lift
+        new RandomDrift(0.06, 0.02, 0.03, 0.3),
+        new Gravity(-0.035), // negative gravity: gentle extra lift
       ])
-      .setPosition({ x: 0, y: -0.55, z: -0.25 })
+      .setPosition({ x: 0, y: -0.5, z: -0.2 })
       .emit();
 
     system.addEmitter(dust).addEmitter(energy);

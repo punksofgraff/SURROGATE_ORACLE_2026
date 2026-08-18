@@ -44,12 +44,12 @@ const OVR_NAMES = [
 // sigma = Gaussian influence radius in world units
 
 const LM = {
-  jaw:    { cx: 0,       cy: 1.452, cz: 0.090, sigma: 0.048 }, // lower jaw / chin area
-  lower:  { cx: 0,       cy: 1.487, cz: 0.133, sigma: 0.020 }, // lower lip center
-  upper:  { cx: 0,       cy: 1.514, cz: 0.133, sigma: 0.018 }, // upper lip center
-  lc:     { cx: -0.040,  cy: 1.500, cz: 0.120, sigma: 0.018 }, // left corner
-  rc:     { cx:  0.040,  cy: 1.500, cz: 0.120, sigma: 0.018 }, // right corner
-  chin:   { cx: 0,       cy: 1.434, cz: 0.082, sigma: 0.032 }, // chin
+  jaw:    { cx: 0,       cy: 1.465, cz: 0.110, sigma: 0.032 }, // lower jaw / mandible (anterior)
+  lower:  { cx: 0,       cy: 1.490, cz: 0.133, sigma: 0.020 }, // lower lip center
+  upper:  { cx: 0,       cy: 1.515, cz: 0.133, sigma: 0.018 }, // upper lip center
+  lc:     { cx: -0.038,  cy: 1.500, cz: 0.124, sigma: 0.018 }, // left corner
+  rc:     { cx:  0.038,  cy: 1.500, cz: 0.124, sigma: 0.018 }, // right corner
+  chin:   { cx: 0,       cy: 1.442, cz: 0.100, sigma: 0.024 }, // anterior chin (away from throat)
   eyeL:   { cx: -0.032,  cy: 1.642, cz: 0.090, sigma: 0.025 }, // left eye
   eyeR:   { cx:  0.032,  cy: 1.642, cz: 0.090, sigma: 0.025 }, // right eye
 };

@@ -43,6 +43,7 @@ import { OracleAvatar3D } from './OracleAvatar3D';
 import { EffectComposer, DepthOfField, Bloom, ChromaticAberration, Noise, Scanline } from '@react-three/postprocessing';
 import { Physics } from '@react-three/rapier';
 import { OracleNebula } from './OracleNebula';
+import { OracleQuarks } from './OracleQuarks';
 import { OraclePhysicsDebris } from './OraclePhysicsDebris';
 
 // Hooks
@@ -1615,7 +1616,6 @@ export function SurrogateOracleImmersion() {
                   width: '100%', height: '100%',
                   position: 'absolute', top: 0, left: 0,
                   opacity: oracleManifestReady ? 1 : 0,
-                  transition: 'opacity 1.8s ease-out',
                   pointerEvents: oracleManifestReady ? 'auto' : 'none',
                   zIndex: 3,
                 }}
@@ -1644,6 +1644,10 @@ export function SurrogateOracleImmersion() {
                         {renderTier >= 1 && (
                           <OracleNebula tier={renderTier as 1 | 2 | 3} speakingRef={isOracleSpeakingRef} />
                         )}
+                        {/* High-Performance GPU Quarks particle field (tier 1+) */}
+                        {renderTier >= 1 && (
+                          <OracleQuarks tier={renderTier as 1 | 2 | 3} speakingRef={isOracleSpeakingRef} amplitude={visemeStateRef.current?.amplitude ?? 0} />
+                        )}
                         {/* Rapier glyph-shard debris field (tier 2+) — fixed 60Hz step,
                             zero gravity, shards constrained behind the bust.
                             Inner Suspense: Physics suspends while the Rapier WASM loads —
@@ -1653,35 +1657,33 @@ export function SurrogateOracleImmersion() {
                           <Suspense fallback={null}>
                             <Physics gravity={[0, 0, 0]} timeStep={1 / 60} colliders={false}>
                               <OraclePhysicsDebris
-                                count={renderTier >= 3 ? 14 : 8}
+                                count={renderTier >= 3 ? 18 : 10}
                                 speakingRef={isOracleSpeakingRef}
                               />
                             </Physics>
                           </Suspense>
                         )}
                         {renderTier >= 1 && (
-                          <EffectComposer>
+                          <EffectComposer multisampling={renderTier >= 2 ? 4 : 0}>
                             {[
-                              <DepthOfField
-                                key="dof"
-                                focusDistance={0.012}
-                                focalLength={0.022}
-                                bokehScale={2.0}
-                                height={480}
-                              />,
                               <Bloom
                                 key="bloom"
-                                intensity={renderTier >= 2 ? 0.55 : 0.3}
-                                luminanceThreshold={0.32}
-                                luminanceSmoothing={0.22}
+                                intensity={renderTier >= 3 ? 1.45 : renderTier >= 2 ? 1.15 : 0.75}
+                                luminanceThreshold={0.20}
+                                luminanceSmoothing={0.32}
                                 mipmapBlur
                               />,
                               ...(renderTier >= 2 ? [
-                                <ChromaticAberration key="ca" offset={[0.00045, 0.0006]} radialModulation modulationOffset={0.4} />,
-                                <Noise key="noise" premultiply opacity={0.28} />,
+                                <ChromaticAberration
+                                  key="ca"
+                                  offset={[0.0016, 0.0022]}
+                                  radialModulation
+                                  modulationOffset={0.42}
+                                />,
+                                <Noise key="noise" premultiply opacity={0.22} />,
                               ] : []),
                               ...(renderTier >= 3 ? [
-                                <Scanline key="scanline" density={1.1} opacity={0.06} />,
+                                <Scanline key="scanline" density={1.25} opacity={0.14} />,
                               ] : []),
                             ]}
                           </EffectComposer>

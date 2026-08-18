@@ -49,6 +49,47 @@ function readSessionCache(): GPUProfile | null {
   }
 }
 
+function getWebGLRendererInfo(): { renderer: string; isMobile: boolean } {
+  try {
+    const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (!gl) return { renderer: '', isMobile };
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const renderer = ext ? (gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '') : (gl.getParameter(gl.RENDERER) || '');
+    return { renderer: String(renderer), isMobile };
+  } catch {
+    return { renderer: '', isMobile: false };
+  }
+}
+
+function heuristicTierFromRenderer(renderer: string, isMobile: boolean): GPUProfile['tier'] {
+  const r = renderer.toLowerCase();
+  if (!r) return isMobile ? 1 : 2;
+  // Software / headless emulation
+  if (r.includes('swiftshader') || r.includes('llvmpipe') || r.includes('softpipe') || r.includes('software')) {
+    return 1;
+  }
+  // High-end desktop / Apple Silicon / modern discrete
+  if (
+    r.includes('rtx') ||
+    r.includes('geforce') ||
+    r.includes('radeon') ||
+    r.includes('apple m') ||
+    r.includes('apple gpu') ||
+    r.includes('quadro') ||
+    r.includes('arc') ||
+    r.includes('gtx')
+  ) {
+    return isMobile ? 2 : 3;
+  }
+  // Modern integrated / mid-range
+  if (r.includes('iris') || r.includes('intel') || r.includes('mali') || r.includes('adreno')) {
+    return 2;
+  }
+  return isMobile ? 1 : 2;
+}
+
 function probe(): Promise<GPUProfile> {
   if (cached) return Promise.resolve(cached);
 
@@ -63,19 +104,38 @@ function probe(): Promise<GPUProfile> {
       .then((result) => {
         const unsupported =
           result.type === 'WEBGL_UNSUPPORTED' || result.type === 'BLOCKLISTED';
-        const tier = (unsupported
-          ? 0
-          : Math.max(0, Math.min(3, result.tier))) as GPUProfile['tier'];
-        cached = { tier, isMobile: !!result.isMobile, ready: true };
+        if (unsupported) {
+          cached = { tier: 0, isMobile: !!result.isMobile, ready: true };
+          try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached)); } catch {}
+          return cached;
+        }
+
+        let tier = Math.max(0, Math.min(3, result.tier)) as GPUProfile['tier'];
+        const isMobile = !!result.isMobile;
+
+        // If detect-gpu returned tier 1 on a capable desktop (e.g. unknown GPU string / missing benchmark),
+        // use fast hardware heuristic to prevent stranding strong machines at tier 1.
+        if (tier <= 1 && !isMobile) {
+          const { renderer } = getWebGLRendererInfo();
+          const heuristic = heuristicTierFromRenderer(renderer, false);
+          if (heuristic > tier) {
+            tier = heuristic;
+          }
+        }
+
+        cached = { tier, isMobile, ready: true };
         try {
           sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached));
         } catch { /* storage full / private mode — probe again next tab */ }
         return cached;
       })
       .catch(() => {
-        // Benchmark fetch failed (offline / CDN blocked). WebGL context creation
-        // is still guarded by the OracleErrorBoundary, so assume a modest GPU.
-        cached = { tier: 1, isMobile: false, ready: true };
+        // Benchmark fetch failed (offline / CDN blocked).
+        // Fall back to hardware heuristic instead of blindly sticking to tier 1.
+        // DO NOT write network-failure fallback to sessionStorage so reload can retry detect-gpu.
+        const { renderer, isMobile } = getWebGLRendererInfo();
+        const tier = heuristicTierFromRenderer(renderer, isMobile);
+        cached = { tier, isMobile, ready: true };
         return cached;
       });
   }

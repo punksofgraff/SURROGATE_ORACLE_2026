@@ -137,18 +137,18 @@ type OVRName = typeof OVR_NAMES[number];
 // Re-run: npm run calibrate after changing hero3.glb.
 // Arrays = co-articulation blend (multiple shapes activated together).
 const ORACLE_TO_OVR: Record<string, OVRName[]> = {
-  X: ['viseme_sil'],
-  A: ['viseme_aa'],
-  E: ['viseme_E', 'viseme_ih'],
-  I: ['viseme_ih'],
-  O: ['viseme_oh', 'viseme_ou'],
-  U: ['viseme_ou'],
-  B: ['viseme_PP'],
-  C: ['viseme_SS', 'viseme_CH'],
-  D: ['viseme_DD', 'viseme_TH'],
-  F: ['viseme_FF'],
-  G: ['viseme_kk'],
-  H: ['viseme_oh', 'viseme_ou'],
+  X: ['viseme_sil'], // silence
+  A: ['viseme_aa'], // "ah"
+  E: ['viseme_E'], // "eh"
+  I: ['viseme_ih'], // "ih"
+  O: ['viseme_oh'], // "oh"
+  U: ['viseme_ou'], // "oo"
+  B: ['viseme_PP'], // p/b/m
+  C: ['viseme_sil'], // neutral
+  D: ['viseme_DD'], // d/t/n
+  F: ['viseme_FF'], // f/v
+  G: ['viseme_kk'], // k/g
+  H: ['viseme_ou', 'viseme_oh'], // rounded
 };
 
 // Secondary viseme contributions driven by VisemeState shape parameters.
@@ -240,6 +240,8 @@ const CAM_LERP      = 0.08; // responsive on phone while still smooth
 // not the legs — the old hardcoded -1.59 was calibrated for the previous avatar.
 const AVATAR_Y_OFFSET = -1.59;
 
+const AXIS_Z = new THREE.Vector3(0, 0, 1);
+
 export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef }: OracleAvatar3DProps) {
   const { scene }      = useGLTF('/hero3.glb?v=morphs-v2');
   const { animations: idleClips }    = useGLTF('/oracle-idle.glb');
@@ -323,6 +325,12 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     y: 0,
     nextTime: 0,
   });
+
+  // Reusable scratch objects for per-frame math without allocation
+  const scratchRot = useMemo(() => ({
+    euler: new THREE.Euler(),
+    quat: new THREE.Quaternion(),
+  }), []);
 
   // Records clock.elapsedTime on first useFrame — used for the greeting grace period
   // that suppresses tilt physics impulses until the avatar has settled on mount.
@@ -782,8 +790,9 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     // ── Neck: gentle follow ───────────────────────────────────────────────
     if (meshData.neckBone) {
       const neckLerpF = lerpDt * 0.05;
-      const neckSwayX = Math.sin(t * 0.80) * 0.025 + Math.sin(t * 1.90 + 0.6) * 0.012 * amp;
-      const neckSwayZ = Math.cos(t * 0.52 + 1.1) * 0.018;
+      // Vocal amp modulation removed so throat maintains posture and doesn't bounce with syllables
+      const neckSwayX = Math.sin(t * 0.80) * 0.022;
+      const neckSwayZ = Math.cos(t * 0.52 + 1.1) * 0.016;
       meshData.neckBone.rotation.y = THREE.MathUtils.lerp(meshData.neckBone.rotation.y, gx * 0.15, neckLerpF);
       meshData.neckBone.rotation.x = THREE.MathUtils.lerp(meshData.neckBone.rotation.x, gy * 0.12 + neckSwayX, neckLerpF);
       meshData.neckBone.rotation.z = THREE.MathUtils.lerp(meshData.neckBone.rotation.z, neckSwayZ, neckLerpF);
@@ -836,11 +845,11 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       const bs = blendStateRef.current;
       const tw = bs.currentTalkWeight;
 
-      // Gestural hang: keep arms in their current gesture pose for ~0.4s after
+      // Gestural hang: keep arms in their current gesture pose for ~0.45s after
       // talk weight drops between sentences, mirroring the head lastSpeakTime hang.
       // Without this, the pin re-engages as soon as tw dips during an inter-sentence
       // pause, causing a brief partial arm reset before the next gesture drives them.
-      const ARM_GESTURE_HANG = 0.40; // seconds — matches head-nod hang duration
+      const ARM_GESTURE_HANG = 0.45; // seconds — matches speech phrase boundaries
       if (tw > 0.10) bs.lastArmGestureTime = t;
       const timeSinceGesture = t - bs.lastArmGestureTime;
       const targetPin = timeSinceGesture < ARM_GESTURE_HANG ? 0.0 : 1.0 - tw;
@@ -866,7 +875,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
           if (bone && q) (bone as THREE.Bone).quaternion.slerp(q, w);
         }
 
-        // ── Shoulder breathing cascade ─────────────────────────────────────
+        // ── Shoulder breathing cascade (additive quaternions) ──────────────
         // Additive on top of the rest-pose slerp: shoulders subtly follow the
         // spine's breathCycle. Left leads right by a ~0.4s phase offset,
         // mimicking the natural asymmetric sway of a person standing still.
@@ -878,12 +887,14 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         const weightShiftR    = -Math.sin(t * 0.94 + 0.50) * 0.004 * w;
 
         if (meshData.leftShoulderBone) {
-          (meshData.leftShoulderBone  as THREE.Bone).rotation.y +=  shoulderBreathe;
-          (meshData.leftShoulderBone  as THREE.Bone).rotation.z +=  weightShiftL;
+          scratchRot.euler.set(0, shoulderBreathe, weightShiftL);
+          scratchRot.quat.setFromEuler(scratchRot.euler);
+          (meshData.leftShoulderBone as THREE.Bone).quaternion.multiply(scratchRot.quat);
         }
         if (meshData.rightShoulderBone) {
-          (meshData.rightShoulderBone as THREE.Bone).rotation.y -= rightBreathe * 0.7;
-          (meshData.rightShoulderBone as THREE.Bone).rotation.z +=  weightShiftR;
+          scratchRot.euler.set(0, -rightBreathe * 0.7, weightShiftR);
+          scratchRot.quat.setFromEuler(scratchRot.euler);
+          (meshData.rightShoulderBone as THREE.Bone).quaternion.multiply(scratchRot.quat);
         }
       }
 
@@ -891,31 +902,40 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       // When the gesture clip drives the upper arm, the forearm adds a lagged
       // spring response — same spring-damper pattern as head nod/tilt physics.
       // stiffness=28, damping=5.5: underdamped (ζ≈0.52) for visible follow-through.
-      // The spring target is proportional to the upper arm's Y rotation so the
-      // forearm lags behind gestures and overshoots slightly before settling.
+      // Upper arm angle is decomposed from actual bone quaternion.
       const fs    = forearmSpringRef.current;
       const armDt = Math.min(delta, 0.03);
 
       if (tw > 0.02) {
-        const lArmY = meshData.leftArmBone  ? (meshData.leftArmBone  as THREE.Bone).rotation.y : 0;
-        const rArmY = meshData.rightArmBone ? (meshData.rightArmBone as THREE.Bone).rotation.y : 0;
+        let lArmY = 0;
+        let rArmY = 0;
+        if (meshData.leftArmBone) {
+          scratchRot.euler.setFromQuaternion((meshData.leftArmBone as THREE.Bone).quaternion, 'YXZ');
+          lArmY = scratchRot.euler.y;
+        }
+        if (meshData.rightArmBone) {
+          scratchRot.euler.setFromQuaternion((meshData.rightArmBone as THREE.Bone).quaternion, 'YXZ');
+          rArmY = scratchRot.euler.y;
+        }
 
         // Left forearm spring
-        const forceL  = (lArmY * 0.12 - fs.L.angle) * 28 - fs.L.vel * 5.5;
+        const forceL  = (lArmY * 0.14 - fs.L.angle) * 28 - fs.L.vel * 5.5;
         fs.L.vel      += forceL * armDt;
         fs.L.angle    += fs.L.vel * armDt;
-        fs.L.angle     = THREE.MathUtils.clamp(fs.L.angle, -0.08, 0.08);
+        fs.L.angle     = THREE.MathUtils.clamp(fs.L.angle, -0.09, 0.09);
         if (meshData.leftForeArmBone) {
-          (meshData.leftForeArmBone  as THREE.Bone).rotation.z += fs.L.angle * tw;
+          scratchRot.quat.setFromAxisAngle(AXIS_Z, fs.L.angle * tw);
+          (meshData.leftForeArmBone as THREE.Bone).quaternion.multiply(scratchRot.quat);
         }
 
         // Right forearm spring (mirror)
-        const forceR  = (rArmY * 0.12 - fs.R.angle) * 28 - fs.R.vel * 5.5;
+        const forceR  = (rArmY * 0.14 - fs.R.angle) * 28 - fs.R.vel * 5.5;
         fs.R.vel      += forceR * armDt;
         fs.R.angle    += fs.R.vel * armDt;
-        fs.R.angle     = THREE.MathUtils.clamp(fs.R.angle, -0.08, 0.08);
+        fs.R.angle     = THREE.MathUtils.clamp(fs.R.angle, -0.09, 0.09);
         if (meshData.rightForeArmBone) {
-          (meshData.rightForeArmBone as THREE.Bone).rotation.z += fs.R.angle * tw;
+          scratchRot.quat.setFromAxisAngle(AXIS_Z, fs.R.angle * tw);
+          (meshData.rightForeArmBone as THREE.Bone).quaternion.multiply(scratchRot.quat);
         }
       } else {
         // Decay spring naturally when idle — no hard reset so there's no snap
@@ -963,8 +983,8 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
         }
       }
 
-      const attackLerp = lerpDt * 0.58; // fast onset — crisp consonant attack
-      const decayLerp  = lerpDt * 0.32; // faster decay than before — less smear
+      const attackLerp = lerpDt * 0.65; // fast onset — crisp consonant attack
+      const decayLerp  = lerpDt * 0.38; // clean decay — avoids unnatural hang
 
       for (const { mesh, indexMap } of meshData.meshes) {
         const infl = mesh.morphTargetInfluences!;

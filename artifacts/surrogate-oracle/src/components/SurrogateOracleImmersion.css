@@ -800,12 +800,13 @@
 }
 
 @keyframes oracle-glitch-phase {
-  0%, 100% { opacity: 0.28; filter: blur(2.5px) brightness(0.4); transform: scale(0.98); }
-  48%       { opacity: 0.35; filter: blur(1.8px) brightness(0.5); transform: scale(0.99); }
-  50%       { opacity: 0.60; filter: blur(0.2px) brightness(1.4) contrast(1.4); transform: scale(1.03) translate(2px, -1px); }
-  52%       { opacity: 0.40; filter: blur(1px) brightness(0.7); transform: scale(1.0) translate(-2px, 1px); }
-  54%       { opacity: 0.60; filter: blur(0px) brightness(1.6); transform: scale(1.05) translate(1px, -2px); }
-  56%       { opacity: 0.32; filter: blur(2.5px) brightness(0.4); transform: scale(0.98); }
+  0%, 100% { opacity: 0.28; filter: blur(2.5px) brightness(0.4) saturate(0.4); transform: scale(0.98); }
+  42%       { opacity: 0.32; filter: blur(2.0px) brightness(0.45); transform: scale(0.985); }
+  45%       { opacity: 0.75; filter: blur(0.5px) brightness(1.6) contrast(1.5) drop-shadow(4px 0 0 rgba(255,0,80,0.7)) drop-shadow(-4px 0 0 rgba(0,255,136,0.7)); transform: scale(1.03) translate(-3px, 1px) skewX(4deg); }
+  48%       { opacity: 0.40; filter: blur(1.5px) brightness(0.6) saturate(0.8); transform: scale(0.99) translate(2px, -1px); }
+  51%       { opacity: 0.85; filter: blur(0px) brightness(2.0) contrast(1.6) drop-shadow(-5px 0 0 rgba(255,0,80,0.8)) drop-shadow(5px 0 0 rgba(0,255,204,0.8)); transform: scale(1.05) translate(1px, -2px) skewX(-3deg); }
+  54%       { opacity: 0.50; filter: blur(1.2px) brightness(0.8); transform: scale(1.01) translate(-1px, 2px); }
+  58%       { opacity: 0.30; filter: blur(2.5px) brightness(0.4) saturate(0.5); transform: scale(0.98); }
 }
 
 /* TERMINAL — Star Trek transporter beam-in. Starts microscopic, scales to full
@@ -3342,6 +3343,18 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 
 /* shimmer replaced by letter-by-letter JS gradient landing */
 
+/* ── Holographic Particle Typography Card ────────────────────────────── */
+.oracle-particle-typography-card {
+  width: 100%;
+  max-width: 480px;
+  height: clamp(220px, 32vh, 280px);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
 /* ── Select CTA — clear call to action, heartbeat rhythm ───────────── */
 .oracle-knife-cta {
   font-family: 'PhillySans', 'Share Tech Mono', monospace;
@@ -5004,15 +5017,15 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
    First dropout fires at 2s + (57% × 14s) ≈ 10s after oracle entry —
    the Seeker has been in conversation for ~4s when the first signal break hits. */
 @keyframes oracle-phase-manifest {
-  0%   { opacity: 0; transform: scale(1.06) translateY(5px); filter: blur(12px) brightness(0.3) saturate(0.2); }
-  8%   { opacity: 0.8; transform: scale(0.98) translateX(-12px) skewX(15deg); filter: brightness(1.8) saturate(2.5) contrast(1.5) drop-shadow(6px 0 0 rgba(255,0,80,0.8)) drop-shadow(-6px 0 0 rgba(0,180,255,0.8)); }
-  14%  { opacity: 0.4; transform: scale(1.04) translateX(8px) skewX(-10deg); filter: blur(3px) brightness(0.8) saturate(0.5); }
-  20%  { opacity: 0.95; transform: scale(1.02) translateY(-2px); filter: blur(0px) brightness(2.2) saturate(3.0) drop-shadow(-4px 0 0 rgba(255,0,80,0.9)) drop-shadow(4px 0 0 rgba(0,180,255,0.9)); }
-  28%  { opacity: 0.7; transform: scale(0.99) skewY(2deg); filter: blur(2px) brightness(1.2) saturate(1.2); }
-  36%  { opacity: 1.0; transform: scale(1.01) translateX(-3px); filter: blur(0px) brightness(1.6) saturate(1.8); }
-  45%  { opacity: 0.85; transform: scale(1.03) skewX(-5deg); filter: blur(1px) brightness(1.4) drop-shadow(2px 0 0 rgba(255,0,80,0.6)) drop-shadow(-2px 0 0 rgba(0,180,255,0.6)); }
-  60%  { opacity: 1.0; transform: scale(0.995); filter: blur(0px) brightness(1.1) saturate(1.1); }
-  78%  { opacity: 0.95; transform: scale(1.005) translateX(1px); filter: brightness(1.2) drop-shadow(1px 0 0 rgba(255,0,80,0.3)) drop-shadow(-1px 0 0 rgba(0,180,255,0.3)); }
+  0%   { opacity: 0; transform: scale(1.08) translateY(8px); filter: blur(14px) brightness(0.2) saturate(0.1); }
+  6%   { opacity: 0.65; transform: scale(0.96) translateX(-14px) skewX(18deg); filter: blur(4px) brightness(2.4) saturate(3.0) contrast(1.8) drop-shadow(8px 0 0 rgba(255,0,80,0.9)) drop-shadow(-8px 0 0 rgba(0,255,200,0.9)); }
+  12%  { opacity: 0.25; transform: scale(1.05) translateX(10px) skewX(-12deg); filter: blur(6px) brightness(0.7) saturate(0.4); }
+  18%  { opacity: 0.95; transform: scale(1.03) translateY(-3px) skewX(6deg); filter: blur(1px) brightness(2.8) saturate(3.5) contrast(1.6) drop-shadow(-6px 0 0 rgba(255,0,80,0.95)) drop-shadow(6px 0 0 rgba(0,255,136,0.95)); }
+  26%  { opacity: 0.60; transform: scale(0.98) skewY(3deg); filter: blur(3px) brightness(1.1) saturate(1.4); }
+  35%  { opacity: 1.0; transform: scale(1.02) translateX(-4px); filter: blur(0px) brightness(2.0) saturate(2.2) drop-shadow(4px 0 0 rgba(0,255,204,0.8)); }
+  45%  { opacity: 0.88; transform: scale(1.01) skewX(-4deg); filter: blur(0.8px) brightness(1.5) drop-shadow(2px 0 0 rgba(255,0,80,0.6)) drop-shadow(-2px 0 0 rgba(0,255,136,0.6)); }
+  60%  { opacity: 1.0; transform: scale(0.995); filter: blur(0px) brightness(1.2) saturate(1.2); }
+  78%  { opacity: 0.96; transform: scale(1.004) translateX(1px); filter: brightness(1.15) drop-shadow(1px 0 0 rgba(255,0,80,0.3)) drop-shadow(-1px 0 0 rgba(0,255,136,0.3)); }
   100% { opacity: 1; transform: scale(1); filter: none; }
 }
 
@@ -5020,7 +5033,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   opacity: 1;
   filter: none;
   transition: none !important;
-  animation: oracle-phase-manifest 2.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: oracle-phase-manifest 2.8s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-headroom-hook {

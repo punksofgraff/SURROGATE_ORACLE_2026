@@ -30,9 +30,9 @@ interface OraclePhysicsDebrisProps {
   speakingRef: React.RefObject<boolean>;
 }
 
-/** Volume the shards are allowed to roam (cabinet interior, behind the bust). */
-const HOME = new THREE.Vector3(0, 0.1, -0.55);
-const ROAM_RADIUS = 0.85;
+/** Volume the shards are allowed to roam (cabinet perimeter surrounding the bust). */
+const HOME = new THREE.Vector3(0, 0.05, -0.38);
+const ROAM_RADIUS = 1.05;
 
 export function OraclePhysicsDebris({ count, speakingRef }: OraclePhysicsDebrisProps) {
   const bodiesRef = useRef<(RapierRigidBody | null)[] | null>(null);
@@ -42,24 +42,25 @@ export function OraclePhysicsDebris({ count, speakingRef }: OraclePhysicsDebrisP
     const list: InstancedRigidBodyProps[] = [];
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2;
-      const r = 0.35 + Math.random() * 0.4;
+      // Orbiting ring around the avatar bust
+      const r = 0.55 + Math.random() * 0.45;
       list.push({
         key: `oracle-shard-${i}`,
         position: [
           HOME.x + Math.cos(angle) * r,
-          HOME.y + (Math.random() - 0.5) * 0.9,
-          HOME.z + (Math.random() - 0.5) * 0.25,
+          HOME.y + (Math.random() - 0.5) * 1.1,
+          HOME.z + (Math.random() - 0.5) * 0.35,
         ],
         rotation: [Math.random() * Math.PI, Math.random() * Math.PI, 0],
         linearVelocity: [
-          -Math.sin(angle) * 0.05,
-          (Math.random() - 0.5) * 0.03,
+          -Math.sin(angle) * 0.08,
+          (Math.random() - 0.5) * 0.05,
           0,
         ],
         angularVelocity: [
-          (Math.random() - 0.5) * 0.8,
-          (Math.random() - 0.5) * 0.8,
-          (Math.random() - 0.5) * 0.8,
+          (Math.random() - 0.5) * 1.2,
+          (Math.random() - 0.5) * 1.2,
+          (Math.random() - 0.5) * 1.2,
         ],
       });
     }
@@ -89,21 +90,31 @@ export function OraclePhysicsDebris({ count, speakingRef }: OraclePhysicsDebrisP
       // Spring toward the roam shell: pulled back when outside, gently stirred
       // tangentially when deep inside so the field keeps drifting.
       if (dist > ROAM_RADIUS) {
-        scratch.force.normalize().multiplyScalar(0.000035 * (dist - ROAM_RADIUS + 0.2));
+        scratch.force.normalize().multiplyScalar(0.00010 * (dist - ROAM_RADIUS + 0.2));
         body.applyImpulse(scratch.force, true);
       } else if (dist > 1e-4) {
         // tangential stir: cross with up vector
         scratch.force.normalize();
         const tx = scratch.force.z, tz = -scratch.force.x;
-        scratch.force.set(tx, 0, tz).multiplyScalar(0.0000012);
+        scratch.force.set(tx, 0, tz).multiplyScalar(0.000008);
         body.applyImpulse(scratch.force, true);
       }
 
-      // Speaking pulse — single outward kick on the rising edge.
+      // Speaking reactions:
+      // 1. Rising edge impulse: noticeable outward blast wave from the center.
       if (speakingEdge && dist > 1e-4) {
         scratch.force.set(t.x - HOME.x, t.y - HOME.y, t.z - HOME.z)
           .normalize()
-          .multiplyScalar(0.000012);
+          .multiplyScalar(0.00028);
+        body.applyImpulse(scratch.force, true);
+      }
+      // 2. Active speech excitation: subtle continuous spin & energy agitation
+      if (speaking) {
+        scratch.force.set(
+          (Math.random() - 0.5) * 0.000025,
+          (Math.random() - 0.5) * 0.000025,
+          (Math.random() - 0.5) * 0.000025,
+        );
         body.applyImpulse(scratch.force, true);
       }
     }
@@ -115,20 +126,20 @@ export function OraclePhysicsDebris({ count, speakingRef }: OraclePhysicsDebrisP
       instances={instances}
       colliders="ball"
       gravityScale={0}
-      linearDamping={0.6}
-      angularDamping={0.15}
+      linearDamping={0.55}
+      angularDamping={0.12}
       canSleep={false}
     >
       <instancedMesh args={[undefined, undefined, count]} count={count} frustumCulled={false}>
-        <tetrahedronGeometry args={[0.028, 0]} />
+        <tetrahedronGeometry args={[0.072, 0]} />
         <meshStandardMaterial
-          color="#0a2018"
+          color="#0f2b1d"
           emissive="#00ff88"
-          emissiveIntensity={1.6}
-          roughness={0.35}
-          metalness={0.4}
+          emissiveIntensity={3.2}
+          roughness={0.2}
+          metalness={0.65}
           transparent
-          opacity={0.85}
+          opacity={0.95}
         />
       </instancedMesh>
     </InstancedRigidBodies>

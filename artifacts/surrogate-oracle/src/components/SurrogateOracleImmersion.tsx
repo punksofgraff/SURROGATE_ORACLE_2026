@@ -1613,8 +1613,8 @@ export function SurrogateOracleImmersion() {
               <div
                 className="oracle-avatar-canvas oracle-avatar-smoke-hook"
                 style={{
-                  width: '100%', height: '100%',
                   position: 'absolute', top: 0, left: 0,
+                  width: '100%', height: '100%',
                   opacity: oracleManifestReady ? 1 : 0,
                   pointerEvents: oracleManifestReady ? 'auto' : 'none',
                   zIndex: 3,
@@ -1663,7 +1663,7 @@ export function SurrogateOracleImmersion() {
                             </Physics>
                           </Suspense>
                         )}
-                        {false && (
+                        {renderTier >= 1 && (
                           <EffectComposer multisampling={renderTier >= 2 ? 4 : 0}>
                             {[
                               <Bloom
@@ -1680,10 +1680,6 @@ export function SurrogateOracleImmersion() {
                                   radialModulation
                                   modulationOffset={0.42}
                                 />,
-                                <Noise key="noise" premultiply opacity={0.22} />,
-                              ] : []),
-                              ...(renderTier >= 3 ? [
-                                <Scanline key="scanline" density={1.25} opacity={0.14} />,
                               ] : []),
                             ]}
                           </EffectComposer>

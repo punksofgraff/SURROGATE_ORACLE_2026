@@ -4761,6 +4761,25 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   overflow: visible !important;
 }
 
+/* ── Free the orbit: grow the WebGL canvas box beyond the avatar footprint ────
+   The particles (quarks r≤1.2, Rapier debris ROAM_RADIUS 1.05) already orbit in
+   3D world space, but WebGL cannot draw outside its own element — so anything
+   swinging wider than the avatar's ~82vmin wrapper was clipped at the invisible
+   canvas edge, and the full-frame post passes turned that edge into a "glass
+   card". We expand ONLY the canvas element symmetrically (negative insets keep
+   its center locked on the avatar). The Oracle's on-screen size is set by camera
+   FOV/position, NOT canvas size, so the bust does not move or resize — the render
+   viewport simply gets wide enough that the orbit never touches its boundary.
+   Wrapper already has overflow:visible in oracle state, so the oversized child
+   shows. pointer-events stay off on the canvas div so the extra area doesn't
+   swallow taps meant for the alley/mic behind it. */
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas {
+  inset: -55% -70% !important;
+  width: auto !important;
+  height: auto !important;
+  pointer-events: none !important;
+}
+
 /* ── Oracle center: sit slightly lower, more in the alley middle-ground ─────*/
 .oracle-stage[data-oracle-state="oracle"] .oracle-center {
   top: 33%;

@@ -3269,22 +3269,18 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   opacity: 1;
 }
 
-/* ── Holographic glass panel ─────────────────────────────────────────── */
+/* ── Holographic glass panel (culled to float typewriter particles directly in alley space) ── */
 .oracle-knife-card {
   width: clamp(300px, 88vw, 500px);
   /* height auto — content determines size */
   position: relative;
   pointer-events: auto;
 
-  /* Near-transparent glass with diagonal brand wash */
-  background: linear-gradient(
-    158deg,
-    rgba(0, 255, 136, 0.06) 0%,
-    rgba(0, 0, 0, 0.03) 48%,
-    rgba(176, 38, 255, 0.06) 100%
-  );
-  backdrop-filter: blur(4px) saturate(1.9);
-  -webkit-backdrop-filter: blur(4px) saturate(1.9);
+  /* Culled glass panel, shadows, and backdrop filters */
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
 
   border: none;
   border-radius: 16px;
@@ -3296,28 +3292,14 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   will-change: transform, opacity, filter;
 }
 
-/* Gradient frame — green at top, purple at bottom. The brand gradient. */
+/* Gradient frame disabled to completely cull the glass card frame outline */
 .oracle-knife-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 16px;
-  padding: 1px;
-  background: linear-gradient(
-    to bottom,
-    #00ff88 0%,
-    rgba(0, 255, 136, 0.35) 38%,
-    rgba(176, 38, 255, 0.35) 62%,
-    #b026ff 100%
-  );
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  pointer-events: none;
-  opacity: 0.72;
-  transition: opacity 0.3s ease;
+  display: none !important;
+}
+
+/* Scanline/reflection overlays also disabled */
+.oracle-knife-card::after {
+  display: none !important;
 }
 
 .oracle-knife-card:hover::before {
@@ -4693,14 +4675,12 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   animation: none !important;
 }
 
-/* Remove the glass reflection pseudo-element in oracle and awakened modes */
-.oracle-stage[data-oracle-state="oracle"] .oracle-cabinet::before,
+/* Remove the glass reflection pseudo-element in awakened mode only (behind knife cards) */
 .oracle-stage[data-oracle-state="awakened"] .oracle-cabinet::before {
   display: none !important;
 }
 
-/* Remove scanlines — they looked like a TV artifact, not a presence */
-.oracle-stage[data-oracle-state="oracle"] .oracle-scanlines,
+/* Remove scanlines in awakened mode only (behind knife cards) */
 .oracle-stage[data-oracle-state="awakened"] .oracle-scanlines {
   display: none !important;
 }

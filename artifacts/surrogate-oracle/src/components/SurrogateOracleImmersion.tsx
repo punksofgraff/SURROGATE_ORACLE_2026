@@ -40,7 +40,10 @@ import { TalismanCard, TalismanData, extractProphecy } from './TalismanCard';
 import { OracleHaloRing } from './OracleHaloRing';
 import { Canvas } from '@react-three/fiber';
 import { OracleAvatar3D } from './OracleAvatar3D';
-import { EffectComposer, DepthOfField } from '@react-three/postprocessing';
+import { EffectComposer, DepthOfField, Bloom, ChromaticAberration, Noise, Scanline } from '@react-three/postprocessing';
+import { Physics } from '@react-three/rapier';
+import { OracleNebula } from './OracleNebula';
+import { OraclePhysicsDebris } from './OraclePhysicsDebris';
 
 // Hooks
 import { useIpCheck } from '../hooks/useIpCheck';
@@ -56,6 +59,7 @@ import { useOracleConnection } from '../hooks/useOracleConnection';
 import { usePortraitPipeline } from '../hooks/usePortraitPipeline';
 import { useOracleJourney } from '../hooks/useOracleJourney';
 import { usePerformanceGuard } from '../hooks/usePerformanceGuard';
+import { useGPUTier } from '../hooks/useGPUTier';
 import { useWalletBridge } from '../hooks/useWalletBridge';
 import { useRadioAtmosphere } from '../hooks/useRadioAtmosphere';
 import WalletGateCard from './WalletGateCard';
@@ -152,6 +156,15 @@ function OracleAvatarFallback() {
 export function SurrogateOracleImmersion() {
   // ── Performance & Accessibility ─────────────────────────────────────────
   const isDegraded = usePerformanceGuard(true);
+  const gpu = useGPUTier();
+  // Effective render tier: GPU probe capped by the runtime FPS guard — a strong
+  // GPU that still drops frames (thermal throttle, busy tab) falls to bare mode.
+  const renderTier = (isDegraded ? 0 : gpu.tier) as 0 | 1 | 2 | 3;
+  // Dev-only hook so headless verification can tell "effects broken" apart from
+  // "FPS guard correctly degraded the scene" (SwiftShader always trips the guard).
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    (window as unknown as Record<string, unknown>).__oracle_renderTier = renderTier;
+  }
   const prefersReducedMotion = typeof window !== 'undefined' 
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches 
     : false;
@@ -1612,20 +1625,65 @@ export function SurrogateOracleImmersion() {
                     <Suspense fallback={canvasWarmed ? null : <OracleAvatarFallback />}>
                       <Canvas
                         camera={{ position: [0, 0, 1.8], fov: 55 }}
-                        dpr={isDegraded ? [1, 1] : [1, Math.min(window.devicePixelRatio, 2)]}
-                        gl={{ antialias: !isDegraded, alpha: true }}
+                        dpr={
+                          renderTier === 0 ? [1, 1]
+                          : renderTier === 1 ? [1, 1.25]
+                          : renderTier === 2 ? [1, Math.min(window.devicePixelRatio, 2)]
+                          : [1, Math.min(window.devicePixelRatio, 2.5)]
+                        }
+                        gl={{
+                          antialias: renderTier >= 2,
+                          alpha: true,
+                          powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
+                        }}
                         style={{ width: '100%', height: '100%', background: 'transparent' }}
                         frameloop="always"
                       >
                         <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
-                        {!isDegraded && (
+                        {/* Nebula dust + speaking-reactive energy tendrils (tier 1+) */}
+                        {renderTier >= 1 && (
+                          <OracleNebula tier={renderTier as 1 | 2 | 3} speakingRef={isOracleSpeakingRef} />
+                        )}
+                        {/* Rapier glyph-shard debris field (tier 2+) — fixed 60Hz step,
+                            zero gravity, shards constrained behind the bust.
+                            Inner Suspense: Physics suspends while the Rapier WASM loads —
+                            without this boundary the whole Canvas (avatar included) would
+                            fall back to the outer Suspense fallback mid-session. */}
+                        {renderTier >= 2 && (
+                          <Suspense fallback={null}>
+                            <Physics gravity={[0, 0, 0]} timeStep={1 / 60} colliders={false}>
+                              <OraclePhysicsDebris
+                                count={renderTier >= 3 ? 14 : 8}
+                                speakingRef={isOracleSpeakingRef}
+                              />
+                            </Physics>
+                          </Suspense>
+                        )}
+                        {renderTier >= 1 && (
                           <EffectComposer>
-                            <DepthOfField
-                              focusDistance={0.012}
-                              focalLength={0.022}
-                              bokehScale={2.0}
-                              height={480}
-                            />
+                            {[
+                              <DepthOfField
+                                key="dof"
+                                focusDistance={0.012}
+                                focalLength={0.022}
+                                bokehScale={2.0}
+                                height={480}
+                              />,
+                              <Bloom
+                                key="bloom"
+                                intensity={renderTier >= 2 ? 0.55 : 0.3}
+                                luminanceThreshold={0.32}
+                                luminanceSmoothing={0.22}
+                                mipmapBlur
+                              />,
+                              ...(renderTier >= 2 ? [
+                                <ChromaticAberration key="ca" offset={[0.00045, 0.0006]} radialModulation modulationOffset={0.4} />,
+                                <Noise key="noise" premultiply opacity={0.28} />,
+                              ] : []),
+                              ...(renderTier >= 3 ? [
+                                <Scanline key="scanline" density={1.1} opacity={0.06} />,
+                              ] : []),
+                            ]}
                           </EffectComposer>
                         )}
                       </Canvas>

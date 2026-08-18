@@ -89,7 +89,10 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@react-three/postprocessing": "^3.0.4",
+    "@react-three/rapier": "^2.2.0",
     "@supabase/supabase-js": "^2.105.4",
-    "three": "^0.184.0"
+    "detect-gpu": "^5.0.70",
+    "three": "^0.184.0",
+    "three-nebula": "^12.1.0"
   }
 }

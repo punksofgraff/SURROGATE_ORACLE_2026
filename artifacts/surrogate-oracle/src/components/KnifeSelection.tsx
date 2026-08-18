@@ -301,7 +301,19 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
                   }}
                 />
 
-                {/* Pre-Baked Holographic Particle Typography */}
+                {/* Territory -- STAB. Brand Kit Gradient. */}
+                <div className="oracle-knife-territory" style={{
+                  background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                  color: 'transparent',
+                }}>{kq.territory}</div>
+
+                {/* Gradient divider */}
+                <div className="oracle-knife-divider" />
+
+                {/* Pre-Baked Holographic Particle Typography Question */}
                 <ParticleTypographyCard
                   questionIndex={i}
                   landedChars={isThisActive ? landedChars : (isSelected ? 999 : 0)}

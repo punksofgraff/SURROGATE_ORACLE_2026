@@ -1,15 +1,14 @@
 /**
  * ParticleTypographyCard.tsx
  *
- * Pre-Baked Holographic Particle Typography Engine for Knife Questions.
+ * Holographic Particle Typography Engine for Knife Questions.
  *
- * Rather than static 2D HTML text spans, words assemble from glowing quantum
- * particle quarks as the Oracle speaks each question, locking into crisp
- * illuminated typography and shattering upon Seeker selection.
+ * Combines crystal-clear, full-scale typography (clamp(1.44rem, 4.2vw, 1.75rem))
+ * with live GPU-style quantum particle sparks, ambient dust motes, and
+ * a high-velocity radial kinetic shatter on Seeker selection.
  */
 
-import React, { useEffect, useRef } from 'react';
-import { KNIFE_PARTICLE_DATA, type KnifeParticleQuestion } from '../data/knifeParticleData';
+import React, { useEffect, useRef, useMemo } from 'react';
 
 interface ParticleTypographyCardProps {
   questionIndex: number;
@@ -17,26 +16,26 @@ interface ParticleTypographyCardProps {
   isEmitting?: boolean;
   isSelected: boolean;
   isThisSelected: boolean;
-  onClick?: () => void;
   accentColor?: string;
   territory: string;
   question: string;
 }
 
-interface Particle {
+interface Spark {
   x: number;
   y: number;
-  tx: number; // target x (0..1)
-  ty: number; // target y (0..1)
   vx: number;
   vy: number;
-  wordIdx: number;
-  charIdx: number;
-  isTitle: boolean;
-  color: string;
   radius: number;
+  color: string;
   alpha: number;
-  phase: number;
+  decay: number;
+}
+
+function gradientChar(i: number, total: number): string {
+  const t = total > 1 ? i / (total - 1) : 0;
+  // Sacred Green (#00ff88) -> Brand Cyan (#00ffcc)
+  return `rgb(0, 255, ${Math.round(136 + 68 * t)})`;
 }
 
 export function ParticleTypographyCard({
@@ -45,81 +44,120 @@ export function ParticleTypographyCard({
   isEmitting = false,
   isSelected,
   isThisSelected,
-  onClick,
   accentColor = '#00ff88',
   territory,
   question,
 }: ParticleTypographyCardProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const particlesRef = useRef<Particle[]>([]);
+  const sparksRef = useRef<Spark[]>([]);
+  const prevLandedRef = useRef(0);
   const shatteredRef = useRef(false);
-  const landedCharsRef = useRef(landedChars);
-  const isThisSelectedRef = useRef(isThisSelected);
-  const isSelectedRef = useRef(isSelected);
 
-  landedCharsRef.current = landedChars;
-  isThisSelectedRef.current = isThisSelected;
-  isSelectedRef.current = isSelected;
+  // Break question into words and characters
+  const wordsData = useMemo(() => {
+    const words = question.split(' ');
+    let globalCharIdx = 0;
+    const total = question.length;
 
-  // Initialize particles from pre-baked coordinate data
+    return words.map((word, wordIdx) => {
+      const chars = word.split('');
+      const wordStart = globalCharIdx;
+      globalCharIdx += chars.length + 1; // +1 space
+
+      return {
+        word,
+        wordIdx,
+        wordStart,
+        chars: chars.map((char, charIdx) => ({
+          char,
+          charIdx: wordStart + charIdx,
+          color: gradientChar(wordStart + charIdx, total),
+        })),
+      };
+    });
+  }, [question]);
+
+  // Spawn particle sparks when new letters land
   useEffect(() => {
-    const data: KnifeParticleQuestion | undefined = KNIFE_PARTICLE_DATA[questionIndex];
-    if (!data) return;
+    if (shatteredRef.current) return;
+    if (landedChars > prevLandedRef.current && containerRef.current) {
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const newlyLandedEls = containerRef.current.querySelectorAll(`[data-char-idx]`);
 
-    const list: Particle[] = [];
+      for (let i = prevLandedRef.current; i < landedChars; i++) {
+        const el = containerRef.current.querySelector(`[data-char-idx="${i}"]`) as HTMLElement | null;
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          const relX = rect.left - containerRect.left + rect.width / 2;
+          const relY = rect.top - containerRect.top + rect.height / 2;
 
-    // 1. Territory title header points
-    for (const [nx, ny, wordIdx, charIdx] of data.territoryPoints) {
-      list.push({
-        x: nx + (Math.random() - 0.5) * 0.15,
-        y: ny + (Math.random() - 0.5) * 0.15,
-        tx: nx,
-        ty: ny,
-        vx: 0,
-        vy: 0,
-        wordIdx,
-        charIdx,
-        isTitle: true,
-        color: '#00ffcc',
-        radius: 1.4 + Math.random() * 0.6,
-        alpha: 0.85,
-        phase: Math.random() * Math.PI * 2,
+          // Spawn 3-5 particle sparks per landing character
+          const count = 3 + Math.floor(Math.random() * 3);
+          for (let s = 0; s < count; s++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 25 + Math.random() * 45;
+            sparksRef.current.push({
+              x: relX + (Math.random() - 0.5) * 6,
+              y: relY + (Math.random() - 0.5) * 6,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed - 15,
+              radius: 1.2 + Math.random() * 1.6,
+              color: Math.random() > 0.3 ? '#00ff88' : '#00ffcc',
+              alpha: 1.0,
+              decay: 1.8 + Math.random() * 1.2,
+            });
+          }
+        }
+      }
+    }
+    prevLandedRef.current = landedChars;
+  }, [landedChars]);
+
+  // Selection shatter explosion
+  useEffect(() => {
+    if (isSelected && isThisSelected && !shatteredRef.current && containerRef.current) {
+      shatteredRef.current = true;
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const charEls = containerRef.current.querySelectorAll(`[data-char-idx]`);
+
+      // Explode all characters into a cloud of quantum particle shards
+      charEls.forEach((el) => {
+        const rect = (el as HTMLElement).getBoundingClientRect();
+        const relX = rect.left - containerRect.left + rect.width / 2;
+        const relY = rect.top - containerRect.top + rect.height / 2;
+
+        const centerX = containerRect.width / 2;
+        const centerY = containerRect.height / 2;
+        const dx = relX - centerX;
+        const dy = relY - centerY;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+        // Spawn 4-6 explosive shards per letter
+        for (let s = 0; s < 5; s++) {
+          const spreadAngle = (Math.random() - 0.5) * 0.8;
+          const baseAngle = Math.atan2(dy, dx) + spreadAngle;
+          const speed = 120 + Math.random() * 220;
+
+          sparksRef.current.push({
+            x: relX + (Math.random() - 0.5) * 8,
+            y: relY + (Math.random() - 0.5) * 8,
+            vx: Math.cos(baseAngle) * speed,
+            vy: Math.sin(baseAngle) * speed - 30,
+            radius: 1.5 + Math.random() * 2.2,
+            color: Math.random() > 0.5 ? '#00ff88' : '#00ffcc',
+            alpha: 1.0,
+            decay: 0.85 + Math.random() * 0.45,
+          });
+        }
       });
     }
+  }, [isSelected, isThisSelected]);
 
-    // 2. Question body points
-    const totalChars = data.totalChars;
-    for (const [nx, ny, wordIdx, charIdx] of data.questionPoints) {
-      const gradT = totalChars > 1 ? charIdx / (totalChars - 1) : 0;
-      const b = Math.round(136 + 68 * gradT);
-      const col = `rgb(0, 255, ${b})`;
-
-      list.push({
-        x: nx + (Math.random() - 0.5) * 0.35,
-        y: ny + (Math.random() - 0.5) * 0.25,
-        tx: nx,
-        ty: ny,
-        vx: (Math.random() - 0.5) * 0.002,
-        vy: (Math.random() - 0.5) * 0.002,
-        wordIdx,
-        charIdx,
-        isTitle: false,
-        color: col,
-        radius: 1.3 + Math.random() * 0.8,
-        alpha: 0.2,
-        phase: Math.random() * Math.PI * 2,
-      });
-    }
-
-    particlesRef.current = list;
-    shatteredRef.current = false;
-  }, [questionIndex]);
-
-  // Main high-performance render loop
+  // Canvas particle render loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
 
@@ -141,93 +179,40 @@ export function ParticleTypographyCard({
       }
 
       ctx.clearRect(0, 0, w, h);
+      ctx.save();
+      ctx.scale(dpr, dpr);
 
-      const particles = particlesRef.current;
-      const curLanded = landedCharsRef.current;
-      const isSel = isSelectedRef.current;
-      const isThisSel = isThisSelectedRef.current;
+      const sparks = sparksRef.current;
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const s = sparks[i];
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        s.vx *= 0.96;
+        s.vy *= 0.96;
+        s.alpha -= s.decay * dt;
 
-      // Shatter explosion trigger
-      if (isSel && isThisSel && !shatteredRef.current) {
-        shatteredRef.current = true;
-        for (const p of particles) {
-          const dx = p.x - 0.5;
-          const dy = p.y - 0.5;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
-          const force = (0.8 + Math.random() * 1.4);
-          p.vx = (dx / dist) * force;
-          p.vy = (dy / dist) * force - 0.2;
+        if (s.alpha <= 0.01) {
+          sparks.splice(i, 1);
+          continue;
         }
-      }
-
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
-
-        if (shatteredRef.current) {
-          // Shatter physics: fly outward & fade
-          p.x += p.vx * dt;
-          p.y += p.vy * dt;
-          p.alpha = Math.max(0, p.alpha - dt * 0.9);
-        } else {
-          // Normal state physics
-          const isRevealed = p.isTitle || p.charIdx < curLanded;
-
-          if (isRevealed) {
-            // Spring toward target glyph position
-            const targetX = p.tx;
-            const targetY = p.ty;
-
-            const dx = targetX - p.x;
-            const dy = targetY - p.y;
-
-            // Elastic spring
-            const spring = p.isTitle ? 32 : 24;
-            const damping = 7.5;
-
-            p.vx += (dx * spring - p.vx * damping) * dt;
-            p.vy += (dy * spring - p.vy * damping) * dt;
-
-            p.x += p.vx * dt;
-            p.y += p.vy * dt;
-
-            // Target alpha
-            const targetAlpha = p.isTitle ? 0.95 : (0.85 + Math.sin(now * 0.003 + p.phase) * 0.12);
-            p.alpha += (targetAlpha - p.alpha) * Math.min(1, dt * 10);
-          } else {
-            // Ambient drift waiting for word to be spoken
-            const noise = Math.sin(now * 0.0015 + p.phase);
-            p.x += (Math.cos(now * 0.001 + p.phase) * 0.02 - (p.x - p.tx) * 0.8) * dt;
-            p.y += (noise * 0.02 - (p.y - p.ty) * 0.8) * dt;
-
-            const targetAlpha = 0.18 + Math.sin(now * 0.002 + p.phase) * 0.08;
-            p.alpha += (targetAlpha - p.alpha) * Math.min(1, dt * 4);
-          }
-        }
-
-        if (p.alpha <= 0.01) continue;
-
-        // Draw particle
-        const px = p.x * w;
-        const py = p.y * h;
-        const r = p.radius * dpr;
 
         ctx.beginPath();
-        ctx.arc(px, py, r, 0, Math.PI * 2);
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = p.alpha;
+        ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+        ctx.fillStyle = s.color;
+        ctx.globalAlpha = Math.max(0, s.alpha);
         ctx.fill();
 
-        // Extra glow on formed/active particles
-        if (p.alpha > 0.7) {
+        // Glow
+        if (s.alpha > 0.4) {
           ctx.beginPath();
-          ctx.arc(px, py, r * 2.2, 0, Math.PI * 2);
-          ctx.fillStyle = p.color;
-          ctx.globalAlpha = p.alpha * 0.25;
+          ctx.arc(s.x, s.y, s.radius * 2.2, 0, Math.PI * 2);
+          ctx.fillStyle = s.color;
+          ctx.globalAlpha = Math.max(0, s.alpha * 0.25);
           ctx.fill();
         }
       }
 
-      ctx.globalAlpha = 1.0;
+      ctx.restore();
       animId = requestAnimationFrame(render);
     };
 
@@ -237,35 +222,75 @@ export function ParticleTypographyCard({
 
   return (
     <div
-      className="oracle-particle-typography-card"
-      onClick={onClick}
-      role="button"
-      tabIndex={0}
-      aria-label={`${territory}: ${question}`}
+      ref={containerRef}
+      className="oracle-knife-card-question"
+      aria-label={question}
       style={{
         position: 'relative',
         width: '100%',
-        height: '100%',
-        minHeight: '220px',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        cursor: isSelected ? 'default' : 'pointer',
+        pointerEvents: 'none',
       }}
     >
+      {/* Dynamic Quantum Particle Canvas Overlay */}
       <canvas
         ref={canvasRef}
         style={{
+          position: 'absolute',
+          inset: 0,
           width: '100%',
           height: '100%',
-          display: 'block',
           pointerEvents: 'none',
+          zIndex: 12,
         }}
       />
-      {/* Invisible screen-reader text for accessibility */}
-      <span className="sr-only" style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
-        {territory}: {question}
-      </span>
+
+      {/* Crystal-Clear, Full-Scale Typography Spans */}
+      <div
+        style={{
+          fontFamily: "'PhillySans', 'Share Tech Mono', monospace",
+          fontSize: 'clamp(1.44rem, 4.2vw, 1.75rem)',
+          lineHeight: 1.72,
+          letterSpacing: '0.02em',
+          textAlign: 'center',
+          maxWidth: '28ch',
+          color: 'rgba(255, 255, 255, 0.95)',
+          textShadow: '0 1px 14px rgba(0, 0, 0, 0.98), 0 0 24px rgba(0, 255, 136, 0.25)',
+          opacity: isSelected && isThisSelected ? 0 : 1,
+          transition: 'opacity 0.4s ease-out',
+        }}
+      >
+        {wordsData.map(({ word, wordIdx, wordStart, chars }) => (
+          <span
+            key={wordIdx}
+            style={{ display: 'inline-block', whiteSpace: 'nowrap', margin: '0 3px' }}
+          >
+            {chars.map(({ char, charIdx, color }) => {
+              const isLanded = charIdx < landedChars;
+              return (
+                <span
+                  key={charIdx}
+                  data-char-idx={charIdx}
+                  className="oracle-knife-letter"
+                  style={{
+                    opacity: isLanded ? 1 : 0.08,
+                    filter: isLanded ? 'none' : 'blur(2px)',
+                    color: isLanded ? color : 'rgba(0, 255, 136, 0.25)',
+                    textShadow: isLanded ? `0 0 12px ${color}88, 0 1px 14px rgba(0,0,0,0.98)` : 'none',
+                    display: 'inline-block',
+                    transition: 'opacity 0.35s ease-out, filter 0.35s ease-out, color 0.35s ease-out',
+                  }}
+                >
+                  {char}
+                </span>
+              );
+            })}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

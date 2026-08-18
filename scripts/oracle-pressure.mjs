@@ -682,16 +682,25 @@ async function testExit(page, pass, fail) {
     return;
   }
 
+  // The exit button triggers the Talisman Card overlay which has an 8s auto-dismiss.
+  // Click anywhere on the talisman card to dismiss it immediately.
+  try {
+    await page.locator('text=THE ARCHIVE HAS FILED YOU').click({ timeout: 2500 });
+    console.log('    ⏵  dismissed the Talisman Card via instant click');
+  } catch (e) {
+    // If text not found or click fails, let the auto-dismiss run
+  }
+
   // Wait for scene to reset to dormant
   try {
     await page.waitForFunction(
       function() { return document.querySelector('[data-oracle-state="dormant"]') !== null; },
-      null, { timeout: 8000 }
+      null, { timeout: 12000 }
     );
     pass.push('exit: scene reset to dormant');
     console.log('    ✓  data-oracle-state=dormant after exit');
   } catch(e) {
-    fail.push('exit: scene did NOT reset to dormant (8s timeout)');
+    fail.push('exit: scene did NOT reset to dormant (12s timeout)');
     console.log('    ✗  scene NOT dormant after exit — exitOracleMode() may be broken');
   }
 

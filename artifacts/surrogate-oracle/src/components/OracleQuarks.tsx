@@ -232,6 +232,15 @@ export function OracleQuarks({ tier, speakingRef, amplitude = 0 }: OracleQuarksP
     if (!mat) return;
 
     mat.uniforms.uTime.value = state.clock.elapsedTime;
+
+    // gl_PointSize is computed with a fixed constant that assumes the original
+    // card-sized drawing buffer. In oracle phase the canvas element is enlarged
+    // and camera.zoom compensates the projection (OrbitZoomCompensator) — world
+    // geometry stays the same on-screen size, but raw point sizes would not.
+    // Scaling uSize by camera.zoom keeps quark screen size identical too.
+    const camZoom = (state.camera as THREE.PerspectiveCamera).zoom ?? 1;
+    mat.uniforms.uSize.value = camZoom;
+
     
     // Smooth speaking excitation
     const isSpeaking = !!speakingRef.current;

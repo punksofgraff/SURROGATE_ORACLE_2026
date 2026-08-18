@@ -4772,9 +4772,13 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
    viewport simply gets wide enough that the orbit never touches its boundary.
    Wrapper already has overflow:visible in oracle state, so the oversized child
    shows. pointer-events stay off on the canvas div so the extra area doesn't
-   swallow taps meant for the alley/mic behind it. */
+   swallow taps meant for the alley/mic behind it.
+   UNIFORM 2x expansion (inset -50% both axes) — must match ORACLE_ORBIT_EXPANSION
+   in SurrogateOracleImmersion.tsx: OrbitZoomCompensator divides camera.zoom and
+   the dpr budget by the same factor so the avatar's on-screen size and the
+   total rendered pixel count are IDENTICAL to the card-sized canvas. */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas {
-  inset: -55% -70% !important;
+  inset: -50% !important;
   width: auto !important;
   height: auto !important;
   pointer-events: none !important;

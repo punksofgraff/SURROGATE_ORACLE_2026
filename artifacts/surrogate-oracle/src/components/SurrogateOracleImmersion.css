@@ -4675,12 +4675,14 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   animation: none !important;
 }
 
-/* Remove the glass reflection pseudo-element in awakened mode only (behind knife cards) */
+/* Remove the glass reflection pseudo-element in oracle and awakened modes */
+.oracle-stage[data-oracle-state="oracle"] .oracle-cabinet::before,
 .oracle-stage[data-oracle-state="awakened"] .oracle-cabinet::before {
   display: none !important;
 }
 
-/* Remove scanlines in awakened mode only (behind knife cards) */
+/* Remove scanlines — they looked like a TV artifact, not a presence */
+.oracle-stage[data-oracle-state="oracle"] .oracle-scanlines,
 .oracle-stage[data-oracle-state="awakened"] .oracle-scanlines {
   display: none !important;
 }

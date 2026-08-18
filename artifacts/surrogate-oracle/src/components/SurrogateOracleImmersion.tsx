@@ -1017,7 +1017,7 @@ export function SurrogateOracleImmersion() {
       if (seekerMotionRef.current) {
         seekerMotionRef.current.hasTouch = false;
         seekerMotionRef.current.touchPos = { x: 0, y: 0 };
-        seekerMotionRef.current.touchGazeSuppressedUntil = performance.now() + 1800;
+        seekerMotionRef.current.touchGazeSuppressedUntil = performance.now() + 3000;
       }
       cameraStateRef.current = { ...cameraStateRef.current, x: 0, y: 0, snap: true };
       // Reset manifest latch so fresh API readiness is required for this session.
@@ -1052,7 +1052,7 @@ export function SurrogateOracleImmersion() {
     if (seekerMotionRef.current) {
       seekerMotionRef.current.hasTouch = false;
       seekerMotionRef.current.touchPos = { x: 0, y: 0 };
-      seekerMotionRef.current.touchGazeSuppressedUntil = performance.now() + 1800;
+      seekerMotionRef.current.touchGazeSuppressedUntil = performance.now() + 3000;
     }
     // snap:true so Three.js hard-copies rather than lerps from the knife-tap offset.
     cameraStateRef.current = { ...cameraStateRef.current, x: 0, y: 0, snap: true };

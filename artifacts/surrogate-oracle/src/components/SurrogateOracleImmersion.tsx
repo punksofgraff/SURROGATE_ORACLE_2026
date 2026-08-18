@@ -137,20 +137,20 @@ class OracleErrorBoundary extends React.Component<{children: React.ReactNode}, {
 }
 
 // Fallback shown while hero3.glb is loading (static oracle portrait at same position)
+/* Canvas Suspense fallback while the WebGL context / GLB loads.
+   Must NOT render the 2D SNEAKAR arcade poster — object-fit:cover fills the
+   wrapper as a flat rectangle behind the 3D avatar, which reads as "3D phasing
+   in behind a 2D card" on mobile and slow context init. A transparent,
+   non-rectangular signal glow keeps the alley readable during the brief load
+   without any hard 2D frame. The .oracle-avatar-static image already provides
+   the pre-oracle warm-up poster where it's intended. */
 function OracleAvatarFallback() {
   return (
-    <div className="oracle-avatar-smoke-hook" style={{
-      width: '100%', height: '100%',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'transparent',
-    }}>
-      <img
-        src={ORACLE_STATIC_URL}
-        alt=""
-        aria-hidden="true"
-        style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6 }}
-      />
-    </div>
+    <div
+      className="oracle-avatar-smoke-hook oracle-avatar-loading-glow"
+      aria-hidden="true"
+      style={{ width: '100%', height: '100%', background: 'transparent' }}
+    />
   );
 }
 

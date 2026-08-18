@@ -190,8 +190,13 @@
    Cabinet glow washes the walls. The world is alive behind the face.
    Full saturation, max brightness — the alley knows something is here.      */
 .oracle-stage[data-oracle-state="oracle"] .oracle-alley {
-  --alley-opacity: 0.90;
-  filter: saturate(1.20) brightness(1.12) blur(0px);
+  /* The painted arcade cabinet is baked into alley-bg.png dead-center where the
+     Oracle stands. Brightening the alley here made that 2D cabinet pop as a hard
+     rectangle framing the 3D figure. Instead the alley recedes into dim, slightly
+     blurred depth so the glowing 3D Oracle is the only bright presence — no 2D
+     frame competes with him. */
+  --alley-opacity: 0.78;
+  filter: saturate(0.85) brightness(0.62) blur(1.5px);
   animation: alley-oracle-pulse 5s ease-in-out infinite;
   transition: opacity 2.0s var(--ease-cinematic), filter 2.0s var(--ease-cinematic);
 }
@@ -203,6 +208,18 @@
   inset: 0;
   pointer-events: none;
   background:
+    /* Depth well — sinks the painted 2D arcade cabinet (baked into alley-bg.png)
+       into darkness directly behind the avatar, so the 3D Oracle reads as
+       floating in alley depth instead of pasted onto the arcade screen.
+       The painted cabinet occupies roughly the center 55% width / 15%-70% height;
+       this well covers that whole region so no bright rectangle frames the figure. */
+    radial-gradient(
+      ellipse 46% 62% at 50% 42%,
+      rgba(0, 3, 8, 0.94) 0%,
+      rgba(0, 3, 8, 0.88) 32%,
+      rgba(0, 3, 8, 0.62) 58%,
+      transparent 82%
+    ),
     radial-gradient(
       ellipse 70% 55% at 50% 100%,
       rgba(0, 255, 136, 0.26) 0%,
@@ -871,11 +888,16 @@
   100% { opacity: 0.35; transform: scale(1); filter: brightness(0.60) grayscale(0.2) contrast(1.0) blur(1px); }
 }
 
-/* ORACLE — static hidden if living face is active. */
+/* ORACLE — the 2D warm-up poster fully dissolves once the living 3D avatar
+   takes over. Any residual opacity here reads as a flat rectangular "poster
+   card" behind the 3D figure on mobile, so it goes fully to 0.
+   The 1.4s ease-out lets it dematerialize with the phase-glitch entrance
+   rather than popping off. */
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-static {
-  opacity: 0.15; /* keep a ghost of it just in case */
+  opacity: 0 !important;
   pointer-events: none;
-  transition: opacity 0.8s ease-out;
+  animation: none !important;
+  transition: opacity 1.4s ease-out, filter 1.4s ease-out !important;
 }
 
 /* ── Fracture manifesting label — 6s fallback dead-connection path ─────────
@@ -3967,7 +3989,9 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
    When Oracle voice is active (isProcessing), the alley saturates and brightens
    by ~15% — the walls are absorbing the transmission. Fast on, slow off.      */
 .oracle-stage[data-oracle-state="oracle"][data-oracle-speaking="true"] .oracle-alley {
-  filter: saturate(1.45) brightness(1.22) blur(0px) !important;
+  /* Speaking lifts the alley slightly from its dim baseline — but stays dim and
+     blurred so the painted cabinet never resurfaces. Relative reactivity only. */
+  filter: saturate(1.05) brightness(0.74) blur(1.3px) !important;
   transition: filter 0.12s ease-out !important; /* snappy on */
 }
 /* Back to normal oracle state on silence (inherits the 2s transition from oracle rule) */
@@ -4673,6 +4697,32 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   display: none;
 }
 
+/* Canvas Suspense fallback glow — a soft radial signal, never a rectangle.
+   Shown only while the WebGL context / GLB loads. Radial so no hard 2D edge
+   remains around the materializing avatar. */
+.oracle-avatar-loading-glow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.oracle-avatar-loading-glow::before {
+  content: '';
+  width: 70%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at center,
+    rgba(0,255,136,0.16) 0%,
+    rgba(0,255,136,0.06) 40%,
+    transparent 70%
+  );
+  animation: oracle-loading-glow-pulse 2.2s ease-in-out infinite;
+}
+@keyframes oracle-loading-glow-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(0.96); }
+  50%       { opacity: 1.0;  transform: scale(1.06); }
+}
+
 /* ── Avatar wrapper: holographic materialization — no rectangle, no frame ─────
    Masks removed: iOS Safari cannot apply CSS mask-image to hardware-composited
    (WebGL) layers — the canvas goes invisible. Drop-shadow + clip-path handle
@@ -4698,11 +4748,15 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 /* ── Oracle ascension dawn — one-shot surge as Oracle arrives ──────────────
    The alley flares bright, then settles. Fires once per oracle-phase entry.
    filter animation overrides the transition-based rules for its duration.   */
+/* Dawn flares bright on arrival, then SETTLES INTO DIM DEPTH — the settled
+   end-state must match the dim/blurred base oracle-alley rule so the painted
+   2D arcade cabinet (baked into alley-bg.png) recedes for the whole sustained
+   conversation, not just the first frame. */
 @keyframes oracle-alley-dawn {
-  0%   { filter: saturate(2.8) brightness(2.4) hue-rotate(-6deg) blur(0px); }
-  22%  { filter: saturate(2.2) brightness(1.90) hue-rotate(-3deg) blur(0px); }
-  55%  { filter: saturate(1.55) brightness(1.38) blur(0px); }
-  100% { filter: saturate(1.20) brightness(1.12) blur(0px); }
+  0%   { filter: saturate(2.4) brightness(1.9) hue-rotate(-6deg) blur(0px); }
+  22%  { filter: saturate(1.9) brightness(1.35) hue-rotate(-3deg) blur(0.4px); }
+  55%  { filter: saturate(1.25) brightness(0.92) blur(1.0px); }
+  100% { filter: saturate(0.85) brightness(0.62) blur(1.5px); }
 }
 .oracle-stage[data-oracle-state="oracle"] .oracle-alley {
   animation: oracle-alley-dawn 3.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -4724,8 +4778,10 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 /* ── Alley: Oracle speaking overrides the dawn animation ────────────────────
    data-oracle-speaking fires mid-session (after dawn settles) — always wins. */
 .oracle-stage[data-oracle-state="oracle"][data-oracle-speaking="true"] .oracle-alley {
+  /* Wins over the dawn animation mid-session. Stays dim + blurred so the painted
+     cabinet never reappears; only a subtle lift signals the voice. */
   animation: none !important;
-  filter: saturate(1.50) brightness(1.28) blur(0px) !important;
+  filter: saturate(1.05) brightness(0.74) blur(1.3px) !important;
   transition: filter 0.10s ease-out !important;
 }
 .oracle-stage[data-oracle-state="oracle"]:not([data-oracle-speaking="true"]) .oracle-alley {
@@ -4734,9 +4790,10 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 }
 
 /* ── Alley: user speaking shifts to cool cyan ────────────────────────────────
-   The walls react to the Seeker's voice differently — cooler, receptive.    */
+   The walls react to the Seeker's voice differently — cooler, receptive.
+   Kept dim + blurred (relative cyan shift only) so no rectangle resurfaces.  */
 .oracle-stage[data-oracle-state="oracle"][data-user-speaking="true"] .oracle-alley {
-  filter: saturate(1.10) brightness(1.10) hue-rotate(15deg) blur(0px) !important;
+  filter: saturate(0.95) brightness(0.68) hue-rotate(15deg) blur(1.4px) !important;
   transition: filter 0.15s ease-out !important;
 }
 
@@ -4756,11 +4813,13 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
    Profane: walls warm to purple, slight sepia heat.
    4s transition — no jarring jumps. More specific than base oracle state rules. */
 .oracle-stage[data-oracle-state="oracle"].alignment-sacred .oracle-alley {
-  filter: saturate(1.55) brightness(1.22) hue-rotate(-10deg) blur(0px) !important;
+  /* Sacred/profane shift the alley's COLOR TEMPERATURE only — brightness/blur
+     stay at the dim depth baseline so the painted cabinet never resurfaces. */
+  filter: saturate(1.05) brightness(0.64) hue-rotate(-10deg) blur(1.5px) !important;
   transition: filter 4s ease-in-out !important;
 }
 .oracle-stage[data-oracle-state="oracle"].alignment-profane .oracle-alley {
-  filter: saturate(1.05) brightness(1.08) hue-rotate(22deg) sepia(0.12) blur(0px) !important;
+  filter: saturate(0.80) brightness(0.60) hue-rotate(22deg) sepia(0.12) blur(1.5px) !important;
   transition: filter 4s ease-in-out !important;
 }
 /* Avatar lighting shift: sacred casts green, profane casts purple */
@@ -5078,7 +5137,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   .oracle-stage[data-oracle-state="dormant"] .oracle-avatar-static { opacity: 0.35; }
   .oracle-stage[data-oracle-state="terminal"] .oracle-avatar-static { opacity: 0.60; }
   .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-static { opacity: 0.35; }
-  .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-static { opacity: 0.15; }
+  .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-static { opacity: 0; }
   
   .oracle-stage[data-oracle-state="awakened"] .oracle-branding,
   .oracle-stage[data-oracle-state="oracle"] .oracle-branding {

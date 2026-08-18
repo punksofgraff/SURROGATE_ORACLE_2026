@@ -647,9 +647,14 @@
   animation: dormant-breathe 6s ease-in-out infinite;
 }
 
+/* awakened cabinet — completely frameless to cull 2D glass behind knife cards */
 .oracle-stage[data-oracle-state="awakened"] .oracle-cabinet {
-  animation: cabinet-pulse-zoom 3.5s ease-in-out infinite;
-  border-color: rgba(0,255,136,0.5);
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  backdrop-filter: none !important;
+  animation: none !important;
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-cabinet {
@@ -4687,13 +4692,15 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   animation: none !important;
 }
 
-/* Remove the glass reflection pseudo-element in oracle mode */
-.oracle-stage[data-oracle-state="oracle"] .oracle-cabinet::before {
+/* Remove the glass reflection pseudo-element in oracle and awakened modes */
+.oracle-stage[data-oracle-state="oracle"] .oracle-cabinet::before,
+.oracle-stage[data-oracle-state="awakened"] .oracle-cabinet::before {
   display: none;
 }
 
 /* Remove scanlines — they looked like a TV artifact, not a presence */
-.oracle-stage[data-oracle-state="oracle"] .oracle-scanlines {
+.oracle-stage[data-oracle-state="oracle"] .oracle-scanlines,
+.oracle-stage[data-oracle-state="awakened"] .oracle-scanlines {
   display: none;
 }
 

@@ -50,6 +50,20 @@ export function useParallax(
   useEffect(() => {
     const intensity = PHASE_INTENSITY[phase] ?? 1.0;
 
+    // Entrance settle: when the Oracle materializes, ramp parallax from 0 → full over
+    // ~1.5s. A phone held at a resting tilt otherwise feeds a non-zero gyro offset the
+    // instant the avatar appears, shoving it sideways in the cabinet on manifestation.
+    // The ramp guarantees the avatar arrives dead-center, then eases the Mona Lisa
+    // follow in. Only the oracle phase needs it — earlier phases are static/ghostly.
+    const ENTRANCE_SETTLE_MS = 1500;
+    const settleStart = performance.now();
+    const settleGate = () => {
+      if (phase !== 'oracle') return 1;
+      const p = Math.min(1, (performance.now() - settleStart) / ENTRANCE_SETTLE_MS);
+      // easeOutCubic — quick to reach near-full, gentle final approach
+      return 1 - Math.pow(1 - p, 3);
+    };
+
     let targetX = 0, targetY = 0;
     let currentX = 0, currentY = 0;
     let targetZoom = 1.0, currentZoom = 1.0;
@@ -160,8 +174,9 @@ export function useParallax(
       currentY    += (targetY    - currentY)    * lerpXY;
       currentZoom += (targetZoom - currentZoom) * ZOOM_LERP;
 
-      const ix = currentX * intensity;
-      const iy = currentY * intensity;
+      const gate = settleGate();
+      const ix = currentX * intensity * gate;
+      const iy = currentY * intensity * gate;
 
       if (onUpdate) onUpdate(ix, iy);
       if (onZoom && Math.abs(currentZoom - 1) > 0.001) onZoom(currentZoom);

@@ -242,6 +242,13 @@ const AVATAR_Y_OFFSET = -1.59;
 
 const AXIS_Z = new THREE.Vector3(0, 0, 1);
 
+// Neutral resting pitch for the head bone (radians). 0 = face level and forward.
+// All procedural gaze tracking is applied RELATIVE to this baseline so the rest pose
+// meets the seeker dead-on, and the Mona Lisa follow behavior is unchanged (it just
+// pivots around a level neutral instead of the bone's raw rest tilt). Positive tilts
+// the chin down; keep at 0 unless a swapped GLB rests looking up/down.
+const HEAD_NEUTRAL_PITCH = 0;
+
 export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef }: OracleAvatar3DProps) {
   const { scene }      = useGLTF('/hero3.glb?v=morphs-v2');
   const { animations: idleClips }    = useGLTF('/oracle-idle.glb');
@@ -251,6 +258,12 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   const groupRef   = useRef<THREE.Group>(null);
   // Smooth camera target — avoids snapping on sudden gesture changes
   const camTarget = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
+  // World Y the camera should look at (eye level, post group-offset). Computed once
+  // from the settled scene graph on the first useFrame — useMemo-time world positions
+  // are unreliable (bind-pose/scale not finalized; see oracle-avatar-animation.md).
+  // Starts at CAM_Y_CENTER as a safe fallback until calibrated.
+  const camTargetYRef = useRef(CAM_Y_CENTER);
+  const camTargetYCalibrated = useRef(false);
 
   // Idle: strip arms so procedural pin owns them.
   // Talk: keep arm/hand/finger tracks so Mixamo gesture keyframes play during speech.
@@ -449,13 +462,22 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     // natural Y. Computed from THIS GLB rather than a hardcoded constant, so a
     // swapped/rescaled model still lands head-and-shoulders in the cabinet.
     let avatarYOffset = AVATAR_Y_OFFSET;
+    let avatarXOffset = 0;
     if (headBone) {
+      // Bind pose is T-pose; world positions are only valid AFTER updateMatrixWorld,
+      // never from useMemo-time scene state (see oracle-avatar-animation.md).
       scene.updateMatrixWorld(true);
       const headWorld = new THREE.Vector3();
       (headBone as THREE.Object3D).getWorldPosition(headWorld);
       // Drop the offset slightly below the head center so eyes/face sit at frame center.
       if (Number.isFinite(headWorld.y) && headWorld.y > 0.01) avatarYOffset = -(headWorld.y - 0.05);
-      if (import.meta.env.DEV) console.log('[OracleAvatar3D] head Y =', headWorld.y, '→ avatarYOffset =', avatarYOffset);
+
+      // ── Horizontal auto-center ──────────────────────────────────────────────
+      // Negate the head bone's native world X so any GLB asymmetry can never shift
+      // the avatar sideways in the cabinet. Mirrors the vertical framing logic.
+      if (Number.isFinite(headWorld.x)) avatarXOffset = -headWorld.x;
+
+      if (import.meta.env.DEV) console.log('[OracleAvatar3D] head Y =', headWorld.y, '→ avatarYOffset =', avatarYOffset, '| head X =', headWorld.x, '→ avatarXOffset =', avatarXOffset);
     }
 
     if (import.meta.env.DEV) {
@@ -494,6 +516,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       rightForeArmBone:   rightForeArmBone  as THREE.Object3D | null,
       hasMorphs,
       avatarYOffset,
+      avatarXOffset,
     };
   }, [scene]);
 
@@ -505,6 +528,26 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
 
     // Stamp mount time on the very first frame (used by greeting grace period below)
     if (mountTimeRef.current < 0) mountTimeRef.current = t;
+
+    // ── Calibrate eye-level camera target (once, from the settled scene) ─────
+    // Read the eye bone's true world Y now that the group offset + scale are applied
+    // — useMemo-time positions are unreliable (bind pose/scale not final). The camera
+    // then looks dead-level at the eyes instead of down at them (old hardcoded 1.32
+    // sat above the real face → it read as tilting up).
+    if (!camTargetYCalibrated.current && groupRef.current) {
+      const eyeSrc = meshData.leftEyeBone ?? meshData.rightEyeBone ?? meshData.headBone;
+      if (eyeSrc) {
+        groupRef.current.updateWorldMatrix(true, true);
+        const eyeWorld = new THREE.Vector3();
+        (eyeSrc as THREE.Object3D).getWorldPosition(eyeWorld);
+        if (Number.isFinite(eyeWorld.y) && eyeWorld.y > 0.01) {
+          camTargetYRef.current = eyeWorld.y;
+          camTargetYCalibrated.current = true;
+          if (import.meta.env.DEV) console.log('[OracleAvatar3D] calibrated camTargetY (eye level) =', eyeWorld.y);
+        }
+      }
+    }
+    const camTargetY = camTargetYRef.current;
 
     // ── Animation mixer ───────────────────────────────────────────────────
     mixer.update(delta);
@@ -594,7 +637,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     if (cameraStateRef?.current) {
       const cs = cameraStateRef.current;
       const targetZ = Math.min(CAM_DEFAULT_Z, Math.max(CAM_MIN_Z, CAM_DEFAULT_Z / Math.max(cs.zoom, 1)));
-      camTarget.current.set(cs.x * CAM_X_RANGE, CAM_Y_CENTER - cs.y * CAM_Y_RANGE, targetZ);
+      camTarget.current.set(cs.x * CAM_X_RANGE, camTargetY - cs.y * CAM_Y_RANGE, targetZ);
       if (cs.snap) {
         // Hard-snap: avatar materialises centred every time — no lerp-in drift from
         // stale knife-tap offset during the 1.8s opacity fade-in.
@@ -606,7 +649,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     } else {
       camera.position.lerp(camTarget.current, CAM_LERP * lerpDt);
     }
-    camera.lookAt(0, CAM_Y_CENTER, 0);
+    camera.lookAt(0, camTargetY, 0);
 
     // ── Blinking & Saccades ──────────────────────────────────────────────────
     const blink = blinkRef.current;
@@ -764,9 +807,11 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       hp.tiltVel += forceTilt * dt;
       hp.tiltAngle += hp.tiltVel * dt;
 
-      // 4. Combine with parallax gaze and alive idle drift
+      // 4. Combine with parallax gaze and alive idle drift.
+      // ty starts from the calibrated neutral pitch so the rest pose is level and
+      // forward; seeker tracking (gy) and physics are added relative to it.
       let tx = gx * 0.45;
-      let ty = gy * 0.32;
+      let ty = HEAD_NEUTRAL_PITCH + gy * 0.32;
       let tz = 0;
 
       // Alive idle drift — two incommensurate freqs (~0.11Hz + ~0.18Hz).
@@ -794,7 +839,8 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       const neckSwayX = Math.sin(t * 0.80) * 0.022;
       const neckSwayZ = Math.cos(t * 0.52 + 1.1) * 0.016;
       meshData.neckBone.rotation.y = THREE.MathUtils.lerp(meshData.neckBone.rotation.y, gx * 0.15, neckLerpF);
-      meshData.neckBone.rotation.x = THREE.MathUtils.lerp(meshData.neckBone.rotation.x, gy * 0.12 + neckSwayX, neckLerpF);
+      // Neck carries ~40% of the neutral pitch baseline so head+neck rest level together.
+      meshData.neckBone.rotation.x = THREE.MathUtils.lerp(meshData.neckBone.rotation.x, HEAD_NEUTRAL_PITCH * 0.4 + gy * 0.12 + neckSwayX, neckLerpF);
       meshData.neckBone.rotation.z = THREE.MathUtils.lerp(meshData.neckBone.rotation.z, neckSwayZ, neckLerpF);
     }
 
@@ -1006,7 +1052,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   });
 
   return (
-    <group ref={groupRef} position={[0, meshData.avatarYOffset, 0]} dispose={null}>
+    <group ref={groupRef} position={[meshData.avatarXOffset, meshData.avatarYOffset, 0]} dispose={null}>
       <primitive object={scene} />
       <OracleSceneLights />
     </group>

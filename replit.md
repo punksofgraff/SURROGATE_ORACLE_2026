@@ -1,6 +1,6 @@
 # SURROGATE — Replit Integration
 
-Last updated: 2026-07-07. Camera-vision verification (Task #26) done as far as sandbox allows; real-device check still recommended.
+Last updated: 2026-08-18. 3D Scene Visual Effects, GPU Tiering, Rigging Polish (Task #128) and Pre-Baked Holographic Particle Typography.
 
 ---
 
@@ -76,6 +76,27 @@ Radio stream: `MediaElementSource` → `GainNode(SESSION_AMBIENT=0.008)` → `Sp
 **GLB asset:** `/public/hero3.glb?v=morphs-v2` — confirmed 15 OVR viseme morphs + eye blinks + skeleton with Head/Spine2/Shoulders.
 
 **Radio stations:** `src/config/audioTracks.ts` — Graff Punks (default), Drone Zone, Groove Salad.
+
+---
+
+## Session Overhaul: 2026-08-18 (Pre-Baked Holographic Particle Typography)
+
+**Pre-Baked Holographic Particle Typography for Knife Questions:**
+- Replaced static 2D HTML typewriter spans in `KnifeSelection.tsx` with a high-performance Canvas2D particle engine (`ParticleTypographyCard.tsx`).
+- **Offline / Build-Time Coordinate Extraction (`scripts/generate-knife-particles.mjs` & `src/data/knifeParticleData.ts`):** Exact glyph coordinates $(x, y, \text{wordIdx}, \text{charIdx})$ pre-computed across all 5 canonical knife questions and territory titles. Zero runtime LLM, font parsing, or API overhead (~25 KB dataset).
+- **Word-Sync Particle Coalescence:** Unspoken words hover as ambient quantum particles in the card boundary; as the Oracle speaks (`landedChars`), elastic spring attractors pull the corresponding particles into illuminated typography with Sacred Green (`#00ff88`) $\rightarrow$ Brand Cyan (`#00ffcc`) gradient glow.
+- **Selection Kinetic Shatter:** Selecting a knife triggers a radial explosive velocity impulse outward across the cabinet before transitioning into the 3D Oracle entrance.
+- **Accessibility & Verification:** Full screen reader accessibility preserved (`aria-label`); verified across all headless tiers and production build.
+
+## Session Overhaul: 2026-08-18 (3D Scene Effects, GPU Tiering & Rigging, Task #128)
+
+**3D Visual Effects Retune & GPU Tiering:**
+- **GPU Tier Probe (`useGPUTier.ts`):** Added WebGL unmasked renderer detection for desktop GPUs (Apple Silicon, NVIDIA RTX/GTX, AMD Radeon, Intel Arc) and eliminated persistent caching of transient network benchmark failures in `sessionStorage`.
+- **Nebula Particles (`OracleNebula.tsx`):** Ambient dust radii increased (0.032–0.072) with 128px high-emissive glow cores, doubled emission rates, and 2.4×2.2m cabinet perimeter framing.
+- **GPU Quarks Engine (`OracleQuarks.tsx`):** Custom GPU vertex/fragment shaders providing 3D curl noise turbulence, harmonic vortex swirl, and vocal amplitude excitation with cylindrical face protection.
+- **Rapier Physics Debris (`OraclePhysicsDebris.tsx`):** Shards enlarged to 0.072 radius with crystalline cyber-emerald material (emissive intensity 3.2), 1.05m orbital roam volume, and strong outward speech blast wave.
+- **Post-Processing & Manifestation (`SurrogateOracleImmersion.tsx`, `.css`):** Bloom raised to 1.15–1.45 (threshold 0.20), chromatic aberration tuned with radial modulation, tier 3 CRT scanlines, and 2.8s multi-stage quantum emergence glitch arc (`oracle-phase-manifest`).
+- **Avatar Animation Rigging & Lip-Sync (`OracleAvatar3D.tsx`, `oracle-morph-inject.mjs`):** Additive quaternion math for shoulders/arms, forearm spring follow-through, vocal amplitude decoupled from neck tilt, and tightened Gaussian morph injection to eliminate throat deformation.
 
 ---
 

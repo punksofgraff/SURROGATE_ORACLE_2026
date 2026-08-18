@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { BookOpen, Link2, Cpu, Globe, Factory } from 'lucide-react';
 import { getAudioContext } from '../lib/oracleSfx';
 import { ScrambleFragment } from './ScrambleFragment';
+import { ParticleTypographyCard } from './ParticleTypographyCard';
 
 // ── Transmission sound — "what the fuck did I just find?" ────────────────────
 // Formant synthesis: pink noise + two bandpass filters at vocal frequencies
@@ -300,75 +301,22 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
                   }}
                 />
 
-                {/* Territory -- STAB. Brand Kit Gradient. */}
-                <div className="oracle-knife-territory" style={{
-                  background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                  color: 'transparent',
-                }}>{kq.territory}</div>
-
-                {/* Gradient divider */}
-                <div className="oracle-knife-divider" />
-
-                {/* Question pontif -- letter by letter gradient landing.
-                    Per-letter explicit color avoids background-clip:text leaking
-                    gradient through opacity:0 spans on the parent div. */}
-                <div className="oracle-knife-card-question" aria-label={kq.question}>
-                  {isThisActive ? (() => {
-                    const words = kq.question.split(' ');
-                    let globalCharIdx = 0;
-                    return words.map((word, wordIdx) => {
-                      const chars = word.split('');
-                      const wordStartIdx = globalCharIdx;
-                      globalCharIdx += chars.length + 1; // +1 for the space
-
-                      return (
-                        <span
-                          key={wordIdx}
-                          style={{ display: 'inline-block', whiteSpace: 'nowrap' }}
-                        >
-                          {chars.map((char, charIdx) => {
-                            const j = wordStartIdx + charIdx;
-                            return (
-                              <span
-                                key={charIdx}
-                                className="oracle-knife-letter"
-                                style={{
-                                  opacity: j < landedChars ? 1 : 0,
-                                  filter: j < landedChars ? 'blur(0px)' : 'blur(3px)',
-                                  transition: 'opacity 0.55s ease-out, filter 0.55s ease-out',
-                                  color: gradientChar(j, kq.question.length),
-                                  display: 'inline-block',
-                                }}
-                              >
-                                {char}
-                              </span>
-                            );
-                          })}
-                          {wordIdx < words.length - 1 && (
-                            <span
-                              className="oracle-knife-letter"
-                              style={{
-                                opacity: (wordStartIdx + chars.length) < landedChars ? 1 : 0,
-                                display: 'inline-block',
-                                whiteSpace: 'pre',
-                              }}
-                            >
-                              {' '}
-                            </span>
-                          )}
-                        </span>
-                      );
-                    });
-                  })() : kq.question}
-                </div>
+                {/* Pre-Baked Holographic Particle Typography */}
+                <ParticleTypographyCard
+                  questionIndex={i}
+                  landedChars={isThisActive ? landedChars : (isSelected ? 999 : 0)}
+                  isEmitting={isEmitting}
+                  isSelected={isSelected}
+                  isThisSelected={isThisSelected}
+                  accentColor={kq.color}
+                  territory={kq.territory}
+                  question={kq.question}
+                />
 
                 {/* CTA — "DRAW THIS ONE" reads as an unambiguous choice of THIS card
                     (and nods to drawing the blade), where "SELECT FREQUENCY" read as abstract. */}
                 {!isSelected && isThisActive && (
-                  <div className="oracle-knife-cta">◈ DRAW THIS ONE</div>
+                  <div className="oracle-knife-cta" style={{ marginTop: 8 }}>◈ DRAW THIS ONE</div>
                 )}
               </motion.div>
             );

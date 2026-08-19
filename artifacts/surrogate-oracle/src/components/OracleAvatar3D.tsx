@@ -254,7 +254,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   const { animations: idleClips }    = useGLTF('/oracle-idle.glb');
   const { animations: talking1Clips } = useGLTF('/oracle-talking-1.glb');
   const { animations: talking2Clips } = useGLTF('/oracle-talking-2.glb');
-  const { camera } = useThree();
+  const { camera, gl } = useThree();
   const groupRef   = useRef<THREE.Group>(null);
   // Smooth camera target — avoids snapping on sudden gesture changes
   const camTarget = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
@@ -564,6 +564,27 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     }
     const camTargetY = camTargetYRef.current;
 
+    if (import.meta.env.DEV && groupRef.current && meshData.headBone) {
+      const headWorld = new THREE.Vector3();
+      meshData.headBone.getWorldPosition(headWorld);
+      const projected = headWorld.clone().project(camera);
+      const canvasRect = gl.domElement.getBoundingClientRect();
+      const headScreenX = canvasRect.left + ((projected.x + 1) / 2) * canvasRect.width;
+      const stageRect = document.querySelector('.oracle-stage')?.getBoundingClientRect();
+      (window as unknown as { __oracle_avatar_debug?: Record<string, number> }).__oracle_avatar_debug = {
+        headWorldX: Number(headWorld.x.toFixed(4)),
+        projectedX: Number(projected.x.toFixed(4)),
+        headScreenX: Number(headScreenX.toFixed(2)),
+        stageCenterX: Number(((stageRect?.left ?? 0) + (stageRect?.width ?? 0) / 2).toFixed(2)),
+        visualCenterOffset: Number((headScreenX - ((stageRect?.left ?? 0) + (stageRect?.width ?? 0) / 2)).toFixed(2)),
+        rootX: Number(groupRef.current.position.x.toFixed(4)),
+        cameraX: Number(camera.position.x.toFixed(4)),
+        cameraZ: Number(camera.position.z.toFixed(4)),
+        canvasLeft: Number(canvasRect.left.toFixed(2)),
+        canvasWidth: Number(canvasRect.width.toFixed(2)),
+      };
+    }
+
     // ── Animation mixer ───────────────────────────────────────────────────
     mixer.update(delta);
 
@@ -652,7 +673,13 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     if (cameraStateRef?.current) {
       const cs = cameraStateRef.current;
       const targetZ = Math.min(CAM_DEFAULT_Z, Math.max(CAM_MIN_Z, CAM_DEFAULT_Z / Math.max(cs.zoom, 1)));
-      camTarget.current.set(cs.x * CAM_X_RANGE, camTargetY - cs.y * CAM_Y_RANGE, targetZ);
+      // Keep the hero's projection centered while the seeker tilts. Moving the
+      // camera laterally and then looking back at world X=0 makes a face whose
+      // calibrated head bone is already at X=0 project several pixels to one
+      // side, especially on the expanded mobile canvas. Horizontal parallax
+      // remains visible through head gaze, cabinet rotation, and the surrounding
+      // depth layers; the focal avatar itself stays locked to the cabinet center.
+      camTarget.current.set(0, camTargetY - cs.y * CAM_Y_RANGE, targetZ);
       if (cs.snap) {
         // Hard-snap: avatar materialises centred every time — no lerp-in drift from
         // stale knife-tap offset during the 1.8s opacity fade-in.

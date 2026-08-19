@@ -36,6 +36,23 @@ export interface OracleDiagnosticSample {
   };
 }
 
+export type OracleLiveMicLabel = 'before-mic' | 'mic-open' | 'user-speaking' | 'after-user-speech';
+export interface OracleMicDebugState {
+  listening: boolean;
+  acquiring: boolean;
+  captureEnabled: boolean;
+  audioContextState: string | null;
+  micAudioContextState: string | null;
+  vadState: string | null;
+  vadScore: number | null;
+  audioChunksSent: number | null;
+}
+export type OracleLiveMicSample = Omit<OracleDiagnosticSample, 'label'> & {
+  label: OracleLiveMicLabel;
+  mic: OracleMicDebugState | null;
+  avatarDebug: Record<string, number> | null;
+};
+
 export interface DOMRectSnapshot {
   x: number;
   y: number;
@@ -54,6 +71,15 @@ type DiagnosticWindow = Window & {
     latest: OracleDiagnosticSample | null;
     reset: () => void;
   };
+  __oracle_live_mic_diagnostics?: {
+    samples: OracleLiveMicSample[];
+    latest: OracleLiveMicSample | null;
+    reset: () => void;
+  };
+  __oracle_mic_debug?: {
+    getState: () => OracleMicDebugState;
+  };
+  __oracle_avatar_debug?: Record<string, number>;
 };
 
 function snapshotRect(element: Element | null): DOMRectSnapshot | null {
@@ -118,6 +144,17 @@ function takeSample(label: OracleDiagnosticSample['label']): OracleDiagnosticSam
   };
 }
 
+function takeLiveMicSample(label: OracleLiveMicSample['label']): OracleLiveMicSample {
+  const base = takeSample('before-speech');
+  const win = window as DiagnosticWindow;
+  return {
+    ...base,
+    label,
+    mic: win.__oracle_mic_debug?.getState() ?? null,
+    avatarDebug: win.__oracle_avatar_debug ? { ...win.__oracle_avatar_debug } : null,
+  };
+}
+
 /** R3F-side probe. It intentionally has no visual or behavioral effect. */
 export function OracleSceneDiagnostics() {
   const { scene, gl } = useThree();
@@ -173,11 +210,25 @@ export function OracleDiagnosticsOverlay() {
       setSamples([]);
     };
     win.__oracle_diagnostics = { enabled: true, samples: [], latest: null, reset };
+    const liveCaptured = new Set<OracleLiveMicLabel>();
+    let userSpeakingSeen = false;
+    const liveReset = () => {
+      liveCaptured.clear();
+      userSpeakingSeen = false;
+      const live = win.__oracle_live_mic_diagnostics;
+      if (live) {
+        live.samples.length = 0;
+        live.latest = null;
+      }
+    };
+    win.__oracle_live_mic_diagnostics = { samples: [], latest: null, reset: liveReset };
 
     const tick = () => {
       const stage = document.querySelector('.oracle-stage');
       if (!stage || stage.getAttribute('data-oracle-state') !== 'oracle') return;
       const speaking = stage.getAttribute('data-oracle-speaking') === 'true';
+      const userSpeaking = stage.getAttribute('data-user-speaking') === 'true';
+      const micState = win.__oracle_mic_debug?.getState();
       const now = Date.now();
       if (speaking && !lastSpeakingRef.current) speakingStartedAtRef.current = now;
 
@@ -201,6 +252,26 @@ export function OracleDiagnosticsOverlay() {
           setSamples([...diagnostics.samples]);
         }
       }
+
+      const liveLabel: OracleLiveMicLabel | null = !liveCaptured.has('before-mic') && !micState?.listening && !userSpeaking
+        ? 'before-mic'
+        : micState?.listening && !liveCaptured.has('mic-open') && !userSpeaking
+          ? 'mic-open'
+          : userSpeaking && !liveCaptured.has('user-speaking')
+            ? 'user-speaking'
+            : !userSpeaking && userSpeakingSeen && !liveCaptured.has('after-user-speech')
+              ? 'after-user-speech'
+              : null;
+      if (userSpeaking) userSpeakingSeen = true;
+      if (liveLabel) {
+        const liveSample = takeLiveMicSample(liveLabel);
+        liveCaptured.add(liveLabel);
+        const live = win.__oracle_live_mic_diagnostics;
+        if (live) {
+          live.samples.push(liveSample);
+          live.latest = liveSample;
+        }
+      }
       lastSpeakingRef.current = speaking;
     };
 
@@ -208,6 +279,8 @@ export function OracleDiagnosticsOverlay() {
     return () => {
       window.clearInterval(timer);
       delete win.__oracle_diagnostics;
+      delete win.__oracle_live_mic_diagnostics;
+      delete win.__oracle_mic_debug;
     };
   }, []);
 

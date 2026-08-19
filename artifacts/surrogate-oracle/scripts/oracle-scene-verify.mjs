@@ -24,6 +24,8 @@ mkdirSync(OUT_DIR, { recursive: true });
 
 const DEV_URL = process.env.DEV_URL ?? 'http://localhost:80/surrogate-oracle';
 const FORCED_TIER = Number(process.argv[2] ?? 3);
+const LIVE_MIC = process.argv.includes('--live-mic');
+const FAKE_AUDIO_FILE = process.env.FAKE_AUDIO_FILE ?? join(__dirname, '../public/mock-speech.wav');
 
 let pass = 0, fail = 0;
 const check = (cond, okMsg, badMsg) => {
@@ -39,7 +41,7 @@ const browser = await puppeteer.launch({
     // SwiftShader — headless WebGL per memory recipe
     '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader',
     '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
-    '--use-file-for-fake-audio-capture=' + join(__dirname, '../public/mock-speech.wav'),
+    '--use-file-for-fake-audio-capture=' + FAKE_AUDIO_FILE,
   ],
 });
 
@@ -49,6 +51,12 @@ await page.setViewport({ width: 390, height: 844 });
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(e.message));
 page.on('console', (msg) => {
+  if (LIVE_MIC && ['log', 'warning', 'error'].includes(msg.type())) {
+    const text = msg.text();
+    if (/MIC|mic|getUserMedia|SIGNAL|audio session|AudioContext/i.test(text)) {
+      console.log(`  browser ${msg.type()}: ${text}`);
+    }
+  }
   if (msg.type() === 'error') pageErrors.push(msg.text());
 });
 
@@ -57,6 +65,13 @@ await page.evaluateOnNewDocument((tier) => {
   sessionStorage.setItem('oracle_gpu_profile_v1', JSON.stringify({ tier, isMobile: false }));
   // three.js reports every Scene/WebGLRenderer to __THREE_DEVTOOLS__ if present.
   window.__oracle_observed = [];
+  const nativeNow = performance.now.bind(performance);
+  try {
+    Object.defineProperty(performance, 'now', {
+      configurable: true,
+      value: () => nativeNow() * 0.08,
+    });
+  } catch {}
   window.__THREE_DEVTOOLS__ = {
     dispatchEvent(e) { try { window.__oracle_observed.push(e.detail); } catch {} },
     addEventListener() {}, removeEventListener() {},
@@ -115,6 +130,110 @@ const diagnostics = async () => page.evaluate(() => {
 // the same speaking ref used by Gemini's live callback, without replacing or
 // intercepting the production audio path.
 if (phase === 'oracle') {
+  if (LIVE_MIC) {
+    const liveMicReady = await page.evaluate(() => Boolean(
+      document.querySelector('.oc-mic-trigger') &&
+      window.__oracle_live_mic_diagnostics &&
+      window.__oracle_mic_debug,
+    ));
+    check(liveMicReady, 'live microphone pressure telemetry available');
+    if (liveMicReady) {
+      await page.evaluate(() => window.__oracle_live_mic_diagnostics?.reset());
+      await page.screenshot({ path: join(OUT_DIR, `scene-verify-tier${FORCED_TIER}-before-mic.png`) });
+      await page.evaluate(() => document.querySelector('.oc-mic-trigger')?.click());
+      await new Promise((r) => setTimeout(r, 9000));
+
+      const liveDuringSpeech = await page.evaluate(() => {
+        const diagnostics = window.__oracle_live_mic_diagnostics;
+        const mic = window.__oracle_mic_debug?.getState();
+        return {
+          samples: diagnostics?.samples ?? [],
+          mic,
+          button: document.querySelector('.oc-mic-trigger')?.textContent?.trim() ?? null,
+          tier: window.__oracle_renderTier,
+          rects: ['.oracle-stage', '.oracle-center', '.oracle-cabinet', '.oracle-avatar-wrapper', '.oracle-avatar-canvas', '.oracle-avatar-canvas canvas']
+            .map((selector) => {
+              const element = document.querySelector(selector);
+              const rect = element?.getBoundingClientRect();
+              const style = element ? getComputedStyle(element) : null;
+              return [selector, rect ? {
+                left: rect.left,
+                width: rect.width,
+                center: rect.left + rect.width / 2,
+                position: style?.position,
+                cssWidth: style?.width,
+                cssLeft: style?.left,
+                offsetParent: element instanceof HTMLElement ? element.offsetParent?.className ?? null : null,
+              } : null];
+            }),
+        };
+      });
+      console.log(`  live mic state during capture: ${JSON.stringify({
+        mic: liveDuringSpeech.mic,
+        button: liveDuringSpeech.button,
+        tier: liveDuringSpeech.tier,
+        rects: liveDuringSpeech.rects,
+      })}`);
+      console.log(`  live mic evidence: ${JSON.stringify(liveDuringSpeech.samples.map((sample) => ({
+        label: sample.label,
+        tier: sample.renderTier,
+        frames: sample.probe?.frameCount ?? null,
+        quarkTime: sample.probe?.quarkTime ?? null,
+        nebulaUpdates: sample.probe?.nebulaUpdates ?? null,
+        debrisUpdates: sample.probe?.debrisUpdates ?? null,
+        centerOffset: sample.placement.centerOffset,
+        centers: {
+          stage: sample.placement.stage?.centerX ?? null,
+          cabinet: sample.placement.cabinet?.centerX ?? null,
+          avatar: sample.placement.avatar?.centerX ?? null,
+          canvas: sample.placement.canvas?.centerX ?? null,
+        },
+        avatarDebug: sample.avatarDebug,
+        mic: sample.mic,
+      })))}`);
+      await page.screenshot({ path: join(OUT_DIR, `scene-verify-tier${FORCED_TIER}-during-mic.png`) });
+
+      const liveLabels = new Set(liveDuringSpeech.samples.map((sample) => sample.label));
+      check(liveLabels.has('before-mic'), 'live mic captured pre-tap baseline');
+      check(liveLabels.has('mic-open'), 'live mic opened through the UI control');
+      check(liveLabels.has('user-speaking'), 'live mic captured an actual VAD speaking transition',
+        'live mic opened, but the fake capture did not produce a user-speaking VAD transition');
+      check(liveDuringSpeech.mic?.listening === true, 'live mic remains listening during capture');
+      check(liveDuringSpeech.tier >= 1, `particle tier remains active during live mic (tier=${liveDuringSpeech.tier})`,
+        'particle tier was disabled during live mic');
+      const centeredLiveSamples = liveDuringSpeech.samples
+        .map((sample) => sample.avatarDebug?.visualCenterOffset)
+        .filter((offset) => Number.isFinite(offset));
+      check(
+        centeredLiveSamples.length > 0 && centeredLiveSamples.every((offset) => Math.abs(offset) <= 8),
+        `avatar projection remains centered during live mic (offsets=${centeredLiveSamples.map((offset) => offset.toFixed(1)).join(',')})`,
+        'the rendered avatar head drifted away from the stage center',
+      );
+
+      // The normal fixture loops continuously. A finite speech-then-silence
+      // fixture allows the real VAD path to prove that the scene recovers
+      // after user speech while the retained mic stays open.
+      await new Promise((r) => setTimeout(r, 2500));
+      const liveAfterSpeech = await page.evaluate(() => {
+        const diagnostics = window.__oracle_live_mic_diagnostics;
+        return {
+          samples: diagnostics?.samples ?? [],
+          mic: window.__oracle_mic_debug?.getState(),
+          tier: window.__oracle_renderTier,
+        };
+      });
+      const afterSpeechLabels = new Set(liveAfterSpeech.samples.map((sample) => sample.label));
+      check(afterSpeechLabels.has('after-user-speech'), 'live mic captured post-speech recovery state',
+        'live mic did not return from a captured user-speaking state; use a finite speech-then-silence fixture');
+      check(liveAfterSpeech.mic?.listening === true, 'retained mic stays listening after speech');
+      check(liveAfterSpeech.tier >= 1, `particle tier remains active after speech (tier=${liveAfterSpeech.tier})`,
+        'particle tier was disabled after live speech');
+      await page.evaluate(() => document.querySelector('.oc-mic-trigger')?.click());
+      await new Promise((r) => setTimeout(r, 1200));
+      await page.screenshot({ path: join(OUT_DIR, `scene-verify-tier${FORCED_TIER}-after-mic.png`) });
+    }
+  }
+
   await new Promise((r) => setTimeout(r, 1200));
   await page.screenshot({ path: join(OUT_DIR, `scene-verify-tier${FORCED_TIER}-before-speech.png`) });
 

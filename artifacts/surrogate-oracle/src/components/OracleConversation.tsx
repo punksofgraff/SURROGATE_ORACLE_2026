@@ -508,6 +508,27 @@ const OracleConversation = forwardRef(
     const micAcquiringRef = useRef(false);
     const micDesiredOnRef = useRef(false);
     const releaseDuringAcquireRef = useRef<string | null>(null);
+
+    useEffect(() => {
+      if (!import.meta.env.DEV || !new URLSearchParams(window.location.search).has('devui')) return;
+      (window as unknown as {
+        __oracle_mic_debug?: { getState: () => Record<string, unknown> };
+      }).__oracle_mic_debug = {
+        getState: () => ({
+          listening: isListeningRef.current,
+          acquiring: micAcquiringRef.current,
+          captureEnabled: captureEnabledRef.current,
+          audioContextState: getAudioContext().state,
+          micAudioContextState: micAudioContextRef.current?.state ?? null,
+          vadState: debugInfo.current.lastVadState,
+          vadScore: debugInfo.current.lastVadRms,
+          audioChunksSent: debugInfo.current.audioChunksSent,
+        }),
+      };
+      return () => {
+        delete (window as unknown as { __oracle_mic_debug?: unknown }).__oracle_mic_debug;
+      };
+    }, []);
     // Set true the first time startMic succeeds — gates the turnComplete auto-restart
     // so knife-phase Oracle voice-overs don't trigger mic before oracle phase starts.
     const micAutoRestartEnabledRef = useRef(false);

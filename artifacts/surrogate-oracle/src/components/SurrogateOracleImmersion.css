@@ -4796,6 +4796,16 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   pointer-events: none !important;
 }
 
+ /* R3F's inner canvas can retain the wrapper's pre-expansion measured width.
+    Explicitly center that drawing surface in the expanded orbit wrapper so
+    its projected avatar and particles share the wrapper/stage midpoint. */
+ .oracle-stage[data-oracle-state="oracle"]:not([data-xr-mode="true"]) .oracle-avatar-canvas canvas {
+   position: absolute !important;
+   left: 50% !important;
+   top: 50% !important;
+   transform: translate(-50%, -50%) !important;
+ }
+
 /* ── Oracle center: sit slightly lower, more in the alley middle-ground ─────*/
 .oracle-stage[data-oracle-state="oracle"] .oracle-center {
   top: 33%;
@@ -5058,13 +5068,10 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
    new filter compositing path can cost enough frames to trip the performance
    guard and unmount the particle tiers at exactly the first Oracle turn. */
 
-/* Seeker speaking: Oracle receives — cyan shift, gentler than oracle pulse.  */
- .oracle-stage[data-oracle-state="oracle"]:not([data-xr-mode="true"])[data-user-speaking="true"] .oracle-avatar-canvas {
-  filter:
-    drop-shadow(0 0 32px rgba(0,220,255,0.42))
-    drop-shadow(0 0 72px rgba(0,220,255,0.14)) !important;
-  transition: filter 0.12s ease !important;
-}
+/* Seeker speaking: the receptive cyan shift belongs on the wrapper/alley
+   atmosphere, never on the live WebGL layer. A state-only canvas filter forces
+   Safari to rebuild the compositing surface at the exact mic/VAD transition
+   where the particle field must remain alive. */
 
 /* ── Holographic halo ring — 360° orbit above the Oracle ────────────────── */
 @keyframes oracle-halo-orbit {

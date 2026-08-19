@@ -220,7 +220,11 @@ export function useParallax(
         const dx   = 0;
         const dy   = clamp(iy * vh * 0.010, vh * 0.012);
         const rotX = clamp(-iy * 14, 9);
-        const rotY = clamp( ix * 16, 10);
+        // Do not yaw the expanded WebGL canvas with the cabinet. Its rotated
+        // bounding box shifts right on mobile even when every layout box is
+        // centered; horizontal depth remains in the surrounding layers and
+        // seeker gaze, while the focal particle/avatar field stays centered.
+        const rotY = 0;
         cabinet.style.transform =
           `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) rotateX(${rotX}deg) rotateY(${rotY}deg)`;
       }

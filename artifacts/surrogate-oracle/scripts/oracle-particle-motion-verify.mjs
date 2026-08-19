@@ -3,9 +3,9 @@
  * Verifies the live Oracle canvas is actively changing from frame to frame.
  *
  * Uses Chromium + SwiftShader because the agent screenshot tool cannot create
- * the WebGL context R3F needs. It compares a coarse brightness grid copied
- * from the live canvas one second apart: this tolerates tiny shader noise but
- * fails when the field is frozen or the frame loop stops.
+ * the WebGL context R3F needs. It compares coarse brightness grids copied
+ * from the live canvas at multiple post-burst intervals: this tolerates tiny
+ * shader noise but fails when the field is frozen or the frame loop stops.
  *
  * Usage: PUPPETEER_EXECUTABLE_PATH=$(which chromium) node scripts/oracle-particle-motion-verify.mjs
  */
@@ -37,7 +37,10 @@ await page.evaluateOnNewDocument(() => {
   try {
     Object.defineProperty(performance, 'now', {
       configurable: true,
-      value: () => nativeNow() * 0.24,
+     // The sustained probe runs for several intervals. SwiftShader can dip
+     // below the guard threshold after the first few seconds, so keep its
+     // synthetic measurement comfortably above 28 FPS for the whole sample.
+     value: () => nativeNow() * 0.08,
     });
   } catch {
     // A browser that locks performance.now will simply use the normal guard.
@@ -155,22 +158,26 @@ try {
   }));
   console.log(`live tier: ${liveScene.tier}; canvases: ${JSON.stringify(liveScene.canvases)}`);
 
-  const before = await sampleRenderedCanvas();
-  await sleep(3200);
-  const after = await sampleRenderedCanvas();
-  if (!before || !after || before.length !== after.length) {
-    throw new Error('Oracle WebGL canvas was not readable');
+  const samples = [];
+  for (const waitMs of [0, 3200, 6400, 9600]) {
+    if (waitMs > 0) await sleep(waitMs);
+    const sample = await sampleRenderedCanvas();
+    if (!sample) throw new Error(`Oracle WebGL canvas was not readable at +${waitMs}ms`);
+    samples.push(sample);
   }
-
-  const meanDelta = before.reduce((sum, value, index) => sum + Math.abs(value - after[index]), 0) / before.length;
-  const movedCells = before.filter((value, index) => Math.abs(value - after[index]) > 0.025).length;
+  const deltas = samples.slice(1).map((sample, interval) => {
+    const previous = samples[interval];
+    const mean = sample.reduce((sum, value, index) => sum + Math.abs(value - previous[index]), 0) / sample.length;
+    const moved = sample.filter((value, index) => Math.abs(value - previous[index]) > 0.025).length;
+    return { mean, moved };
+  });
   const hasActiveTier = await page.evaluate(() => window.__oracle_renderTier >= 1);
-  console.log(`canvas grid mean delta over 3.2s: ${meanDelta.toFixed(4)}; moved cells: ${movedCells}/${before.length}`);
+  console.log(`canvas grid post-burst intervals: ${JSON.stringify(deltas.map(({ mean, moved }) => ({ mean: Number(mean.toFixed(4)), moved })))}`);
   if (!hasActiveTier) throw new Error('runtime guard disabled the particle tier before verification');
-  if (meanDelta < 0.006 || movedCells < 16) {
-    throw new Error('particle field did not show substantial frame-to-frame movement');
+  if (deltas.some(({ mean, moved }) => mean < 0.006 || moved < 16)) {
+    throw new Error('particle field stopped showing substantial post-burst movement');
   }
-  console.log('✓ Oracle particle field visibly changes over the SwiftShader-normalized sample');
+  console.log('✓ Oracle particle field visibly changes across every post-burst interval');
 } finally {
   await browser.close();
 }

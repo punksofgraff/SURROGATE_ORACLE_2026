@@ -156,6 +156,10 @@ export function OracleNebula({ tier, speakingRef, reducedMotion = false }: Oracl
       .emit();
 
     system.addEmitter(dust).addEmitter(energy);
+    // Start the system through Nebula's lifecycle as well as the individual
+    // emitters. This keeps the ambient emitter in its continuous update path
+    // after the initial pool has been recycled.
+    void system.emit({});
     systemRef.current = system;
     energyEmitterRef.current = energy;
     wasSpeakingRef.current = false;

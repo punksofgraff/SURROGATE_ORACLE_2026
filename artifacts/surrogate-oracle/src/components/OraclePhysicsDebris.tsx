@@ -68,7 +68,11 @@ export function OraclePhysicsDebris({ count, speakingRef }: OraclePhysicsDebrisP
   }, [count]);
 
   // Scratch vectors reused per frame — no allocation in the hot loop.
-  const scratch = useMemo(() => ({ pos: new THREE.Vector3(), force: new THREE.Vector3() }), []);
+  const scratch = useMemo(() => ({
+    pos: new THREE.Vector3(),
+    force: new THREE.Vector3(),
+    velocity: new THREE.Vector3(),
+  }), []);
 
   useFrame(() => {
     const bodies = bodiesRef.current;
@@ -87,16 +91,24 @@ export function OraclePhysicsDebris({ count, speakingRef }: OraclePhysicsDebrisP
       scratch.force.copy(HOME).sub(scratch.pos);
       const dist = scratch.force.length();
 
-      // Spring toward the roam shell: pulled back when outside, gently stirred
-      // tangentially when deep inside so the field keeps drifting.
+      // Spring toward the roam shell, with a persistent tangential velocity
+      // target. The old micro-impulse was quickly erased by Rapier damping:
+      // shards moved during the entrance/speaking impulse, then settled into a
+      // visually frozen ring even though the frame loop was still alive.
       if (dist > ROAM_RADIUS) {
         scratch.force.normalize().multiplyScalar(0.00010 * (dist - ROAM_RADIUS + 0.2));
         body.applyImpulse(scratch.force, true);
       } else if (dist > 1e-4) {
-        // tangential stir: cross with up vector
+        // Tangential orbit with a small radial correction back toward HOME.
         scratch.force.normalize();
         const tx = scratch.force.z, tz = -scratch.force.x;
-        scratch.force.set(tx, 0, tz).multiplyScalar(0.000008);
+        scratch.velocity.set(tx * 0.12, 0, tz * 0.12);
+        const current = body.linvel();
+        scratch.force.set(
+          scratch.velocity.x - current.x,
+          -current.y * 0.35,
+          scratch.velocity.z - current.z,
+        ).multiplyScalar(0.10);
         body.applyImpulse(scratch.force, true);
       }
 

@@ -183,6 +183,7 @@ export function OracleQuarks({
 }: OracleQuarksProps) {
   const pointsRef = useRef<THREE.Points>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
+  const motionTimeRef = useRef(0);
   const count = TIER_QUARK_COUNTS[tier];
 
   // Palette colors
@@ -251,7 +252,11 @@ export function OracleQuarks({
     const mat = materialRef.current;
     if (!mat) return;
 
-    mat.uniforms.uTime.value = state.clock.elapsedTime;
+    // Keep the particle phase owned by this mounted field. R3F's shared clock
+    // can be reset when a warmed Canvas crosses scene phases, which made a
+    // continuous stream look like it had completed one act and frozen.
+    motionTimeRef.current += Math.min(delta, 1 / 20);
+    mat.uniforms.uTime.value = motionTimeRef.current;
 
     // gl_PointSize is computed with a fixed constant that assumes the original
     // card-sized drawing buffer. In oracle phase the canvas element is enlarged

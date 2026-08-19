@@ -4480,6 +4480,18 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   justify-content: center;
   pointer-events: none;
 }
+
+/* On narrow phones the centered HUD otherwise occupies the same top row as
+   the fixed EXIT THE ORACLE control and the hamburger menu. Keep it just
+   below that compact header row rather than relying on z-index — every point
+   of the button must summon, while exit and menu remain independently
+   reachable. */
+@media (max-width: 480px) {
+  .oc-summon-hud {
+    top: 60px;
+  }
+}
+
 .oc-summon-hud__meter {
   width: 100%;
   pointer-events: none;

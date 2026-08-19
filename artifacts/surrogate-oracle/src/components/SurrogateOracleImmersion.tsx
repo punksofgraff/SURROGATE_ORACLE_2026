@@ -2550,7 +2550,7 @@ export function SurrogateOracleImmersion() {
       </AnimatePresence>
 
       {isOracleMode && (
-        <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 100 }}>
+        <div style={{ position: 'fixed', top: '14px', right: '14px', zIndex: 100 }}>
           <button onClick={() => setHamburgerOpen(!hamburgerOpen)} style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(0,255,136,0.4)', borderRadius: '8px', color: '#00ff88', padding: '8px 12px', cursor: 'pointer', width: '44px', height: '44px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
             {hamburgerOpen ? '✕' : '☰'}
           </button>

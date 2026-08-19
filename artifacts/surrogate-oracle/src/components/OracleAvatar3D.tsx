@@ -264,6 +264,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   // Starts at CAM_Y_CENTER as a safe fallback until calibrated.
   const camTargetYRef = useRef(CAM_Y_CENTER);
   const camTargetYCalibrated = useRef(false);
+  const avatarXCalibrated = useRef(false);
 
   // Idle: strip arms so procedural pin owns them.
   // Talk: keep arm/hand/finger tracks so Mixamo gesture keyframes play during speech.
@@ -462,7 +463,6 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     // natural Y. Computed from THIS GLB rather than a hardcoded constant, so a
     // swapped/rescaled model still lands head-and-shoulders in the cabinet.
     let avatarYOffset = AVATAR_Y_OFFSET;
-    let avatarXOffset = 0;
     if (headBone) {
       // Bind pose is T-pose; world positions are only valid AFTER updateMatrixWorld,
       // never from useMemo-time scene state (see oracle-avatar-animation.md).
@@ -472,12 +472,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       // Drop the offset slightly below the head center so eyes/face sit at frame center.
       if (Number.isFinite(headWorld.y) && headWorld.y > 0.01) avatarYOffset = -(headWorld.y - 0.05);
 
-      // ── Horizontal auto-center ──────────────────────────────────────────────
-      // Negate the head bone's native world X so any GLB asymmetry can never shift
-      // the avatar sideways in the cabinet. Mirrors the vertical framing logic.
-      if (Number.isFinite(headWorld.x)) avatarXOffset = -headWorld.x;
-
-      if (import.meta.env.DEV) console.log('[OracleAvatar3D] head Y =', headWorld.y, '→ avatarYOffset =', avatarYOffset, '| head X =', headWorld.x, '→ avatarXOffset =', avatarXOffset);
+      if (import.meta.env.DEV) console.log('[OracleAvatar3D] head Y =', headWorld.y, '→ avatarYOffset =', avatarYOffset, '| horizontal centering deferred until settled frame');
     }
 
     if (import.meta.env.DEV) {
@@ -516,7 +511,6 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
       rightForeArmBone:   rightForeArmBone  as THREE.Object3D | null,
       hasMorphs,
       avatarYOffset,
-      avatarXOffset,
     };
   }, [scene]);
 
@@ -544,6 +538,27 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
           camTargetYRef.current = eyeWorld.y;
           camTargetYCalibrated.current = true;
           if (import.meta.env.DEV) console.log('[OracleAvatar3D] calibrated camTargetY (eye level) =', eyeWorld.y);
+        }
+      }
+    }
+
+    // Horizontal centering must be measured after the GLB is attached to the
+    // live Canvas. The old useMemo-time measurement could see the asset's
+    // preload transform and bake a large permanent X offset into the group,
+    // which is especially visible on iPhone Safari. Parallax is intentionally
+    // applied later by the DOM stage, so this one-time correction establishes
+    // the stable cabinet baseline first.
+    if (!avatarXCalibrated.current && groupRef.current && meshData.headBone) {
+      const root = groupRef.current;
+      root.updateWorldMatrix(true, true);
+      const headWorld = new THREE.Vector3();
+      meshData.headBone.getWorldPosition(headWorld);
+      if (Number.isFinite(headWorld.x)) {
+        root.position.x -= headWorld.x;
+        root.updateWorldMatrix(true, true);
+        avatarXCalibrated.current = true;
+        if (import.meta.env.DEV) {
+          console.log('[OracleAvatar3D] calibrated avatar X to cabinet center from settled head X =', headWorld.x);
         }
       }
     }
@@ -1052,7 +1067,7 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   });
 
   return (
-    <group ref={groupRef} position={[meshData.avatarXOffset, meshData.avatarYOffset, 0]} dispose={null}>
+    <group ref={groupRef} position={[0, meshData.avatarYOffset, 0]} dispose={null}>
       <primitive object={scene} />
       <OracleSceneLights />
     </group>

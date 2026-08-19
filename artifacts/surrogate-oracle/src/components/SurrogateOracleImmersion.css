@@ -4777,7 +4777,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
    in SurrogateOracleImmersion.tsx: OrbitZoomCompensator divides camera.zoom and
    the dpr budget by the same factor so the avatar's on-screen size and the
    total rendered pixel count are IDENTICAL to the card-sized canvas. */
-.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas {
+ .oracle-stage[data-oracle-state="oracle"]:not([data-xr-mode="true"]) .oracle-avatar-canvas {
   inset: -50% !important;
   width: auto !important;
   height: auto !important;
@@ -5033,7 +5033,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 /* ── Canvas: resting aura — drop-shadow follows the figure, not a box ───────
    Masks removed: iOS Safari cannot apply CSS mask-image to hardware-composited
    (WebGL) layers. Drop-shadow alone handles the holographic edge bleed.       */
-.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas {
+ .oracle-stage[data-oracle-state="oracle"]:not([data-xr-mode="true"]) .oracle-avatar-canvas {
   border-radius: 0 !important;
   filter:
     drop-shadow(0 0 28px rgba(0,255,136,0.28))
@@ -5042,7 +5042,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 }
 
 /* Oracle speaking: face aura intensifies. The presence surges. No rectangle. */
-.oracle-stage[data-oracle-state="oracle"][data-oracle-speaking="true"] .oracle-avatar-canvas {
+ .oracle-stage[data-oracle-state="oracle"]:not([data-xr-mode="true"])[data-oracle-speaking="true"] .oracle-avatar-canvas {
   filter:
     drop-shadow(0 0 42px rgba(0,255,136,0.55))
     drop-shadow(0 0 90px rgba(0,255,136,0.22))
@@ -5051,7 +5051,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 }
 
 /* Seeker speaking: Oracle receives — cyan shift, gentler than oracle pulse.  */
-.oracle-stage[data-oracle-state="oracle"][data-user-speaking="true"] .oracle-avatar-canvas {
+ .oracle-stage[data-oracle-state="oracle"]:not([data-xr-mode="true"])[data-user-speaking="true"] .oracle-avatar-canvas {
   filter:
     drop-shadow(0 0 32px rgba(0,220,255,0.42))
     drop-shadow(0 0 72px rgba(0,220,255,0.14)) !important;

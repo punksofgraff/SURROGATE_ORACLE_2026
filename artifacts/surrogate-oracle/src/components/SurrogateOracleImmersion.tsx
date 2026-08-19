@@ -167,18 +167,25 @@ const ORACLE_ORBIT_EXPANSION = 2;
    2x the wrapper, zoom is 0.5 and the avatar renders at the identical pixels it
    had in the card-sized canvas. Reruns automatically on every R3F resize
    (including the CSS state flip into oracle phase). */
-function OrbitZoomCompensator() {
+function OrbitZoomCompensator({ enabled }: { enabled: boolean }) {
   const { camera, size, gl } = useThree();
   useEffect(() => {
+    const persp = camera as import('three').PerspectiveCamera;
+    if (!enabled) {
+      if (Math.abs(persp.zoom - 1) > 1e-3) {
+        persp.zoom = 1;
+        persp.updateProjectionMatrix();
+      }
+      return;
+    }
     const wrapper = gl.domElement.closest('.oracle-avatar-wrapper') as HTMLElement | null;
     const wrapH = wrapper?.getBoundingClientRect().height ?? 0;
     const zoom = wrapH > 1 && size.height > 1 ? Math.min(1, wrapH / size.height) : 1;
-    const persp = camera as import('three').PerspectiveCamera;
     if (Math.abs(persp.zoom - zoom) > 1e-3) {
       persp.zoom = zoom;
       persp.updateProjectionMatrix();
     }
-  }, [camera, size, gl]);
+  }, [camera, size, gl, enabled]);
   return null;
 }
 
@@ -1656,13 +1663,17 @@ export function SurrogateOracleImmersion() {
                           /* Flat pixel budget: in oracle phase the canvas element is
                              ORACLE_ORBIT_EXPANSION x larger (CSS), so divide DPR by the
                              same factor — total rendered pixels (and bloom cost) stay at
-                             the card-sized canvas level. Floor 0.75 keeps tier-1 legible. */
+                              the card-sized canvas level. */
                           const base =
                             renderTier === 0 ? 1
                             : renderTier === 1 ? Math.min(window.devicePixelRatio, 1.25)
                             : renderTier === 2 ? Math.min(window.devicePixelRatio, 2)
                             : Math.min(window.devicePixelRatio, 2.5);
-                          return isOracleMode ? Math.max(0.75, base / ORACLE_ORBIT_EXPANSION) : base;
+                          // Keep this strictly proportional. A 2x expansion on both
+                          // axes quadruples the CSS area, so DPR / 2 preserves the
+                          // original raster pixel count. Do not floor this: a floor
+                          // above base/2 would silently increase the mobile budget.
+                          return isOracleMode && !isXRMode ? base / ORACLE_ORBIT_EXPANSION : base;
                         })()}
                         gl={{
                           antialias: renderTier >= 2,
@@ -1672,7 +1683,7 @@ export function SurrogateOracleImmersion() {
                         style={{ width: '100%', height: '100%', background: 'transparent' }}
                         frameloop="always"
                       >
-                        <OrbitZoomCompensator />
+                        <OrbitZoomCompensator enabled={isOracleMode && !isXRMode} />
                         <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
                         {/* Nebula dust + speaking-reactive energy tendrils (tier 1+) */}
                         {renderTier >= 1 && (

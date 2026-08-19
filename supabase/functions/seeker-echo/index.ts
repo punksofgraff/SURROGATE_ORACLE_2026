@@ -3,7 +3,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, x-oracle-request-id, x-oracle-session-id',
 };
 
 // Seeker Echo persistence (design §I.5 / §I.3 totem ladder).
@@ -32,6 +32,8 @@ interface SeekerEchoUpsert {
 }
 
 Deno.serve(async (req: Request) => {
+  // Dev-trace correlation: echo client-supplied ids into function logs (no-op for real seekers).
+  { const _rid = req.headers.get('x-oracle-request-id'); if (_rid) console.log('[trace] rid=' + _rid + ' sid=' + (req.headers.get('x-oracle-session-id') ?? '')); }
   try {
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {

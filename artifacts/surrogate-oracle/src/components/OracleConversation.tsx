@@ -24,6 +24,7 @@ import { getAudioContext, playSignalLockedSfx } from '../lib/oracleSfx';
 import { createAudioContext } from '../lib/browserCapabilities';
 import { useGeminiSession, GEMINI_MODEL, type GeminiSessionHandlers } from '../hooks/useGeminiSession';
 import { setTraceSession, traceEvent } from '../lib/sessionTrace';
+import { tracedFetch } from '../lib/tracedFetch';
 import { useVisionFrames } from '../hooks/useVisionFrames';
 import { useConversationCompactor } from '../hooks/useConversationCompactor';
 
@@ -1131,7 +1132,7 @@ const OracleConversation = forwardRef(
               // Safety timeout — abort TTS fetch after 8 s regardless
               const safetyTimer = setTimeout(() => abortCtrl.abort(), 8000);
 
-              fetch(`${supaUrl}/functions/v1/oracle-filler-tts`, {
+              tracedFetch('oracle-filler-tts', `${supaUrl}/functions/v1/oracle-filler-tts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ prompt: 'low, slow contemplative murmur — Hmmm... mmm' }),

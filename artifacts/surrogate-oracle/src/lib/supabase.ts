@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { supabaseTraceFetch, tracedFetch } from './tracedFetch';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY;
@@ -20,6 +21,9 @@ export const supabase = createClient(
       headers: {
         'Content-Type': 'application/json',
       },
+      // Routes /functions/v1/ calls through the dev tracer (no-op pass-through
+      // for real seekers — tracing requires the opt-in localStorage token).
+      fetch: supabaseTraceFetch,
     },
     realtime: {
       params: {
@@ -55,7 +59,7 @@ export function invokeFunctionKeepalive(name: string, body: unknown): Promise<Re
   // that line — better to send it WITHOUT keepalive (still usually lands,
   // since the Talisman window keeps the page alive ~3s) than not at all.
   const useKeepalive = payload.length < 60_000;
-  return fetch(`${supabaseUrl}/functions/v1/${name}`, {
+  return tracedFetch(name, `${supabaseUrl}/functions/v1/${name}`, {
     method: 'POST',
     keepalive: useKeepalive,
     headers: {

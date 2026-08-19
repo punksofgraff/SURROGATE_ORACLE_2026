@@ -18,6 +18,7 @@
 
 import { useEffect, useRef } from 'react';
 import { logStep } from '../components/CodeAuditor';
+import { tracedFetch } from '../lib/tracedFetch';
 
 export const MAX_TURNS = 100;
 export const COMPACT_BATCH = 25;
@@ -105,7 +106,7 @@ export function useConversationCompactor({
       }
     };
 
-    fetch(`${supaUrl}/functions/v1/compact-conversation`, {
+    tracedFetch('compact-conversation', `${supaUrl}/functions/v1/compact-conversation`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

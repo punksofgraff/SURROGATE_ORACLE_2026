@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 import { supabase } from '../lib/supabase';
 import { logStep } from '../components/CodeAuditor';
+import { traceEvent } from '../lib/sessionTrace';
 import type { SeekerEcho, SeekerEchoUpsert } from './useSeekerEcho';
 
 interface EchoTrack {
@@ -146,6 +147,7 @@ export function useWalletBridge({
       .catch(err => console.warn('Wallet sign persistence failed (non-fatal):', err));
     setShowJourneyLimitGate(false);
     logStep('WALLET SIGNED — ALLEY RETURN ENABLED', 'ok');
+    traceEvent('bridge', { kind: 'sign_in_processed', has_address: !!walletAddress, phase: scenePhase });
 
     // Transition BEFORE the async echo/merge work: the awaits below can take
     // seconds, during which the captured scenePhase goes stale — the seeker was
@@ -246,6 +248,7 @@ export function useWalletBridge({
 
     walletPopupRef.current = popup;
     logStep('WALLET POPUP OPENED — OAuth supported', 'ok');
+    traceEvent('bridge', { kind: 'popup_opened', blocked: !popup });
   }, []);
 
   // Iframe & Popup path: wallet signs and posts back via postMessage.
@@ -269,6 +272,8 @@ export function useWalletBridge({
           : { raw: data };
         console.info('[WALLET-BRIDGE] inbound', { origin: e.origin, ...shape });
         logStep(`WALLET BRIDGE — msg from ${e.origin} (${data?.type ?? 'no-type'})`, 'ok');
+        // Message TYPE + origin only — never the payload (may carry address).
+        traceEvent('bridge', { kind: 'inbound_message', origin: e.origin, msg_type: data?.type ?? '(none)' });
       }
 
       // Trust the wallet origin AND our own origin: the popup-bridge redirects
@@ -279,6 +284,7 @@ export function useWalletBridge({
         if (looksWalletRelated) {
           console.warn('[WALLET-BRIDGE] REJECTED — untrusted origin (expected wallet or app origin):', e.origin);
           logStep(`WALLET BRIDGE — REJECTED foreign origin ${e.origin}`, 'warn');
+          traceEvent('bridge', { kind: 'message_rejected', origin: e.origin, msg_type: data?.type ?? '(none)' });
         }
         return;
       }
@@ -341,6 +347,7 @@ export function useWalletBridge({
     }
 
     logStep(`WALLET RETURN DETECTED${event ? ` (${event})` : ''} — activating seeker`, 'ok');
+    traceEvent('bridge', { kind: 'redirect_return', event: event ?? 'signin', restored_session: !!sessionId });
     void processWalletSignIn(seeker);
     // NOTE: no deferred DB flush needed anymore — user-wallet-sync derives the
     // caller IP server-side, so markWalletSigned persists even before the local

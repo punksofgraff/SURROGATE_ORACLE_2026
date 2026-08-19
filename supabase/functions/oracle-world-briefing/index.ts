@@ -32,7 +32,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, x-oracle-request-id, x-oracle-session-id',
 };
 
 const CACHE_TTL_HOURS = 6;
@@ -61,6 +61,8 @@ Structure (no headers, flowing prose, intelligence-briefing tone):
 Total: 280-360 words. Terse. Intelligence briefing register. No hedging, no "as of my knowledge cutoff", no disclaimers. This is live signal.`;
 
 Deno.serve(async (req: Request) => {
+  // Dev-trace correlation: echo client-supplied ids into function logs (no-op for real seekers).
+  { const _rid = req.headers.get('x-oracle-request-id'); if (_rid) console.log('[trace] rid=' + _rid + ' sid=' + (req.headers.get('x-oracle-session-id') ?? '')); }
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
   }

@@ -1,9 +1,11 @@
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-oracle-request-id, x-oracle-session-id',
 };
 
 Deno.serve(async (req: Request) => {
+  // Dev-trace correlation: echo client-supplied ids into function logs (no-op for real seekers).
+  { const _rid = req.headers.get('x-oracle-request-id'); if (_rid) console.log('[trace] rid=' + _rid + ' sid=' + (req.headers.get('x-oracle-session-id') ?? '')); }
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }

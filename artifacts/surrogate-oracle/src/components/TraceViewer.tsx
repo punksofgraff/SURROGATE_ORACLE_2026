@@ -64,9 +64,25 @@ function eventColor(row: TraceRow): string {
     const s = row.payload.status;
     return s === 'err' ? '#ff3355' : s === 'warn' ? '#ffcc00' : '#00ff88';
   }
+  if (row.event_type === 'tap') {
+    return row.payload.mismatch === true ? '#ff3355' : '#ffd47f';
+  }
+  if (row.event_type === 'api') {
+    return row.payload.ok === false ? '#ff3355' : '#66e0d0';
+  }
+  if (row.event_type === 'bridge') return '#ff7fd4';
   if (row.event_type === 'oracle_barge_in') return '#ff9944';
   if (row.event_type === 'oracle_error') return '#ff3355';
   return '#8899bb';
+}
+
+/** Event-type filter buckets. 'other' catches telemetry/score/etc. */
+const FILTERS = ['all', 'tap', 'api', 'bridge', 'step', 'turn'] as const;
+type Filter = typeof FILTERS[number];
+
+function matchesFilter(row: TraceRow, f: Filter): boolean {
+  if (f === 'all') return true;
+  return row.event_type === f;
 }
 
 function eventLabel(row: TraceRow): string {
@@ -98,6 +114,7 @@ export function TraceViewer() {
   const [trace, setTrace] = useState<TraceRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>('all');
 
   const hasToken = !!getTraceToken();
   const enabled = DEBUG_ENABLED && !!SUPA_URL;
@@ -215,13 +232,37 @@ export function TraceViewer() {
           {hasToken && selected && !loading && (
             <div>
               <div
-                onClick={() => { setSelected(null); setTrace([]); }}
+                onClick={() => { setSelected(null); setTrace([]); setFilter('all'); }}
                 style={{ padding: '4px 8px', color: '#c9a7ff', cursor: 'pointer', borderBottom: '1px solid rgba(201,167,255,0.15)' }}
               >
                 ← back · {selected.slice(0, 13)}… · {trace.length} events
               </div>
-              {trace.map((row, i) => {
-                const prev = i > 0 ? trace[i - 1] : null;
+              <div style={{ display: 'flex', gap: 4, padding: '4px 8px', borderBottom: '1px solid rgba(201,167,255,0.1)', flexWrap: 'wrap' }}>
+                {FILTERS.map((f) => {
+                  const count = f === 'all' ? trace.length : trace.filter((r) => matchesFilter(r, f)).length;
+                  return (
+                    <button
+                      key={f}
+                      onClick={() => setFilter(f)}
+                      data-testid={`trace-filter-${f}`}
+                      style={{
+                        background: filter === f ? 'rgba(201,167,255,0.25)' : 'rgba(255,255,255,0.05)',
+                        border: `1px solid ${filter === f ? 'rgba(201,167,255,0.6)' : 'rgba(255,255,255,0.1)'}`,
+                        borderRadius: 3,
+                        color: filter === f ? '#e0d4ff' : 'rgba(255,255,255,0.55)',
+                        fontFamily: 'monospace',
+                        fontSize: 9,
+                        padding: '1px 6px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {f} {count > 0 ? count : ''}
+                    </button>
+                  );
+                })}
+              </div>
+              {trace.filter((row) => matchesFilter(row, filter)).map((row, i, filtered) => {
+                const prev = i > 0 ? filtered[i - 1] : null;
                 const t = row.client_ts ?? new Date(row.created_at).getTime();
                 const pt = prev ? (prev.client_ts ?? new Date(prev.created_at).getTime()) : t;
                 const delta = t - pt;

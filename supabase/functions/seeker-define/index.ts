@@ -22,7 +22,7 @@
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, x-oracle-request-id, x-oracle-session-id',
 };
 
 // generateContent (REST) + googleSearch grounding.
@@ -44,6 +44,8 @@ const json = (body: unknown, status = 200) =>
   });
 
 Deno.serve(async (req: Request) => {
+  // Dev-trace correlation: echo client-supplied ids into function logs (no-op for real seekers).
+  { const _rid = req.headers.get('x-oracle-request-id'); if (_rid) console.log('[trace] rid=' + _rid + ' sid=' + (req.headers.get('x-oracle-session-id') ?? '')); }
   if (req.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders });
   if (req.method !== 'POST') return json({ success: false, error: 'Method not allowed' }, 405);
 

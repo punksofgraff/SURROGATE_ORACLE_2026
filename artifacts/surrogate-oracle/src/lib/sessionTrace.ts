@@ -56,6 +56,10 @@ const TRACE_TOKEN = typeof window !== 'undefined' ? getTraceToken() : null;
 
 export const isTracingEnabled = (): boolean => !!TRACE_TOKEN && !!SUPA_URL;
 
+/** Current trace session id (null until setTraceSession fires). Used by
+ *  tracedFetch to stamp the x-oracle-session-id correlation header. */
+export const getTraceSessionId = (): string | null => sessionId;
+
 let sessionId: string | null = null;
 let seq = 0;
 let buffer: TraceRow[] = [];
@@ -162,6 +166,11 @@ export function setTraceSession(sid: string | null | undefined): void {
 export function initSessionTraceListeners(): void {
   if (initialized || typeof window === 'undefined' || !isTracingEnabled()) return;
   initialized = true;
+
+  // Tap capture — dynamic import defers the (harmless) module cycle
+  // sessionTrace ⇄ tapTrace and keeps the tap code out of the bundle path
+  // for real seekers (tracing disabled → this line never runs).
+  import('./tapTrace').then(m => m.installTapTrace()).catch(() => { /* silent */ });
 
   // Every logStep() call app-wide: WS lifecycle, session.created, reconnect
   // attempts, GOAWAY, boot paths, env checks, errors.

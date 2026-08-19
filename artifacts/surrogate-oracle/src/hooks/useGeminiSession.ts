@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { logStep } from '../components/CodeAuditor';
 import { trackOracleEvent } from '../lib/analytics';
+import { tracedFetch } from '../lib/tracedFetch';
 import {
   ARCHETYPE_SYNTHESIS_BLOCK,
   TOTEM_LADDER_BLOCK,
@@ -289,7 +290,7 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     const timer = setTimeout(() => ctrl.abort(), 1800);
     // The function is deployed with JWT verification ON (cost-abuse guard for the
     // Gemini-generating path) — the gateway rejects requests without the anon key.
-    const p = fetch(briefingUrl, {
+    const p = tracedFetch('oracle-world-briefing', briefingUrl, {
       signal: ctrl.signal,
       headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` },
     })

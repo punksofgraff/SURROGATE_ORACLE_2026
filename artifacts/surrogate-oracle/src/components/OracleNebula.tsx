@@ -42,6 +42,8 @@ interface OracleNebulaProps {
   tier: 1 | 2 | 3;
   /** live "oracle is speaking" flag — read per-frame, never re-renders */
   speakingRef: React.RefObject<boolean>;
+  /** Keep the composition but slow the streams for reduced-motion users. */
+  reducedMotion?: boolean;
 }
 
 /** Soft radial glow sprite, built once per page. */
@@ -91,12 +93,13 @@ function silentRate() {
   return new Rate(new Span(0, 0), new Span(10, 10));
 }
 
-export function OracleNebula({ tier, speakingRef }: OracleNebulaProps) {
+export function OracleNebula({ tier, speakingRef, reducedMotion = false }: OracleNebulaProps) {
   const { scene } = useThree();
   const systemRef = useRef<System | null>(null);
   const energyEmitterRef = useRef<Emitter | null>(null);
   const wasSpeakingRef = useRef(false);
   const cfg = TIER_CONFIG[tier];
+  const motionScale = reducedMotion ? 0.42 : 1;
 
   // Rates are cheap to construct but we keep the two energy variants stable.
   const energyActiveRate = useMemo(
@@ -117,13 +120,16 @@ export function OracleNebula({ tier, speakingRef }: OracleNebulaProps) {
         new Radius(0.032, 0.072),
         new Life(4.5, 8.0),
         new Body(makeSprite(0x00ff88, 0.75)),
-        new RadialVelocity(new Span(0.015, 0.05), new Vector3D(0, 1, 0), 50),
+        // Enough lift to cross a meaningful part of the avatar in 2–3 seconds.
+        // The old 0.015–0.05 range took over a minute to cross the cabinet and
+        // read as a static glow field on mobile.
+        new RadialVelocity(new Span(0.18 * motionScale, 0.32 * motionScale), new Vector3D(0, 1, 0), 50),
       ])
       .addBehaviours([
         new Alpha(0.15, 0.85, undefined),
         new Scale(0.6, 1.35),
         new Color('#00ff88', '#00ffcc'),
-        new RandomDrift(0.035, 0.015, 0.015, 0.5),
+        new RandomDrift(0.12 * motionScale, 0.045 * motionScale, 0.04 * motionScale, 0.65),
       ])
       .setPosition({ x: 0, y: -0.1, z: -0.35 })
       .emit();
@@ -137,14 +143,14 @@ export function OracleNebula({ tier, speakingRef }: OracleNebulaProps) {
         new Radius(0.022, 0.052),
         new Life(1.4, 2.6),
         new Body(makeSprite(0xb026ff, 0.9)),
-        new RadialVelocity(new Span(0.22, 0.5), new Vector3D(0, 1, 0), 28),
+        new RadialVelocity(new Span(0.52 * motionScale, 0.88 * motionScale), new Vector3D(0, 1, 0), 28),
       ])
       .addBehaviours([
         new Alpha(0.95, 0.05),
         new Scale(1.2, 0.3),
         new Color('#b026ff', '#00ffcc'),
-        new RandomDrift(0.06, 0.02, 0.03, 0.3),
-        new Gravity(-0.035), // negative gravity: gentle extra lift
+        new RandomDrift(0.13 * motionScale, 0.05 * motionScale, 0.055 * motionScale, 0.35),
+        new Gravity(-0.07 * motionScale), // negative gravity: speaking gives a clear extra lift
       ])
       .setPosition({ x: 0, y: -0.5, z: -0.2 })
       .emit();
@@ -160,7 +166,7 @@ export function OracleNebula({ tier, speakingRef }: OracleNebulaProps) {
       system.destroy(); // kills particles, removes sprites from scene
     };
     // cfg identity changes only when tier changes — rebuild is intended.
-  }, [scene, cfg]);
+  }, [scene, cfg, motionScale]);
 
   useFrame((_, delta) => {
     const system = systemRef.current;

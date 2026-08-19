@@ -1687,11 +1687,20 @@ export function SurrogateOracleImmersion() {
                         <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
                         {/* Nebula dust + speaking-reactive energy tendrils (tier 1+) */}
                         {renderTier >= 1 && (
-                          <OracleNebula tier={renderTier as 1 | 2 | 3} speakingRef={isOracleSpeakingRef} />
+                          <OracleNebula
+                            tier={renderTier as 1 | 2 | 3}
+                            speakingRef={isOracleSpeakingRef}
+                            reducedMotion={prefersReducedMotion}
+                          />
                         )}
                         {/* High-Performance GPU Quarks particle field (tier 1+) */}
                         {renderTier >= 1 && (
-                          <OracleQuarks tier={renderTier as 1 | 2 | 3} speakingRef={isOracleSpeakingRef} amplitude={visemeStateRef.current?.amplitude ?? 0} />
+                          <OracleQuarks
+                            tier={renderTier as 1 | 2 | 3}
+                            speakingRef={isOracleSpeakingRef}
+                            amplitude={visemeStateRef.current?.amplitude ?? 0}
+                            reducedMotion={prefersReducedMotion}
+                          />
                         )}
                         {/* Rapier glyph-shard debris field (tier 2+) — fixed 60Hz step,
                             zero gravity, shards constrained behind the bust.

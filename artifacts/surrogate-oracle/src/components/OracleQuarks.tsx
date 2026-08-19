@@ -23,6 +23,8 @@ interface OracleQuarksProps {
   speakingRef: React.RefObject<boolean>;
   /** Live viseme amplitude ref if available */
   amplitude?: number;
+  /** Preserve the field but slow its continuous stream for accessibility. */
+  reducedMotion?: boolean;
 }
 
 const QUARKS_VERTEX_SHADER = /* glsl */ `
@@ -30,6 +32,7 @@ const QUARKS_VERTEX_SHADER = /* glsl */ `
   uniform float uSpeaking;
   uniform float uManifest;
   uniform float uSize;
+  uniform float uMotionScale;
   
   attribute float aScale;
   attribute float aSpeed;
@@ -95,26 +98,37 @@ const QUARKS_VERTEX_SHADER = /* glsl */ `
     vLife = sin(lifeCycle * 3.1415926);
 
     vec3 pos = position;
+    float seed = fract(aPhase * 0.61803398875);
 
-    // 3D Curl / Simplex noise displacement
-    vec3 noiseCoord = pos * 1.8 + vec3(0.0, uTime * 0.35, 0.0);
+    // A small turbulent deviation rides on top of the actual stream. This is
+    // intentionally not the motion itself: an offset around a static spawn
+    // point only reads as twinkle on a phone.
+    vec3 noiseCoord = pos * 1.8 + vec3(0.0, uTime * 0.5, 0.0);
     vec3 noiseOffset = vec3(
       snoise(noiseCoord),
       snoise(noiseCoord + vec3(43.12, 12.8, 8.4)),
       snoise(noiseCoord + vec3(11.3, 91.2, 34.6))
     );
 
-    // Swirling orbital velocity
-    float angle = uTime * 0.4 * aSpeed + aPhase;
-    float radius = length(pos.xz);
-    vec3 orbitalVel = vec3(-sin(angle), 0.25, cos(angle)) * 0.18;
+    // Continuous helix around the Oracle. Particles stream bottom-to-top in
+    // roughly 4–5 seconds and complete a lateral orbit in 5–8 seconds, so
+    // their position changes are visible inside a single phone-sized glance.
+    // Keeping the z range behind the bust preserves the face-safe field.
+    float stream = fract(seed + uTime * (0.18 + aSpeed * 0.055) * uMotionScale);
+    float angle = aPhase + uTime * (0.82 + seed * 0.36) * aSpeed * uMotionScale;
+    float radius = 0.45 + seed * 0.75;
+    vec3 streamPos = vec3(
+      cos(angle) * radius,
+      -1.20 + stream * 2.45,
+      -0.38 + sin(angle) * (0.14 + radius * 0.16)
+    );
 
     // Speaking excitation surge
     vec3 speechSurge = aVelocity * (uSpeaking * 2.2);
 
     // Manifestation convergence (vortex pulling in)
     float manifestPull = (1.0 - uManifest) * 1.5;
-    vec3 finalPos = pos + (noiseOffset * 0.15) + orbitalVel + speechSurge;
+    vec3 finalPos = streamPos + (noiseOffset * 0.065) + speechSurge;
     finalPos.xz *= (1.0 + manifestPull * sin(aPhase * 6.28));
 
     // Face zone protection: push away if within face cylinder
@@ -161,7 +175,12 @@ const TIER_QUARK_COUNTS = {
   3: 680,
 } as const;
 
-export function OracleQuarks({ tier, speakingRef, amplitude = 0 }: OracleQuarksProps) {
+export function OracleQuarks({
+  tier,
+  speakingRef,
+  amplitude = 0,
+  reducedMotion = false,
+}: OracleQuarksProps) {
   const pointsRef = useRef<THREE.Points>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
   const count = TIER_QUARK_COUNTS[tier];
@@ -222,10 +241,11 @@ export function OracleQuarks({ tier, speakingRef, amplitude = 0 }: OracleQuarksP
       uSpeaking: { value: 0 },
       uManifest: { value: 1.0 },
       uSize: { value: 1.0 },
+      uMotionScale: { value: reducedMotion ? 0.38 : 1.0 },
     };
 
     return { geometry: geo, uniforms: unis };
-  }, [count, sacredGreen, brandCyan, profanePurp]);
+  }, [count, sacredGreen, brandCyan, profanePurp, reducedMotion]);
 
   useFrame((state, delta) => {
     const mat = materialRef.current;

@@ -197,6 +197,12 @@ export function SurrogateOracleImmersion() {
   // Effective render tier: GPU probe capped by the runtime FPS guard — a strong
   // GPU that still drops frames (thermal throttle, busy tab) falls to bare mode.
   const renderTier = (isDegraded ? 0 : gpu.tier) as 0 | 1 | 2 | 3;
+  useEffect(() => {
+    logStep(
+      `RENDER TIER — tier=${renderTier} degraded=${isDegraded ? 'true' : 'false'} gpu=${gpu.tier}`,
+      isDegraded ? 'warn' : 'ok',
+    );
+  }, [renderTier, isDegraded, gpu.tier]);
   // Dev-only hook so headless verification can tell "effects broken" apart from
   // "FPS guard correctly degraded the scene" (SwiftShader always trips the guard).
   if (import.meta.env.DEV && typeof window !== 'undefined') {

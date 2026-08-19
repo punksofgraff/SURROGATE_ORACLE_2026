@@ -12,9 +12,10 @@
  *   - Tier-scaled particle counts (Tier 1: 120, Tier 2: 320, Tier 3: 650).
  *   - Zero CPU allocations in the hot animation loop (uniform updates only).
  */
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { logStep } from './CodeAuditor';
 
 interface OracleQuarksProps {
   /** Effective GPU tier (1–3) */
@@ -184,7 +185,15 @@ export function OracleQuarks({
   const pointsRef = useRef<THREE.Points>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
   const motionTimeRef = useRef(0);
+  const frameCountRef = useRef(0);
   const count = TIER_QUARK_COUNTS[tier];
+
+  useEffect(() => {
+    logStep(`QUARKS MOUNTED — tier=${tier} count=${count}`, 'ok');
+    return () => {
+      logStep(`QUARKS UNMOUNTED — tier=${tier} count=${count}`, 'warn');
+    };
+  }, [tier, count]);
 
   // Palette colors
   const sacredGreen = useMemo(() => new THREE.Color('#00ff88'), []);
@@ -261,6 +270,16 @@ export function OracleQuarks({
     // continuous stream look like it had completed one act and frozen.
     motionTimeRef.current += Math.min(delta, 1 / 20);
     mat.uniforms.uTime.value = motionTimeRef.current;
+    frameCountRef.current += 1;
+    // Low-rate heartbeat for the existing dev API relay. This distinguishes
+    // a stopped R3F loop from a field that is still animating but hidden by
+    // a compositor layer, without flooding the log on every frame.
+    if (frameCountRef.current % 30 === 0) {
+      logStep(
+        `QUARK HEARTBEAT — frames=${frameCountRef.current} time=${motionTimeRef.current.toFixed(2)} tier=${tier}`,
+        'ok',
+      );
+    }
     if (typeof window !== 'undefined') {
       const probe = (window as unknown as { __oracle_scene_probe?: Record<string, unknown> }).__oracle_scene_probe ?? {};
       probe.quarkTime = motionTimeRef.current;

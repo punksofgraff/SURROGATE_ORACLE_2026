@@ -49,17 +49,17 @@ function readSessionCache(): GPUProfile | null {
   }
 }
 
-function getWebGLRendererInfo(): { renderer: string; isMobile: boolean } {
+function getWebGLRendererInfo(): { renderer: string; isMobile: boolean; supported: boolean } {
   try {
     const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-    if (!gl) return { renderer: '', isMobile };
+    if (!gl) return { renderer: '', isMobile, supported: false };
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
     const renderer = ext ? (gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '') : (gl.getParameter(gl.RENDERER) || '');
-    return { renderer: String(renderer), isMobile };
+    return { renderer: String(renderer), isMobile, supported: true };
   } catch {
-    return { renderer: '', isMobile: false };
+    return { renderer: '', isMobile: false, supported: false };
   }
 }
 
@@ -105,7 +105,13 @@ function probe(): Promise<GPUProfile> {
         const unsupported =
           result.type === 'WEBGL_UNSUPPORTED' || result.type === 'BLOCKLISTED';
         if (unsupported) {
-          cached = { tier: 0, isMobile: !!result.isMobile, ready: true };
+          // Safari can create and render a WebGL canvas while detect-gpu's
+          // lookup reports a blocklisted/unknown renderer. Do not let that
+          // delayed lookup turn the entrance field into a one-shot effect:
+          // a proven WebGL context gets our lightest particle tier. A browser
+          // that truly cannot create WebGL still receives the bare fallback.
+          const { isMobile, supported } = getWebGLRendererInfo();
+          cached = { tier: supported ? 1 : 0, isMobile: isMobile || !!result.isMobile, ready: true };
           try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached)); } catch {}
           return cached;
         }

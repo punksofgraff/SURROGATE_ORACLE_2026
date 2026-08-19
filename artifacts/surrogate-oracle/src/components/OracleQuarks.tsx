@@ -242,7 +242,11 @@ export function OracleQuarks({
       uSpeaking: { value: 0 },
       uManifest: { value: 1.0 },
       uSize: { value: 1.0 },
-      uMotionScale: { value: reducedMotion ? 0.38 : 1.0 },
+      // Reduced Motion: ambient orbital stream runs at full speed — it IS the
+      // sign of life. Only the speaking-excitation surge is suppressed (see
+      // uSpeaking target in useFrame). A motionScale < 1 here makes the orbit
+      // imperceptible on a phone and causes the "one-shot freeze" regression.
+      uMotionScale: { value: 1.0 },
     };
 
     return { geometry: geo, uniforms: unis };
@@ -267,9 +271,11 @@ export function OracleQuarks({
     mat.uniforms.uSize.value = camZoom;
 
     
-    // Smooth speaking excitation
+    // Smooth speaking excitation — suppressed in Reduced Motion so the surge
+    // doesn't create the "one burst then still" perception. The ambient orbital
+    // stream (uTime-driven, not uSpeaking-driven) continues unaffected.
     const isSpeaking = !!speakingRef.current;
-    const targetSpeak = isSpeaking ? Math.max(0.6, Math.min(1.0, amplitude * 3.5)) : 0.0;
+    const targetSpeak = (isSpeaking && !reducedMotion) ? Math.max(0.6, Math.min(1.0, amplitude * 3.5)) : 0.0;
     mat.uniforms.uSpeaking.value = THREE.MathUtils.lerp(
       mat.uniforms.uSpeaking.value,
       targetSpeak,

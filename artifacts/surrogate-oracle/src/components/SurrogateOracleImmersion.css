@@ -5204,6 +5204,21 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   .oracle-stage[data-oracle-state="oracle"] .oracle-branding {
     opacity: 0.65;
   }
+
+  /* ── Canvas wrapper animations — explicit none, not just near-zero duration.
+     iOS Safari can demote the WebGL GPU compositing layer when a containing-
+     block animation terminates unexpectedly (animation-duration: 0.01ms ends
+     almost instantly with fill-mode: both). An explicit animation: none keeps
+     the layer stable and prevents the particle field from freezing after the
+     entrance burst. The canvas must also be set to its final visible state so
+     the avatar isn't hidden by an interrupted keyframe mid-state. */
+  .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-smoke-hook,
+  .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-headroom-hook {
+    animation: none !important;
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+  }
 }
 
 /* ── Branding & Halo: Presence & Ghosting ── */

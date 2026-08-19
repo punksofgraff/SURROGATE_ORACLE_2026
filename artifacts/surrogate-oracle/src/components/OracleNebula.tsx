@@ -99,7 +99,16 @@ export function OracleNebula({ tier, speakingRef, reducedMotion = false }: Oracl
   const energyEmitterRef = useRef<Emitter | null>(null);
   const wasSpeakingRef = useRef(false);
   const cfg = TIER_CONFIG[tier];
-  const motionScale = reducedMotion ? 0.42 : 1;
+  // Ambient dust velocity: always full speed — it IS the continuous motion.
+  // Suppressing it to 0.42x makes the field imperceptible on mobile (one-shot
+  // freeze regression). Energy-tendril velocity (speaking-only burst) is
+  // separately scaled down so speaking remains calmer in reduced-motion mode.
+  const dustVelScale = 1.0;
+  const energyVelScale = reducedMotion ? 0.35 : 1.0;
+  // Keep drift subtle in reduced-motion (directional micro-wander is fine to slow).
+  const driftScale = reducedMotion ? 0.55 : 1.0;
+  /** @deprecated — kept as alias so the JSX references below don't diverge */
+  const motionScale = 1.0;
 
   // Rates are cheap to construct but we keep the two energy variants stable.
   const energyActiveRate = useMemo(
@@ -123,13 +132,13 @@ export function OracleNebula({ tier, speakingRef, reducedMotion = false }: Oracl
         // Enough lift to cross a meaningful part of the avatar in 2–3 seconds.
         // The old 0.015–0.05 range took over a minute to cross the cabinet and
         // read as a static glow field on mobile.
-        new RadialVelocity(new Span(0.18 * motionScale, 0.32 * motionScale), new Vector3D(0, 1, 0), 50),
+        new RadialVelocity(new Span(0.18 * dustVelScale, 0.32 * dustVelScale), new Vector3D(0, 1, 0), 50),
       ])
       .addBehaviours([
         new Alpha(0.15, 0.85, undefined),
         new Scale(0.6, 1.35),
         new Color('#00ff88', '#00ffcc'),
-        new RandomDrift(0.12 * motionScale, 0.045 * motionScale, 0.04 * motionScale, 0.65),
+        new RandomDrift(0.12 * driftScale, 0.045 * driftScale, 0.04 * driftScale, 0.65),
       ])
       .setPosition({ x: 0, y: -0.1, z: -0.35 })
       .emit();
@@ -143,14 +152,14 @@ export function OracleNebula({ tier, speakingRef, reducedMotion = false }: Oracl
         new Radius(0.022, 0.052),
         new Life(1.4, 2.6),
         new Body(makeSprite(0xb026ff, 0.9)),
-        new RadialVelocity(new Span(0.52 * motionScale, 0.88 * motionScale), new Vector3D(0, 1, 0), 28),
+        new RadialVelocity(new Span(0.52 * energyVelScale, 0.88 * energyVelScale), new Vector3D(0, 1, 0), 28),
       ])
       .addBehaviours([
         new Alpha(0.95, 0.05),
         new Scale(1.2, 0.3),
         new Color('#b026ff', '#00ffcc'),
-        new RandomDrift(0.13 * motionScale, 0.05 * motionScale, 0.055 * motionScale, 0.35),
-        new Gravity(-0.07 * motionScale), // negative gravity: speaking gives a clear extra lift
+        new RandomDrift(0.13 * driftScale, 0.05 * driftScale, 0.055 * driftScale, 0.35),
+        new Gravity(-0.07 * energyVelScale), // negative gravity: speaking gives a clear extra lift
       ])
       .setPosition({ x: 0, y: -0.5, z: -0.2 })
       .emit();

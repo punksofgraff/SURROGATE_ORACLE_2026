@@ -85,18 +85,76 @@ const awakenedPhase = await page
 console.log(`  phase after skipLore: ${awakenedPhase}`);
 
 // awakened → oracle (pick a knife)
-await page.evaluate(() => {
-  const card = document.querySelector('.oracle-knife-card, [class*="knife-card"]');
-  if (card) { card.click(); return; }
-  const btns = [...document.querySelectorAll('button')].filter((b) => (b.textContent?.length ?? 0) > 20);
-  btns[0]?.click();
+await page.waitForSelector('.oracle-knife-card', { timeout: 20_000 }).catch(() => null);
+const knifeSelection = await page.evaluate(() => {
+  const cards = [...document.querySelectorAll('.oracle-knife-card')];
+  const activeCard = cards.find((card) => card.querySelector('.oracle-knife-cta')) ?? cards[0];
+  activeCard?.click();
+  return { cards: cards.length, selected: !!activeCard };
 });
-await new Promise((r) => setTimeout(r, 6000));
-
-const phase = await page
-  .$eval('[data-oracle-state]', (el) => el.getAttribute('data-oracle-state'))
-  .catch(() => null);
+console.log(`  knife selection: ${JSON.stringify(knifeSelection)}`);
+let phase = null;
+for (let attempt = 0; attempt < 90; attempt++) {
+  await new Promise((r) => setTimeout(r, 500));
+  phase = await page
+    .$eval('[data-oracle-state]', (el) => el.getAttribute('data-oracle-state'))
+    .catch(() => null);
+  if (phase === 'oracle') break;
+}
 check(phase === 'oracle' || phase === 'awakened', `scene phase reached: ${phase}`);
+
+const diagnostics = async () => page.evaluate(() => {
+  const value = window.__oracle_diagnostics;
+  return value ? {
+    samples: value.samples,
+    latest: value.latest,
+  } : null;
+});
+
+// The dev-only speaking probe makes the pressure run deterministic. It updates
+// the same speaking ref used by Gemini's live callback, without replacing or
+// intercepting the production audio path.
+if (phase === 'oracle') {
+  await new Promise((r) => setTimeout(r, 1200));
+  await page.screenshot({ path: join(OUT_DIR, `scene-verify-tier${FORCED_TIER}-before-speech.png`) });
+
+  const speakingProbeReady = await page.evaluate(() => typeof window.__oracle_debug_setSpeaking === 'function');
+  check(speakingProbeReady, 'development speaking probe available');
+  if (speakingProbeReady) {
+    await page.evaluate(() => window.__oracle_debug_setSpeaking(true));
+    await new Promise((r) => setTimeout(r, 1300));
+    await page.screenshot({ path: join(OUT_DIR, `scene-verify-tier${FORCED_TIER}-speaking.png`) });
+    await page.evaluate(() => window.__oracle_debug_setSpeaking(false));
+    await new Promise((r) => setTimeout(r, 1300));
+    await page.screenshot({ path: join(OUT_DIR, `scene-verify-tier${FORCED_TIER}-after-speech.png`) });
+  }
+
+  const evidence = await diagnostics();
+  const samples = evidence?.samples ?? [];
+  const labels = new Set(samples.map((sample) => sample.label));
+  check(labels.has('before-speech'), 'diagnostic captured silent baseline');
+  check(labels.has('speaking-start'), 'diagnostic captured speaking transition');
+  check(labels.has('during-speech'), 'diagnostic captured sustained speaking state');
+  check(labels.has('after-speech'), 'diagnostic captured post-speech state');
+
+  const measurable = samples.filter((sample) =>
+    sample.probe && sample.placement.stage && sample.placement.cabinet && sample.placement.canvas
+  );
+  check(measurable.length >= Math.min(4, samples.length), 'diagnostic captured frame, particle, and placement evidence');
+  console.log(`  diagnostic samples: ${JSON.stringify(samples.map((sample) => ({
+    label: sample.label,
+    speaking: sample.speaking,
+    tier: sample.renderTier,
+    frames: sample.probe?.frameCount ?? null,
+    quarkTime: sample.probe?.quarkTime ?? null,
+    quarkCount: sample.probe?.quarkCount ?? null,
+    nebulaUpdates: sample.probe?.nebulaUpdates ?? null,
+    debrisUpdates: sample.probe?.debrisUpdates ?? null,
+    particles: sample.probe?.particleCount ?? null,
+    centerOffset: sample.placement.centerOffset,
+    transforms: sample.placement.transforms,
+  })))}`);
+}
 
 await page.screenshot({ path: join(OUT_DIR, `scene-verify-tier${FORCED_TIER}.png`) });
 console.log(`  📸 screenshots/scene-verify-tier${FORCED_TIER}.png`);

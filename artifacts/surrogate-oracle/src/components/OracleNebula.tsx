@@ -195,6 +195,12 @@ export function OracleNebula({ tier, speakingRef, reducedMotion = false }: Oracl
     // three-nebula's update is promise-returning but synchronous in effect for
     // the sprite renderer; clamp delta so background-tab jumps don't explode counts.
     void system.update(Math.min(delta, 1 / 20));
+    if (typeof window !== 'undefined') {
+      const win = window as unknown as { __oracle_scene_probe?: Record<string, unknown> };
+      const probe = win.__oracle_scene_probe ?? {};
+      probe.nebulaUpdates = ((probe.nebulaUpdates as number) ?? 0) + 1;
+      win.__oracle_scene_probe = probe;
+    }
   });
 
   return null;

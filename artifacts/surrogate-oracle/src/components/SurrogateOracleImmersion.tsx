@@ -45,6 +45,7 @@ import { Physics } from '@react-three/rapier';
 import { OracleNebula } from './OracleNebula';
 import { OracleQuarks } from './OracleQuarks';
 import { OraclePhysicsDebris } from './OraclePhysicsDebris';
+import { OracleSceneDiagnostics, OracleDiagnosticsOverlay } from './OracleSceneDiagnostics';
 
 // Hooks
 import { useIpCheck } from '../hooks/useIpCheck';
@@ -291,6 +292,7 @@ export function SurrogateOracleImmersion() {
   const holdFiredRef             = useRef(false);
   const holdAutoRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isOracleSpeakingRef      = useRef(false);
+  const debugSpeakingOverrideRef = useRef<boolean | null>(null);
   const completedLinesLengthRef  = useRef(0);
   // Idempotency guards — a hands-on attendee double-taps. Without these a second
   // knife tap fires the Oracle's question-reading seed twice, and a double exit
@@ -356,8 +358,22 @@ export function SurrogateOracleImmersion() {
   }, []);
 
   const handleProcessingChange = useCallback((proc: boolean) => {
-    isOracleSpeakingRef.current = proc;
-    setIsOracleSpeaking(proc);
+    const effective = debugSpeakingOverrideRef.current ?? proc;
+    isOracleSpeakingRef.current = effective;
+    setIsOracleSpeaking(effective);
+  }, []);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const win = window as unknown as {
+      __oracle_debug_setSpeaking?: (speaking: boolean) => void;
+    };
+    win.__oracle_debug_setSpeaking = (speaking: boolean) => {
+      debugSpeakingOverrideRef.current = speaking;
+      isOracleSpeakingRef.current = speaking;
+      setIsOracleSpeaking(speaking);
+    };
+    return () => { delete win.__oracle_debug_setSpeaking; };
   }, []);
 
   const connection = useOracleConnection({
@@ -1684,6 +1700,7 @@ export function SurrogateOracleImmersion() {
                         frameloop="always"
                       >
                         <OrbitZoomCompensator enabled={isOracleMode && !isXRMode} />
+                        {import.meta.env.DEV && <OracleSceneDiagnostics />}
                         <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
                         {/* Nebula dust + speaking-reactive energy tendrils (tier 1+) */}
                         {renderTier >= 1 && (
@@ -2602,6 +2619,7 @@ export function SurrogateOracleImmersion() {
       )}
 
       <div className="oracle-depth-frame" aria-hidden="true" />
+      {import.meta.env.DEV && <OracleDiagnosticsOverlay />}
 
       {/* ── Talisman Card — post-session walk-away moment ────────────────────
           Shown over the still-lit oracle scene between session end and dormant.

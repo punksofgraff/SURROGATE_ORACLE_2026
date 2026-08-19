@@ -77,6 +77,13 @@ export function OraclePhysicsDebris({ count, speakingRef }: OraclePhysicsDebrisP
   useFrame(() => {
     const bodies = bodiesRef.current;
     if (!bodies) return;
+    if (typeof window !== 'undefined') {
+      const win = window as unknown as { __oracle_scene_probe?: Record<string, unknown> };
+      const probe = win.__oracle_scene_probe ?? {};
+      probe.debrisUpdates = ((probe.debrisUpdates as number) ?? 0) + 1;
+      probe.activeDebris = bodies.reduce((count, body) => count + (body && !body.isSleeping() ? 1 : 0), 0);
+      win.__oracle_scene_probe = probe;
+    }
 
     const speaking = !!speakingRef.current;
     const speakingEdge = speaking && !wasSpeakingRef.current;

@@ -213,7 +213,11 @@ export function useParallax(
       // on at every phase — it just can't throw the face off-center anymore.
       const cabinet = el('.oracle-center');
       if (cabinet) {
-        const dx   = clamp(ix * vw * 0.015, vw * 0.018);
+        // Keep the hero's measured center locked to the cabinet/stage center.
+        // Horizontal depth motion remains visible in the alley, branding, and
+        // side-bleed layers; moving the hero itself makes a resting iPhone
+        // gyro tilt read as a persistent right-shift rather than parallax.
+        const dx   = 0;
         const dy   = clamp(iy * vh * 0.010, vh * 0.012);
         const rotX = clamp(-iy * 14, 9);
         const rotY = clamp( ix * 16, 10);

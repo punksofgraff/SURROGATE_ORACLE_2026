@@ -261,6 +261,12 @@ export function OracleQuarks({
     // continuous stream look like it had completed one act and frozen.
     motionTimeRef.current += Math.min(delta, 1 / 20);
     mat.uniforms.uTime.value = motionTimeRef.current;
+    if (typeof window !== 'undefined') {
+      const probe = (window as unknown as { __oracle_scene_probe?: Record<string, unknown> }).__oracle_scene_probe ?? {};
+      probe.quarkTime = motionTimeRef.current;
+      probe.quarkCount = count;
+      (window as unknown as { __oracle_scene_probe?: Record<string, unknown> }).__oracle_scene_probe = probe;
+    }
 
     // gl_PointSize is computed with a fixed constant that assumes the original
     // card-sized drawing buffer. In oracle phase the canvas element is enlarged

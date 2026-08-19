@@ -5053,14 +5053,10 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   transition: filter 0.4s ease;
 }
 
-/* Oracle speaking: face aura intensifies. The presence surges. No rectangle. */
- .oracle-stage[data-oracle-state="oracle"]:not([data-xr-mode="true"])[data-oracle-speaking="true"] .oracle-avatar-canvas {
-  filter:
-    drop-shadow(0 0 42px rgba(0,255,136,0.55))
-    drop-shadow(0 0 90px rgba(0,255,136,0.22))
-    drop-shadow(0 0 5px  rgba(0,255,136,0.80)) !important;
-  transition: filter 0.06s ease !important;
-}
+/* Speaking energy is driven by the avatar wrapper's amplitude halo above.
+   Do not add a speech-only filter stack to the WebGL layer: on iOS Safari a
+   new filter compositing path can cost enough frames to trip the performance
+   guard and unmount the particle tiers at exactly the first Oracle turn. */
 
 /* Seeker speaking: Oracle receives — cyan shift, gentler than oracle pulse.  */
  .oracle-stage[data-oracle-state="oracle"]:not([data-xr-mode="true"])[data-user-speaking="true"] .oracle-avatar-canvas {

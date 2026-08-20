@@ -375,49 +375,75 @@
   box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
 }
 
-/* A small, non-interactive phase leak on the landing surface. It uses the
-   same landed-letter renderer as the thought lines, but stays quiet enough
-   to read as an Oracle state preview rather than another prompt. */
-.oracle-landing-signal {
+/* A small, text-free phase leak on the landing surface. These are deliberately
+   DOM particles, not another full-screen canvas: a few points interpolate
+   around the cabinet while a ghost thought is present. */
+.oracle-landing-particles {
   position: absolute;
-  top: 16%;
+  top: 38%;
   left: 50%;
   z-index: 7;
-  width: min(46vw, 220px);
+  width: 1px;
+  height: 1px;
   transform: translateX(-50%);
   pointer-events: none;
-  opacity: 0.62;
-  filter: saturate(0.85);
-  animation: oracle-landing-signal-glitch 5.8s steps(1, end) infinite;
 }
 
-.oracle-landing-signal__particle-copy {
-  width: 100% !important;
-  min-height: 0 !important;
-  align-items: center !important;
-  justify-content: center !important;
+.oracle-landing-particle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #00ffcc;
+  box-shadow: 0 0 5px rgba(0, 255, 204, 0.9), 0 0 14px rgba(0, 255, 136, 0.35);
+  opacity: 0;
+  animation: oracle-landing-particle-interpolate 3.8s ease-in-out infinite;
 }
 
-.oracle-landing-signal__particle-copy > div {
-  font-size: clamp(0.72rem, 2.5vw, 1rem) !important;
-  line-height: 1.2 !important;
-  letter-spacing: 0.08em !important;
-  max-width: none !important;
-  text-align: center !important;
-  white-space: nowrap;
+.oracle-landing-particle:nth-child(3n) {
+  width: 2px;
+  height: 2px;
+  background: #00ff88;
 }
 
-@keyframes oracle-landing-signal-glitch {
-  0%, 72%, 100% { opacity: 0.62; transform: translateX(-50%); filter: saturate(0.85); }
-  73% { opacity: 0.92; transform: translateX(calc(-50% - 2px)) skewX(-4deg); filter: saturate(1.8) brightness(1.35); }
-  74% { opacity: 0.28; transform: translateX(calc(-50% + 3px)); filter: blur(1px) saturate(0.4); }
-  75% { opacity: 0.78; transform: translateX(-50%); filter: saturate(1.2); }
+.oracle-landing-particle:nth-child(1) { --particle-x: -70px; --particle-y: -26px; }
+.oracle-landing-particle:nth-child(2) { --particle-x: -42px; --particle-y: 22px; }
+.oracle-landing-particle:nth-child(3) { --particle-x: -18px; --particle-y: -42px; }
+.oracle-landing-particle:nth-child(4) { --particle-x: 18px; --particle-y: -34px; }
+.oracle-landing-particle:nth-child(5) { --particle-x: 46px; --particle-y: 18px; }
+.oracle-landing-particle:nth-child(6) { --particle-x: 72px; --particle-y: -8px; }
+.oracle-landing-particle:nth-child(7) { --particle-x: 30px; --particle-y: 40px; }
+.oracle-landing-particle:nth-child(8) { --particle-x: -54px; --particle-y: 42px; }
+
+@keyframes oracle-landing-particle-interpolate {
+  0%, 100% {
+    opacity: 0;
+    transform: translate(var(--particle-x), var(--particle-y)) scale(0.2);
+  }
+  28% {
+    opacity: 0.78;
+    transform: translate(calc(var(--particle-x) * 0.35), calc(var(--particle-y) * 0.35)) scale(1);
+  }
+  52% {
+    opacity: 0.42;
+    transform: translate(calc(var(--particle-x) * -0.18), calc(var(--particle-y) * -0.18)) scale(0.7);
+  }
+  74% {
+    opacity: 0.72;
+    transform: translate(calc(var(--particle-x) * 0.7), calc(var(--particle-y) * 0.7)) scale(0.85);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .oracle-landing-signal {
+  .oracle-landing-particles {
     animation: none;
-    opacity: 0.62;
+  }
+  .oracle-landing-particle {
+    animation: none;
+    opacity: 0.46;
+    transform: translate(var(--particle-x), var(--particle-y)) scale(0.7);
   }
 }
 @keyframes ghost-cur-blink {

@@ -84,7 +84,31 @@ const ALLEY_BG_URL       = '/alley-bg.png';
 const DEFAULT_STATION    = 0; // Graff Punks — sole station
 const FREE_JOURNEYS      = 5; // wallet seekers get this many free oracle journeys
 const COMPLETED_JOURNEYS_SUFFIX = '_completed_v2';
-const LANDING_ORACLE_SIGNAL = 'Oracle:true';
+
+function LandingSignalParticles() {
+  const particles = [
+    ['-70px', '-26px', '0.00s'],
+    ['-42px', '22px', '0.18s'],
+    ['-18px', '-42px', '0.34s'],
+    ['18px', '-34px', '0.12s'],
+    ['46px', '18px', '0.42s'],
+    ['72px', '-8px', '0.26s'],
+    ['30px', '40px', '0.54s'],
+    ['-54px', '42px', '0.68s'],
+  ] as const;
+
+  return (
+    <div className="oracle-landing-particles" aria-hidden="true">
+      {particles.map(([x, y, delay], index) => (
+        <span
+          key={index}
+          className="oracle-landing-particle"
+          style={{ '--particle-x': x, '--particle-y': y, animationDelay: delay } as React.CSSProperties}
+        />
+      ))}
+    </div>
+  );
+}
 
 function completedJourneyCount(key: string): number {
   try {
@@ -1695,18 +1719,7 @@ export function SurrogateOracleImmersion() {
       <DormantHUD active={scenePhase === 'dormant'} />
       <OracleHUD active={isOracleMode} coins={sessionCoins} />
       {scenePhase === 'dormant' && !showStage00 && (
-        <div className="oracle-landing-signal" aria-hidden="true">
-          <ParticleTypographyCard
-            questionIndex={-1}
-            landedChars={LANDING_ORACLE_SIGNAL.length}
-            isSelected={false}
-            isThisSelected={false}
-            territory="LANDING SIGNAL"
-            question={LANDING_ORACLE_SIGNAL}
-            reducedMotion={prefersReducedMotion}
-            className="oracle-landing-signal__particle-copy"
-          />
-        </div>
+        <LandingSignalParticles />
       )}
       <DormantTransmissions
         active={scenePhase === 'dormant' || scenePhase === 'awakened'}

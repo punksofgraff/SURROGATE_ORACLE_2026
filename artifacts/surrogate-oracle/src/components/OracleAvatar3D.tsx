@@ -13,12 +13,13 @@
  *   natural blending, not just a single active shape at a time
  * - visemeStateRef pattern — no React re-renders at 60fps
  */
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useRef, useMemo, useEffect, useLayoutEffect } from 'react';
 import { useGLTF, useAnimations, Center } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { VisemeState } from '../lib/visemeDetector';
 import type { SeekerMotion } from '../hooks/useXRMode';
+import { OracleGLBTransporter } from './OracleGLBTransporter';
 
 // ── Clip preprocessing — strip tracks owned by procedural useFrame ────────────
 //
@@ -220,6 +221,10 @@ export interface OracleAvatar3DProps {
   visemeStateRef:  React.RefObject<VisemeState>;
   cameraStateRef?: React.RefObject<CameraState>;
   seekerMotionRef?: React.RefObject<SeekerMotion | null>;
+  transporterActive?: boolean;
+  transporterProgress?: number;
+  transporterTier?: 1 | 2 | 3;
+  reducedMotion?: boolean;
 }
 
 // Camera orbit bounds
@@ -249,13 +254,23 @@ const AXIS_Z = new THREE.Vector3(0, 0, 1);
 // the chin down; keep at 0 unless a swapped GLB rests looking up/down.
 const HEAD_NEUTRAL_PITCH = 0;
 
-export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef }: OracleAvatar3DProps) {
+export function OracleAvatar3D({
+  visemeStateRef,
+  cameraStateRef,
+  seekerMotionRef,
+  transporterActive = false,
+  transporterProgress = 1,
+  transporterTier = 1,
+  reducedMotion = false,
+}: OracleAvatar3DProps) {
   const { scene }      = useGLTF('/hero3.glb?v=morphs-v2');
   const { animations: idleClips }    = useGLTF('/oracle-idle.glb');
   const { animations: talking1Clips } = useGLTF('/oracle-talking-1.glb');
   const { animations: talking2Clips } = useGLTF('/oracle-talking-2.glb');
   const { camera, gl } = useThree();
   const groupRef   = useRef<THREE.Group>(null);
+  const transporterProgressRef = useRef(1);
+  const transporterWasActiveRef = useRef(false);
   // Smooth camera target — avoids snapping on sudden gesture changes
   const camTarget = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
   // World Y the camera should look at (eye level, post group-offset). Computed once
@@ -286,6 +301,20 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
     [...armFreeIdle, ...armFreeT1, ...armFreeT2],
     groupRef,
   );
+
+  useLayoutEffect(() => {
+    if (transporterActive && !transporterWasActiveRef.current) {
+      // Always begin an Oracle entry as the source-mesh point field, even if
+      // the prewarm session happened to finish before the seeker chose a knife.
+      transporterProgressRef.current = 0;
+      scene.visible = false;
+    }
+    if (!transporterActive) {
+      transporterProgressRef.current = 1;
+      scene.visible = true;
+    }
+    transporterWasActiveRef.current = transporterActive;
+  }, [scene, transporterActive]);
 
   // Biological head physics (nodding/tilting spring-damper system driven by vocal transients)
   const headPhysRef = useRef({
@@ -515,6 +544,15 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   }, [scene]);
 
   useFrame((state, delta) => {
+    // The solid GLB stays hidden while its own sampled vertices are in the
+    // transporter field. It becomes visible only once that exact point cloud has
+    // nearly reconstructed the silhouette, avoiding an avatar handoff or snap.
+    const transportTarget = transporterActive ? transporterProgress : 1;
+    if (transporterActive && transportTarget < 0.5) {
+      scene.visible = false;
+    } else if (transporterProgressRef.current > 0.78 || !transporterActive) {
+      scene.visible = true;
+    }
     const vs     = visemeStateRef.current;
     const amp    = vs?.amplitude ?? 0;
     const lerpDt = Math.min(delta * 60, 1); // frame-rate independent
@@ -1096,6 +1134,14 @@ export function OracleAvatar3D({ visemeStateRef, cameraStateRef, seekerMotionRef
   return (
     <group ref={groupRef} position={[0, meshData.avatarYOffset, 0]} dispose={null}>
       <primitive object={scene} />
+      <OracleGLBTransporter
+        scene={scene}
+        tier={transporterTier}
+        active={transporterActive}
+        targetProgress={transporterProgress}
+        progressRef={transporterProgressRef}
+        reducedMotion={reducedMotion}
+      />
       <OracleSceneLights />
     </group>
   );

@@ -40,10 +40,10 @@ import { TalismanCard, TalismanData, extractProphecy } from './TalismanCard';
 import { OracleHaloRing } from './OracleHaloRing';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OracleAvatar3D } from './OracleAvatar3D';
+import { OracleQuarks } from './OracleQuarks';
 import { EffectComposer, DepthOfField, Bloom, ChromaticAberration, Noise, Scanline } from '@react-three/postprocessing';
 import { Physics } from '@react-three/rapier';
 import { OracleNebula } from './OracleNebula';
-import { OracleQuarks } from './OracleQuarks';
 import { OraclePhysicsDebris } from './OraclePhysicsDebris';
 import { OracleSceneDiagnostics, OracleDiagnosticsOverlay } from './OracleSceneDiagnostics';
 
@@ -1494,7 +1494,6 @@ export function SurrogateOracleImmersion() {
       data-oracle-alignment={oracleAlignment || undefined}
       data-exiting={journey.isExiting ? 'true' : undefined}
       data-oracle-manifesting={(isOracleMode && !oracleManifestReady) ? 'true' : undefined}
-      data-oracle-transport={isOracleMode ? (isGeminiSessionLive ? 'out' : 'in') : undefined}
       data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
       data-oracle-thinking={isOracleThinking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
@@ -1661,7 +1660,6 @@ export function SurrogateOracleImmersion() {
             {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} alignment={oracleAlignment === 'sacred' || oracleAlignment === 'profane' ? oracleAlignment : null} />}
             <div className="oracle-scanlines" />
             <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
-            {isOracleMode && <div className="oracle-transporter-beam" aria-hidden="true" />}
             {isFractureManifesting && (
               <div className="oracle-fracture-label" aria-live="polite">FRACTURE MANIFESTING</div>
             )}
@@ -1715,23 +1713,32 @@ export function SurrogateOracleImmersion() {
                       >
                         <OrbitZoomCompensator enabled={isOracleMode && !isXRMode} />
                         {import.meta.env.DEV && <OracleSceneDiagnostics />}
-                        <OracleAvatar3D visemeStateRef={visemeStateRef} cameraStateRef={cameraStateRef} seekerMotionRef={seekerMotionRef} />
+                        <OracleAvatar3D
+                          visemeStateRef={visemeStateRef}
+                          cameraStateRef={cameraStateRef}
+                          seekerMotionRef={seekerMotionRef}
+                          transporterActive={isOracleMode}
+                          transporterProgress={oracleManifestProgress}
+                          transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
+                          reducedMotion={prefersReducedMotion}
+                        />
+                        {/* The ambient field returns only after the GLB-source
+                            transporter has been released, so it never masks the
+                            recognizable particle silhouette during warmup. */}
+                        {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
+                          <OracleQuarks
+                            tier={renderTier as 1 | 2 | 3}
+                            speakingRef={isOracleSpeakingRef}
+                            amplitude={visemeStateRef.current?.amplitude ?? 0}
+                            reducedMotion={prefersReducedMotion}
+                          />
+                        )}
                         {/* Nebula dust + speaking-reactive energy tendrils (tier 1+) */}
                         {renderTier >= 1 && (
                           <OracleNebula
                             tier={renderTier as 1 | 2 | 3}
                             speakingRef={isOracleSpeakingRef}
                             reducedMotion={prefersReducedMotion}
-                          />
-                        )}
-                        {/* High-Performance GPU Quarks particle field (tier 1+) */}
-                        {renderTier >= 1 && (
-                          <OracleQuarks
-                            tier={renderTier as 1 | 2 | 3}
-                            speakingRef={isOracleSpeakingRef}
-                            amplitude={visemeStateRef.current?.amplitude ?? 0}
-                            reducedMotion={prefersReducedMotion}
-                             manifestProgress={oracleManifestProgress}
                           />
                         )}
                         {/* Rapier glyph-shard debris field (tier 2+) — fixed 60Hz step,

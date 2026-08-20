@@ -1,0 +1,195 @@
+import { useEffect, useMemo, useRef, type MutableRefObject } from 'react';
+import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
+import { logStep } from './CodeAuditor';
+
+type Tier = 1 | 2 | 3;
+
+interface OracleGLBTransporterProps {
+  scene: THREE.Object3D;
+  tier: Tier;
+  active: boolean;
+  targetProgress: number;
+  progressRef: MutableRefObject<number>;
+  reducedMotion?: boolean;
+}
+
+const PARTICLE_COUNTS: Record<Tier, number> = { 1: 420, 2: 780, 3: 1200 };
+
+const VERTEX_SHADER = /* glsl */ `
+  uniform float uTime;
+  uniform float uProgress;
+  uniform float uSize;
+  attribute vec3 aTarget;
+  attribute float aSeed;
+  attribute float aScale;
+  varying float vAlpha;
+  varying float vCharge;
+
+  void main() {
+    float settled = smoothstep(0.0, 1.0, uProgress);
+    float rise = fract(uTime * (0.12 + aSeed * 0.05) + aSeed);
+    float flutter = sin(uTime * (2.1 + aSeed * 1.8) + aSeed * 31.0);
+
+    // The dispersed state preserves the GLB's vertical anatomy while narrowing
+    // its volume into a transporter column. Each point still belongs to a real
+    // vertex of hero3.glb, so the converge target is the actual Oracle silhouette.
+    vec3 transported = vec3(
+      aTarget.x * 0.16 + flutter * (0.035 + aSeed * 0.065),
+      aTarget.y + (rise - 0.5) * 0.26 + flutter * 0.075,
+      aTarget.z * 0.14 - 0.10 + cos(uTime * 2.5 + aSeed * 23.0) * 0.04
+    );
+    vec3 pos = mix(transported, aTarget, settled);
+
+    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    gl_PointSize = aScale * uSize * (1.18 - settled * 0.33) * (300.0 / -mvPosition.z);
+
+    // Keep the mesh-shaped particle form readable while it rebuilds, then hand
+    // the last fraction of opacity to the actual animated GLB.
+    vAlpha = (0.42 + (1.0 - settled) * 0.46) * (1.0 - smoothstep(0.70, 1.0, settled));
+    vCharge = 0.45 + 0.55 * sin(aSeed * 19.0 + uTime * 1.7);
+  }
+`;
+
+const FRAGMENT_SHADER = /* glsl */ `
+  varying float vAlpha;
+  varying float vCharge;
+
+  void main() {
+    vec2 point = gl_PointCoord - vec2(0.5);
+    float d = length(point);
+    if (d > 0.5) discard;
+    float core = exp(-d * d * 22.0);
+    float halo = exp(-d * d * 5.0) * 0.55;
+    vec3 color = mix(vec3(0.0, 1.0, 0.53), vec3(0.69, 0.15, 1.0), vCharge * 0.24);
+    gl_FragColor = vec4(color * (core * 1.8 + 0.3), (core + halo) * vAlpha);
+  }
+`;
+
+function buildGLBPointGeometry(scene: THREE.Object3D, count: number) {
+  scene.updateMatrixWorld(true);
+  const sceneInverse = scene.matrixWorld.clone().invert();
+  const sources: Array<{
+    position: THREE.BufferAttribute | THREE.InterleavedBufferAttribute;
+    matrix: THREE.Matrix4;
+    count: number;
+  }> = [];
+  let totalVertices = 0;
+
+  scene.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    const position = mesh.geometry?.getAttribute('position');
+    if (!mesh.isMesh || !position || position.count === 0) return;
+    sources.push({
+      position,
+      matrix: sceneInverse.clone().multiply(mesh.matrixWorld),
+      count: position.count,
+    });
+    totalVertices += position.count;
+  });
+
+  const geo = new THREE.BufferGeometry();
+  if (!sources.length) return geo;
+  const targets = new Float32Array(count * 3);
+  const seeds = new Float32Array(count);
+  const scales = new Float32Array(count);
+  const point = new THREE.Vector3();
+  const next = (() => {
+    let state = 0x8d4a_7c11;
+    return () => {
+      state |= 0;
+      state = (state + 0x6d2b79f5) | 0;
+      let value = Math.imul(state ^ (state >>> 15), 1 | state);
+      value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
+      return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+    };
+  })();
+
+  for (let i = 0; i < count; i++) {
+    let pick = Math.floor(next() * Math.max(1, totalVertices));
+    let source = sources[0]!;
+    for (const candidate of sources) {
+      if (pick < candidate.count) {
+        source = candidate;
+        break;
+      }
+      pick -= candidate.count;
+    }
+    const vertex = Math.floor(next() * source.position.count);
+    point.fromBufferAttribute(source.position, vertex).applyMatrix4(source.matrix);
+    targets[i * 3] = point.x;
+    targets[i * 3 + 1] = point.y;
+    targets[i * 3 + 2] = point.z;
+    seeds[i] = next();
+    scales[i] = 6.0 + next() * 7.5;
+  }
+
+  geo.setAttribute('position', new THREE.BufferAttribute(targets.slice(), 3));
+  geo.setAttribute('aTarget', new THREE.BufferAttribute(targets, 3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
+  geo.setAttribute('aScale', new THREE.BufferAttribute(scales, 1));
+  return geo;
+}
+
+export function OracleGLBTransporter({
+  scene,
+  tier,
+  active,
+  targetProgress,
+  progressRef,
+  reducedMotion = false,
+}: OracleGLBTransporterProps) {
+  const materialRef = useRef<THREE.ShaderMaterial>(null);
+  const count = PARTICLE_COUNTS[tier];
+  const geometry = useMemo(() => buildGLBPointGeometry(scene, count), [scene, count]);
+  const uniforms = useMemo(() => ({
+    uTime: { value: 0 },
+    uProgress: { value: 1 },
+    uSize: { value: 1 },
+  }), []);
+
+  useEffect(() => {
+    logStep(`GLB TRANSPORTER MOUNTED — tier=${tier} points=${count}`, 'ok');
+    return () => {
+      geometry.dispose();
+      logStep(`GLB TRANSPORTER UNMOUNTED — tier=${tier} points=${count}`, 'warn');
+    };
+  }, [tier, count, geometry]);
+
+  useFrame((state, delta) => {
+    const material = materialRef.current;
+    if (!material) return;
+    const target = active ? Math.max(0, Math.min(1, targetProgress)) : 1;
+    const speed = target > progressRef.current ? 1.25 : 5.5;
+    progressRef.current = THREE.MathUtils.lerp(
+      progressRef.current,
+      target,
+      Math.min(1, delta * speed),
+    );
+    material.uniforms.uTime.value += Math.min(delta, 1 / 20) * (reducedMotion ? 0.5 : 1);
+    material.uniforms.uProgress.value = progressRef.current;
+    material.uniforms.uSize.value = (state.camera as THREE.PerspectiveCamera).zoom ?? 1;
+    if (typeof window !== 'undefined') {
+      const probe = (window as unknown as { __oracle_scene_probe?: Record<string, unknown> }).__oracle_scene_probe ?? {};
+      probe.glbTransportProgress = progressRef.current;
+      probe.glbTransportPoints = count;
+      (window as unknown as { __oracle_scene_probe?: Record<string, unknown> }).__oracle_scene_probe = probe;
+    }
+  });
+
+  return (
+    <points geometry={geometry} frustumCulled={false} visible={active || progressRef.current < 0.995}>
+      <shaderMaterial
+        ref={materialRef}
+        uniforms={uniforms}
+        vertexShader={VERTEX_SHADER}
+        fragmentShader={FRAGMENT_SHADER}
+        transparent
+        depthWrite={false}
+        depthTest={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </points>
+  );
+}

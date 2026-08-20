@@ -194,11 +194,12 @@ export function SurrogateOracleImmersion() {
   // ── Performance & Accessibility ─────────────────────────────────────────
   const isDegraded = usePerformanceGuard(true);
   const gpu = useGPUTier();
-  // Effective render tier: GPU probe capped by the runtime FPS guard. A strong
-  // GPU that drops frames can still shed expensive effects, but degraded mode
-  // must keep the minimum living particle field mounted instead of mapping to
-  // tier 0 and making the Oracle appear frozen/dead.
-  const renderTier = (isDegraded ? 1 : gpu.tier) as 0 | 1 | 2 | 3;
+  // Do not construct a WebGL renderer until the GPU probe has proven one is
+  // available. A confirmed renderer can still fall back to tier 1 under the
+  // runtime FPS guard; an unresolved or unsupported renderer remains dark.
+  const renderTier = (
+    !gpu.ready ? 0 : isDegraded ? Math.max(1, gpu.tier) : gpu.tier
+  ) as 0 | 1 | 2 | 3;
   useEffect(() => {
     logStep(
       `RENDER TIER — tier=${renderTier} degraded=${isDegraded ? 'true' : 'false'} gpu=${gpu.tier}`,
@@ -1680,7 +1681,7 @@ export function SurrogateOracleImmersion() {
                 CSS opacity + transition handles the same 1.2 s fade-in that motion.div gave.
                 Suspense fallback: transparent (null) when canvasWarmed, so re-entering seekers
                 never see a "frozen static image" flash during WebGL context init. */}
-            {(awakened || scenePhase === 'terminal' || canvasWarmed) && (
+            {gpu.ready && renderTier >= 1 && (awakened || scenePhase === 'terminal' || canvasWarmed) && (
               <div
                 className="oracle-avatar-canvas oracle-avatar-smoke-hook"
                 style={{

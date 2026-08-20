@@ -24,11 +24,14 @@ export interface GPUProfile {
   ready: boolean;
 }
 
-/** Safe default while probing: mid-tier so the initial mount matches the
- *  pre-existing renderer settings (antialias on, standard DPR). */
-const DEFAULT_PROFILE: GPUProfile = { tier: 2, isMobile: false, ready: false };
+/** Stay renderer-free until the probe proves a context is available. Starting
+ * at tier 2 causes repeated Canvas construction failures on blocked WebGL
+ * surfaces, which reads as a bright loading flash rather than a quiet fallback. */
+const DEFAULT_PROFILE: GPUProfile = { tier: 0, isMobile: false, ready: false };
 
-const STORAGE_KEY = 'oracle_gpu_profile_v1';
+// Bump when renderer admission logic changes so a tab cannot reuse a profile
+// created by the old eager-Canvas path.
+const STORAGE_KEY = 'oracle_gpu_profile_v2';
 
 let cached: GPUProfile | null = null;
 let pending: Promise<GPUProfile> | null = null;

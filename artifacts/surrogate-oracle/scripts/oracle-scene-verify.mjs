@@ -118,6 +118,54 @@ for (let attempt = 0; attempt < 90; attempt++) {
 }
 check(phase === 'oracle' || phase === 'awakened', `scene phase reached: ${phase}`);
 
+if (phase === 'oracle') {
+  // The real session callback is intentionally asynchronous. Drive the same
+  // parent readiness state in development so transport 0 → 1 and draw-release
+  // behavior are verified even when Gemini is slow, unavailable, or already
+  // connected before the knife selection.
+  const transportProbeReady = await page.evaluate(() =>
+    typeof window.__oracle_debug_setTransportReady === 'function',
+  );
+  check(transportProbeReady, 'development transporter readiness probe available');
+  if (transportProbeReady) {
+    await page.evaluate(() => {
+      window.__oracle_debug_transportRate = 1;
+      window.__oracle_debug_setTransportReady(false);
+    });
+    await new Promise((r) => setTimeout(r, 900));
+    const waitingProgress = await page.evaluate(() =>
+      window.__oracle_scene_probe?.glbTransportProgress ?? null,
+    );
+    check(
+      typeof waitingProgress === 'number' && waitingProgress < 0.2,
+      `GLB transporter enters and holds the waiting state (${Number(waitingProgress).toFixed(3)})`,
+      'GLB transporter did not enter its particle waiting state',
+    );
+
+    await page.evaluate(() => {
+      // SwiftShader test runs intentionally normalize its clock to avoid false
+      // FPS-guard failures. Accelerate only this DEV probe so it still observes
+      // a multi-frame reassembly in a bounded test window.
+      window.__oracle_debug_transportRate = 12;
+      window.__oracle_debug_setTransportReady(true);
+    });
+    let settledProgress = 0;
+    for (let attempt = 0; attempt < 24; attempt++) {
+      await new Promise((r) => setTimeout(r, 500));
+      settledProgress = await page.evaluate(() =>
+        window.__oracle_scene_probe?.glbTransportProgress ?? 0,
+      );
+      if (settledProgress >= 0.995) break;
+    }
+    check(
+      settledProgress >= 0.995,
+      `GLB transporter settles after readiness (${settledProgress.toFixed(3)})`,
+      'GLB transporter did not reassemble after readiness',
+    );
+    await page.evaluate(() => { window.__oracle_debug_transportRate = 1; });
+  }
+}
+
 const diagnostics = async () => page.evaluate(() => {
   const value = window.__oracle_diagnostics;
   return value ? {
@@ -303,13 +351,28 @@ const scanObjects = () => page.evaluate(() => {
   // The devtools hook reports every Scene ever constructed (incl. postprocessing
   // internals and stale HMR copies). Scan them all LIVE — the debris/sprites are
   // children added after report time, so traverse now and take the union.
-  const counts = { sprites: 0, instancedMeshes: 0, skinned: 0, total: 0, instancedCount: 0, scenes: scenes.length };
+  const counts = {
+    sprites: 0,
+    instancedMeshes: 0,
+    skinned: 0,
+    glbTransporters: 0,
+    glbTransportPointCount: 0,
+    visibleGlbTransporters: 0,
+    total: 0,
+    instancedCount: 0,
+    scenes: scenes.length,
+  };
   for (const scene of scenes) {
     scene.traverse((o) => {
       counts.total++;
       if (o.isSprite) counts.sprites++;
       if (o.isInstancedMesh) { counts.instancedMeshes++; counts.instancedCount += o.count; }
       if (o.isSkinnedMesh) counts.skinned++;
+      if (o.name === 'oracle-glb-transporter') {
+        counts.glbTransporters++;
+        counts.glbTransportPointCount += o.geometry?.getAttribute('aTarget')?.count ?? 0;
+        if (o.visible) counts.visibleGlbTransporters++;
+      }
     });
   }
   return counts;
@@ -336,6 +399,23 @@ if (effectiveTier !== FORCED_TIER) {
 console.log(`  scene objects: ${JSON.stringify(objectCounts)}`);
 if (!objectCounts.error) {
   check(objectCounts.skinned >= 1, `avatar SkinnedMesh present (${objectCounts.skinned})`);
+  check(
+    objectCounts.glbTransporters >= 1 && objectCounts.glbTransportPointCount >= 900,
+    `GLB surface transporter present (${objectCounts.glbTransportPointCount} sampled points)`,
+    'GLB surface transporter is missing or did not retain its sampled point cloud',
+  );
+  const transportProgress = await page.evaluate(() =>
+    window.__oracle_scene_probe?.glbTransportProgress ?? null,
+  );
+  if (typeof transportProgress === 'number' && transportProgress >= 0.995) {
+    check(
+      objectCounts.visibleGlbTransporters === 0,
+      'settled transporter releases its WebGL draw call',
+      'settled transporter remains visible and continues drawing after the GLB takes over',
+    );
+  } else {
+    console.log('  ○ transporter draw shutdown check skipped — live session is still warming up');
+  }
   if (effectiveTier >= 1) {
     check(objectCounts.sprites >= 1, `nebula sprite particles present (${objectCounts.sprites})`,
       'NO nebula sprites found in scene');

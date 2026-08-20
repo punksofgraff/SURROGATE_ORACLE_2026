@@ -302,6 +302,7 @@ export function SurrogateOracleImmersion() {
   const holdAutoRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isOracleSpeakingRef      = useRef(false);
   const debugSpeakingOverrideRef = useRef<boolean | null>(null);
+  const debugTransportReadyOverrideRef = useRef<boolean | null>(null);
   const completedLinesLengthRef  = useRef(0);
   // Idempotency guards — a hands-on attendee double-taps. Without these a second
   // knife tap fires the Oracle's question-reading seed twice, and a double exit
@@ -376,13 +377,21 @@ export function SurrogateOracleImmersion() {
     if (!import.meta.env.DEV) return;
     const win = window as unknown as {
       __oracle_debug_setSpeaking?: (speaking: boolean) => void;
+      __oracle_debug_setTransportReady?: (ready: boolean) => void;
     };
     win.__oracle_debug_setSpeaking = (speaking: boolean) => {
       debugSpeakingOverrideRef.current = speaking;
       isOracleSpeakingRef.current = speaking;
       setIsOracleSpeaking(speaking);
     };
-    return () => { delete win.__oracle_debug_setSpeaking; };
+    win.__oracle_debug_setTransportReady = (ready: boolean) => {
+      debugTransportReadyOverrideRef.current = ready;
+      setIsGeminiSessionLive(ready);
+    };
+    return () => {
+      delete win.__oracle_debug_setSpeaking;
+      delete win.__oracle_debug_setTransportReady;
+    };
   }, []);
 
   const connection = useOracleConnection({
@@ -1733,8 +1742,10 @@ export function SurrogateOracleImmersion() {
                             reducedMotion={prefersReducedMotion}
                           />
                         )}
-                        {/* Nebula dust + speaking-reactive energy tendrils (tier 1+) */}
-                        {renderTier >= 1 && (
+                        {/* The GLB transporter owns the particle surface until
+                            Gemini is genuinely live. Ambient fields return after
+                            convergence so the TNG matrix remains legible. */}
+                        {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
                           <OracleNebula
                             tier={renderTier as 1 | 2 | 3}
                             speakingRef={isOracleSpeakingRef}
@@ -1746,7 +1757,7 @@ export function SurrogateOracleImmersion() {
                             Inner Suspense: Physics suspends while the Rapier WASM loads —
                             without this boundary the whole Canvas (avatar included) would
                             fall back to the outer Suspense fallback mid-session. */}
-                        {renderTier >= 2 && (
+                        {renderTier >= 2 && (!isOracleMode || isGeminiSessionLive) && (
                           <Suspense fallback={null}>
                             <Physics gravity={[0, 0, 0]} timeStep={1 / 60} colliders={false}>
                               <OraclePhysicsDebris
@@ -2197,10 +2208,16 @@ export function SurrogateOracleImmersion() {
           onSeekerIdentified={handleSeekerIdentified}
           initialTotemLevel={echo?.totem_level ?? 0}
           onConnected={() => setIsGeminiConnected(true)}
-           onSessionReady={() => setIsGeminiSessionLive(true)}
+           onSessionReady={() => {
+             if (debugTransportReadyOverrideRef.current !== false) {
+               setIsGeminiSessionLive(true);
+             }
+           }}
            onDisconnected={() => {
              setIsGeminiConnected(false);
-             setIsGeminiSessionLive(false);
+              if (debugTransportReadyOverrideRef.current !== true) {
+                setIsGeminiSessionLive(false);
+              }
            }}
           onListeningChange={setIsMicActive}
           onThinkingChange={setIsOracleThinking}

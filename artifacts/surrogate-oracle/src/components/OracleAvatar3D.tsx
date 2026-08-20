@@ -550,7 +550,7 @@ export function OracleAvatar3D({
     const transportTarget = transporterActive ? transporterProgress : 1;
     if (transporterActive && transportTarget < 0.5) {
       scene.visible = false;
-    } else if (transporterProgressRef.current > 0.78 || !transporterActive) {
+    } else if (transporterProgressRef.current > 0.94 || !transporterActive) {
       scene.visible = true;
     }
     const vs     = visemeStateRef.current;
@@ -622,6 +622,12 @@ export function OracleAvatar3D({
         canvasWidth: Number(canvasRect.width.toFixed(2)),
       };
     }
+
+    // Keep bones, visemes, gestures, and breathing in the pose that the
+    // transporter started from while the solid model is hidden. Otherwise a
+    // moving face/gesture can appear out of a point cloud sampled from a
+    // different pose at the handoff threshold.
+    if (transporterActive && !scene.visible) return;
 
     // ── Animation mixer ───────────────────────────────────────────────────
     mixer.update(delta);

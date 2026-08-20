@@ -13,7 +13,6 @@
  * Viseme state is a ref — no React re-renders at 60fps.
  */
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
-import * as THREE from 'three';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Camera, CameraOff } from 'lucide-react';
 
@@ -79,7 +78,6 @@ import { trackOracleEvent } from '../lib/analytics';
 import { getABVariant } from '../lib/ab-testing';
 import type { VisemeState } from '../lib/visemeDetector';
 import { defaultAudioTracks } from '../config/audioTracks';
-import { createOracleWebGPURenderer } from '../lib/webgpuRenderer';
 import './SurrogateOracleImmersion.css';
 
 const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
@@ -202,7 +200,7 @@ export function SurrogateOracleImmersion() {
   // available. A confirmed renderer can still fall back to tier 1 under the
   // runtime FPS guard; an unresolved or unsupported renderer remains dark.
   const renderTier = (
-    !gpu.ready ? 0 : isDegraded ? Math.max(1, gpu.tier - 1) : gpu.tier
+    !gpu.ready ? 0 : isDegraded ? Math.max(1, gpu.tier) : gpu.tier
   ) as 0 | 1 | 2 | 3;
   useEffect(() => {
     logStep(
@@ -1228,49 +1226,6 @@ export function SurrogateOracleImmersion() {
   }, [connection, journey]);
 
   const { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraError, seekerMotionRef } = useXRMode(() => enterTerminal());
-  const [webgpuFailed, setWebgpuFailed] = useState(false);
-  // WebGPU is the preferred renderer once its adapter/device have actually
-  // initialized. XR remains WebGL-only until its compositor path is verified.
-  const useWebGPU = gpu.ready && gpu.webgpu === 'admitted' && !isXRMode && !webgpuFailed;
-  const createRenderer = useCallback(async (props: {
-    canvas: HTMLCanvasElement;
-    antialias?: boolean;
-    alpha?: boolean;
-  }) => {
-    try {
-      const renderer = await createOracleWebGPURenderer(props);
-      // Three's WebGPURenderer can internally select its WebGL backend if a
-      // browser exposes navigator.gpu but cannot create a GPU canvas context.
-      // That is a fallback, not a WebGPU success: remount the Canvas in the
-      // complete WebGL profile so its proven particles and post stack return.
-      if ((renderer as unknown as { backend?: { isWebGLBackend?: boolean } }).backend?.isWebGLBackend) {
-        setWebgpuFailed(true);
-        // The renderer is already using Three's WebGL backend on this canvas.
-        // Keep that stable instance rather than attempting a second context
-        // creation; React renders the WebGL-compatible workload profile below.
-        return renderer;
-      }
-      return renderer;
-    } catch (error) {
-      // Admission used a throwaway device. A renderer can still fail later
-      // because of a driver, a lost device, or a browser implementation quirk.
-      // Complete the exact Canvas request with WebGL, then remount into the
-      // full WebGL profile so effects return rather than leaving a blank Oracle.
-      console.warn('[ORACLE] WebGPU renderer init failed; using WebGL fallback.', error);
-      setWebgpuFailed(true);
-      return new THREE.WebGLRenderer({
-        canvas: props.canvas,
-        antialias: props.antialias ?? false,
-        alpha: props.alpha ?? true,
-        powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
-      });
-    }
-  }, [renderTier]);
-  useEffect(() => {
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-      (window as unknown as Record<string, unknown>).__oracle_renderer = useWebGPU ? 'webgpu' : 'webgl';
-    }
-  }, [useWebGPU]);
   const faceFrameDivRef = useRef<HTMLDivElement>(null);
 
   // Drive face frame overlay position directly from faceBoundsRef — no React state lag.
@@ -1793,13 +1748,11 @@ export function SurrogateOracleImmersion() {
                           // above base/2 would silently increase the mobile budget.
                           return isOracleMode && !isXRMode ? base / ORACLE_ORBIT_EXPANSION : base;
                         })()}
-                         gl={useWebGPU
-                           ? (createRenderer as never)
-                           : {
-                               antialias: renderTier >= 2,
-                               alpha: true,
-                               powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
-                             }}
+                        gl={{
+                          antialias: renderTier >= 2,
+                          alpha: true,
+                          powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
+                        }}
                         style={{ width: '100%', height: '100%', background: 'transparent' }}
                         frameloop="always"
                       >
@@ -1810,10 +1763,7 @@ export function SurrogateOracleImmersion() {
                             visemeStateRef={visemeStateRef}
                             cameraStateRef={cameraStateRef}
                             seekerMotionRef={seekerMotionRef}
-                             // The GLB transporter uses GLSL ShaderMaterial.
-                             // WebGPU receives the compatible standard-material
-                             // avatar immediately; WebGL keeps the full reveal.
-                             transporterActive={isOracleMode && !useWebGPU}
+                            transporterActive={isOracleMode}
                             transporterProgress={isMusicReturning ? 0 : oracleManifestProgress}
                             transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
                             reducedMotion={prefersReducedMotion}
@@ -1828,7 +1778,7 @@ export function SurrogateOracleImmersion() {
                         {/* The ambient field returns only after the GLB-source
                             transporter has been released, so it never masks the
                             recognizable particle silhouette during warmup. */}
-                         {!useWebGPU && renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
+                        {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
                           <OracleQuarks
                             tier={renderTier as 1 | 2 | 3}
                             speakingRef={isOracleSpeakingRef}
@@ -1839,7 +1789,7 @@ export function SurrogateOracleImmersion() {
                         {/* The GLB transporter owns the particle surface until
                             Gemini is genuinely live. Ambient fields return after
                             convergence so the TNG matrix remains legible. */}
-                         {!useWebGPU && renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
+                        {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
                           <OracleNebula
                             tier={renderTier as 1 | 2 | 3}
                             speakingRef={isOracleSpeakingRef}
@@ -1851,7 +1801,7 @@ export function SurrogateOracleImmersion() {
                             Inner Suspense: Physics suspends while the Rapier WASM loads —
                             without this boundary the whole Canvas (avatar included) would
                             fall back to the outer Suspense fallback mid-session. */}
-                         {!useWebGPU && renderTier >= 2 && (!isOracleMode || isGeminiSessionLive) && (
+                        {renderTier >= 2 && (!isOracleMode || isGeminiSessionLive) && (
                           <Suspense fallback={null}>
                             <Physics gravity={[0, 0, 0]} timeStep={1 / 60} colliders={false}>
                               <OraclePhysicsDebris
@@ -1861,7 +1811,7 @@ export function SurrogateOracleImmersion() {
                             </Physics>
                           </Suspense>
                         )}
-                         {!useWebGPU && renderTier >= 1 && (
+                        {renderTier >= 1 && (
                           <EffectComposer multisampling={renderTier >= 2 ? 4 : 0}>
                             {[
                               <Bloom

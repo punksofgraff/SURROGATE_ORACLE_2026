@@ -31,22 +31,6 @@ export function usePerformanceGuard(isActive: boolean) {
         if (samplesRef.current.length > 60) samplesRef.current.shift();
 
         const avgFps = samplesRef.current.reduce((a, b) => a + b, 0) / samplesRef.current.length;
-        const avgFrameMs = 1000 / Math.max(1, avgFps);
-        if (typeof window !== 'undefined') {
-          (window as Window & {
-            __oracle_frame_guard?: {
-              avgFps: number;
-              avgFrameMs: number;
-              sampleCount: number;
-              degraded: boolean;
-            };
-          }).__oracle_frame_guard = {
-            avgFps: Number(avgFps.toFixed(1)),
-            avgFrameMs: Number(avgFrameMs.toFixed(2)),
-            sampleCount: samplesRef.current.length,
-            degraded: isDegraded,
-          };
-        }
 
         if (samplesRef.current.length >= 60 && avgFps < 28 && !isDegraded) {
           setIsDegraded(true);

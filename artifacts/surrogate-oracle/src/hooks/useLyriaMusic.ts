@@ -77,9 +77,34 @@ export function useLyriaMusic() {
       const { data, error: invokeError } = await supabase.functions.invoke('lyria-music-generator', {
         body: { prompt: prompt.slice(0, 600) },
       });
-      if (invokeError) throw invokeError;
+      if (invokeError) {
+        const context = (invokeError as { context?: Response }).context;
+        let detail = invokeError.message;
+        if (context) {
+          try {
+            const body = await context.clone().json() as {
+              error?: string;
+              code?: string;
+              providerStatus?: number;
+              providerMessage?: string;
+              requestId?: string;
+            };
+            const parts = [
+              body.code,
+              body.providerStatus ? `HTTP ${body.providerStatus}` : null,
+              body.providerMessage,
+              body.requestId ? `ref ${body.requestId}` : null,
+            ].filter(Boolean);
+            if (parts.length) detail = parts.join(' — ');
+            else if (body.error) detail = body.error;
+          } catch {
+            // Keep the SDK error when the function response is not JSON.
+          }
+        }
+        throw new Error(detail || 'Lyria generation failed.');
+      }
       if (!data?.audioBase64) throw new Error(data?.error || 'No playable track returned.');
-      const binary = atob(data.audioBase64);
+      const binary = atob(data.audioBase64.replace(/\s/g, ''));
       const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
       const nextUrl = URL.createObjectURL(new Blob([bytes], { type: data.mimeType || 'audio/mpeg' }));
       // Set the element immediately as well as through React state. This keeps

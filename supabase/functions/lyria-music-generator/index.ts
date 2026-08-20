@@ -12,6 +12,8 @@ const corsHeaders = {
 };
 
 const MAX_PROMPT_LENGTH = 600;
+const INTERACTION_TIMEOUT_MS = 90_000;
+const INTERACTION_POLL_MS = 1_500;
 const DEFAULT_PROMPT =
   'A dark, cinematic instrumental cyberpunk beat for a neon alley oracle, 96 BPM, D minor, ' +
   'deep analog bass, fractured percussion, glassy synth pulses, no vocals, no lyrics.';
@@ -23,15 +25,98 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+function providerMessage(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw) as { error?: { message?: unknown } | string; message?: unknown };
+    const value = typeof parsed.error === 'object' && parsed.error
+      ? parsed.error.message
+      : typeof parsed.error === 'string'
+        ? parsed.error
+        : parsed.message;
+    if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 240);
+  } catch {
+    // Keep a short non-JSON provider response useful for diagnostics.
+  }
+  return raw.replace(/\s+/g, ' ').trim().slice(0, 240);
+}
+
+type AudioPayload = {
+  data?: unknown;
+  base64?: unknown;
+  audio_base64?: unknown;
+  mime_type?: unknown;
+  mimeType?: unknown;
+  type?: unknown;
+};
+
+function findAudioPayload(value: unknown, depth = 0): AudioPayload | null {
+  if (!value || typeof value !== 'object' || depth > 8) return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const audio = findAudioPayload(item, depth + 1);
+      if (audio) return audio;
+    }
+    return null;
+  }
+
+  const object = value as Record<string, unknown>;
+  const type = typeof object.type === 'string' ? object.type.toLowerCase() : '';
+  const mime = typeof object.mime_type === 'string'
+    ? object.mime_type
+    : typeof object.mimeType === 'string'
+      ? object.mimeType
+      : '';
+  const hasData = typeof object.data === 'string' ||
+    typeof object.base64 === 'string' ||
+    typeof object.audio_base64 === 'string';
+  if (hasData && (type === 'audio' || mime.startsWith('audio/'))) {
+    return object as AudioPayload;
+  }
+
+  for (const key of ['output_audio', 'outputAudio', 'audio', 'content', 'parts', 'outputs', 'steps', 'inlineData', 'inline_data']) {
+    const audio = findAudioPayload(object[key], depth + 1);
+    if (audio) return audio;
+  }
+  return null;
+}
+
+function responseShape(result: Record<string, unknown>): Record<string, unknown> {
+  const outputs = Array.isArray(result.outputs) ? result.outputs : [];
+  const steps = Array.isArray(result.steps) ? result.steps : [];
+  return {
+    topLevelKeys: Object.keys(result).slice(0, 20),
+    status: result.status,
+    interactionId: typeof result.id === 'string' ? result.id : undefined,
+    outputs: outputs.slice(0, 8).map((value) => (
+      value && typeof value === 'object'
+        ? Object.keys(value as Record<string, unknown>).slice(0, 12)
+        : typeof value
+    )),
+    steps: steps.slice(0, 8).map((value) => (
+      value && typeof value === 'object'
+        ? {
+            keys: Object.keys(value as Record<string, unknown>).slice(0, 12),
+            status: (value as Record<string, unknown>).status,
+            type: (value as Record<string, unknown>).type,
+          }
+        : typeof value
+    )),
+  };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
-  const apiKey = Deno.env.get('GOOGLE_AI_API_KEY')
-    ?? Deno.env.get('GOOGLE_GENERATIVE_AI_API_KEY')
-    ?? Deno.env.get('GEMINI_API_KEY')
-    ?? '';
-  if (!apiKey) return json({ error: 'Lyria is unavailable: provider key is not configured.' }, 503);
+  const requestId = crypto.randomUUID();
+  const apiKeys = [
+    Deno.env.get('GOOGLE_GENERATIVE_AI_API_KEY'),
+    Deno.env.get('GOOGLE_AI_API_KEY'),
+    Deno.env.get('GEMINI_API_KEY'),
+  ].filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index);
+  if (!apiKeys.length) {
+    return json({ error: 'Lyria is unavailable: provider key is not configured.', requestId }, 503);
+  }
 
   let payload: { prompt?: unknown };
   try {
@@ -46,46 +131,138 @@ Deno.serve(async (req: Request) => {
   // lyrics or a song; the Oracle conversation remains the vocal channel.
   const safePrompt = `${prompt}. Instrumental only. No vocals. No lyrics.`;
 
-  let upstream: Response;
-  try {
-    upstream = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        model: 'lyria-3-clip-preview',
-        input: safePrompt,
-      }),
+  let upstream: Response | null = null;
+  let raw = '';
+  let successfulApiKey = apiKeys[0];
+  for (const apiKey of apiKeys) {
+    try {
+      upstream = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          model: 'lyria-3-clip-preview',
+          input: safePrompt,
+        }),
+      });
+      raw = await upstream.text();
+      if (upstream.ok) {
+        successfulApiKey = apiKey;
+        break;
+      }
+      if (![401, 403, 429].includes(upstream.status)) break;
+      console.warn('[Lyria] provider key rejected, trying next key', {
+        requestId,
+        status: upstream.status,
+      });
+    } catch (error) {
+      console.error('[Lyria] provider request failed', { requestId, error: String(error).slice(0, 240) });
+      return json({
+        error: 'Lyria could not be reached. The Oracle remains available.',
+        code: 'PROVIDER_UNREACHABLE',
+        requestId,
+      }, 502);
+    }
+  }
+
+  if (!upstream || !upstream.ok) {
+    const status = upstream?.status ?? 502;
+    const code = status === 429
+      ? 'PROVIDER_QUOTA_EXHAUSTED'
+      : status === 401 || status === 403
+        ? 'PROVIDER_AUTH_FAILED'
+        : 'PROVIDER_REQUEST_FAILED';
+    console.error('[Lyria] provider returned', {
+      requestId,
+      status,
+      message: providerMessage(raw),
     });
-  } catch (error) {
-    console.error('[Lyria] provider request failed', error);
-    return json({ error: 'Lyria could not be reached. The Oracle remains available.' }, 502);
-  }
-
-  const raw = await upstream.text();
-  if (!upstream.ok) {
-    console.error('[Lyria] provider returned', upstream.status, raw.slice(0, 500));
-    return json({ error: 'Lyria could not generate a track right now. The Oracle remains available.' }, upstream.status >= 500 ? 502 : upstream.status);
+    return json({
+      error: 'Lyria could not generate a track right now. The Oracle remains available.',
+      code,
+      providerStatus: status,
+      providerMessage: providerMessage(raw),
+      requestId,
+    }, status >= 500 ? 502 : status);
   }
 
   try {
-    const result = JSON.parse(raw) as {
-      output_audio?: { data?: string; mime_type?: string; mimeType?: string };
-    };
-    const audio = result.output_audio;
-    if (!audio?.data) {
-      console.error('[Lyria] response did not include output_audio');
-      return json({ error: 'Lyria returned no playable audio. The Oracle remains available.' }, 502);
+    let result = JSON.parse(raw) as Record<string, unknown>;
+    const interactionId = typeof result.id === 'string' ? result.id : '';
+    const startedAt = Date.now();
+    while (
+      interactionId &&
+      typeof result.status === 'string' &&
+      !['completed', 'failed', 'cancelled'].includes(result.status) &&
+      Date.now() - startedAt < INTERACTION_TIMEOUT_MS
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, INTERACTION_POLL_MS));
+      const poll = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/interactions/${encodeURIComponent(interactionId)}`,
+        {
+          headers: { 'x-goog-api-key': successfulApiKey },
+        },
+      );
+      const pollRaw = await poll.text();
+      if (!poll.ok) {
+        console.error('[Lyria] interaction polling failed', {
+          requestId,
+          status: poll.status,
+          message: providerMessage(pollRaw),
+        });
+        return json({
+          error: 'Lyria could not retrieve the generated track. The Oracle remains available.',
+          code: 'INTERACTION_POLL_FAILED',
+          providerStatus: poll.status,
+          providerMessage: providerMessage(pollRaw),
+          requestId,
+        }, poll.status >= 500 ? 502 : poll.status);
+      }
+      result = JSON.parse(pollRaw) as Record<string, unknown>;
+    }
+    if (interactionId && result.status !== 'completed') {
+      return json({
+        error: 'Lyria took too long to return a track. The Oracle remains available.',
+        code: 'INTERACTION_TIMEOUT',
+        requestId,
+        responseShape: responseShape(result),
+      }, 504);
+    }
+    const audio = findAudioPayload(result);
+    const audioBase64 = typeof audio?.data === 'string'
+      ? audio.data
+      : typeof audio?.base64 === 'string'
+        ? audio.base64
+        : typeof audio?.audio_base64 === 'string'
+          ? audio.audio_base64
+          : '';
+    if (!audioBase64) {
+      const shape = responseShape(result);
+      console.error('[Lyria] response did not include playable audio', { requestId, shape });
+      return json({
+        error: 'Lyria returned no playable audio. The Oracle remains available.',
+        code: 'INVALID_AUDIO_RESPONSE',
+        requestId,
+        responseShape: shape,
+      }, 502);
     }
     return json({
-      audioBase64: audio.data,
-      mimeType: audio.mime_type || audio.mimeType || 'audio/mpeg',
+      audioBase64,
+      mimeType: typeof audio.mime_type === 'string'
+        ? audio.mime_type
+        : typeof audio.mimeType === 'string'
+          ? audio.mimeType
+          : 'audio/mpeg',
       durationSeconds: 30,
       model: 'lyria-3-clip-preview',
     });
   } catch {
-    return json({ error: 'Lyria returned an unreadable response. The Oracle remains available.' }, 502);
+    return json({
+      error: 'Lyria returned an unreadable response. The Oracle remains available.',
+      code: 'INVALID_PROVIDER_RESPONSE',
+      requestId,
+    }, 502);
   }
 });

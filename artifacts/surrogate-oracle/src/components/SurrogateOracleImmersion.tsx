@@ -84,6 +84,7 @@ const ALLEY_BG_URL       = '/alley-bg.png';
 const DEFAULT_STATION    = 0; // Graff Punks — sole station
 const FREE_JOURNEYS      = 5; // wallet seekers get this many free oracle journeys
 const COMPLETED_JOURNEYS_SUFFIX = '_completed_v2';
+const LANDING_ORACLE_SIGNAL = 'Oracle:true';
 
 function completedJourneyCount(key: string): number {
   try {
@@ -1693,6 +1694,20 @@ export function SurrogateOracleImmersion() {
 
       <DormantHUD active={scenePhase === 'dormant'} />
       <OracleHUD active={isOracleMode} coins={sessionCoins} />
+      {scenePhase === 'dormant' && !showStage00 && (
+        <div className="oracle-landing-signal" aria-hidden="true">
+          <ParticleTypographyCard
+            questionIndex={-1}
+            landedChars={LANDING_ORACLE_SIGNAL.length}
+            isSelected={false}
+            isThisSelected={false}
+            territory="LANDING SIGNAL"
+            question={LANDING_ORACLE_SIGNAL}
+            reducedMotion={prefersReducedMotion}
+            className="oracle-landing-signal__particle-copy"
+          />
+        </div>
+      )}
       <DormantTransmissions
         active={scenePhase === 'dormant' || scenePhase === 'awakened'}
         onCtaClick={scenePhase === 'dormant' ? handleFirstTap : undefined}

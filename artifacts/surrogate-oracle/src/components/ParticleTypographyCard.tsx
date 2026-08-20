@@ -259,7 +259,7 @@ export function ParticleTypographyCard({
       <div
         style={{
           fontFamily: "'PhillySans', 'Share Tech Mono', monospace",
-          fontSize: 'clamp(1.44rem, 4.2vw, 1.75rem)',
+           fontSize: 'var(--oracle-thought-font-size)',
           lineHeight: 1.72,
           letterSpacing: '0.02em',
           textAlign: 'center',

@@ -17,6 +17,7 @@
   --cabinet-top: 44%;
   --cabinet-left: 50%;
   --cabinet-width: clamp(114px, 18vw, 214px);  /* −12% area: prev × √0.88 ≈ 0.938× */
+  --oracle-thought-font-size: clamp(1.44rem, 4.2vw, 1.75rem);
 
   /* Animation Timings */
   --t-reveal: 1.8s;
@@ -297,7 +298,7 @@
   position: absolute;
   z-index: 8;
   font-family: 'PhillySans', 'Share Tech Mono', monospace;
-  font-size: clamp(1.44rem, 4.2vw, 1.75rem);
+  font-size: var(--oracle-thought-font-size);
   font-weight: 400;
   letter-spacing: 0.02em;
   line-height: 1.72;
@@ -333,7 +334,7 @@
 
 /* ── Sticky CTA variant — appears after 7 phrases, stays permanently ────── */
 .ghost-tx--cta {
-  font-size: clamp(36px, 10vw, 56px);
+  font-size: var(--oracle-thought-font-size);
   color: rgba(0, 255, 136, 1.0);
   text-shadow:
     0 0 14px rgba(0, 255, 136, 0.7),
@@ -372,6 +373,52 @@
   margin-left: 2px;
   animation: ghost-cur-blink 0.65s steps(1) infinite;
   box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+}
+
+/* A small, non-interactive phase leak on the landing surface. It uses the
+   same landed-letter renderer as the thought lines, but stays quiet enough
+   to read as an Oracle state preview rather than another prompt. */
+.oracle-landing-signal {
+  position: absolute;
+  top: 16%;
+  left: 50%;
+  z-index: 7;
+  width: min(46vw, 220px);
+  transform: translateX(-50%);
+  pointer-events: none;
+  opacity: 0.62;
+  filter: saturate(0.85);
+  animation: oracle-landing-signal-glitch 5.8s steps(1, end) infinite;
+}
+
+.oracle-landing-signal__particle-copy {
+  width: 100% !important;
+  min-height: 0 !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.oracle-landing-signal__particle-copy > div {
+  font-size: clamp(0.72rem, 2.5vw, 1rem) !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0.08em !important;
+  max-width: none !important;
+  text-align: center !important;
+  white-space: nowrap;
+}
+
+@keyframes oracle-landing-signal-glitch {
+  0%, 72%, 100% { opacity: 0.62; transform: translateX(-50%); filter: saturate(0.85); }
+  73% { opacity: 0.92; transform: translateX(calc(-50% - 2px)) skewX(-4deg); filter: saturate(1.8) brightness(1.35); }
+  74% { opacity: 0.28; transform: translateX(calc(-50% + 3px)); filter: blur(1px) saturate(0.4); }
+  75% { opacity: 0.78; transform: translateX(-50%); filter: saturate(1.2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oracle-landing-signal {
+    animation: none;
+    opacity: 0.62;
+  }
 }
 @keyframes ghost-cur-blink {
   0%, 100% { opacity: 1; }
@@ -3316,7 +3363,7 @@
 /* ── Question — white, legible, introspective weight ────────────────── */
 .oracle-knife-card-question {
   font-family: 'PhillySans', 'Share Tech Mono', monospace;
-  font-size: clamp(1.44rem, 4.2vw, 1.75rem);
+  font-size: var(--oracle-thought-font-size);
   color: rgba(255, 255, 255, 0.92);
   line-height: 1.72;
   letter-spacing: 0.02em;
@@ -5258,7 +5305,7 @@
 
 .oracle-stage00-card__cta {
   font-family: 'PhillySans', 'Share Tech Mono', monospace;
-  font-size: clamp(0.88rem, 2.2vw, 1.02rem);
+  font-size: var(--oracle-thought-font-size);
   letter-spacing: 0.15em;
   color: rgba(0, 255, 136, 0.92);
   text-shadow: 0 0 12px rgba(0, 255, 136, 0.6), 0 0 28px rgba(0, 255, 136, 0.25);

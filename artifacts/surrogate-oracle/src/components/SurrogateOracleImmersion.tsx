@@ -85,27 +85,56 @@ const DEFAULT_STATION    = 0; // Graff Punks — sole station
 const FREE_JOURNEYS      = 5; // wallet seekers get this many free oracle journeys
 const COMPLETED_JOURNEYS_SUFFIX = '_completed_v2';
 
-function LandingSignalParticles() {
-  const particles = [
-    ['-70px', '-26px', '0.00s'],
-    ['-42px', '22px', '0.18s'],
-    ['-18px', '-42px', '0.34s'],
-    ['18px', '-34px', '0.12s'],
-    ['46px', '18px', '0.42s'],
-    ['72px', '-8px', '0.26s'],
-    ['30px', '40px', '0.54s'],
-    ['-54px', '42px', '0.68s'],
-  ] as const;
+function TransparentCanvasBackground() {
+  const { gl, scene } = useThree();
+  useEffect(() => {
+    scene.background = null;
+    gl.setClearColor(0x000000, 0);
+    gl.setClearAlpha(0);
+  }, [gl, scene]);
+  return null;
+}
 
+function LandingParticleField({
+  tier,
+  speakingRef,
+  reducedMotion,
+}: {
+  tier: 1 | 2 | 3;
+  speakingRef: React.RefObject<boolean>;
+  reducedMotion: boolean;
+}) {
   return (
-    <div className="oracle-landing-particles" aria-hidden="true">
-      {particles.map(([x, y, delay], index) => (
-        <span
-          key={index}
-          className="oracle-landing-particle"
-          style={{ '--particle-x': x, '--particle-y': y, animationDelay: delay } as React.CSSProperties}
+    <div className="oracle-landing-particle-field" aria-hidden="true">
+      <Canvas
+        camera={{ position: [0, 0, 3.2], fov: 60 }}
+        dpr={Math.min(window.devicePixelRatio || 1, tier === 1 ? 1.25 : 2)}
+        gl={{ antialias: tier >= 2, alpha: true, powerPreference: 'high-performance' }}
+        style={{ width: '100%', height: '100%', background: 'transparent' }}
+        frameloop="always"
+      >
+        <TransparentCanvasBackground />
+        <OracleQuarks
+          tier={tier}
+          speakingRef={speakingRef}
+          reducedMotion={reducedMotion}
         />
-      ))}
+        <OracleNebula
+          tier={tier}
+          speakingRef={speakingRef}
+          reducedMotion={reducedMotion}
+        />
+        {tier >= 2 && (
+          <Suspense fallback={null}>
+            <Physics gravity={[0, 0, 0]} timeStep={1 / 60} colliders={false}>
+              <OraclePhysicsDebris
+                count={tier >= 3 ? 18 : 10}
+                speakingRef={speakingRef}
+              />
+            </Physics>
+          </Suspense>
+        )}
+      </Canvas>
     </div>
   );
 }
@@ -1714,13 +1743,20 @@ export function SurrogateOracleImmersion() {
       <div className="oracle-ground-fog" />
       <div className="oracle-floor-reflection" />
 
+      {scenePhase === 'dormant' && !showStage00 && gpu.ready && renderTier >= 1 && (
+        <OracleErrorBoundary>
+          <LandingParticleField
+            tier={renderTier as 1 | 2 | 3}
+            speakingRef={isOracleSpeakingRef}
+            reducedMotion={prefersReducedMotion}
+          />
+        </OracleErrorBoundary>
+      )}
+
       <GlitchCursor />
 
       <DormantHUD active={scenePhase === 'dormant'} />
       <OracleHUD active={isOracleMode} coins={sessionCoins} />
-      {scenePhase === 'dormant' && !showStage00 && (
-        <LandingSignalParticles />
-      )}
       <DormantTransmissions
         active={scenePhase === 'dormant' || scenePhase === 'awakened'}
         onCtaClick={scenePhase === 'dormant' ? handleFirstTap : undefined}
@@ -1799,6 +1835,11 @@ export function SurrogateOracleImmersion() {
                           antialias: renderTier >= 2,
                           alpha: true,
                           powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
+                        }}
+                        onCreated={({ gl, scene }) => {
+                          scene.background = null;
+                          gl.setClearColor(0x000000, 0);
+                          gl.setClearAlpha(0);
                         }}
                         style={{ width: '100%', height: '100%', background: 'transparent' }}
                         frameloop="always"

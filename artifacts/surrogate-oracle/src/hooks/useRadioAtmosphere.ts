@@ -6,11 +6,11 @@ import { logStep } from '../components/CodeAuditor';
 
 const DEFAULT_STATION = 0; // Graff Punks — sole station
 
-const RADIO_VOLUME_SCALE     = 0.8;    // Graff Punks radio requested 20% quieter
-const MUSIC_LANDING_VOLUME  = 0.0525 * RADIO_VOLUME_SCALE; // Globally reduced by an additional 25% (was 0.07)
+const RADIO_VOLUME_SCALE     = 0.8;    // Explicit master gain: Graff Punks is 20% quieter
+const MUSIC_LANDING_VOLUME  = 0.07;   // Master scale below applies the requested 20% reduction
 const MUSIC_LORE_VOLUME     = 0;      // ABSOLUTE SILENCE (Proof Test)
-const MUSIC_KNIFE_VOLUME    = 0.021 * RADIO_VOLUME_SCALE; // Globally reduced by an additional 25% (was 0.028)
-const MUSIC_SESSION_AMBIENT = 0.008 * RADIO_VOLUME_SCALE; // Low ambient locked state once Oracle first speaks (prevents noise creep)
+const MUSIC_KNIFE_VOLUME    = 0.028;
+const MUSIC_SESSION_AMBIENT = 0.008;  // Low ambient locked state once Oracle first speaks (prevents noise creep)
 const MUSIC_OFF_VOLUME      = 0;
 
 export interface UseRadioAtmosphereParams {
@@ -44,7 +44,7 @@ export function useRadioAtmosphere({
   const audioRef      = useRef<HTMLAudioElement | null>(null);
   const radioGainRef  = useRef<GainNode | null>(null);
 
-  const [targetVol, setTargetVol]           = useState(0.028 * RADIO_VOLUME_SCALE);
+  const [targetVol, setTargetVol]           = useState(0.028);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [currentStation, setCurrentStation] = useState(DEFAULT_STATION);
 
@@ -60,8 +60,8 @@ export function useRadioAtmosphere({
     try {
       logStep(`AUDIO CONTEXT STATE: ${ctx.state}`, ctx.state === 'running' ? 'ok' : 'pending');
       const source = ctx.createMediaElementSource(audioRef.current);
-      const gain   = ctx.createGain();
-      gain.gain.value = targetVol;
+    const gain   = ctx.createGain();
+      gain.gain.value = targetVol * RADIO_VOLUME_SCALE;
       source.connect(gain);
       gain.connect(ctx.destination);
       radioGainRef.current = gain;
@@ -78,7 +78,7 @@ export function useRadioAtmosphere({
 
   const fadeToVolume = useCallback((target: number, rampMs?: number) => {
     setTargetVol(target);
-    const safeTarget = Math.max(0, target);
+    const safeTarget = Math.max(0, target * RADIO_VOLUME_SCALE);
     if (!radioGainRef.current) return;
     const gain = radioGainRef.current;
     const ctx  = getAudioContext();

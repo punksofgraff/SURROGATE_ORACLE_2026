@@ -375,76 +375,22 @@
   box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
 }
 
-/* A small, text-free phase leak on the landing surface. These are deliberately
-   DOM particles, not another full-screen canvas: a few points interpolate
-   around the cabinet while a ghost thought is present. */
-.oracle-landing-particles {
+/* Landing field: the same Three/Quarks/Nebula/Rapier particles as Oracle mode,
+   expanded to the full stage so the ghost thought has dimensional depth. */
+.oracle-landing-particle-field {
   position: absolute;
-  top: 38%;
-  left: 50%;
-  z-index: 7;
-  width: 1px;
-  height: 1px;
-  transform: translateX(-50%);
+  inset: 0;
+  z-index: 4;
   pointer-events: none;
+  overflow: hidden;
+  background: transparent !important;
 }
 
-.oracle-landing-particle {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: #00ffcc;
-  box-shadow: 0 0 5px rgba(0, 255, 204, 0.9), 0 0 14px rgba(0, 255, 136, 0.35);
-  opacity: 0;
-  animation: oracle-landing-particle-interpolate 3.8s ease-in-out infinite;
-}
-
-.oracle-landing-particle:nth-child(3n) {
-  width: 2px;
-  height: 2px;
-  background: #00ff88;
-}
-
-.oracle-landing-particle:nth-child(1) { --particle-x: -70px; --particle-y: -26px; }
-.oracle-landing-particle:nth-child(2) { --particle-x: -42px; --particle-y: 22px; }
-.oracle-landing-particle:nth-child(3) { --particle-x: -18px; --particle-y: -42px; }
-.oracle-landing-particle:nth-child(4) { --particle-x: 18px; --particle-y: -34px; }
-.oracle-landing-particle:nth-child(5) { --particle-x: 46px; --particle-y: 18px; }
-.oracle-landing-particle:nth-child(6) { --particle-x: 72px; --particle-y: -8px; }
-.oracle-landing-particle:nth-child(7) { --particle-x: 30px; --particle-y: 40px; }
-.oracle-landing-particle:nth-child(8) { --particle-x: -54px; --particle-y: 42px; }
-
-@keyframes oracle-landing-particle-interpolate {
-  0%, 100% {
-    opacity: 0;
-    transform: translate(var(--particle-x), var(--particle-y)) scale(0.2);
-  }
-  28% {
-    opacity: 0.78;
-    transform: translate(calc(var(--particle-x) * 0.35), calc(var(--particle-y) * 0.35)) scale(1);
-  }
-  52% {
-    opacity: 0.42;
-    transform: translate(calc(var(--particle-x) * -0.18), calc(var(--particle-y) * -0.18)) scale(0.7);
-  }
-  74% {
-    opacity: 0.72;
-    transform: translate(calc(var(--particle-x) * 0.7), calc(var(--particle-y) * 0.7)) scale(0.85);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .oracle-landing-particles {
-    animation: none;
-  }
-  .oracle-landing-particle {
-    animation: none;
-    opacity: 0.46;
-    transform: translate(var(--particle-x), var(--particle-y)) scale(0.7);
-  }
+.oracle-landing-particle-field canvas,
+.oracle-avatar-canvas,
+.oracle-avatar-canvas canvas {
+  background: transparent !important;
+  background-color: transparent !important;
 }
 @keyframes ghost-cur-blink {
   0%, 100% { opacity: 1; }

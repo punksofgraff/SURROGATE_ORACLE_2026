@@ -25,7 +25,6 @@ import OracleConversation, { OracleConversationHandle, OracleScore } from './Ora
 
 /** Snapshot of a session's turns, as returned by the conversation handle. */
 type SessionTurns = ReturnType<OracleConversationHandle['getSessionTurns']>;
-import { MatrixRain } from './MatrixRain';
 import { ArtifactCard } from './ArtifactCard';
 import { ScrambleFragment } from './ScrambleFragment';
 import { logStep } from './CodeAuditor';
@@ -79,7 +78,6 @@ import type { VisemeState } from '../lib/visemeDetector';
 import { defaultAudioTracks } from '../config/audioTracks';
 import './SurrogateOracleImmersion.css';
 
-const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
 const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = '/alley-bg.png';
 const DEFAULT_STATION    = 0; // Graff Punks — sole station
@@ -300,7 +298,6 @@ export function SurrogateOracleImmersion() {
   const visemeStateRef = useRef<VisemeState>(SILENCE_VISEME_STATE);
   const cameraStateRef = useRef<import('./OracleAvatar3D').CameraState>({ x: 0, y: 0, zoom: 1 });
   const oracleConversationRef    = useRef<OracleConversationHandle | null>(null);
-  const staticAvatarRef          = useRef<HTMLImageElement | null>(null);
   const walletIframeRef          = useRef<HTMLIFrameElement | null>(null);
   const seekerKeyRef             = useRef<string | null>(null);
   const lastKnifeRef             = useRef<typeof KNIFE_QUESTIONS[number] | null>(null);
@@ -1097,19 +1094,6 @@ export function SurrogateOracleImmersion() {
   }, [mirrorReveal]);
 
   useEffect(() => {
-    if (scenePhase !== 'terminal' || !staticAvatarRef.current) return;
-    const delay    = (0.15 + Math.random() * 0.55).toFixed(2) + 's';
-    const duration = (2.6  + Math.random() * 2.0).toFixed(2)  + 's';
-    const el = staticAvatarRef.current;
-    el.style.animationDelay    = delay;
-    el.style.animationDuration = duration;
-    return () => {
-      el.style.animationDelay    = '';
-      el.style.animationDuration = '';
-    };
-  }, [scenePhase]);
-
-  useEffect(() => {
     const handleVisibilityChange = () => {
       const ctx = getAudioContext();
       if (document.hidden) ctx.suspend().then(() => logStep('TAB BACKGROUNDED', 'warn'));
@@ -1681,7 +1665,6 @@ export function SurrogateOracleImmersion() {
         ))}
       </div>
 
-      <MatrixRain />
       <div className="oracle-ground-fog" />
       <div className="oracle-floor-reflection" />
 
@@ -1723,7 +1706,6 @@ export function SurrogateOracleImmersion() {
           <div className="oracle-avatar-wrapper">
             {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} alignment={oracleAlignment === 'sacred' || oracleAlignment === 'profane' ? oracleAlignment : null} />}
             <div className="oracle-scanlines" />
-            <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
             {/* Canvas warmup — mounts in terminal (lore) or awakened so GPU shaders compile
                 before oracle phase begins. Also mounts immediately on re-entry when
                 canvasWarmed=true (sessionStorage persists across navigation within the tab).

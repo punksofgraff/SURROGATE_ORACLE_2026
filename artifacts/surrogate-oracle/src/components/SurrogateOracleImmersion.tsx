@@ -194,9 +194,11 @@ export function SurrogateOracleImmersion() {
   // ── Performance & Accessibility ─────────────────────────────────────────
   const isDegraded = usePerformanceGuard(true);
   const gpu = useGPUTier();
-  // Effective render tier: GPU probe capped by the runtime FPS guard — a strong
-  // GPU that still drops frames (thermal throttle, busy tab) falls to bare mode.
-  const renderTier = (isDegraded ? 0 : gpu.tier) as 0 | 1 | 2 | 3;
+  // Effective render tier: GPU probe capped by the runtime FPS guard. A strong
+  // GPU that drops frames can still shed expensive effects, but degraded mode
+  // must keep the minimum living particle field mounted instead of mapping to
+  // tier 0 and making the Oracle appear frozen/dead.
+  const renderTier = (isDegraded ? 1 : gpu.tier) as 0 | 1 | 2 | 3;
   useEffect(() => {
     logStep(
       `RENDER TIER — tier=${renderTier} degraded=${isDegraded ? 'true' : 'false'} gpu=${gpu.tier}`,

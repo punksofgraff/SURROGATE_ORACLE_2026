@@ -1,0 +1,25 @@
+# The Surrogate
+
+> The Surrogate is an immersive AI encounter by SNEAKAR XR. SURROGATE Oracle
+> is a voice-led experience where seekers explore identity, memory, culture,
+> and the future through a live artificial presence.
+
+## Canonical
+
+- https://thesurrogate.me/
+
+## About
+
+The Surrogate combines realtime dialogue, a persistent seeker archive, and a
+visual Oracle for an experiential encounter rather than a conventional search
+or productivity tool.
+
+Preferred names:
+
+- Product: The Surrogate
+- Experience: SURROGATE Oracle
+- Studio: SNEAKAR XR
+
+## Related
+
+- SNEAKAR XR: https://sneakar.io/

@@ -1653,6 +1653,17 @@ export function SurrogateOracleImmersion() {
         )}
       </div>
 
+      <section className="oracle-seo-context" aria-labelledby="oracle-seo-heading">
+        <h2 id="oracle-seo-heading">What is The Surrogate?</h2>
+        <p>
+          The Surrogate is an immersive AI encounter by SNEAKAR XR. In SURROGATE Oracle,
+          seekers enter a voice-led conversation with an evolving artificial presence that
+          reflects on identity, memory, culture, and the future. The experience combines
+          realtime dialogue, a persistent seeker archive, and a visual Oracle designed for
+          exploration rather than ordinary search.
+        </p>
+      </section>
+
       <div className="oracle-center" onClick={handleFirstTap} style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}>
         <motion.div className="oracle-cabinet" style={{ position: 'relative' }}>
           {/* Halo now active in both awakened and oracle phases */}

@@ -304,10 +304,11 @@ export function OracleAvatar3D({
 
   useLayoutEffect(() => {
     if (transporterActive && !transporterWasActiveRef.current) {
-      // Always begin an Oracle entry as the source-mesh point field, even if
-      // the prewarm session happened to finish before the seeker chose a knife.
-      transporterProgressRef.current = 0;
-      scene.visible = false;
+      // Start from the actual GLB silhouette. The transporter then visibly
+      // glitches that silhouette outward while Gemini is handshaking; resetting
+      // to 0 here would skip the manifestation and begin already dispersed.
+      transporterProgressRef.current = 1;
+      scene.visible = true;
     }
     if (!transporterActive) {
       transporterProgressRef.current = 1;

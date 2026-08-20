@@ -24,29 +24,23 @@ const VERTEX_SHADER = /* glsl */ `
   uniform float uTime;
   uniform float uProgress;
   uniform float uSize;
-  uniform float uMatrixMinY;
-  uniform float uMatrixMaxY;
-  uniform float uMatrixWidth;
-  uniform float uMatrixDepth;
   attribute vec3 aTarget;
   attribute float aSeed;
   attribute float aScale;
-  attribute vec2 aGrid;
-  attribute float aFlow;
   varying float vAlpha;
   varying float vCharge;
 
   void main() {
     float settled = smoothstep(0.0, 1.0, uProgress);
-    float rise = fract(aFlow + uTime * (0.16 + aSeed * 0.08));
+    float rise = fract(uTime * (0.12 + aSeed * 0.05) + aSeed);
     float flutter = sin(uTime * (2.1 + aSeed * 1.8) + aSeed * 31.0);
 
-    // TNG-style waiting state: a moving, vertical particle matrix. Every point
-    // still owns a real GLB surface target for the live reconstruction.
+    // The existing glitch phase now uses the sampled GLB surface as its source.
+    // It tightens into a signal-shaped field before resolving back to the target.
     vec3 transported = vec3(
-      aGrid.x * uMatrixWidth + flutter * 0.018,
-      mix(uMatrixMinY, uMatrixMaxY, rise) + sin(uTime * 2.0 + aSeed * 27.0) * 0.026,
-      aGrid.y * uMatrixDepth - 0.12 + cos(uTime * 2.5 + aSeed * 23.0) * 0.018
+      aTarget.x * 0.16 + flutter * (0.035 + aSeed * 0.065),
+      aTarget.y + (rise - 0.5) * 0.26 + flutter * 0.075,
+      aTarget.z * 0.14 - 0.10 + cos(uTime * 2.5 + aSeed * 23.0) * 0.04
     );
     vec3 pos = mix(transported, aTarget, settled);
 
@@ -146,15 +140,7 @@ function buildGLBPointGeometry(scene: THREE.Object3D, count: number) {
   const targets = new Float32Array(count * 3);
   const seeds = new Float32Array(count);
   const scales = new Float32Array(count);
-  const grids = new Float32Array(count * 2);
-  const flows = new Float32Array(count);
   const point = new THREE.Vector3();
-  let minY = Infinity;
-  let maxY = -Infinity;
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
   const next = (() => {
     let state = 0x8d4a_7c11;
     return () => {
@@ -187,27 +173,12 @@ function buildGLBPointGeometry(scene: THREE.Object3D, count: number) {
     targets[i * 3 + 2] = point.z;
     seeds[i] = next();
     scales[i] = 6.0 + next() * 7.5;
-    grids[i * 2] = Math.floor(next() * 17) / 16 - 0.5;
-    grids[i * 2 + 1] = Math.floor(next() * 7) / 6 - 0.5;
-    flows[i] = next();
-    minY = Math.min(minY, point.y);
-    maxY = Math.max(maxY, point.y);
-    minX = Math.min(minX, point.x);
-    maxX = Math.max(maxX, point.x);
-    minZ = Math.min(minZ, point.z);
-    maxZ = Math.max(maxZ, point.z);
   }
 
   geo.setAttribute('position', new THREE.BufferAttribute(targets.slice(), 3));
   geo.setAttribute('aTarget', new THREE.BufferAttribute(targets, 3));
   geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
   geo.setAttribute('aScale', new THREE.BufferAttribute(scales, 1));
-  geo.setAttribute('aGrid', new THREE.BufferAttribute(grids, 2));
-  geo.setAttribute('aFlow', new THREE.BufferAttribute(flows, 1));
-  geo.userData.matrixMinY = minY;
-  geo.userData.matrixMaxY = maxY;
-  geo.userData.matrixWidth = Math.max(0.28, (maxX - minX) * 0.34);
-  geo.userData.matrixDepth = Math.max(0.18, (maxZ - minZ) * 0.28);
   return geo;
 }
 
@@ -227,10 +198,6 @@ export function OracleGLBTransporter({
     uTime: { value: 0 },
     uProgress: { value: 1 },
     uSize: { value: 1 },
-    uMatrixMinY: { value: geometry.userData.matrixMinY ?? -1 },
-    uMatrixMaxY: { value: geometry.userData.matrixMaxY ?? 1 },
-    uMatrixWidth: { value: geometry.userData.matrixWidth ?? 0.4 },
-    uMatrixDepth: { value: geometry.userData.matrixDepth ?? 0.2 },
   }), []);
 
   useEffect(() => {
@@ -245,11 +212,7 @@ export function OracleGLBTransporter({
     const material = materialRef.current;
     if (!material) return;
     const target = active ? Math.max(0, Math.min(1, targetProgress)) : 1;
-    const debugRate = import.meta.env.DEV && typeof window !== 'undefined'
-      ? Number((window as unknown as { __oracle_debug_transportRate?: number }).__oracle_debug_transportRate ?? 1)
-      : 1;
-    const speed = (target > progressRef.current ? 1.25 : 5.5) *
-      (Number.isFinite(debugRate) ? Math.max(1, debugRate) : 1);
+    const speed = target > progressRef.current ? 1.25 : 5.5;
     progressRef.current = THREE.MathUtils.lerp(
       progressRef.current,
       target,

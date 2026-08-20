@@ -1305,18 +1305,11 @@ export function SurrogateOracleImmersion() {
     setPortraitViewerUrl(url);
     setShowPortraitCard(true);
     portraitAnnounceRef.current = true; // Oracle speaks about it on next turn-complete
-    // Non-wallet seekers: first portrait is the natural session gate — show wallet CTA,
-    // disconnect Gemini. The portrait stays visible as the hook.
-    // Check localStorage as well as React state (same rule as session entry): the
-    // async IP-check can lag a wallet sign-in that happened this page load, and a
-    // signed seeker must NEVER be disconnected mid-session by the journey gate.
-    const walletSigned = hasSignedWallet || !!localStorage.getItem('oracle_wallet_signed');
-    if (!walletSigned) {
-      oracleConversationRef.current?.disconnect();
-      setShowJourneyLimitGate(true);
-      logStep('PORTRAIT GATE — non-wallet seeker, session ended', 'warn');
-    }
-  }, [hasSignedWallet]);
+    // A portrait is an in-session creative beat, not a journey boundary.
+    // Keep Gemini, the mic, scoring, and round accounting alive while the
+    // Seeker decides whether to mint or return to the conversation.
+    logStep('PORTRAIT READY — CONVERSATION CONTINUES', 'ok');
+  }, []);
 
   const portrait = usePortraitPipeline({ currentUserId, userEmail, currentSessionId, onPortraitGenerated: handlePortraitGenerated });
 
@@ -1932,7 +1925,7 @@ export function SurrogateOracleImmersion() {
                   className="oracle-portrait-fullscreen__dismiss"
                   onClick={() => setShowPortraitCard(false)}
                 >
-                  {isOracleMode ? '✕ RETURN TO ALLEY' : '◈ ENTER THE CASCADE'}
+                  {isOracleMode ? '✕ DISCARD / RETURN TO ORACLE' : '◈ ENTER THE CASCADE'}
                 </button>
               </div>
             </motion.div>

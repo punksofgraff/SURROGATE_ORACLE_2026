@@ -5450,15 +5450,15 @@
 
 @keyframes profane-flash {
   0%   { opacity: 0; }
-  8%   { opacity: 0.48; }
-  35%  { opacity: 0.28; }
+  8%   { opacity: 0.22; }
+  35%  { opacity: 0.12; }
   100% { opacity: 0; }
 }
 
 @keyframes sacred-flux {
   0%   { opacity: 0; transform: scale(1); }
-  15%  { opacity: 0.38; transform: scale(1.009); }
-  55%  { opacity: 0.22; transform: scale(1.016); }
+  15%  { opacity: 0.18; transform: scale(1.009); }
+  55%  { opacity: 0.10; transform: scale(1.016); }
   100% { opacity: 0; transform: scale(1); }
 }
 

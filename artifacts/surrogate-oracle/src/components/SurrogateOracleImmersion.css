@@ -307,7 +307,7 @@
 .ghost-tx {
   position: absolute;
   z-index: 8;
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
   font-size: clamp(24px, 7vw, 36px);
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -441,7 +441,7 @@
 }
 
 .oracle-title {
-  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(4rem, 10vw, 10rem);
   font-weight: 900;
   letter-spacing: 0.10em;
@@ -473,7 +473,7 @@
 }
 
 .oracle-subtitle {
-  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(2rem, 5.5vw, 4.5rem);
   font-weight: 500;
   
@@ -5269,7 +5269,7 @@
 }
 
 .oracle-stage00-card__greeting {
-  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(1.6rem, 5vw, 2.1rem);
   background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%);
   -webkit-background-clip: text;

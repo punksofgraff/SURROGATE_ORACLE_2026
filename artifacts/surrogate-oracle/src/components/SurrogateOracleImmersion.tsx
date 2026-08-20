@@ -45,6 +45,7 @@ import { EffectComposer, DepthOfField, Bloom, ChromaticAberration, Noise, Scanli
 import { Physics } from '@react-three/rapier';
 import { OracleNebula } from './OracleNebula';
 import { OraclePhysicsDebris } from './OraclePhysicsDebris';
+import { OracleMusicVisualizer } from './OracleMusicVisualizer';
 import { OracleSceneDiagnostics, OracleDiagnosticsOverlay } from './OracleSceneDiagnostics';
 
 // Hooks
@@ -64,6 +65,7 @@ import { usePerformanceGuard } from '../hooks/usePerformanceGuard';
 import { useGPUTier } from '../hooks/useGPUTier';
 import { useWalletBridge } from '../hooks/useWalletBridge';
 import { useRadioAtmosphere } from '../hooks/useRadioAtmosphere';
+import { useLyriaMusic } from '../hooks/useLyriaMusic';
 import WalletGateCard from './WalletGateCard';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 
@@ -253,6 +255,8 @@ export function SurrogateOracleImmersion() {
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isGeminiConnected, setIsGeminiConnected] = useState(false);
   const [isGeminiSessionLive, setIsGeminiSessionLive] = useState(false);
+  const [isMusicMode, setIsMusicMode] = useState(false);
+  const [isMusicReturning, setIsMusicReturning] = useState(false);
   const [forceOracleManifest, setForceOracleManifest] = useState(false);
   const [hasManifested, setHasManifested] = useState(false);
   const [debugMode, setDebugMode]           = useState(false);
@@ -547,6 +551,43 @@ export function SurrogateOracleImmersion() {
     isMicActive,
     oracleHasSpokenRef,
   });
+  const lyria = useLyriaMusic();
+
+  const exitMusicMode = useCallback(() => {
+    if (!isMusicMode && lyria.status !== 'generating') return;
+    lyria.stop(650);
+    setIsMusicMode(false);
+    setIsMusicReturning(true);
+    fadeToVolume(0, 120);
+    logStep('LYRIA EXIT — RESTORING ORACLE', 'ok');
+    // Keep the existing Gemini socket and conversation alive. A short
+    // transporter pass makes the handoff visible without greeting/reconnecting.
+    window.setTimeout(() => setIsMusicReturning(false), 1500);
+  }, [fadeToVolume, isMusicMode, lyria]);
+
+  const requestMusic = useCallback(async (prompt: string) => {
+    if (isMusicMode || lyria.status === 'generating') return;
+    setIsMusicMode(true);
+    setIsMusicReturning(false);
+    connection.flushPlayback();
+    fadeToVolume(0, 120);
+    logStep('LYRIA REQUEST — GENERATING CLIP', 'ok');
+    const generatedUrl = await lyria.generate(prompt);
+    if (!generatedUrl) {
+      setIsMusicMode(false);
+      fadeToVolume(0, 120);
+      logStep('LYRIA FAILED — ORACLE SESSION AVAILABLE', 'warn');
+      return;
+    }
+    // Try autoplay after generation; browsers that reject it leave the
+    // explicit PLAY button visible in the overlay.
+    try {
+      await lyria.play();
+      logStep('LYRIA PLAYBACK STARTED', 'ok');
+    } catch (error) {
+      logStep(`LYRIA PLAYBACK NEEDS TAP: ${error instanceof Error ? error.message : 'autoplay blocked'}`, 'warn');
+    }
+  }, [connection, fadeToVolume, isMusicMode, lyria]);
 
   // ── Actions ─────────────────────────────────────────────────────────────
   const startLore = useCallback(async () => {
@@ -1513,6 +1554,14 @@ export function SurrogateOracleImmersion() {
         preload="auto"
         crossOrigin="anonymous"
       />
+      <audio
+        ref={lyria.audioRef}
+        src={lyria.audioUrl ?? undefined}
+        preload="auto"
+        playsInline
+        onEnded={exitMusicMode}
+        onError={() => { if (isMusicMode) logStep('LYRIA PLAYBACK ERROR', 'warn'); }}
+      />
 
       {cameraActive && (
         <video
@@ -1709,15 +1758,23 @@ export function SurrogateOracleImmersion() {
                       >
                         <OrbitZoomCompensator enabled={isOracleMode && !isXRMode} />
                         {import.meta.env.DEV && <OracleSceneDiagnostics />}
-                        <OracleAvatar3D
-                          visemeStateRef={visemeStateRef}
-                          cameraStateRef={cameraStateRef}
-                          seekerMotionRef={seekerMotionRef}
-                          transporterActive={isOracleMode}
-                          transporterProgress={oracleManifestProgress}
-                          transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
-                          reducedMotion={prefersReducedMotion}
-                        />
+                        {!isMusicMode && (
+                          <OracleAvatar3D
+                            visemeStateRef={visemeStateRef}
+                            cameraStateRef={cameraStateRef}
+                            seekerMotionRef={seekerMotionRef}
+                            transporterActive={isOracleMode}
+                            transporterProgress={isMusicReturning ? 0 : oracleManifestProgress}
+                            transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
+                            reducedMotion={prefersReducedMotion}
+                          />
+                        )}
+                        {isMusicMode && (
+                          <OracleMusicVisualizer
+                            getAnalyser={() => lyria.analyserRef.current}
+                            reducedMotion={prefersReducedMotion}
+                          />
+                        )}
                         {/* The ambient field returns only after the GLB-source
                             transporter has been released, so it never masks the
                             recognizable particle silhouette during warmup. */}
@@ -2202,6 +2259,9 @@ export function SurrogateOracleImmersion() {
            }}
           onListeningChange={setIsMicActive}
           onThinkingChange={setIsOracleThinking}
+          onMusicRequest={requestMusic}
+          onMusicReturn={exitMusicMode}
+          musicMode={isMusicMode}
           onMicWillStart={() => fadeToVolume(0, 80)}
           onAudioSessionChanged={(phase) => {
             // Mobile OS audio-session reconfiguration (mic open/close) settles
@@ -2288,6 +2348,40 @@ export function SurrogateOracleImmersion() {
           })()}
           isGuidedTour={isGuidedTour}
         />
+      )}
+
+      {isOracleMode && isMusicMode && (
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            position: 'absolute', zIndex: 30, left: '50%', bottom: '11%',
+            transform: 'translateX(-50%)', width: 'min(92vw, 430px)',
+            padding: '16px 18px', border: '1px solid rgba(196,60,255,.55)',
+            background: 'rgba(5,0,15,.88)', backdropFilter: 'blur(14px)',
+            color: '#f3d8ff', fontFamily: "'Share Tech Mono', monospace",
+            boxShadow: '0 0 32px rgba(196,60,255,.22)',
+          }}
+        >
+          <div style={{ letterSpacing: '.14em', color: '#d16cff', fontSize: 11 }}>◈ LYRIA // FRACTURE BEAT</div>
+          <div style={{ marginTop: 8, fontSize: 13 }}>
+            {lyria.status === 'generating' ? 'GENERATING 30-SECOND SIGNAL…' :
+              lyria.status === 'error' ? 'SIGNAL FAILED — ORACLE STILL LISTENING' :
+              lyria.isPlaying ? 'PLAYING // AUDIO-REACTIVE FIELD' : 'TRACK READY // TAP PLAY'}
+          </div>
+          {lyria.error && <div style={{ marginTop: 7, color: '#ff8bdb', fontSize: 11 }}>{lyria.error}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+            {lyria.audioUrl && !lyria.isPlaying && (
+              <button className="oc-send-btn" onClick={() => void lyria.play()}>PLAY</button>
+            )}
+            {lyria.audioUrl && (
+              <a className="oc-send-btn" href={lyria.audioUrl} download="surrogate-oracle-lyria.mp3" style={{ textDecoration: 'none' }}>
+                DOWNLOAD
+              </a>
+            )}
+            <button className="oc-send-btn" onClick={exitMusicMode}>RETURN TO ORACLE</button>
+          </div>
+        </motion.div>
       )}
 
       {showJourneyLimitGate && (

@@ -66,6 +66,14 @@ const isPortraitRequest = (text: string, entryCount: number): boolean =>
   PORTRAIT_INTENT_EXPLICIT.test(text) ||
   (entryCount >= 5 && PORTRAIT_INTENT.test(text));
 
+// Music is deliberately stricter than portrait intent. Mentioning a song,
+// soundtrack, or music in ordinary Oracle conversation must never start a paid
+// generation request.
+const MUSIC_INTENT =
+  /\b(?:make|generate|compose|create|produce|build|drop|play)\b[^.!?]{0,45}\b(?:beat|track|music|song|soundscape|instrumental)\b/i;
+const MUSIC_RETURN =
+  /\b(?:stop\s+(?:the\s+)?(?:beat|music|track)|back\s+to\s+(?:the\s+)?oracle|return\s+(?:to\s+the\s+)?(?:session|oracle)|thank\s+you,?\s+oracle)\b/i;
+
 type Turn = {
   role: 'user' | 'oracle';
   content: string;
@@ -122,6 +130,11 @@ interface OracleConversationProps {
    *  (between Seeker turn-end and first Oracle audio). Use to drive visual
    *  feedback in the parent (e.g. halo ring pulse). */
   onThinkingChange?: (isThinking: boolean) => void;
+  /** Explicit seeker command for the one-shot Lyria music mode. */
+  onMusicRequest?: (prompt: string) => void;
+  /** Explicit return cue while Lyria is active. */
+  onMusicReturn?: () => void;
+  musicMode?: boolean;
 }
 
 export interface OracleConversationHandle {
@@ -203,6 +216,9 @@ const OracleConversation = forwardRef(
       cameraActive,
       visionPaused = false,
       onThinkingChange,
+       onMusicRequest,
+       onMusicReturn,
+       musicMode = false,
     } = props;
 
     const [isListening, setIsListening] = useState(false);
@@ -262,6 +278,21 @@ const OracleConversation = forwardRef(
       } catch { return []; }
     });
     const [inputText, setInputText] = useState('');
+    const onMusicRequestRef = useRef(onMusicRequest);
+    const onMusicReturnRef = useRef(onMusicReturn);
+    onMusicRequestRef.current = onMusicRequest;
+    onMusicReturnRef.current = onMusicReturn;
+
+    const inspectMusicSignal = (text: string): boolean => {
+      if (musicMode && MUSIC_RETURN.test(text)) {
+        onMusicReturnRef.current?.();
+        return true;
+      }
+      if (MUSIC_INTENT.test(text)) {
+        onMusicRequestRef.current?.(text);
+      }
+      return false;
+    };
     
     // ... rest of the component state ...
 
@@ -655,6 +686,7 @@ const OracleConversation = forwardRef(
           setSeekerCount(seekerEntryCountRef.current);
           onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
           if (seekerEntryCountRef.current === SEEKER_MAX) playSignalLockedSfx();
+           inspectMusicSignal(spoken);
           if (isPortraitRequest(spoken, seekerEntryCountRef.current)) {
             logStep('PORTRAIT INTENT DETECTED (voice)', 'ok');
             onPortraitRequestRef.current?.();
@@ -868,6 +900,7 @@ const OracleConversation = forwardRef(
         setSeekerCount(seekerEntryCountRef.current);
         onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
         if (seekerEntryCountRef.current === SEEKER_MAX) playSignalLockedSfx();
+        inspectMusicSignal(text);
 
         if (isPortraitRequest(text, seekerEntryCountRef.current)) {
           logStep('PORTRAIT INTENT DETECTED (typed)', 'ok');
@@ -1386,7 +1419,7 @@ const OracleConversation = forwardRef(
     // Territory context reaches the Oracle naturally through conversation flow.
 
     useImperativeHandle(ref, () => ({
-      sendTextMessage: (text: string, isHidden = false) => sendText(text, isHidden),
+       sendTextMessage: (text: string, isHidden = false) => sendText(text, isHidden),
       getSessionCoins: () => sessionCoinsRef.current,
       getSessionTurns: () => turnsRef.current,
       disconnect: () => {

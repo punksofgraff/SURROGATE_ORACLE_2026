@@ -2078,10 +2078,6 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
-      {scenePhase === 'awakened' && (
-        <motion.div key="awakening-flash" initial={{ opacity: 0.32 }} animate={{ opacity: 0 }} transition={{ duration: 0.8 }} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 40, background: 'radial-gradient(ellipse 70% 55% at 50% 44%, rgba(0,180,110,0.32) 0%, transparent 72%)', mixBlendMode: 'screen' }} />
-      )}
-
       <AnimatePresence>
         {scenePhase === 'terminal' && (
           <motion.div key="terminal-layer" className="oracle-terminal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={(hasCompletedLore && !loreStarted) ? handleAwakeTransition : undefined} style={{ pointerEvents: 'auto', zIndex: 100 }}>

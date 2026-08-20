@@ -297,10 +297,10 @@
   position: absolute;
   z-index: 8;
   font-family: 'PhillySans', 'Share Tech Mono', monospace;
-  font-size: clamp(24px, 7vw, 36px);
-  font-weight: 700;
+  font-size: clamp(1.44rem, 4.2vw, 1.75rem);
+  font-weight: 400;
   letter-spacing: 0.02em;
-  line-height: 1.25;
+  line-height: 1.72;
   pointer-events: none;
   max-width: 80vw;
   white-space: normal;
@@ -308,16 +308,25 @@
   transition: opacity 1.4s ease, filter 1.4s ease;
 }
 
-.ghost-tx__content {
-  display: inline-block;
-  background-image: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%) !important;
-  background-clip: text !important;
-  -webkit-background-clip: text !important;
-  -webkit-text-fill-color: transparent !important;
-  color: transparent !important;
-  /* NO text-shadow or filter here — it breaks background-clip: text in many browsers */
-  padding: 2px 0; /* slight vertical bleed prevents clipping on descenders */
+/* Ghost transmissions use the same landed-letter engine as knife questions,
+   while inheriting their existing absolute placement and fade lifecycle. */
+.ghost-tx__particle-copy {
+  width: auto !important;
+  min-height: 0 !important;
+  align-items: inherit !important;
+  justify-content: inherit !important;
 }
+
+.ghost-tx__particle-copy > div {
+  font-size: inherit !important;
+  line-height: inherit !important;
+  letter-spacing: inherit !important;
+  max-width: none !important;
+  text-align: inherit !important;
+  color: inherit !important;
+  text-shadow: inherit !important;
+}
+
 .ghost-tx--typing  { opacity: 0.78; filter: none; }
 .ghost-tx--holding { opacity: 0.68; filter: none; }
 .ghost-tx--fading  { opacity: 0;    filter: blur(4px) saturate(0.3); }

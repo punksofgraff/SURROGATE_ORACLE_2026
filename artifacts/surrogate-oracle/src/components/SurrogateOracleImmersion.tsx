@@ -251,6 +251,7 @@ export function SurrogateOracleImmersion() {
   const [isMicActive, setIsMicActive]       = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isGeminiConnected, setIsGeminiConnected] = useState(false);
+  const [isGeminiSessionLive, setIsGeminiSessionLive] = useState(false);
   const [forceOracleManifest, setForceOracleManifest] = useState(false);
   const [hasManifested, setHasManifested] = useState(false);
   const [debugMode, setDebugMode]           = useState(false);
@@ -1479,7 +1480,7 @@ export function SurrogateOracleImmersion() {
   const isFractureManifesting = isOracleMode && forceOracleManifest && !isGeminiConnected;
   // Keep the transporter beam active through the fallback state. Only the
   // real Live session resolves particles into the settled Oracle silhouette.
-  const oracleManifestProgress = isOracleMode && isGeminiConnected ? 1 : 0;
+  const oracleManifestProgress = isOracleMode && isGeminiSessionLive ? 1 : 0;
   const awakened     = scenePhase === 'awakened' || scenePhase === 'tour' || isOracleMode;
   const isAlive      = scenePhase !== 'dormant';
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
@@ -1493,7 +1494,7 @@ export function SurrogateOracleImmersion() {
       data-oracle-alignment={oracleAlignment || undefined}
       data-exiting={journey.isExiting ? 'true' : undefined}
       data-oracle-manifesting={(isOracleMode && !oracleManifestReady) ? 'true' : undefined}
-      data-oracle-transport={isOracleMode ? (isGeminiConnected ? 'out' : 'in') : undefined}
+      data-oracle-transport={isOracleMode ? (isGeminiSessionLive ? 'out' : 'in') : undefined}
       data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
       data-oracle-thinking={isOracleThinking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
@@ -2189,7 +2190,11 @@ export function SurrogateOracleImmersion() {
           onSeekerIdentified={handleSeekerIdentified}
           initialTotemLevel={echo?.totem_level ?? 0}
           onConnected={() => setIsGeminiConnected(true)}
-          onDisconnected={() => setIsGeminiConnected(false)}
+           onSessionReady={() => setIsGeminiSessionLive(true)}
+           onDisconnected={() => {
+             setIsGeminiConnected(false);
+             setIsGeminiSessionLive(false);
+           }}
           onListeningChange={setIsMicActive}
           onThinkingChange={setIsOracleThinking}
           onMicWillStart={() => fadeToVolume(0, 80)}

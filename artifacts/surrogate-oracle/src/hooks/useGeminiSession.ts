@@ -183,6 +183,8 @@ export interface UseGeminiSessionParams {
   turnsRef: MutableRefObject<{ role: string; content: string }[]>;
   debugInfo: MutableRefObject<OracleDebugInfo>;
   onConnectedRef: MutableRefObject<(() => void) | undefined>;
+  /** Fired only after Gemini confirms session.created and setup is accepted. */
+  onSessionReadyRef: MutableRefObject<(() => void) | undefined>;
   onDisconnectedRef: MutableRefObject<(() => void) | undefined>;
   onSessionEndRef: MutableRefObject<((alignment: string, totemLevel: number, coins: number) => void) | undefined>;
   sessionAlignRef: MutableRefObject<string>;
@@ -220,6 +222,7 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     turnsRef,
     debugInfo,
     onConnectedRef,
+    onSessionReadyRef,
     onDisconnectedRef,
     onSessionEndRef,
     sessionAlignRef,
@@ -492,6 +495,7 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
         // Intentionally after session setup — isGeminiConnected now means "session.created confirmed",
         // not just "WebSocket open". This gates the 3D avatar manifestation on actual API readiness.
         onConnectedRef.current?.();
+        onSessionReadyRef.current?.();
       }
         if (msg.type === 'server.content') {
           handlersRef.current.onServerContent(msg, sendText);

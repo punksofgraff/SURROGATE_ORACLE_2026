@@ -84,6 +84,7 @@ interface OracleConversationProps {
   onSeekerProgress?: (count: number, max: number) => void;
   onSeekerIdentified?: (name: string | null, handles: string[]) => void;
   onConnected?: () => void;
+  onSessionReady?: () => void;
   onListeningChange?: (isListening: boolean) => void;
   onMicWillStart?: () => void;
   onMicClick?: (willListen: boolean) => void;
@@ -184,7 +185,7 @@ const OracleConversation = forwardRef(
     const {
       userId, sessionId,
       onOracleResponse, onCoinsEarned,
-      onConnected, onListeningChange,
+      onConnected, onSessionReady, onListeningChange,
       isVisible = true,
       autoStart = true,
       sessionContext,
@@ -421,6 +422,9 @@ const OracleConversation = forwardRef(
 
     const onConnectedRef = useRef(onConnected);
     useEffect(() => { onConnectedRef.current = onConnected; }, [onConnected]);
+
+    const onSessionReadyRef = useRef(onSessionReady);
+    useEffect(() => { onSessionReadyRef.current = onSessionReady; }, [onSessionReady]);
 
     const onDisconnectedRef = useRef(onDisconnected);
     useEffect(() => { onDisconnectedRef.current = onDisconnected; }, [onDisconnected]);
@@ -885,6 +889,7 @@ const OracleConversation = forwardRef(
       turnsRef,
       debugInfo,
       onConnectedRef,
+      onSessionReadyRef,
       onDisconnectedRef,
       onSessionEndRef,
       sessionAlignRef,

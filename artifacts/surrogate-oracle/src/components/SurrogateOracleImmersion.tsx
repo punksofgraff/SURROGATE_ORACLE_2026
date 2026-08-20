@@ -30,7 +30,6 @@ import { ScrambleFragment } from './ScrambleFragment';
 import { logStep } from './CodeAuditor';
 import { DormantHUD } from './ambient/DormantHUD';
 import { OracleHUD } from './ambient/OracleHUD';
-import { OracleSpectrumRing } from './OracleSpectrumRing';
 import { DormantTransmissions } from './ambient/GhostTransmissions';
 import { GlitchCursor } from './ambient/GlitchCursor';
 import { KnifeSelection, KNIFE_QUESTIONS } from './KnifeSelection';
@@ -1789,7 +1788,6 @@ export function SurrogateOracleImmersion() {
             <OracleHaloRing active={awakened} isXRMode={isXRMode} />
           </div>
           <div className="oracle-avatar-wrapper">
-            {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} alignment={oracleAlignment === 'sacred' || oracleAlignment === 'profane' ? oracleAlignment : null} />}
             <div className="oracle-scanlines" />
             {/* Canvas warmup — mounts in terminal (lore) or awakened so GPU shaders compile
                 before oracle phase begins. Also mounts immediately on re-entry when

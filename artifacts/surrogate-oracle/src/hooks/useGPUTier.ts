@@ -54,6 +54,8 @@ function readSessionCache(): GPUProfile | null {
       tier: Math.max(0, Math.min(3, parsed.tier)) as GPUProfile['tier'],
       isMobile: !!parsed.isMobile,
       ready: true,
+      webgpu: parsed.webgpu === 'admitted' ? 'admitted' : 'unavailable',
+      webgpuReason: typeof parsed.webgpuReason === 'string' ? parsed.webgpuReason : undefined,
     };
   } catch {
     return null;
@@ -83,14 +85,14 @@ async function probeWebGPU(): Promise<Pick<GPUProfile, 'webgpu' | 'webgpuReason'
     const gpu = (navigator as Navigator & {
       gpu?: {
         requestAdapter: (options?: { powerPreference?: 'low-power' | 'high-performance' }) => Promise<{
-          requestDevice: () => Promise<GPUDevice>;
+        requestDevice: () => Promise<{ destroy?: () => void }>;
         } | null>;
       };
     }).gpu;
     const adapter = await gpu?.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) return { webgpu: 'unavailable', webgpuReason: 'no WebGPU adapter' };
     const device = await adapter.requestDevice();
-    device.destroy();
+    device.destroy?.();
     return { webgpu: 'admitted' };
   } catch (error) {
     return {

@@ -197,9 +197,6 @@ export function SurrogateOracleImmersion() {
   // ── Performance & Accessibility ─────────────────────────────────────────
   const isDegraded = usePerformanceGuard(true);
   const gpu = useGPUTier();
-  // WebGPU is the preferred renderer once its adapter/device have actually
-  // initialized. XR remains WebGL-only until its compositor path is verified.
-  const useWebGPU = gpu.ready && gpu.webgpu === 'admitted' && !isXRMode;
   // Do not construct a WebGL renderer until the GPU probe has proven one is
   // available. A confirmed renderer can still fall back to tier 1 under the
   // runtime FPS guard; an unresolved or unsupported renderer remains dark.
@@ -208,15 +205,14 @@ export function SurrogateOracleImmersion() {
   ) as 0 | 1 | 2 | 3;
   useEffect(() => {
     logStep(
-      `RENDER TIER — tier=${renderTier} renderer=${useWebGPU ? 'webgpu' : 'webgl'} degraded=${isDegraded ? 'true' : 'false'} gpu=${gpu.tier}`,
+      `RENDER TIER — tier=${renderTier} degraded=${isDegraded ? 'true' : 'false'} gpu=${gpu.tier}`,
       isDegraded ? 'warn' : 'ok',
     );
-  }, [renderTier, useWebGPU, isDegraded, gpu.tier]);
+  }, [renderTier, isDegraded, gpu.tier]);
   // Dev-only hook so headless verification can tell "effects broken" apart from
   // "FPS guard correctly degraded the scene" (SwiftShader always trips the guard).
   if (import.meta.env.DEV && typeof window !== 'undefined') {
     (window as unknown as Record<string, unknown>).__oracle_renderTier = renderTier;
-    (window as unknown as Record<string, unknown>).__oracle_renderer = useWebGPU ? 'webgpu' : 'webgl';
   }
   const prefersReducedMotion = typeof window !== 'undefined' 
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches 
@@ -1231,6 +1227,14 @@ export function SurrogateOracleImmersion() {
   }, [connection, journey]);
 
   const { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraError, seekerMotionRef } = useXRMode(() => enterTerminal());
+  // WebGPU is the preferred renderer once its adapter/device have actually
+  // initialized. XR remains WebGL-only until its compositor path is verified.
+  const useWebGPU = gpu.ready && gpu.webgpu === 'admitted' && !isXRMode;
+  useEffect(() => {
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+      (window as unknown as Record<string, unknown>).__oracle_renderer = useWebGPU ? 'webgpu' : 'webgl';
+    }
+  }, [useWebGPU]);
   const faceFrameDivRef = useRef<HTMLDivElement>(null);
 
   // Drive face frame overlay position directly from faceBoundsRef — no React state lag.

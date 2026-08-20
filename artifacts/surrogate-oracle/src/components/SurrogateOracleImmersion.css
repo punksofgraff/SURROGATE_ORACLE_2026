@@ -5269,7 +5269,7 @@
 }
 
 .oracle-stage00-card__greeting {
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
   font-size: clamp(1.6rem, 5vw, 2.1rem);
   background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%);
   -webkit-background-clip: text;

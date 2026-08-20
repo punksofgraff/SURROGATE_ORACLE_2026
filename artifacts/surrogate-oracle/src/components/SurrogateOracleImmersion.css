@@ -1798,16 +1798,6 @@
 
 /* ── Lore Terminal Overlay ─────────────────────────────────────────────── */
 /* ── Rift Opening Glitch ── */
-body[data-rift-opening="true"] .oracle-terminal-overlay {
-  animation: rift-blast 0.85s cubic-bezier(0.23, 1, 0.32, 1) forwards;
-}
-
-@keyframes rift-blast {
-  0%   { filter: brightness(1) contrast(1); transform: scale(1); }
-  40%  { filter: brightness(2.5) contrast(1.5) hue-rotate(45deg); transform: scale(1.05); }
-  70%  { filter: brightness(4) contrast(2) hue-rotate(-20deg); transform: scale(0.98); opacity: 0.8; }
-  100% { filter: brightness(1) contrast(1); transform: scale(1); opacity: 1; }
-}
 
 .oracle-terminal-overlay {
   position: absolute;
@@ -5153,10 +5143,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-smoke-hook {
-  opacity: 1;
-  filter: none;
-  transition: none !important;
-  animation: none;
+  animation: oracle-phase-manifest 2s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-headroom-hook {

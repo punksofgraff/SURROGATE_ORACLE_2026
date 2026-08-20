@@ -460,24 +460,16 @@ export function SurrogateOracleImmersion() {
     if (isFirstTimeSeeker) {
       // Lore complete — transition alley in first, then materialize the ACK card over it.
       logStep('LORE DONE → ALLEY TRANSITION', 'ok');
-      document.body.setAttribute('data-rift-opening', 'true');
+      journey.awakeFromTerminal();
+      // Wait briefly for alley to mount, then reveal knife card on top of it
       setTimeout(() => {
-        journey.awakeFromTerminal();
-        document.body.removeAttribute('data-rift-opening');
-        // Wait for alley to fully materialize, then reveal knife card on top of it
-        setTimeout(() => {
-          setShowStage00(true);
-          logStep('STAGE_00 PRESENTED (over alley)', 'ok');
-        }, 600);
-      }, 850);
+        setShowStage00(true);
+        logStep('STAGE_00 PRESENTED (over alley)', 'ok');
+      }, 300);
       return;
     }
 
-    document.body.setAttribute('data-rift-opening', 'true');
-    setTimeout(() => {
-      journey.awakeFromTerminal();
-      document.body.removeAttribute('data-rift-opening');
-    }, 850);
+    journey.awakeFromTerminal();
   }, [markLoreCompleted, journey, hasCompletedLore, currentUserId]);
 
   const { completedLines, currentLine } = useLoreSequence(
@@ -629,6 +621,9 @@ export function SurrogateOracleImmersion() {
 
   const handleFirstTap = useCallback(async () => {
     if (scenePhase !== 'dormant' || showStage00) return;
+    // Pre-warm the Gemini WebSocket connection immediately on first tap
+    oracleConversationRef.current?.prewarm();
+    
     // iOS Safari: ALL audio operations must be synchronous within the gesture handler.
     // setupAudioSpine is now fully sync — creates/unlocks AudioContext and wires the
     // radio graph without any await or setTimeout boundary. initializePCMPlayer must
@@ -763,15 +758,11 @@ export function SurrogateOracleImmersion() {
   }, [enterTour]);
 
   const handleStage00Dismiss = useCallback(() => {
-    // Pre-warm immediately — gives the full 850ms rift transition for the WS to establish.
+    // Pre-warm immediately (idempotent, ensures connection is ready)
     oracleConversationRef.current?.prewarm();
     setShowStage00(false);
     logStep('STAGE_00 → ENTER CASCADE', 'ok');
-    document.body.setAttribute('data-rift-opening', 'true');
-    setTimeout(() => {
-      journey.awakeFromTerminal();
-      document.body.removeAttribute('data-rift-opening');
-    }, 850);
+    journey.awakeFromTerminal();
   }, [journey]);
 
   const startHold = useCallback((title: string, body: string) => {
@@ -1280,9 +1271,6 @@ export function SurrogateOracleImmersion() {
     setShowRiftRitual(false);
     setIsRiftOpening(true);
 
-    // Visual rift-opening animation
-    document.body.setAttribute('data-rift-opening', 'true');
-
     try {
       playActivationSfx();
     } catch (e) {
@@ -1291,7 +1279,6 @@ export function SurrogateOracleImmersion() {
 
     setTimeout(() => {
       setIsRiftOpening(false);
-      document.body.removeAttribute('data-rift-opening');
 
       // Now activate XR / camera stream!
       activateXRMode();

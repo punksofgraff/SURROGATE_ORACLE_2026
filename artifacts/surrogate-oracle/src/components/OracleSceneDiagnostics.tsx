@@ -15,6 +15,8 @@ export interface OracleSceneProbe {
   instancedMeshes: number;
   particleCount: number;
   drawCalls: number;
+  renderer: 'webgpu' | 'webgl';
+  pixelRatio: number;
   speaking: boolean;
   updatedAt: number;
 }
@@ -157,7 +159,7 @@ function takeLiveMicSample(label: OracleLiveMicSample['label']): OracleLiveMicSa
 
 /** R3F-side probe. It intentionally has no visual or behavioral effect. */
 export function OracleSceneDiagnostics() {
-  const { scene, gl } = useThree();
+  const { scene, gl, viewport } = useThree();
   const frameCountRef = useRef(0);
 
   useFrame((state, delta) => {
@@ -186,6 +188,8 @@ export function OracleSceneDiagnostics() {
       instancedMeshes,
       particleCount,
       drawCalls: gl.info.render.calls,
+      renderer: (gl as unknown as { isWebGPURenderer?: boolean }).isWebGPURenderer ? 'webgpu' : 'webgl',
+      pixelRatio: Number(viewport.dpr.toFixed(2)),
       speaking: document.querySelector('.oracle-stage')?.getAttribute('data-oracle-speaking') === 'true',
       updatedAt: Date.now(),
     };

@@ -13,6 +13,7 @@
  * Viseme state is a ref — no React re-renders at 60fps.
  */
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import * as THREE from 'three';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Camera, CameraOff } from 'lucide-react';
 
@@ -201,7 +202,7 @@ export function SurrogateOracleImmersion() {
   // available. A confirmed renderer can still fall back to tier 1 under the
   // runtime FPS guard; an unresolved or unsupported renderer remains dark.
   const renderTier = (
-    !gpu.ready ? 0 : isDegraded ? Math.max(1, gpu.tier) : gpu.tier
+    !gpu.ready ? 0 : isDegraded ? Math.max(1, gpu.tier - 1) : gpu.tier
   ) as 0 | 1 | 2 | 3;
   useEffect(() => {
     logStep(
@@ -1227,9 +1228,47 @@ export function SurrogateOracleImmersion() {
   }, [connection, journey]);
 
   const { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraError, seekerMotionRef } = useXRMode(() => enterTerminal());
+  const [webgpuFailed, setWebgpuFailed] = useState(false);
   // WebGPU is the preferred renderer once its adapter/device have actually
   // initialized. XR remains WebGL-only until its compositor path is verified.
-  const useWebGPU = gpu.ready && gpu.webgpu === 'admitted' && !isXRMode;
+  const useWebGPU = gpu.ready && gpu.webgpu === 'admitted' && !isXRMode && !webgpuFailed;
+  const createRenderer = useCallback(async (props: {
+    canvas: HTMLCanvasElement;
+    antialias?: boolean;
+    alpha?: boolean;
+  }) => {
+    try {
+      const renderer = await createOracleWebGPURenderer(props);
+      // Three's WebGPURenderer can internally select its WebGL backend if a
+      // browser exposes navigator.gpu but cannot create a GPU canvas context.
+      // That is a fallback, not a WebGPU success: remount the Canvas in the
+      // complete WebGL profile so its proven particles and post stack return.
+      if ((renderer as unknown as { backend?: { isWebGLBackend?: boolean } }).backend?.isWebGLBackend) {
+        renderer.dispose();
+        setWebgpuFailed(true);
+        return new THREE.WebGLRenderer({
+          canvas: props.canvas,
+          antialias: props.antialias ?? false,
+          alpha: props.alpha ?? true,
+          powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
+        });
+      }
+      return renderer;
+    } catch (error) {
+      // Admission used a throwaway device. A renderer can still fail later
+      // because of a driver, a lost device, or a browser implementation quirk.
+      // Complete the exact Canvas request with WebGL, then remount into the
+      // full WebGL profile so effects return rather than leaving a blank Oracle.
+      console.warn('[ORACLE] WebGPU renderer init failed; using WebGL fallback.', error);
+      setWebgpuFailed(true);
+      return new THREE.WebGLRenderer({
+        canvas: props.canvas,
+        antialias: props.antialias ?? false,
+        alpha: props.alpha ?? true,
+        powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
+      });
+    }
+  }, [renderTier]);
   useEffect(() => {
     if (import.meta.env.DEV && typeof window !== 'undefined') {
       (window as unknown as Record<string, unknown>).__oracle_renderer = useWebGPU ? 'webgpu' : 'webgl';
@@ -1740,6 +1779,7 @@ export function SurrogateOracleImmersion() {
                   <OracleErrorBoundary>
                     <Suspense fallback={canvasWarmed ? null : <OracleAvatarFallback />}>
                       <Canvas
+                         key={useWebGPU ? 'webgpu' : 'webgl'}
                         camera={{ position: [0, 0, 1.8], fov: 55 }}
                         dpr={(() => {
                           /* Flat pixel budget: in oracle phase the canvas element is
@@ -1758,7 +1798,7 @@ export function SurrogateOracleImmersion() {
                           return isOracleMode && !isXRMode ? base / ORACLE_ORBIT_EXPANSION : base;
                         })()}
                          gl={useWebGPU
-                           ? (createOracleWebGPURenderer as never)
+                           ? (createRenderer as never)
                            : {
                                antialias: renderTier >= 2,
                                alpha: true,

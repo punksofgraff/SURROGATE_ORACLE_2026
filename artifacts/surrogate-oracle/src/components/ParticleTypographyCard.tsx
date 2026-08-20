@@ -19,6 +19,8 @@ interface ParticleTypographyCardProps {
   accentColor?: string;
   territory: string;
   question: string;
+  reducedMotion?: boolean;
+  className?: string;
 }
 
 interface Spark {
@@ -47,6 +49,8 @@ export function ParticleTypographyCard({
   accentColor = '#00ff88',
   territory,
   question,
+  reducedMotion = false,
+  className,
 }: ParticleTypographyCardProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -80,6 +84,7 @@ export function ParticleTypographyCard({
 
   // Spawn particle sparks when new letters land
   useEffect(() => {
+    if (reducedMotion) return;
     if (shatteredRef.current) return;
     if (landedChars > prevLandedRef.current && containerRef.current) {
       const containerRect = containerRef.current.getBoundingClientRect();
@@ -112,10 +117,11 @@ export function ParticleTypographyCard({
       }
     }
     prevLandedRef.current = landedChars;
-  }, [landedChars]);
+  }, [landedChars, reducedMotion]);
 
   // Selection shatter explosion
   useEffect(() => {
+    if (reducedMotion) return;
     if (isSelected && isThisSelected && !shatteredRef.current && containerRef.current) {
       shatteredRef.current = true;
       const containerRect = containerRef.current.getBoundingClientRect();
@@ -152,10 +158,11 @@ export function ParticleTypographyCard({
         }
       });
     }
-  }, [isSelected, isThisSelected]);
+  }, [isSelected, isThisSelected, reducedMotion]);
 
   // Canvas particle render loop
   useEffect(() => {
+    if (reducedMotion) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d', { alpha: true });
@@ -218,12 +225,12 @@ export function ParticleTypographyCard({
 
     animId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(animId);
-  }, []);
+  }, [reducedMotion]);
 
   return (
     <div
       ref={containerRef}
-      className="oracle-knife-card-question"
+      className={`oracle-knife-card-question${className ? ` ${className}` : ''}`}
       aria-label={question}
       style={{
         position: 'relative',
@@ -269,7 +276,7 @@ export function ParticleTypographyCard({
             style={{ display: 'inline-block', whiteSpace: 'nowrap', margin: '0 3px' }}
           >
             {chars.map(({ char, charIdx, color }) => {
-              const isLanded = charIdx < landedChars;
+              const isLanded = reducedMotion || charIdx < landedChars;
               return (
                 <span
                   key={charIdx}

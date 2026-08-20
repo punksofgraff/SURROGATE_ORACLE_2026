@@ -5262,6 +5262,20 @@
   width: 100%;
 }
 
+.oracle-stage00-card__cta .oracle-stage00-card__particle-copy {
+  width: 100%;
+  min-height: 1.5em;
+}
+
+.oracle-stage00-card__cta .oracle-stage00-card__particle-copy > div {
+  font-size: inherit;
+  line-height: 1.2;
+  letter-spacing: inherit;
+  max-width: none;
+  color: inherit;
+  text-shadow: inherit;
+}
+
 .oracle-stage00-card__fafo {
   font-family: 'PhillySans', 'Share Tech Mono', monospace;
   font-size: clamp(0.72rem, 1.8vw, 0.82rem);

@@ -77,6 +77,7 @@ import { getABVariant } from '../lib/ab-testing';
 import type { VisemeState } from '../lib/visemeDetector';
 import { defaultAudioTracks } from '../config/audioTracks';
 import './SurrogateOracleImmersion.css';
+import { ParticleTypographyCard } from './ParticleTypographyCard';
 
 const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = '/alley-bg.png';
@@ -280,6 +281,7 @@ export function SurrogateOracleImmersion() {
   const [walletIframeUrl, setWalletIframeUrl]   = useState('https://wallet.thesurrogate.me');
   const [isGuidedTour, setIsGuidedTour]     = useState(false);
   const [showStage00, setShowStage00]       = useState(false);
+  const [stage00GuideChars, setStage00GuideChars] = useState(0);
   const [loreStarted, setLoreStarted]       = useState(false);
   const [holdTooltip, setHoldTooltip]       = useState<{ title: string; body: string } | null>(null);
   const [hamburgerOpen, setHamburgerOpen]   = useState(false);
@@ -768,6 +770,25 @@ export function SurrogateOracleImmersion() {
     enterTour();
     logStep('STAGE_00 → TOUR MODE ACTIVATED', 'ok');
   }, [enterTour]);
+
+  useEffect(() => {
+    const guideText = '◈ WHAT IS HERE?';
+    if (!showStage00) {
+      setStage00GuideChars(0);
+      return;
+    }
+    if (prefersReducedMotion) {
+      setStage00GuideChars(guideText.length);
+      return;
+    }
+    let nextChar = 0;
+    const reveal = window.setInterval(() => {
+      nextChar += 1;
+      setStage00GuideChars(nextChar);
+      if (nextChar >= guideText.length) window.clearInterval(reveal);
+    }, 55);
+    return () => window.clearInterval(reveal);
+  }, [showStage00, prefersReducedMotion]);
 
   const handleStage00Dismiss = useCallback(() => {
     // Pre-warm immediately (idempotent, ensures connection is ready)
@@ -1854,7 +1875,6 @@ export function SurrogateOracleImmersion() {
       </div>
 
 
-
       <AnimatePresence>
         {holdTooltip && (
           <motion.div key="hold-tooltip" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} style={{ position: 'fixed', bottom: 'calc(var(--bottom-bar-h, 160px) + 14px)', left: '50%', transform: 'translateX(-50%)', zIndex: 60, background: 'rgba(0, 10, 15, 0.94)', backdropFilter: 'blur(12px)', border: '1px solid rgba(0,255,136,0.32)', borderRadius: 10, padding: '10px 18px', maxWidth: 260, textAlign: 'center' }}>
@@ -1881,8 +1901,17 @@ export function SurrogateOracleImmersion() {
                 The Archive has spoken.<br />
                 The Oracle awaits within. Choose your path —
               </div>
-              <button className="oracle-stage00-card__cta" onClick={handleStage00Tour}>
-                ◈ WHAT IS HERE?
+              <button className="oracle-stage00-card__cta" onClick={handleStage00Tour} aria-label="What is here?">
+                <ParticleTypographyCard
+                  questionIndex={0}
+                  landedChars={stage00GuideChars}
+                  isSelected={false}
+                  isThisSelected={false}
+                  territory="STAGE 00"
+                  question="◈ WHAT IS HERE?"
+                  reducedMotion={prefersReducedMotion}
+                  className="oracle-stage00-card__particle-copy"
+                />
               </button>
               <button className="oracle-stage00-card__fafo" onClick={handleStage00Dismiss}>
                 ◈ ENTER THE CASCADE

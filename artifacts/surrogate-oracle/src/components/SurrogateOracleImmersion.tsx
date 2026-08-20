@@ -85,6 +85,16 @@ const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = '/alley-bg.png';
 const DEFAULT_STATION    = 0; // Graff Punks — sole station
 const FREE_JOURNEYS      = 5; // wallet seekers get this many free oracle journeys
+const COMPLETED_JOURNEYS_SUFFIX = '_completed_v2';
+
+function completedJourneyCount(key: string): number {
+  try {
+    const entries = JSON.parse(localStorage.getItem(`surrogate_journeys_${key}${COMPLETED_JOURNEYS_SUFFIX}`) ?? '[]');
+    return Array.isArray(entries) ? entries.length : 0;
+  } catch {
+    return 0;
+  }
+}
 
 // Act 5 — Rift-Construct: Oracle shifts from archivist to active witness.
 // No brackets — brackets suppress Gemini audio output (same issue as knife prompts).
@@ -903,12 +913,26 @@ export function SurrogateOracleImmersion() {
         new Promise<void>(r => setTimeout(r, 6000)),
       ]);
 
-      // Count completed journeys per seeker key (wallet address or IP).
-      // Tracked for all users — wallet seekers hit the tier gate, IP seekers hit the wallet gate.
-      const countKey = `surrogate_journeys_${key}`;
-      const next = parseInt(localStorage.getItem(countKey) ?? '0', 10) + 1;
-      localStorage.setItem(countKey, String(next));
-      logStep(`JOURNEY COMPLETE — total: ${next} [${hasSignedWallet ? 'wallet' : 'ip'}]`, 'ok');
+      // Count only a genuinely completed exchange. Older versions incremented
+      // on every exit (including turn 0), so their legacy counter is
+      // intentionally not used for admission.
+      const hasSeekerTurn = allTurns.some((turn) => turn.role === 'user' && turn.content.trim().length > 0);
+      const hasOracleTurn = allTurns.some((turn) => turn.role === 'oracle' && turn.content.trim().length > 0);
+      if (hasSeekerTurn && hasOracleTurn) {
+        const countKey = `surrogate_journeys_${key}${COMPLETED_JOURNEYS_SUFFIX}`;
+        let entries: string[] = [];
+        try {
+          const stored = JSON.parse(localStorage.getItem(countKey) ?? '[]');
+          entries = Array.isArray(stored) ? stored.filter((entry): entry is string => typeof entry === 'string') : [];
+        } catch {
+          entries = [];
+        }
+        entries.push(new Date().toISOString());
+        localStorage.setItem(countKey, JSON.stringify(entries));
+        logStep(`JOURNEY COMPLETE — total: ${entries.length} [${hasSignedWallet ? 'wallet' : 'ip'}]`, 'ok');
+      } else {
+        logStep(`JOURNEY NOT COUNTED — incomplete exchange (${allTurns.length} turns)`, 'warn');
+      }
     }
 
     return allTurns;
@@ -979,9 +1003,7 @@ export function SurrogateOracleImmersion() {
       ?? ipAddress
       ?? seekerKeyRef.current
       ?? localStorage.getItem('oracle_seeker_key');
-    const completedJourneys = admissionKey
-      ? parseInt(localStorage.getItem(`surrogate_journeys_${admissionKey}`) ?? '0', 10)
-      : 0;
+    const completedJourneys = admissionKey ? completedJourneyCount(admissionKey) : 0;
     if (completedJourneys >= FREE_JOURNEYS) {
       const walletRegistered = hasSignedWallet
         || !!currentUserId
@@ -2403,7 +2425,10 @@ export function SurrogateOracleImmersion() {
         context="engage-further"
         onUpgradeSuccess={() => {
           const key = seekerKeyRef.current;
-          if (key) localStorage.removeItem(`surrogate_journeys_${key}`);
+          if (key) {
+            localStorage.removeItem(`surrogate_journeys_${key}`);
+            localStorage.removeItem(`surrogate_journeys_${key}${COMPLETED_JOURNEYS_SUFFIX}`);
+          }
           setShowTierGate(false);
           logStep('TIER UPGRADE — journey count cleared', 'ok');
         }}

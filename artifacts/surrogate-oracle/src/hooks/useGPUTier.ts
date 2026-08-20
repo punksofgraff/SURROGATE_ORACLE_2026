@@ -22,12 +22,20 @@ export interface GPUProfile {
   isMobile: boolean;
   /** false until the async probe resolves — callers get a safe default meanwhile. */
   ready: boolean;
+  /** WebGPU is admitted only after adapter/device initialization succeeds. */
+  webgpu: 'admitted' | 'unavailable' | 'pending';
+  webgpuReason?: string;
 }
 
 /** Stay renderer-free until the probe proves a context is available. Starting
  * at tier 2 causes repeated Canvas construction failures on blocked WebGL
  * surfaces, which reads as a bright loading flash rather than a quiet fallback. */
-const DEFAULT_PROFILE: GPUProfile = { tier: 0, isMobile: false, ready: false };
+const DEFAULT_PROFILE: GPUProfile = {
+  tier: 0,
+  isMobile: false,
+  ready: false,
+  webgpu: 'pending',
+};
 
 // Bump when renderer admission logic changes so a tab cannot reuse a profile
 // created by the old eager-Canvas path.
@@ -63,6 +71,32 @@ function getWebGLRendererInfo(): { renderer: string; isMobile: boolean; supporte
     return { renderer: String(renderer), isMobile, supported: true };
   } catch {
     return { renderer: '', isMobile: false, supported: false };
+  }
+}
+
+async function probeWebGPU(): Promise<Pick<GPUProfile, 'webgpu' | 'webgpuReason'>> {
+  if (typeof navigator === 'undefined' || !('gpu' in navigator)) {
+    return { webgpu: 'unavailable', webgpuReason: 'navigator.gpu unavailable' };
+  }
+
+  try {
+    const gpu = (navigator as Navigator & {
+      gpu?: {
+        requestAdapter: (options?: { powerPreference?: 'low-power' | 'high-performance' }) => Promise<{
+          requestDevice: () => Promise<GPUDevice>;
+        } | null>;
+      };
+    }).gpu;
+    const adapter = await gpu?.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) return { webgpu: 'unavailable', webgpuReason: 'no WebGPU adapter' };
+    const device = await adapter.requestDevice();
+    device.destroy();
+    return { webgpu: 'admitted' };
+  } catch (error) {
+    return {
+      webgpu: 'unavailable',
+      webgpuReason: error instanceof Error ? error.message : 'WebGPU device initialization failed',
+    };
   }
 }
 
@@ -103,8 +137,10 @@ function probe(): Promise<GPUProfile> {
   }
 
   if (!pending) {
-    pending = getGPUTier({ failIfMajorPerformanceCaveat: false })
-      .then((result) => {
+    pending = Promise.all([
+      getGPUTier({ failIfMajorPerformanceCaveat: false }),
+      probeWebGPU(),
+    ]).then(([result, webgpu]) => {
         const unsupported =
           result.type === 'WEBGL_UNSUPPORTED' || result.type === 'BLOCKLISTED';
         if (unsupported) {
@@ -114,7 +150,7 @@ function probe(): Promise<GPUProfile> {
           // a proven WebGL context gets our lightest particle tier. A browser
           // that truly cannot create WebGL still receives the bare fallback.
           const { isMobile, supported } = getWebGLRendererInfo();
-          cached = { tier: supported ? 1 : 0, isMobile: isMobile || !!result.isMobile, ready: true };
+          cached = { tier: supported ? 1 : 0, isMobile: isMobile || !!result.isMobile, ready: true, ...webgpu };
           try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached)); } catch {}
           return cached;
         }
@@ -132,7 +168,7 @@ function probe(): Promise<GPUProfile> {
           }
         }
 
-        cached = { tier, isMobile, ready: true };
+        cached = { tier, isMobile, ready: true, ...webgpu };
         try {
           sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached));
         } catch { /* storage full / private mode — probe again next tab */ }
@@ -144,7 +180,7 @@ function probe(): Promise<GPUProfile> {
         // DO NOT write network-failure fallback to sessionStorage so reload can retry detect-gpu.
         const { renderer, isMobile } = getWebGLRendererInfo();
         const tier = heuristicTierFromRenderer(renderer, isMobile);
-        cached = { tier, isMobile, ready: true };
+        cached = { tier, isMobile, ready: true, webgpu: 'unavailable', webgpuReason: 'GPU capability probe failed' };
         return cached;
       });
   }

@@ -78,6 +78,7 @@ import { trackOracleEvent } from '../lib/analytics';
 import { getABVariant } from '../lib/ab-testing';
 import type { VisemeState } from '../lib/visemeDetector';
 import { defaultAudioTracks } from '../config/audioTracks';
+import { createOracleWebGPURenderer } from '../lib/webgpuRenderer';
 import './SurrogateOracleImmersion.css';
 
 const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
@@ -196,6 +197,9 @@ export function SurrogateOracleImmersion() {
   // ── Performance & Accessibility ─────────────────────────────────────────
   const isDegraded = usePerformanceGuard(true);
   const gpu = useGPUTier();
+  // WebGPU is the preferred renderer once its adapter/device have actually
+  // initialized. XR remains WebGL-only until its compositor path is verified.
+  const useWebGPU = gpu.ready && gpu.webgpu === 'admitted' && !isXRMode;
   // Do not construct a WebGL renderer until the GPU probe has proven one is
   // available. A confirmed renderer can still fall back to tier 1 under the
   // runtime FPS guard; an unresolved or unsupported renderer remains dark.
@@ -204,14 +208,15 @@ export function SurrogateOracleImmersion() {
   ) as 0 | 1 | 2 | 3;
   useEffect(() => {
     logStep(
-      `RENDER TIER — tier=${renderTier} degraded=${isDegraded ? 'true' : 'false'} gpu=${gpu.tier}`,
+      `RENDER TIER — tier=${renderTier} renderer=${useWebGPU ? 'webgpu' : 'webgl'} degraded=${isDegraded ? 'true' : 'false'} gpu=${gpu.tier}`,
       isDegraded ? 'warn' : 'ok',
     );
-  }, [renderTier, isDegraded, gpu.tier]);
+  }, [renderTier, useWebGPU, isDegraded, gpu.tier]);
   // Dev-only hook so headless verification can tell "effects broken" apart from
   // "FPS guard correctly degraded the scene" (SwiftShader always trips the guard).
   if (import.meta.env.DEV && typeof window !== 'undefined') {
     (window as unknown as Record<string, unknown>).__oracle_renderTier = renderTier;
+    (window as unknown as Record<string, unknown>).__oracle_renderer = useWebGPU ? 'webgpu' : 'webgl';
   }
   const prefersReducedMotion = typeof window !== 'undefined' 
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches 
@@ -1748,11 +1753,13 @@ export function SurrogateOracleImmersion() {
                           // above base/2 would silently increase the mobile budget.
                           return isOracleMode && !isXRMode ? base / ORACLE_ORBIT_EXPANSION : base;
                         })()}
-                        gl={{
-                          antialias: renderTier >= 2,
-                          alpha: true,
-                          powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
-                        }}
+                         gl={useWebGPU
+                           ? (createOracleWebGPURenderer as never)
+                           : {
+                               antialias: renderTier >= 2,
+                               alpha: true,
+                               powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
+                             }}
                         style={{ width: '100%', height: '100%', background: 'transparent' }}
                         frameloop="always"
                       >
@@ -1763,7 +1770,10 @@ export function SurrogateOracleImmersion() {
                             visemeStateRef={visemeStateRef}
                             cameraStateRef={cameraStateRef}
                             seekerMotionRef={seekerMotionRef}
-                            transporterActive={isOracleMode}
+                             // The GLB transporter uses GLSL ShaderMaterial.
+                             // WebGPU receives the compatible standard-material
+                             // avatar immediately; WebGL keeps the full reveal.
+                             transporterActive={isOracleMode && !useWebGPU}
                             transporterProgress={isMusicReturning ? 0 : oracleManifestProgress}
                             transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
                             reducedMotion={prefersReducedMotion}
@@ -1778,7 +1788,7 @@ export function SurrogateOracleImmersion() {
                         {/* The ambient field returns only after the GLB-source
                             transporter has been released, so it never masks the
                             recognizable particle silhouette during warmup. */}
-                        {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
+                         {!useWebGPU && renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
                           <OracleQuarks
                             tier={renderTier as 1 | 2 | 3}
                             speakingRef={isOracleSpeakingRef}
@@ -1789,7 +1799,7 @@ export function SurrogateOracleImmersion() {
                         {/* The GLB transporter owns the particle surface until
                             Gemini is genuinely live. Ambient fields return after
                             convergence so the TNG matrix remains legible. */}
-                        {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
+                         {!useWebGPU && renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
                           <OracleNebula
                             tier={renderTier as 1 | 2 | 3}
                             speakingRef={isOracleSpeakingRef}
@@ -1801,7 +1811,7 @@ export function SurrogateOracleImmersion() {
                             Inner Suspense: Physics suspends while the Rapier WASM loads —
                             without this boundary the whole Canvas (avatar included) would
                             fall back to the outer Suspense fallback mid-session. */}
-                        {renderTier >= 2 && (!isOracleMode || isGeminiSessionLive) && (
+                         {!useWebGPU && renderTier >= 2 && (!isOracleMode || isGeminiSessionLive) && (
                           <Suspense fallback={null}>
                             <Physics gravity={[0, 0, 0]} timeStep={1 / 60} colliders={false}>
                               <OraclePhysicsDebris
@@ -1811,7 +1821,7 @@ export function SurrogateOracleImmersion() {
                             </Physics>
                           </Suspense>
                         )}
-                        {renderTier >= 1 && (
+                         {!useWebGPU && renderTier >= 1 && (
                           <EffectComposer multisampling={renderTier >= 2 ? 4 : 0}>
                             {[
                               <Bloom

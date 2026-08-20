@@ -6,10 +6,11 @@ import { logStep } from '../components/CodeAuditor';
 
 const DEFAULT_STATION = 0; // Graff Punks — sole station
 
-const MUSIC_LANDING_VOLUME  = 0.0525; // Globally reduced by an additional 25% (was 0.07)
+const RADIO_VOLUME_SCALE     = 0.8;    // Graff Punks radio requested 20% quieter
+const MUSIC_LANDING_VOLUME  = 0.0525 * RADIO_VOLUME_SCALE; // Globally reduced by an additional 25% (was 0.07)
 const MUSIC_LORE_VOLUME     = 0;      // ABSOLUTE SILENCE (Proof Test)
-const MUSIC_KNIFE_VOLUME    = 0.021;  // Globally reduced by an additional 25% (was 0.028)
-const MUSIC_SESSION_AMBIENT = 0.008;  // Low ambient locked state once Oracle first speaks (prevents noise creep)
+const MUSIC_KNIFE_VOLUME    = 0.021 * RADIO_VOLUME_SCALE; // Globally reduced by an additional 25% (was 0.028)
+const MUSIC_SESSION_AMBIENT = 0.008 * RADIO_VOLUME_SCALE; // Low ambient locked state once Oracle first speaks (prevents noise creep)
 const MUSIC_OFF_VOLUME      = 0;
 
 export interface UseRadioAtmosphereParams {
@@ -43,7 +44,7 @@ export function useRadioAtmosphere({
   const audioRef      = useRef<HTMLAudioElement | null>(null);
   const radioGainRef  = useRef<GainNode | null>(null);
 
-  const [targetVol, setTargetVol]           = useState(0.028);
+  const [targetVol, setTargetVol]           = useState(0.028 * RADIO_VOLUME_SCALE);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [currentStation, setCurrentStation] = useState(DEFAULT_STATION);
 

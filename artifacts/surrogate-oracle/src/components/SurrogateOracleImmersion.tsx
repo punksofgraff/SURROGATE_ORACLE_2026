@@ -253,6 +253,7 @@ export function SurrogateOracleImmersion() {
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [isGeminiConnected, setIsGeminiConnected] = useState(false);
   const [isGeminiSessionLive, setIsGeminiSessionLive] = useState(false);
+  const [entryCurtain, setEntryCurtain] = useState<'cover' | 'fade' | null>(null);
   const [forceOracleManifest, setForceOracleManifest] = useState(false);
   const [hasManifested, setHasManifested] = useState(false);
   const [debugMode, setDebugMode]           = useState(false);
@@ -595,6 +596,11 @@ export function SurrogateOracleImmersion() {
 
   const handleFirstTap = useCallback(async () => {
     if (scenePhase !== 'dormant' || showStage00) return;
+    // The entry boundary may mount the terminal, prewarm the GLB, and negotiate
+    // audio in the same interaction. Keep the transition physically black until
+    // that first committed terminal frame exists; no bright compositing frame is
+    // allowed to leak through the ritual.
+    setEntryCurtain('cover');
     // iOS Safari: ALL audio operations must be synchronous within the gesture handler.
     // setupAudioSpine is now fully sync — creates/unlocks AudioContext and wires the
     // radio graph without any await or setTimeout boundary. initializePCMPlayer must
@@ -720,6 +726,16 @@ export function SurrogateOracleImmersion() {
     enterTerminal();
     logStep('RECOGNIZED SIGNAL → SKIP AVAILABLE', 'ok');
   }, [scenePhase, showStage00, setupAudioSpine, enterTerminal, awakeFromTerminal, markVisited, loadEcho, hasCompletedLore, hasSignedWallet, connection, startLore]);
+
+  useEffect(() => {
+    if (entryCurtain !== 'cover' || scenePhase === 'dormant') return;
+    const reveal = window.setTimeout(() => setEntryCurtain('fade'), 180);
+    const remove = window.setTimeout(() => setEntryCurtain(null), 460);
+    return () => {
+      window.clearTimeout(reveal);
+      window.clearTimeout(remove);
+    };
+  }, [entryCurtain, scenePhase]);
 
   const handleStage00Tour = useCallback(() => {
     setShowStage00(false);
@@ -1512,6 +1528,20 @@ export function SurrogateOracleImmersion() {
       data-xr-mode={isXRMode ? 'true' : undefined}
       data-guided-tour={isGuidedTour ? 'true' : undefined}
     >
+      {entryCurtain && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 1000,
+            pointerEvents: 'none',
+            background: '#000',
+            opacity: entryCurtain === 'cover' ? 1 : 0,
+            transition: 'opacity 280ms ease-out',
+          }}
+        />
+      )}
       {/* Alignment flash overlays — keyed by pulse count to re-trigger CSS animation */}
       {profanePulse > 0 && (
         <div key={`profane-${profanePulse}`} className="oracle-alignment-flash oracle-alignment-flash--profane" />

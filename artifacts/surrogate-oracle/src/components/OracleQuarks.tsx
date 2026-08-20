@@ -26,6 +26,8 @@ interface OracleQuarksProps {
   amplitude?: number;
   /** Preserve the field but slow its continuous stream for accessibility. */
   reducedMotion?: boolean;
+  /** 0 = transporter beam, 1 = settled Oracle silhouette. */
+  manifestProgress?: number;
 }
 
 const QUARKS_VERTEX_SHADER = /* glsl */ `
@@ -127,10 +129,16 @@ const QUARKS_VERTEX_SHADER = /* glsl */ `
     // Speaking excitation surge
     vec3 speechSurge = aVelocity * (uSpeaking * 2.2);
 
-    // Manifestation convergence (vortex pulling in)
-    float manifestPull = (1.0 - uManifest) * 1.5;
-    vec3 finalPos = streamPos + (noiseOffset * 0.065) + speechSurge;
-    finalPos.xz *= (1.0 + manifestPull * sin(aPhase * 6.28));
+    // Transporter beam-in: begin as a narrow vertical column, then resolve
+    // into the continuously orbiting Oracle field.
+    vec3 beamPos = vec3(
+      pos.x * 0.18 + noiseOffset.x * 0.09,
+      pos.y + sin(uTime * 2.8 + aPhase) * 0.07,
+      pos.z * 0.24 + noiseOffset.z * 0.045
+    );
+    float resolvedManifest = smoothstep(0.0, 1.0, uManifest);
+    vec3 finalPos = mix(beamPos, streamPos + (noiseOffset * 0.065), resolvedManifest) + speechSurge;
+    finalPos.xz += noiseOffset.xz * (1.0 - resolvedManifest) * 0.05;
 
     // Face zone protection: push away if within face cylinder
     vec2 faceDist = finalPos.xy - vec2(0.0, 0.0);
@@ -181,6 +189,7 @@ export function OracleQuarks({
   speakingRef,
   amplitude = 0,
   reducedMotion = false,
+  manifestProgress = 1,
 }: OracleQuarksProps) {
   const pointsRef = useRef<THREE.Points>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
@@ -249,7 +258,7 @@ export function OracleQuarks({
     const unis = {
       uTime: { value: 0 },
       uSpeaking: { value: 0 },
-      uManifest: { value: 1.0 },
+       uManifest: { value: 0.0 },
       uSize: { value: 1.0 },
       // Reduced Motion: ambient orbital stream runs at full speed — it IS the
       // sign of life. Only the speaking-excitation surge is suppressed (see
@@ -305,6 +314,12 @@ export function OracleQuarks({
       mat.uniforms.uSpeaking.value,
       targetSpeak,
       Math.min(1, delta * 12.0)
+    );
+    const targetManifest = Math.max(0, Math.min(1, manifestProgress));
+    mat.uniforms.uManifest.value = THREE.MathUtils.lerp(
+      mat.uniforms.uManifest.value,
+      targetManifest,
+      Math.min(1, delta * (targetManifest > mat.uniforms.uManifest.value ? 1.8 : 4.5)),
     );
   });
 

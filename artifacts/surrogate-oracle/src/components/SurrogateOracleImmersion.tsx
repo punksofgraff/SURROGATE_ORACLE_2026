@@ -1477,6 +1477,9 @@ export function SurrogateOracleImmersion() {
   // True when the 6s fallback fired but we still have no live session — shows "FRACTURE MANIFESTING"
   // instead of a silently frozen face so the seeker knows the system is trying to reconnect.
   const isFractureManifesting = isOracleMode && forceOracleManifest && !isGeminiConnected;
+  // Keep the transporter beam active through the fallback state. Only the
+  // real Live session resolves particles into the settled Oracle silhouette.
+  const oracleManifestProgress = isOracleMode && isGeminiConnected ? 1 : 0;
   const awakened     = scenePhase === 'awakened' || scenePhase === 'tour' || isOracleMode;
   const isAlive      = scenePhase !== 'dormant';
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
@@ -1490,6 +1493,7 @@ export function SurrogateOracleImmersion() {
       data-oracle-alignment={oracleAlignment || undefined}
       data-exiting={journey.isExiting ? 'true' : undefined}
       data-oracle-manifesting={(isOracleMode && !oracleManifestReady) ? 'true' : undefined}
+      data-oracle-transport={isOracleMode ? (isGeminiConnected ? 'out' : 'in') : undefined}
       data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
       data-oracle-thinking={isOracleThinking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
@@ -1656,6 +1660,7 @@ export function SurrogateOracleImmersion() {
             {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} alignment={oracleAlignment === 'sacred' || oracleAlignment === 'profane' ? oracleAlignment : null} />}
             <div className="oracle-scanlines" />
             <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
+            {isOracleMode && <div className="oracle-transporter-beam" aria-hidden="true" />}
             {isFractureManifesting && (
               <div className="oracle-fracture-label" aria-live="polite">FRACTURE MANIFESTING</div>
             )}
@@ -1673,7 +1678,7 @@ export function SurrogateOracleImmersion() {
                 style={{
                   position: 'absolute', top: 0, left: 0,
                   width: '100%', height: '100%',
-                  opacity: oracleManifestReady ? 1 : 0,
+                   opacity: isOracleMode || oracleManifestReady ? 1 : 0,
                   pointerEvents: oracleManifestReady ? 'auto' : 'none',
                   zIndex: 3,
                 }}
@@ -1725,6 +1730,7 @@ export function SurrogateOracleImmersion() {
                             speakingRef={isOracleSpeakingRef}
                             amplitude={visemeStateRef.current?.amplitude ?? 0}
                             reducedMotion={prefersReducedMotion}
+                             manifestProgress={oracleManifestProgress}
                           />
                         )}
                         {/* Rapier glyph-shard debris field (tier 2+) — fixed 60Hz step,

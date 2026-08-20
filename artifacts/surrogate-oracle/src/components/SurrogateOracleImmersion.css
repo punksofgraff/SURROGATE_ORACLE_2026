@@ -441,7 +441,7 @@
 }
 
 .oracle-title {
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
   font-size: clamp(4rem, 10vw, 10rem);
   font-weight: 900;
   letter-spacing: 0.10em;
@@ -473,7 +473,7 @@
 }
 
 .oracle-subtitle {
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
   font-size: clamp(2rem, 5.5vw, 4.5rem);
   font-weight: 500;
   

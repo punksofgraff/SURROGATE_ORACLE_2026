@@ -1244,14 +1244,11 @@ export function SurrogateOracleImmersion() {
       // That is a fallback, not a WebGPU success: remount the Canvas in the
       // complete WebGL profile so its proven particles and post stack return.
       if ((renderer as unknown as { backend?: { isWebGLBackend?: boolean } }).backend?.isWebGLBackend) {
-        renderer.dispose();
         setWebgpuFailed(true);
-        return new THREE.WebGLRenderer({
-          canvas: props.canvas,
-          antialias: props.antialias ?? false,
-          alpha: props.alpha ?? true,
-          powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
-        });
+        // The renderer is already using Three's WebGL backend on this canvas.
+        // Keep that stable instance rather than attempting a second context
+        // creation; React renders the WebGL-compatible workload profile below.
+        return renderer;
       }
       return renderer;
     } catch (error) {
@@ -1779,7 +1776,6 @@ export function SurrogateOracleImmersion() {
                   <OracleErrorBoundary>
                     <Suspense fallback={canvasWarmed ? null : <OracleAvatarFallback />}>
                       <Canvas
-                         key={useWebGPU ? 'webgpu' : 'webgl'}
                         camera={{ position: [0, 0, 1.8], fov: 55 }}
                         dpr={(() => {
                           /* Flat pixel budget: in oracle phase the canvas element is

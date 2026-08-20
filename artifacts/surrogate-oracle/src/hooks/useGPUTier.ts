@@ -82,6 +82,13 @@ async function probeWebGPU(): Promise<Pick<GPUProfile, 'webgpu' | 'webgpuReason'
   }
 
   try {
+    const canvas = document.createElement('canvas');
+    const context = (canvas as unknown as {
+      getContext: (contextId: string) => unknown;
+    }).getContext('webgpu');
+    if (!context) {
+      return { webgpu: 'unavailable', webgpuReason: 'no WebGPU canvas context' };
+    }
     const gpu = (navigator as Navigator & {
       gpu?: {
         requestAdapter: (options?: { powerPreference?: 'low-power' | 'high-performance' }) => Promise<{

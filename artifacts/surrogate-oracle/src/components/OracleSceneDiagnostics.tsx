@@ -188,7 +188,13 @@ export function OracleSceneDiagnostics() {
       instancedMeshes,
       particleCount,
       drawCalls: gl.info.render.calls,
-      renderer: (gl as unknown as { isWebGPURenderer?: boolean }).isWebGPURenderer ? 'webgpu' : 'webgl',
+      renderer: (
+        (gl as unknown as {
+          isWebGPURenderer?: boolean;
+          backend?: { isWebGLBackend?: boolean };
+        }).isWebGPURenderer &&
+        !(gl as unknown as { backend?: { isWebGLBackend?: boolean } }).backend?.isWebGLBackend
+      ) ? 'webgpu' : 'webgl',
       pixelRatio: Number(viewport.dpr.toFixed(2)),
       speaking: document.querySelector('.oracle-stage')?.getAttribute('data-oracle-speaking') === 'true',
       updatedAt: Date.now(),

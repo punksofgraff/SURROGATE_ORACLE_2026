@@ -259,6 +259,11 @@ export function SurrogateOracleImmersion() {
   const [isMusicReturning, setIsMusicReturning] = useState(false);
   const [forceOracleManifest, setForceOracleManifest] = useState(false);
   const [hasManifested, setHasManifested] = useState(false);
+  // Continuous target for the GLB-derived transporter. It starts moving as soon
+  // as the knife is selected, then resolves to the solid avatar when Gemini
+  // confirms session.created. Keeping this in React makes the timeline visible
+  // to the already-mounted Canvas without remounting the conversation.
+  const [oracleTransportProgress, setOracleTransportProgress] = useState(1);
   const [debugMode, setDebugMode]           = useState(false);
   const [oracleAlignment, setOracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
   const [profanePulse, setProfanePulse] = useState(0);
@@ -979,8 +984,8 @@ export function SurrogateOracleImmersion() {
 
     // Fire startSession immediately — the existing queue path handles the case where the
     // WS is still CONNECTING (pendingBootRef + pendingMessagesRef flush on session.created).
-    // The 1600ms scene-cut in selectKnifeQuestion stays unchanged; booting the session at
-    // t=0 gives Gemini the full dramatic pause to establish before the Oracle scene lands.
+  // The Oracle scene enters immediately; booting at t=0 keeps the existing warm
+  // connection and lets the GLB transporter provide the visual handoff.
     {
       const fullStory = LORE_SEQUENCE.join('\n');
       let memoryBlock = '';
@@ -1117,6 +1122,7 @@ export function SurrogateOracleImmersion() {
       cameraStateRef.current = { ...cameraStateRef.current, x: 0, y: 0, snap: true };
       // Reset manifest latch so fresh API readiness is required for this session.
       setForceOracleManifest(false);
+      setOracleTransportProgress(0.02);
       // Fallback: if session.created hasn't arrived after 6s, manifest the avatar anyway
       // and kick a reconnect attempt so we recover if the WS died silently.
       fallbackTimer = setTimeout(() => {
@@ -1129,6 +1135,33 @@ export function SurrogateOracleImmersion() {
       if (fallbackTimer !== null) clearTimeout(fallbackTimer);
     };
   }, [scenePhase, connection]);
+
+  // Drive a real manifestation curve instead of the old binary 0/1 gate.
+  // The sampled GLB silhouette disperses immediately, holds a readable signal
+  // shape while Gemini warms, and resolves promptly once session.created lands.
+  useEffect(() => {
+    if (scenePhase !== 'oracle') {
+      setOracleTransportProgress(1);
+      return;
+    }
+
+    const startedAt = performance.now();
+    let frame = 0;
+    const tick = () => {
+      const elapsed = performance.now() - startedAt;
+      const warmup = Math.min(0.82, 0.02 + (elapsed / 2200) * 0.80);
+      const target = isGeminiSessionLive ? 1 : warmup;
+      setOracleTransportProgress((current) => {
+        const next = Math.min(1, Math.max(current, target));
+        return Math.abs(next - current) < 0.002 ? current : next;
+      });
+      if (!isGeminiSessionLive || warmup < 0.82) {
+        frame = requestAnimationFrame(tick);
+      }
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [scenePhase, isGeminiSessionLive]);
 
   // Latch hasManifested once the Gemini session confirms (or the fallback fires).
   // Keeps the 3D canvas visible during WS reconnects (isGeminiConnected briefly drops to false
@@ -1496,15 +1529,16 @@ export function SurrogateOracleImmersion() {
   useParallax(scenePhase, handleParallaxUpdate, handleZoom);
 
   const isOracleMode = scenePhase === 'oracle';
-  // 3D canvas only becomes visible once Gemini confirms session.created (or a 6s fallback fires).
-  // hasManifested latches true after first reveal so WS reconnects don't briefly hide the avatar.
-  const oracleManifestReady = isOracleMode && (hasManifested || isGeminiConnected || forceOracleManifest);
+  // The Canvas is visible for the entire Oracle handoff. Its sampled GLB
+  // transporter is the warmup state, so readiness must not hide the only
+  // visible manifestation until session.created arrives.
+  const oracleManifestReady = isOracleMode;
   // True when the 6s fallback fired but we still have no live session — shows "FRACTURE MANIFESTING"
   // instead of a silently frozen face so the seeker knows the system is trying to reconnect.
   const isFractureManifesting = isOracleMode && forceOracleManifest && !isGeminiConnected;
   // Keep the transporter beam active through the fallback state. Only the
   // real Live session resolves particles into the settled Oracle silhouette.
-  const oracleManifestProgress = isOracleMode && isGeminiSessionLive ? 1 : 0;
+  const oracleManifestProgress = isOracleMode ? oracleTransportProgress : 1;
   const awakened     = scenePhase === 'awakened' || scenePhase === 'tour' || isOracleMode;
   const isAlive      = scenePhase !== 'dormant';
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);

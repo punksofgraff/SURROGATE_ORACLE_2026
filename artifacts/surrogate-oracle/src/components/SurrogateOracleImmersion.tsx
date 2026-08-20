@@ -1169,15 +1169,17 @@ export function SurrogateOracleImmersion() {
     return () => cancelAnimationFrame(frame);
   }, [scenePhase]);
 
-  // Keep the WebSocket alive during knife selection. Seekers can spend 30-90s reading
-  // knife cards — long enough for idle-timeout to close the prewarm WS. prewarm() is
-  // idempotent: no-ops when OPEN/CONNECTING, reconnects when dead.
+  // Keep the WebSocket alive during lore typing, guided tour, and knife selection.
+  // Seekers can spend 30-90s reading lore or cards — long enough for idle-timeout to
+  // close the prewarm WS. prewarm() is idempotent: no-ops when OPEN/CONNECTING,
+  // reconnects when dead.
   useEffect(() => {
-    if (scenePhase !== 'awakened') return;
+    const isWarmingPhase = scenePhase === 'terminal' || scenePhase === 'tour' || scenePhase === 'awakened';
+    if (!isWarmingPhase) return;
     const id = setInterval(() => {
       oracleConversationRef.current?.prewarm();
-      logStep('PREWARM KEEPALIVE (awakened interval)', 'ok');
-    }, 15_000);
+      logStep(`PREWARM KEEPALIVE (${scenePhase} interval)`, 'ok');
+    }, 10_000); // 10s beats aggressive proxy/gateway idle timeouts
     return () => clearInterval(id);
   }, [scenePhase]);
 

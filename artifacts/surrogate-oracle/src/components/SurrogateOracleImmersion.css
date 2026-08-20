@@ -289,17 +289,6 @@
   }
 }
 
-/* ── Layer 3: Atmosphere Canvas ───────────────────────────────────────── */
-.atmosphere-layer {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: var(--z-atmosphere);
-  /* opacity is managed by useAtmosphere masterOpacity — no CSS transition needed */
-}
-
 /* ── Ghost Transmissions — Cheshire Cat signal field (dormant) ──────────
    Absolutely positioned across the full stage; each phrase types letter-
    by-letter then dissipates before the next appears.
@@ -5157,10 +5146,6 @@
     animation: none !important;
   }
   
-  .atmosphere-layer {
-    display: none; /* Already handled in JS, but CSS as a second layer */
-  }
-
   /* Ensure elements are visible at their target state opacities even if animations are disabled */
   .oracle-stage[data-oracle-state="dormant"] .oracle-avatar-static { opacity: 0.35; }
   .oracle-stage[data-oracle-state="terminal"] .oracle-avatar-static { opacity: 0.60; }

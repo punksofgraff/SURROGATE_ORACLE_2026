@@ -53,7 +53,6 @@ import { useIpCheck } from '../hooks/useIpCheck';
 import { supabase } from '../lib/supabase';
 import { useSeekerEcho } from '../hooks/useSeekerEcho';
 import { useSeekerDefine } from '../hooks/useSeekerDefine';
-import { useAtmosphere } from '../hooks/useAtmosphere';
 import { useParallax } from '../hooks/useParallax';
 import { useXRMode } from '../hooks/useXRMode';
 import { useTypewriter } from '../hooks/useTypewriter';
@@ -301,7 +300,6 @@ export function SurrogateOracleImmersion() {
   const visemeStateRef = useRef<VisemeState>(SILENCE_VISEME_STATE);
   const cameraStateRef = useRef<import('./OracleAvatar3D').CameraState>({ x: 0, y: 0, zoom: 1 });
   const oracleConversationRef    = useRef<OracleConversationHandle | null>(null);
-  const atmosphereCanvasRef      = useRef<HTMLCanvasElement | null>(null);
   const staticAvatarRef          = useRef<HTMLImageElement | null>(null);
   const walletIframeRef          = useRef<HTMLIFrameElement | null>(null);
   const seekerKeyRef             = useRef<string | null>(null);
@@ -1509,8 +1507,6 @@ export function SurrogateOracleImmersion() {
     };
   }, []);
 
-  useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment, isDegraded);
-
   const oracleStageRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let rafId: number;
@@ -1685,7 +1681,6 @@ export function SurrogateOracleImmersion() {
         ))}
       </div>
 
-      <canvas ref={atmosphereCanvasRef} className="atmosphere-layer" />
       <MatrixRain />
       <div className="oracle-ground-fog" />
       <div className="oracle-floor-reflection" />

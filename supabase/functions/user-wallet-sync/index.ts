@@ -81,7 +81,11 @@ function newChallengeMessage(nonce: string, expiresAt: string): string {
   ].join('\n');
 }
 
-Deno.serve(async (req: Request) => {
+export function createWalletSyncHandler(
+  supabase: ReturnType<typeof createClient>,
+  now: () => number = Date.now,
+) {
+  return async (req: Request): Promise<Response> => {
   // Dev-trace correlation: echo client-supplied ids into function logs (no-op for real seekers).
   { const _rid = req.headers.get('x-oracle-request-id'); if (_rid) console.log('[trace] rid=' + _rid + ' sid=' + (req.headers.get('x-oracle-session-id') ?? '')); }
   if (req.method === 'OPTIONS') {
@@ -103,15 +107,10 @@ Deno.serve(async (req: Request) => {
       return json(400, { success: false, error: 'action is required' });
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
     // ---- CHALLENGE: issue a short-lived, IP-bound, one-time message ----
     if (body.action === 'challenge') {
       const nonce = crypto.randomUUID();
-      const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS).toISOString();
+      const expiresAt = new Date(now() + CHALLENGE_TTL_MS).toISOString();
       const message = newChallengeMessage(nonce, expiresAt);
       const { error } = await supabase.from('wallet_link_challenges').insert({
         nonce,
@@ -179,7 +178,7 @@ Deno.serve(async (req: Request) => {
         if (challengeError || !challenge) {
           return json(401, { success: false, error: 'Unknown or mismatched wallet challenge' });
         }
-        if (challenge.used_at || new Date(challenge.expires_at).getTime() <= Date.now()) {
+        if (challenge.used_at || new Date(challenge.expires_at).getTime() <= now()) {
           return json(401, { success: false, error: 'Wallet challenge is expired or already used' });
         }
 
@@ -198,11 +197,11 @@ Deno.serve(async (req: Request) => {
         // and makes a valid signed message single-use.
         const { data: consumed, error: consumeError } = await supabase
           .from('wallet_link_challenges')
-          .update({ used_at: new Date().toISOString() })
+          .update({ used_at: new Date(now()).toISOString() })
           .eq('nonce', challenge.nonce)
           .eq('ip_address', ip_address)
           .is('used_at', null)
-          .gt('expires_at', new Date().toISOString())
+          .gt('expires_at', new Date(now()).toISOString())
           .select('nonce')
           .maybeSingle();
         if (consumeError || !consumed) {
@@ -232,4 +231,12 @@ Deno.serve(async (req: Request) => {
     console.error('user-wallet-sync error:', error);
     return json(500, { success: false, error: `Internal server error: ${(error as Error).message}` });
   }
-});
+  };
+}
+
+Deno.serve(createWalletSyncHandler(
+  createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+  ),
+));

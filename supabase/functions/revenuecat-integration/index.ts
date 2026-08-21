@@ -45,6 +45,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    const ipAddress = req.headers.get('cf-connecting-ip');
     const { action, userId, productId, subscriptionData }: RevenueCatRequest = await req.json();
 
     if (!userId) {
@@ -58,6 +59,28 @@ Deno.serve(async (req: Request) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
+    }
+
+    // Authorization: ensure caller owns the requested userId
+    if (action !== 'get_available_products') {
+      const allowedKeys = [ipAddress].filter(Boolean);
+      if (ipAddress) {
+        const { data: walletData } = await supabase
+          .from('user_wallets')
+          .select('wallet_address')
+          .eq('ip_address', ipAddress)
+          .single();
+        if (walletData?.wallet_address) {
+          allowedKeys.push(walletData.wallet_address);
+        }
+      }
+      
+      if (!allowedKeys.includes(userId)) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Unauthorized to act on this user ID' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     console.log(`📱 RevenueCat Integration: ${action} for user ${userId}`);

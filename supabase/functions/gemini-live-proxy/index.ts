@@ -36,9 +36,8 @@ const GEMINI_BASE    = 'wss://generativelanguage.googleapis.com/ws/google.ai.gen
 const ALLOW_PAID_FAILOVER = (Deno.env.get('ALLOW_PAID_FAILOVER') ?? 'false').toLowerCase() === 'true';
 
 // ALLOWED_ORIGINS — comma-separated list of permitted request origins.
-// Empty (default): origin check disabled — fails OPEN so prod is never broken by a missing secret.
-// Non-empty: only listed origins are allowed; all others receive 403.
-const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ?? '').split(',').map(s => s.trim()).filter(Boolean);
+// Default fallback: localhost + canonical domains to ensure security fails closed in prod.
+const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ?? 'http://localhost:5173,https://thesurrogate.me,https://wallet.thesurrogate.me,https://www.thesurrogate.me').split(',').map(s => s.trim()).filter(Boolean);
 
 // MAX_SESSION_MS — hard cap on a single Gemini session duration.
 // Default: 900000 ms (15 minutes). Set to 0 to disable (not recommended in production).

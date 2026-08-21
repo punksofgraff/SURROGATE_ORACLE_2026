@@ -34,6 +34,8 @@ interface WalletSyncBody {
   action: 'get' | 'upsert';
   onboarding_status?: string;
   wallet_address?: string;
+  signature?: string;
+  message?: string;
 }
 
 const VALID_STATUSES = new Set(['visited', 'lore_completed', 'wallet_signed']);
@@ -120,6 +122,21 @@ Deno.serve(async (req: Request) => {
           return json(400, { success: false, error: 'Invalid wallet_address' });
         }
         wallet_address = body.wallet_address;
+      }
+
+      // Cryptographic signature check (ready for Patrick's frontend update)
+      if (wallet_address && body.signature && body.message) {
+        try {
+          const { verifyMessage } = await import('npm:ethers@6');
+          const recovered = verifyMessage(body.message, body.signature);
+          if (recovered.toLowerCase() !== wallet_address.toLowerCase()) {
+            return json(401, { success: false, error: 'Cryptographic signature verification failed' });
+          }
+          console.log(`✅ Cryptographic signature verified for ${wallet_address}`);
+        } catch (sigErr) {
+          console.error('❌ Signature verification error:', sigErr);
+          return json(400, { success: false, error: `Invalid signature payload: ${(sigErr as Error).message}` });
+        }
       }
 
       // Atomic, monotonic upsert — never downgrades onboarding_status and never

@@ -24,6 +24,7 @@ const GOOGLE_AI_KEY_FREE        = Deno.env.get('GOOGLE_AI_KEY_FREE') ?? '';
 const GOOGLE_AI_KEY_PAID        = Deno.env.get('GOOGLE_AI_KEY_PAID') ?? '';
 
 import { ORACLE_SYSTEM_PROMPT, buildWorldContextBlock } from './promptBlocks.ts';
+import { getAllowedOrigins, isDevelopmentEnvironment, originRejectionReason } from './security.ts';
 
 const FAIL_THRESHOLD = 3;
 const PAID_RESET_MS  = 24 * 60 * 60 * 1000;
@@ -36,15 +37,17 @@ const GEMINI_BASE    = 'wss://generativelanguage.googleapis.com/ws/google.ai.gen
 const ALLOW_PAID_FAILOVER = (Deno.env.get('ALLOW_PAID_FAILOVER') ?? 'false').toLowerCase() === 'true';
 
 // ALLOWED_ORIGINS — comma-separated list of permitted request origins.
-// Default fallback: localhost + canonical domains to ensure security fails closed in prod.
-const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ?? 'http://localhost:5173,https://thesurrogate.me,https://wallet.thesurrogate.me,https://www.thesurrogate.me').split(',').map(s => s.trim()).filter(Boolean);
+// The canonical production origins are the fallback. Localhost is included
+// only when the deployment explicitly declares itself to be development.
+const IS_DEVELOPMENT = isDevelopmentEnvironment({
+  ENVIRONMENT: Deno.env.get('ENVIRONMENT'),
+  NODE_ENV: Deno.env.get('NODE_ENV'),
+});
+const ALLOWED_ORIGINS = getAllowedOrigins(Deno.env.get('ALLOWED_ORIGINS'), IS_DEVELOPMENT);
 
 // MAX_SESSION_MS — hard cap on a single Gemini session duration.
 // Default: 900000 ms (15 minutes). Set to 0 to disable (not recommended in production).
 const MAX_SESSION_MS = Number(Deno.env.get('MAX_SESSION_MS') ?? '900000');
-
-// One-time warning flag for missing ALLOWED_ORIGINS (avoids log spam).
-let originCheckWarned = false;
 
 // ── Module-level state cache ───────────────────────────────────────────────
 // Seeded optimistically so the first WS connection never blocks on a DB fetch.
@@ -119,18 +122,13 @@ Deno.serve(async (req: Request) => {
   // 1. CORS preflight
   if (req.method === 'OPTIONS') {
     const preflightOrigin = req.headers.get('origin') ?? '';
-    const allowOriginHeader =
-      ALLOWED_ORIGINS.length === 0
-        ? '*'
-        : ALLOWED_ORIGINS.includes(preflightOrigin)
-          ? preflightOrigin
-          : null;
-    if (allowOriginHeader === null) {
-      return new Response('Forbidden origin', { status: 403 });
+    const originError = originRejectionReason(preflightOrigin, ALLOWED_ORIGINS);
+    if (originError !== null) {
+      return new Response(originError, { status: 403 });
     }
     return new Response(null, {
       headers: {
-        'Access-Control-Allow-Origin': allowOriginHeader,
+        'Access-Control-Allow-Origin': preflightOrigin,
         'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
       },
     });
@@ -141,16 +139,11 @@ Deno.serve(async (req: Request) => {
   const upgradeHeader = req.headers.get('upgrade') ?? '';
   if (upgradeHeader.toLowerCase() === 'websocket') {
     // Origin check — must happen BEFORE upgradeWebSocket (the call is irreversible).
-    const origin = req.headers.get('origin') ?? '';
-    if (ALLOWED_ORIGINS.length > 0) {
-      if (origin && !ALLOWED_ORIGINS.includes(origin)) {
-        return new Response('Forbidden origin', { status: 403 });
-      }
-    } else {
-      if (!originCheckWarned) {
-        originCheckWarned = true;
-        console.warn('[gemini-live-proxy] ALLOWED_ORIGINS unset — origin check disabled');
-      }
+    const origin = req.headers.get('origin');
+    const originError = originRejectionReason(origin, ALLOWED_ORIGINS);
+    if (originError !== null) {
+      console.warn(`[gemini-live-proxy] WebSocket rejected: ${originError}`);
+      return new Response(originError, { status: 403 });
     }
 
     ensureCacheBooted();

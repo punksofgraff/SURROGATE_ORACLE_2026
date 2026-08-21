@@ -5143,7 +5143,14 @@
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-smoke-hook {
-  animation: oracle-phase-manifest 2s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Keep the WebGL compositing boundary stable on mobile. Animating/filtering
+     this rectangular canvas wrapper can surface as a white sheet on iOS.
+     The GLB transporter owns the manifestation effect inside the canvas. */
+  opacity: 1;
+  filter: none;
+  transform: none;
+  transition: none !important;
+  animation: none !important;
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-headroom-hook {

@@ -18,7 +18,7 @@ export interface UseWalletBridgeParams {
   echo: SeekerEcho | null;
   echoTrackRef: RefObject<EchoTrack>;
   seekerKeyRef: RefObject<string | null>;
-  markWalletSigned: (walletAddress?: string) => void | Promise<void>;
+  markWalletSigned: (walletAddress?: string, signature?: string, message?: string) => void | Promise<boolean>;
   loadEcho: (key: string) => Promise<SeekerEcho | null>;
   saveEcho: (partial: SeekerEchoUpsert) => Promise<SeekerEcho | null>;
   handleAwakeTransition: () => void;
@@ -58,6 +58,21 @@ export function useWalletBridge({
 }: UseWalletBridgeParams) {
   const walletPopupRef = useRef<Window | null>(null);
   const walletReturnHandledRef = useRef(false); // top-level wallet-return URL (?seeker=) handled once per load
+  const walletChallengeRef = useRef<string | null>(null);
+
+  // Fetch before the wallet opens. The challenge is short-lived and bound to the
+  // caller's server-derived IP; it is passed through the wallet return URL.
+  useEffect(() => {
+    let cancelled = false;
+    void supabase.functions.invoke('user-wallet-sync', {
+      body: { action: 'challenge' },
+    }).then(({ data, error }) => {
+      if (!cancelled && !error && typeof data?.message === 'string') {
+        walletChallengeRef.current = data.message;
+      }
+    }).catch(err => console.warn('Wallet challenge request failed:', err));
+    return () => { cancelled = true; };
+  }, []);
 
   // ── Popup Bridge Autoclose ──────────────────────────────────────────────
   // If this instance is running inside a popup (opened via openWalletPopup) and we
@@ -75,6 +90,8 @@ export function useWalletBridge({
         window.opener.postMessage({
           type: 'wallet_signed',
           address: seeker,
+          signature: params.get('signature') || params.get('sig'),
+          message: params.get('message'),
           event: params.get('event') || 'signin'
         }, window.location.origin); // target specific origin to prevent leakage
         window.close();
@@ -98,6 +115,8 @@ export function useWalletBridge({
         window.parent.postMessage({
           type: 'wallet_signed',
           address: seeker,
+          signature: params.get('signature') || params.get('sig'),
+          message: params.get('message'),
           event: params.get('event') || 'signin'
         }, window.location.origin); // same trust model as the popup bridge
       } catch (e) {
@@ -130,7 +149,20 @@ export function useWalletBridge({
   // directly, captures the wallet address as the seeker key (so history is keyed by wallet,
   // not IP), and carries over any IP-keyed echo built before the wallet connected.
   // Called by BOTH the iframe postMessage path AND the top-level return-URL path below.
-  const processWalletSignIn = useCallback(async (walletAddress?: string) => {
+  const processWalletSignIn = useCallback(async (
+    walletAddress?: string,
+    signature?: string,
+    message?: string,
+  ) => {
+    if (!walletAddress || !signature || !message) {
+      logStep('WALLET SIGN-IN REJECTED — fresh signature required', 'warn');
+      return;
+    }
+    const accepted = await markWalletSigned(walletAddress, signature, message);
+    if (accepted === false) {
+      logStep('WALLET SIGN-IN REJECTED — signature verification failed', 'warn');
+      return;
+    }
     // Set signed state FIRST. markWalletSigned writes the agnostic localStorage flag
     // synchronously, so a seeker who taps immediately after returning still bypasses lore
     // straight into the alley — even before the async echo load below resolves.
@@ -143,8 +175,6 @@ export function useWalletBridge({
     // markWalletSigned writes the localStorage flags synchronously before its first
     // await, so the alley-entry check is satisfied immediately; awaiting the rest
     // ensures the DB row lands before the echo load below reads related state.
-    const signedPersist = Promise.resolve(markWalletSigned(walletAddress))
-      .catch(err => console.warn('Wallet sign persistence failed (non-fatal):', err));
     setShowJourneyLimitGate(false);
     logStep('WALLET SIGNED — ALLEY RETURN ENABLED', 'ok');
     traceEvent('bridge', { kind: 'sign_in_processed', has_address: !!walletAddress, phase: scenePhase });
@@ -156,8 +186,6 @@ export function useWalletBridge({
       logStep('WALLET SIGNAL RECOGNIZED — AUTO-TRANSITION TO ALLEY', 'ok');
       handleAwakeTransition();
     }
-
-    await signedPersist;
 
     if (walletAddress) {
       // Load echo for this wallet address
@@ -223,6 +251,9 @@ export function useWalletBridge({
 
       u.searchParams.set('return_url', returnUrl.toString());
       u.searchParams.set('event', event);
+      if (walletChallengeRef.current) {
+        u.searchParams.set('challenge', walletChallengeRef.current);
+      }
       return u.toString();
     } catch {
       return url;
@@ -309,7 +340,7 @@ export function useWalletBridge({
           `WALLET BRIDGE — accepted ${e.data.type}${walletAddress ? ' (address captured)' : ' (NO address field!)'}`,
           walletAddress ? 'ok' : 'warn',
         );
-        void processWalletSignIn(walletAddress);
+        void processWalletSignIn(walletAddress, e.data.signature || e.data.sig, e.data.message);
 
         // Auto-close secure popup on successful handshake
         if (walletPopupRef.current) {
@@ -341,6 +372,8 @@ export function useWalletBridge({
     walletReturnHandledRef.current = true;
 
     const event = params.get('event'); // optional: 'signin' | 'mint'
+    const signature = params.get('signature') || params.get('sig');
+    const message = params.get('message');
     const sessionId = params.get('session_id');
     if (sessionId) {
       localStorage.setItem('oracle_active_session_id', sessionId);
@@ -348,7 +381,7 @@ export function useWalletBridge({
 
     logStep(`WALLET RETURN DETECTED${event ? ` (${event})` : ''} — activating seeker`, 'ok');
     traceEvent('bridge', { kind: 'redirect_return', event: event ?? 'signin', restored_session: !!sessionId });
-    void processWalletSignIn(seeker);
+    void processWalletSignIn(seeker, signature ?? undefined, message ?? undefined);
     // NOTE: no deferred DB flush needed anymore — user-wallet-sync derives the
     // caller IP server-side, so markWalletSigned persists even before the local
     // IP check resolves.
@@ -359,6 +392,9 @@ export function useWalletBridge({
     params.delete('address');
     params.delete('event');
     params.delete('session_id');
+    params.delete('signature');
+    params.delete('sig');
+    params.delete('message');
     const qs = params.toString();
     const newUrl = window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash;
     window.history.replaceState({}, '', newUrl);

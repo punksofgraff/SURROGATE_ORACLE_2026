@@ -226,7 +226,7 @@ export function SurrogateOracleImmersion() {
   );
 
   const [oracleAvatarDataUrl] = useState<string>(ORACLE_AVATAR_URL);
-  const [currentUserId, setCurrentUserId]   = useState<string | null>(() => localStorage.getItem('oracle_seeker_key'));
+  const [currentUserId, setCurrentUserId]   = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState(() => {
     const stored = localStorage.getItem('oracle_active_session_id');
     if (stored) return stored;
@@ -340,7 +340,10 @@ export function SurrogateOracleImmersion() {
   const finalTurnsRef = useRef<SessionTurns>([]);
 
   // ── Service Hooks ───────────────────────────────────────────────────────
-  const { isReturning, hasCompletedLore, hasSignedWallet, markVisited, markLoreCompleted, markWalletSigned, ipAddress } = useIpCheck();
+  const { isReturning, hasCompletedLore, hasSignedWallet, markVisited, markLoreCompleted, markWalletSigned, ipAddress, verifiedWalletAddress } = useIpCheck();
+  useEffect(() => {
+    if (verifiedWalletAddress) setCurrentUserId(verifiedWalletAddress);
+  }, [verifiedWalletAddress]);
   const { echo, loadEcho, saveEcho } = useSeekerEcho();
   const { defineSeeker } = useSeekerDefine();
 
@@ -454,7 +457,7 @@ export function SurrogateOracleImmersion() {
     // animation for the WS to establish before knife cards are interactive.
     // Safe to call even if prewarm already fired (idempotent — no-ops if OPEN/CONNECTING).
     oracleConversationRef.current?.prewarm();
-    const hasWalletKey = !!(currentUserId || localStorage.getItem('oracle_seeker_key'));
+    const hasWalletKey = !!currentUserId;
     const isFirstTimeSeeker = (!hasCompletedLore && !hasWalletKey) || new URLSearchParams(window.location.search).has('newuser');
     markLoreCompleted();
     trackOracleEvent({
@@ -654,7 +657,7 @@ export function SurrogateOracleImmersion() {
     // Check both the React state (set by async IP check) AND the IP-agnostic localStorage
     // key directly so fast tappers before the IP check resolves are still recognised.
     const forceNew = new URLSearchParams(window.location.search).has('newuser');
-    const walletSigned = hasSignedWallet || !!localStorage.getItem('oracle_wallet_signed');
+    const walletSigned = hasSignedWallet;
     if (walletSigned && !forceNew) {
       logStep('WALLET SIGNED → DIRECT ALLEY ENTRY', 'ok');
       // Build a personalized greeting if the seeker has a known echo record

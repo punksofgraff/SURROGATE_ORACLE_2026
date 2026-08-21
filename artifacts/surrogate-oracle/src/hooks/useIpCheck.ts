@@ -19,6 +19,7 @@ export function useIpCheck() {
   const [hasCompletedLore, setHasCompletedLore] = useState(false);
   const [hasSignedWallet, setHasSignedWallet] = useState(false);
   const [ipAddress, setIpAddress] = useState<string | null>(null);
+  const [verifiedWalletAddress, setVerifiedWalletAddress] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(!forceNew);
 
   useEffect(() => {
@@ -26,16 +27,6 @@ export function useIpCheck() {
 
     async function checkIp() {
       try {
-        // Wallet sign flags are IP-agnostic-first: a stored wallet seeker key or the
-        // agnostic signed flag counts immediately, before any network round-trip.
-        const walletFlagEarly = localStorage.getItem('oracle_wallet_signed')
-          || localStorage.getItem('oracle_seeker_key');
-        if (walletFlagEarly) {
-          setHasSignedWallet(true);
-          setHasCompletedLore(true);
-          setIsReturning(true);
-        }
-
         // Single round-trip: the edge function derives the caller IP server-side
         // and returns it along with any existing row for that IP.
         const { data: fnData, error } = await supabase.functions.invoke('user-wallet-sync', {
@@ -49,15 +40,13 @@ export function useIpCheck() {
         if (ip) {
           if (localStorage.getItem(`surrogate_visited_${ip}`)) setIsReturning(true);
           if (localStorage.getItem(`surrogate_lore_completed_${ip}`)) setHasCompletedLore(true);
-          const walletFlag = localStorage.getItem(`oracle_wallet_signed_${ip}`) || walletFlagEarly;
-          if (walletFlag) {
-            setHasSignedWallet(true);
-            // Upgrade to IP-keyed storage so future loads skip the agnostic fallback.
-            localStorage.setItem(`oracle_wallet_signed_${ip}`, 'true');
-          }
         }
 
-        const walletData = fnData?.data as { ip_address: string; onboarding_status: string } | null;
+        const walletData = fnData?.data as {
+          ip_address: string;
+          onboarding_status: string;
+          wallet_address?: string | null;
+        } | null;
 
         if (walletData && !error) {
           setIsReturning(true);
@@ -72,6 +61,10 @@ export function useIpCheck() {
             setHasSignedWallet(true);
             if (ip) localStorage.setItem(`oracle_wallet_signed_${ip}`, 'true');
             localStorage.setItem('oracle_wallet_signed', 'true');
+            if (walletData.wallet_address) {
+              setVerifiedWalletAddress(walletData.wallet_address);
+              localStorage.setItem('oracle_seeker_key', walletData.wallet_address);
+            }
           }
 
           logStep('IP CHECK: RETURN TRIP VERIFIED', 'ok');
@@ -119,35 +112,42 @@ export function useIpCheck() {
     }
   };
 
-  const markWalletSigned = async (walletAddress?: string) => {
-    // Always write the IP-agnostic key immediately so the sign is captured even
-    // if the IP check hasn't resolved yet (avoids silent drop on fast signers).
-    localStorage.setItem('oracle_wallet_signed', 'true');
-    if (walletAddress) {
-      // Persist the canonical seeker key so future sessions resolve to the wallet, not the IP.
-      localStorage.setItem('oracle_seeker_key', walletAddress);
-    }
-    setHasSignedWallet(true);
-    setHasCompletedLore(true);
-    setIsReturning(true);
-
-    if (ipAddress) {
-      localStorage.setItem(`oracle_wallet_signed_${ipAddress}`, 'true');
-      localStorage.setItem(`surrogate_lore_completed_${ipAddress}`, 'true');
-    }
+  const markWalletSigned = async (
+    walletAddress?: string,
+    signature?: string,
+    message?: string,
+  ): Promise<boolean> => {
     try {
-      // Server derives the caller IP itself — safe to call even before the
-      // local IP check resolves (no IP needed in the body anymore).
-      await supabase.functions.invoke('user-wallet-sync', {
+      const { data, error } = await supabase.functions.invoke('user-wallet-sync', {
         body: {
           action: 'upsert',
           onboarding_status: 'wallet_signed',
           ...(walletAddress ? { wallet_address: walletAddress } : {}),
+          ...(signature ? { signature } : {}),
+          ...(message ? { message } : {}),
         },
       });
+      if (error || !data?.success) {
+        console.warn('Wallet signature was rejected:', data?.error ?? error?.message);
+        return false;
+      }
+      // Identity only becomes durable after the server accepts the signature.
+      localStorage.setItem('oracle_wallet_signed', 'true');
+      if (walletAddress) localStorage.setItem('oracle_seeker_key', walletAddress);
+      setHasSignedWallet(true);
+      setHasCompletedLore(true);
+      setIsReturning(true);
+      if (ipAddress) {
+        localStorage.setItem(`oracle_wallet_signed_${ipAddress}`, 'true');
+        localStorage.setItem(`surrogate_lore_completed_${ipAddress}`, 'true');
+      }
       logStep('WALLET SIGNED: ALLEY ACCESS PERSISTED', 'ok');
-    } catch (e) { /* ignore */ }
+      return true;
+    } catch (e) {
+      console.warn('Wallet signature persistence failed:', e);
+      return false;
+    }
   };
 
-  return { isReturning, hasCompletedLore, hasSignedWallet, isChecking, ipAddress, markVisited, markLoreCompleted, markWalletSigned };
+  return { isReturning, hasCompletedLore, hasSignedWallet, isChecking, ipAddress, verifiedWalletAddress, markVisited, markLoreCompleted, markWalletSigned };
 }

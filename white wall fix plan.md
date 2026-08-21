@@ -112,6 +112,13 @@ This avoids applying the reduction only to some scene constants or inconsistentl
 
 ## Verification So Far
 
+- The production diff identified the strongest regression: production commit
+  `f220bc60a903ca78ab5e842d6c5b267af2bf938c` kept the outer WebGL wrapper static,
+  while later commit `c32bb4723a7a1c506d07cc5761e68333865ad88d` added
+  `oracle-phase-manifest` to that wrapper. The wrapper contains the expanded
+  R3F canvas, so its brightness/filter/transform animation could expose a
+  rectangular compositing surface. The forward fix restores the stable wrapper
+  behavior while retaining the newer GLB transporter.
 - TypeScript typecheck passes.
 - Production build passes.
 - Managed web workflow restarts successfully.

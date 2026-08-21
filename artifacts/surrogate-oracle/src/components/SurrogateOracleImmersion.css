@@ -5113,7 +5113,15 @@
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-smoke-hook {
-  animation: oracle-phase-manifest 2s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* Match the production deploy's stable WebGL compositing boundary. The
+     oracle-phase-manifest animation used to filter/transform this entire
+     rectangular canvas wrapper, which could surface as a white sheet on
+     mobile compositors. The GLB transporter owns manifestation now. */
+  opacity: 1;
+  filter: none;
+  transform: none;
+  transition: none !important;
+  animation: none !important;
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-headroom-hook {

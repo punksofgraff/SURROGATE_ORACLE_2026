@@ -48,10 +48,12 @@ export function InlineSubscriptionModal({
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const result = await response.json();
 
-      if (result.success) {
-        setShowSuccess(true);
-        onUpgradeSuccess?.(productId);
-        setTimeout(onClose, 2000);
+       if (result.success && result.purchaseInitiated) {
+         setShowSuccess(true);
+         onUpgradeSuccess?.(productId);
+         setTimeout(onClose, 2000);
+       } else if (response.status === 202) {
+         setError('Finish checkout in the RevenueCat app purchase flow. Premium access appears here after the verified store event arrives.');
       } else {
         throw new Error(result.error || 'Upgrade failed');
       }

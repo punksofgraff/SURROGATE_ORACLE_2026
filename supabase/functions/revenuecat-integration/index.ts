@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { isAllowedUser } from './authorization.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,10 +8,9 @@ const corsHeaders = {
 };
 
 interface RevenueCatRequest {
-  action: 'get_subscription_status' | 'get_available_products' | 'update_subscription';
+  action: 'get_subscription_status' | 'get_available_products' | 'initiate_purchase';
   userId: string;
   productId?: string;
-  subscriptionData?: any;
 }
 
 interface RevenueCatResponse {
@@ -46,7 +46,7 @@ Deno.serve(async (req: Request) => {
     );
 
     const ipAddress = req.headers.get('cf-connecting-ip');
-    const { action, userId, productId, subscriptionData }: RevenueCatRequest = await req.json();
+    const { action, userId, productId }: RevenueCatRequest = await req.json();
 
     if (!userId) {
       return new Response(
@@ -63,19 +63,17 @@ Deno.serve(async (req: Request) => {
 
     // Authorization: ensure caller owns the requested userId
     if (action !== 'get_available_products') {
-      const allowedKeys = [ipAddress].filter(Boolean);
+      let walletAddress: string | null = null;
       if (ipAddress) {
         const { data: walletData } = await supabase
           .from('user_wallets')
           .select('wallet_address')
           .eq('ip_address', ipAddress)
           .single();
-        if (walletData?.wallet_address) {
-          allowedKeys.push(walletData.wallet_address);
-        }
+        walletAddress = walletData?.wallet_address ?? null;
       }
       
-      if (!allowedKeys.includes(userId)) {
+      if (!isAllowedUser(userId, ipAddress, walletAddress)) {
         return new Response(
           JSON.stringify({ success: false, error: 'Unauthorized to act on this user ID' }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -223,88 +221,18 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      case 'update_subscription': {
-        if (!productId || !subscriptionData) {
-          return new Response(
-            JSON.stringify({ 
-              success: false,
-              error: 'Product ID and subscription data are required' 
-            }),
-            {
-              status: 400,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            }
-          );
-        }
-
-        console.log(`🔄 Updating subscription to: ${productId}`);
-
-        // Insert or update RevenueCat subscription record
-        const { error: upsertError } = await supabase
-          .from('revenuecat_subscriptions')
-          .upsert({
-            user_id: userId,
-            event_id: subscriptionData.eventId || crypto.randomUUID(),
-            event_type: 'initial_purchase',
-            product_id: productId,
-            store: subscriptionData.store || 'app_store',
-            environment: subscriptionData.environment || 'production',
-            status: 'active',
-            premium_access: true,
-            purchased_at: new Date().toISOString(),
-            expiration_at: subscriptionData.expirationAt,
-            country_code: subscriptionData.countryCode || 'US',
-            currency: subscriptionData.currency || 'USD',
-            price: subscriptionData.price,
-            subscriber_attributes: subscriptionData.attributes || {},
-            updated_at: new Date().toISOString()
-          });
-
-        if (upsertError) {
-          console.error('❌ Failed to update subscription:', upsertError);
-          return new Response(
-            JSON.stringify({ 
-              success: false,
-              error: `Failed to update subscription: ${upsertError.message}` 
-            }),
-            {
-              status: 500,
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            }
-          );
-        }
-
-        // Update user consciousness metrics with new tier
-        const tierMapping: Record<string, string> = {
-          'prod54d54dd866': 'seeker',
-          'prod311f595c65': 'trans_humanist',
-          'prod70269376ed': 'cultural_architect'
-        };
-
-        const newTier = tierMapping[productId] || 'free';
-
-        const { error: metricsError } = await supabase
-          .from('user_consciousness_metrics')
-          .upsert({
-            user_id: userId,
-            subscription_tier: newTier,
-            updated_at: new Date().toISOString()
-          });
-
-        if (metricsError) {
-          console.warn('⚠️ Failed to update user metrics tier:', metricsError);
-        }
-
-        console.log('✅ Subscription updated successfully');
-
+      case 'initiate_purchase': {
+        // A client may request a purchase flow, but it must never be able to
+        // write subscription state. RevenueCat's SDK/store and webhook own
+        // that flow; the webhook is the only writer for this table.
         return new Response(
-          JSON.stringify({ 
+          JSON.stringify({
             success: true,
-            tier: newTier,
-            productId: productId
+            purchaseInitiated: false,
+            message: 'Complete the purchase through the RevenueCat client SDK. Entitlements are granted after provider verification.'
           }),
           {
-            status: 200,
+            status: 202,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           }
         );

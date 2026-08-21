@@ -645,7 +645,7 @@ export const BackendControlPanel = ({
                       whileHover={{ scale: 1.04, boxShadow: '0 0 44px rgba(176,38,255,0.5)' }}
                       whileTap={{ scale: 0.97 }}
                       data-testid="debug-access-btn"
-                      style={{ padding: '18px 40px', background: 'rgba(176,38,255,0.12)', border: '2px solid #b026ff', borderRadius: '4px 18px 4px 18px', color: '#b026ff', cursor: 'pointer', fontFamily: "'aAnotherTag', sans-serif", fontSize: 'clamp(1.2rem, 4vw, 1.6rem)', fontWeight: 900, letterSpacing: '0.12em', boxShadow: '0 0 22px rgba(176,38,255,0.24)' }}
+                      style={{ padding: '18px 40px', background: 'rgba(176,38,255,0.12)', border: '2px solid #b026ff', borderRadius: '4px 18px 4px 18px', color: '#b026ff', cursor: 'pointer', fontFamily: "'adrip1', sans-serif", fontSize: 'clamp(1.2rem, 4vw, 1.6rem)', fontWeight: 900, letterSpacing: '0.12em', boxShadow: '0 0 22px rgba(176,38,255,0.24)' }}
                     >
                       DECRYPT
                     </motion.button>

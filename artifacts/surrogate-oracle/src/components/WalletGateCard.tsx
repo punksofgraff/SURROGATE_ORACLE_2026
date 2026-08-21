@@ -50,7 +50,7 @@ export default function WalletGateCard({ onRegister }: WalletGateCardProps) {
         }} />
 
         <div style={{
-          fontFamily:    '"aAnotherTag", "Courier New", monospace',
+          fontFamily:    '"adrip1", "Courier New", monospace',
           fontSize:      '0.65rem',
           letterSpacing: '0.22em',
           color:         'rgba(0,255,136,0.55)',
@@ -73,7 +73,7 @@ export default function WalletGateCard({ onRegister }: WalletGateCardProps) {
         </div>
 
         <div style={{
-          fontFamily:    '"aAnotherTag", "Courier New", monospace',
+          fontFamily:    '"adrip1", "Courier New", monospace',
           fontSize:      '0.8rem',
           color:         'rgba(200,230,215,0.65)',
           lineHeight:    1.6,
@@ -94,7 +94,7 @@ export default function WalletGateCard({ onRegister }: WalletGateCardProps) {
             border:        '1px solid rgba(0,255,136,0.55)',
             borderRadius:  '1px',
             color:         '#00ff88',
-            fontFamily:    '"aAnotherTag", "Courier New", monospace',
+            fontFamily:    '"adrip1", "Courier New", monospace',
             fontSize:      '0.75rem',
             letterSpacing: '0.18em',
             textTransform: 'uppercase',

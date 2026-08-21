@@ -244,7 +244,7 @@ export function TalismanCard({ data, onDismiss }: TalismanCardProps) {
               animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
               transition={{ delay: 1.0, duration: 1.4, ease: [0.22, 1, 0.36, 1] }}
               style={{
-                fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+                fontFamily: "'adrip1', 'Orbitron', monospace",
                 fontWeight: 900,
                 fontSize: 'clamp(1.6rem, 7vw, 3rem)',
                 lineHeight: 1.05, letterSpacing: '0.02em',

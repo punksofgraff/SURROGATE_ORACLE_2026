@@ -166,7 +166,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
           <Terminal size={48} style={{ color: '#00ff88', margin: '0 auto 16px', opacity: 0.8 }} />
           <h2 style={{ 
             fontSize: '1.4rem', 
-            fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+            fontFamily: "'adrip1', 'Orbitron', monospace",
             letterSpacing: '0.15em', 
             marginBottom: 8, 
             background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',

@@ -179,7 +179,7 @@ export function PortraitGalleryDashboard({
       {portraits.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '44px 20px' }}>
           <Sparkles size={36} style={{ marginBottom: 14, color: '#00ff8840' }} />
-          <div style={{ fontFamily: "'aAnotherTag', sans-serif", fontSize: 'clamp(1.4rem, 5vw, 2.0rem)', color: '#00ff88', letterSpacing: '0.05em', marginBottom: 10 }}>NOT RENDERED YET</div>
+          <div style={{ fontFamily: "'adrip1', sans-serif", fontSize: 'clamp(1.4rem, 5vw, 2.0rem)', color: '#00ff88', letterSpacing: '0.05em', marginBottom: 10 }}>NOT RENDERED YET</div>
           <div style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.9rem', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.06em', lineHeight: 1.9, fontWeight: 600 }}>
             Come into the signal.<br />Let the archive see who you are.<br />Then we will compose you.
           </div>
@@ -239,7 +239,7 @@ export function PortraitGalleryDashboard({
 
           {!userId && !userEmail && (
             <div style={{ marginTop: 18, padding: '20px', background: 'rgba(0,0,0,0.48)', border: '1px solid rgba(176,38,255,0.2)', borderLeft: '4px solid #b026ff', borderRadius: '3px 16px 3px 16px', textAlign: 'center' }}>
-              <div style={{ fontFamily: "'aAnotherTag', sans-serif", fontSize: 'clamp(1.2rem, 4vw, 1.6rem)', color: '#b026ff', letterSpacing: '0.05em', marginBottom: 8 }}>ANONYMOUS SIGNAL</div>
+              <div style={{ fontFamily: "'adrip1', sans-serif", fontSize: 'clamp(1.2rem, 4vw, 1.6rem)', color: '#b026ff', letterSpacing: '0.05em', marginBottom: 8 }}>ANONYMOUS SIGNAL</div>
               <p style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.9rem', color: 'rgba(255,255,255,0.55)', lineHeight: 1.65, fontWeight: 600, marginBottom: 14 }}>
                 Your neural prints will be lost when the session ends. Sign up to persist your consciousness.
               </p>

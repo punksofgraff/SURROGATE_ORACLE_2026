@@ -86,13 +86,14 @@ export function ParticleTypographyCard({
     if (landedChars > prevLandedRef.current && containerRef.current) {
       const containerRect = containerRef.current.getBoundingClientRect();
       const newlyLandedEls = containerRef.current.querySelectorAll(`[data-char-idx]`);
+      const offset = presentation === 'ghost' ? 80 : 0;
 
       for (let i = prevLandedRef.current; i < landedChars; i++) {
         const el = containerRef.current.querySelector(`[data-char-idx="${i}"]`) as HTMLElement | null;
         if (el) {
           const rect = el.getBoundingClientRect();
-          const relX = rect.left - containerRect.left + rect.width / 2;
-          const relY = rect.top - containerRect.top + rect.height / 2;
+          const relX = rect.left - containerRect.left + rect.width / 2 + offset;
+          const relY = rect.top - containerRect.top + rect.height / 2 + offset;
 
           // Spawn 3-5 particle sparks per landing character
           const count = 3 + Math.floor(Math.random() * 3);
@@ -114,7 +115,7 @@ export function ParticleTypographyCard({
       }
     }
     prevLandedRef.current = landedChars;
-  }, [landedChars]);
+  }, [landedChars, presentation]);
 
   // Selection shatter explosion
   useEffect(() => {
@@ -122,12 +123,13 @@ export function ParticleTypographyCard({
       shatteredRef.current = true;
       const containerRect = containerRef.current.getBoundingClientRect();
       const charEls = containerRef.current.querySelectorAll(`[data-char-idx]`);
+      const offset = presentation === 'ghost' ? 80 : 0;
 
       // Explode all characters into a cloud of quantum particle shards
       charEls.forEach((el) => {
         const rect = (el as HTMLElement).getBoundingClientRect();
-        const relX = rect.left - containerRect.left + rect.width / 2;
-        const relY = rect.top - containerRect.top + rect.height / 2;
+        const relX = rect.left - containerRect.left + rect.width / 2 + offset;
+        const relY = rect.top - containerRect.top + rect.height / 2 + offset;
 
         const centerX = containerRect.width / 2;
         const centerY = containerRect.height / 2;
@@ -242,9 +244,9 @@ export function ParticleTypographyCard({
         ref={canvasRef}
         style={{
           position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
+          inset: presentation === 'ghost' ? -80 : 0,
+          width: presentation === 'ghost' ? 'calc(100% + 160px)' : '100%',
+          height: presentation === 'ghost' ? 'calc(100% + 160px)' : '100%',
           pointerEvents: 'none',
           zIndex: 12,
         }}

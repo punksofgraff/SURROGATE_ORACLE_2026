@@ -1435,6 +1435,7 @@ export function SurrogateOracleImmersion() {
   }, [portraitRevealPhase, portraitViewerUrl, echo?.last_archetype]);
 
   useEffect(() => {
+    logStep('🔮 SECURE-COMPOSTING-VERIFIED-CB', 'ok');
     logStep('NEURAL LINK AWAKENING', 'ok');
     window.__session_start = Date.now();
     setShowConversation(true);
@@ -1906,7 +1907,7 @@ export function SurrogateOracleImmersion() {
       <AnimatePresence>
         {holdTooltip && (
           <motion.div key="hold-tooltip" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} style={{ position: 'fixed', bottom: 'calc(var(--bottom-bar-h, 160px) + 14px)', left: '50%', transform: 'translateX(-50%)', zIndex: 60, background: 'rgba(0, 10, 15, 0.94)', backdropFilter: 'blur(12px)', border: '1px solid rgba(0,255,136,0.32)', borderRadius: 10, padding: '10px 18px', maxWidth: 260, textAlign: 'center' }}>
-            <div style={{ fontFamily: "'aAnotherTag', 'Orbitron', monospace", fontSize: '0.70rem', color: '#00ff88', marginBottom: 4 }}>{holdTooltip.title}</div>
+            <div style={{ fontFamily: "'adrip1', 'Orbitron', monospace", fontSize: '0.70rem', color: '#00ff88', marginBottom: 4 }}>{holdTooltip.title}</div>
             <div style={{ fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.66rem', color: 'rgba(255,255,255,0.68)' }}>{holdTooltip.body}</div>
           </motion.div>
         )}
@@ -2073,7 +2074,7 @@ export function SurrogateOracleImmersion() {
             style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
           >
             <div className="neural-link-terminal" style={{ maxWidth: 320, width: '100%', padding: '1.5rem', border: '1px solid rgba(0,255,136,0.4)', background: 'rgba(0,10,5,0.94)' }}>
-              <div style={{ fontFamily: "'aAnotherTag', monospace", fontSize: '1rem', color: '#00ff88', marginBottom: '0.5rem', letterSpacing: '0.15em' }}>SIGNAL IMPRINT</div>
+              <div style={{ fontFamily: "'adrip1', monospace", fontSize: '1rem', color: '#00ff88', marginBottom: '0.5rem', letterSpacing: '0.15em' }}>SIGNAL IMPRINT</div>
               <div style={{ fontSize: '0.65rem', color: '#00ccaa', fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em', marginBottom: '1.25rem', lineHeight: 1.6 }}>
                 The Oracle remembers those who name themselves. What handle do you carry?
               </div>
@@ -2113,7 +2114,7 @@ export function SurrogateOracleImmersion() {
             <div className="oracle-lore-text">
               {scenePhase === 'terminal' && !hasCompletedLore && !loreStarted && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '2rem' }}>
-                  <div style={{ fontFamily: "'aAnotherTag', 'Orbitron', monospace", fontSize: '0.8rem', color: '#00ff88', letterSpacing: '0.2em' }}>UNIDENTIFIED SIGNAL DETECTED</div>
+                  <div style={{ fontFamily: "'adrip1', 'Orbitron', monospace", fontSize: '0.8rem', color: '#00ff88', letterSpacing: '0.2em' }}>UNIDENTIFIED SIGNAL DETECTED</div>
                   <button onClick={(e) => { e.stopPropagation(); startLore(); }} style={{ background: 'none', border: '1px solid #00ff88', color: '#00ff88', padding: '1rem 2rem', fontFamily: "'PhillySans', 'Orbitron', monospace", cursor: 'pointer' }}>[ TAP TO ACTIVATE SIGNAL ]</button>
                 </div>
               )}
@@ -2141,7 +2142,7 @@ export function SurrogateOracleImmersion() {
               >
                 <div style={{ textAlign: 'center', padding: '2rem', maxWidth: 400 }}>
                   <div style={{ 
-                    fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+                    fontFamily: "'adrip1', 'Orbitron', monospace",
                     fontSize: '1.2rem', color: '#00ff88', marginBottom: '1rem'
                   }}>
                     SIGNAL RECOGNIZED
@@ -2397,43 +2398,73 @@ export function SurrogateOracleImmersion() {
       )}
 
       {isOracleMode && isMusicMode && (
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="oracle-knife-card oracle-lyria-card"
-          style={{
-            position: 'absolute', zIndex: 30, left: '50%', bottom: '11%',
-            transform: 'translateX(-50%)',
-          }}
-        >
-          <div className="oracle-knife-territory">LYRIA // FRACTURE BEAT</div>
-          <div className="oracle-knife-divider" />
-          <ParticleTypographyCard
-            questionIndex={-1}
-            landedChars={lyria.status === 'generating' ? 0 : 25}
-            isSelected={false}
-            isThisSelected={false}
-            territory="LYRIA"
-            question="A signal for the fracture"
-          />
-          <div className="oracle-lyria-status">
-            {lyria.status === 'generating' ? 'GENERATING 30-SECOND SIGNAL…' :
-              lyria.status === 'error' ? 'SIGNAL FAILED — ORACLE STILL LISTENING' :
-              lyria.isPlaying ? 'PLAYING // AUDIO-REACTIVE FIELD' : 'TRACK READY // TAP PLAY'}
+        <div className="oracle-knife-section">
+          <div className="oracle-knife-stage">
+            <div className="oracle-knife-cards-container" style={{
+              position: 'relative',
+              width: '100%',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              perspective: '1000px',
+            }}>
+              <motion.div
+                initial={{
+                  scaleY: 0.03,
+                  scaleX: 0.88,
+                  opacity: 0.95,
+                  y: 0,
+                  filter: 'brightness(7) saturate(0)',
+                }}
+                animate={{
+                  scaleY: [0.03, 1.07, 1.0],
+                  scaleX: [0.88, 1.01, 1.0],
+                  opacity: 1,
+                  filter: [
+                    'brightness(7) saturate(0)',
+                    'brightness(1.5) saturate(1.1)',
+                    'brightness(1.0) saturate(1.0)',
+                  ],
+                  y: 0,
+                }}
+                exit={{ opacity: 0, scaleY: 0.88, y: 18, filter: 'blur(4px)', transition: { duration: 0.3 } }}
+                transition={{ duration: 0.68, ease: [0.16, 1.0, 0.3, 1], times: [0, 0.48, 1] }}
+                className="oracle-knife-card oracle-lyria-card"
+                style={{
+                  transformOrigin: 'top center',
+                }}
+              >
+                <div className="oracle-knife-territory">LYRIA // FRACTURE BEAT</div>
+                <div className="oracle-knife-divider" />
+                <ParticleTypographyCard
+                  questionIndex={-1}
+                  landedChars={lyria.status === 'generating' ? 0 : 25}
+                  isSelected={false}
+                  isThisSelected={false}
+                  territory="LYRIA"
+                  question="A signal for the fracture"
+                />
+                <div className="oracle-lyria-status">
+                  {lyria.status === 'generating' ? 'GENERATING 30-SECOND SIGNAL…' :
+                    lyria.status === 'error' ? 'SIGNAL FAILED — ORACLE STILL LISTENING' :
+                    lyria.isPlaying ? 'PLAYING // AUDIO-REACTIVE FIELD' : 'TRACK READY // TAP PLAY'}
+                </div>
+                {lyria.error && <div className="oracle-lyria-error">{lyria.error}</div>}
+                <div className="oracle-lyria-actions">
+                  {lyria.audioUrl && !lyria.isPlaying && (
+                    <button className="oc-send-btn" onClick={() => void lyria.play()}>PLAY</button>
+                  )}
+                  {lyria.audioUrl && (
+                    <a className="oc-send-btn" href={lyria.audioUrl} download="surrogate-oracle-lyria.mp3" style={{ textDecoration: 'none' }}>
+                      DOWNLOAD
+                    </a>
+                  )}
+                  <button className="oc-send-btn" onClick={exitMusicMode}>RETURN TO ORACLE</button>
+                </div>
+              </motion.div>
+            </div>
           </div>
-          {lyria.error && <div className="oracle-lyria-error">{lyria.error}</div>}
-          <div className="oracle-lyria-actions">
-            {lyria.audioUrl && !lyria.isPlaying && (
-              <button className="oc-send-btn" onClick={() => void lyria.play()}>PLAY</button>
-            )}
-            {lyria.audioUrl && (
-              <a className="oc-send-btn" href={lyria.audioUrl} download="surrogate-oracle-lyria.mp3" style={{ textDecoration: 'none' }}>
-                DOWNLOAD
-              </a>
-            )}
-            <button className="oc-send-btn" onClick={exitMusicMode}>RETURN TO ORACLE</button>
-          </div>
-        </motion.div>
+        </div>
       )}
 
       {showJourneyLimitGate && (
@@ -2501,7 +2532,7 @@ export function SurrogateOracleImmersion() {
               animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
               transition={{ delay: 0.9, duration: 1.4, ease: [0.22, 1, 0.36, 1] }}
               style={{
-                fontFamily: "'aAnotherTag', 'Orbitron', monospace", fontWeight: 900,
+                fontFamily: "'adrip1', 'Orbitron', monospace", fontWeight: 900,
                 fontSize: 'clamp(1.8rem, 8vw, 3.4rem)', lineHeight: 1.05, letterSpacing: '0.02em',
                 background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
                 WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
@@ -2545,7 +2576,7 @@ export function SurrogateOracleImmersion() {
               zIndex: 120, pointerEvents: 'auto', cursor: 'pointer',
               background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(176,38,255,0.55)',
               borderRadius: '10px', padding: '12px 22px',
-              fontFamily: "'aAnotherTag', 'Orbitron', monospace", fontWeight: 900,
+              fontFamily: "'adrip1', 'Orbitron', monospace", fontWeight: 900,
               fontSize: '0.92rem', letterSpacing: '0.14em', color: '#00ffcc',
               boxShadow: '0 0 22px rgba(176,38,255,0.4), inset 0 0 14px rgba(0,255,204,0.08)',
               animation: 'oracle-pulse 2.4s ease-in-out infinite',
@@ -2600,7 +2631,7 @@ export function SurrogateOracleImmersion() {
               {/* Header */}
               <div style={{ textAlign: 'center' }}>
                 <h2 style={{
-                  fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+                  fontFamily: "'adrip1', 'Orbitron', monospace",
                   fontSize: '1.25rem',
                   fontWeight: 900,
                   letterSpacing: '0.12em',
@@ -2669,7 +2700,7 @@ export function SurrogateOracleImmersion() {
                   style={{
                     width: '100%',
                     padding: '12px',
-                    fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+                    fontFamily: "'adrip1', 'Orbitron', monospace",
                     fontWeight: 900,
                     fontSize: '0.85rem',
                     letterSpacing: '0.1em',
@@ -2731,7 +2762,7 @@ export function SurrogateOracleImmersion() {
             }}
           >
             <div style={{
-              fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+              fontFamily: "'adrip1', 'Orbitron', monospace",
               fontSize: '1.8rem',
               fontWeight: 900,
               letterSpacing: '0.2em',

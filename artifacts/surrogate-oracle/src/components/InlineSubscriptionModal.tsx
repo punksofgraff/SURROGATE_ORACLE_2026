@@ -117,7 +117,7 @@ export function InlineSubscriptionModal({
                   <Crown size={32} style={{ color: '#00ccff', marginBottom: 12 }} />
                   <h2 style={{
                     fontSize: '1.1rem',
-                    fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+                    fontFamily: "'adrip1', 'Orbitron', monospace",
                     letterSpacing: '0.14em',
                     marginBottom: 6,
                     display: 'inline-block',

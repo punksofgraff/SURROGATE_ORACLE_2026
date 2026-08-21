@@ -338,7 +338,7 @@
 }
 
 .ghost-tx .oracle-particle-typography-ghost > div {
-  text-shadow: none;
+  /* text-shadow: none; -- preserved inline glowing text shadow */
 }
 
 .ghost-tx .oracle-particle-typography-ghost .oracle-knife-letter {
@@ -456,7 +456,7 @@
 }
 
 .oracle-title {
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(4rem, 10vw, 10rem);
   font-weight: 900;
   letter-spacing: 0.10em;
@@ -602,7 +602,7 @@
 /* CTA primary — single voice, graffiti font, neon authority */
 .cta-primary {
   display: block;
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(1.25rem, 2.8vw, 2.2rem);
   font-weight: 900;
   letter-spacing: 0.20em;
@@ -721,7 +721,7 @@
   top: auto;
   left: 50%;
   transform: translateX(-50%);
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(1.0rem, 2.2vw, 1.8rem);
   letter-spacing: 0.18em;
   color: rgba(0, 255, 136, 0.55);
@@ -2130,7 +2130,7 @@
   top: 10%;
   left: 50%;
   transform: translateX(-50%);
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(1.4rem, 4.5vw, 3.2rem);
   letter-spacing: 0.12em;
   text-align: center;
@@ -2205,7 +2205,7 @@
 /* Threshold text — larger, graffiti font, green neon */
 .oracle-entry-threshold__text {
   position: relative !important;
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(1.8rem, 6vw, 3.2rem);
   font-weight: 900;
   letter-spacing: 0.28em;
@@ -2224,7 +2224,7 @@
    the click-target container. Graffiti font + green neon + chromatic aberration. */
 .oracle-sf--cta {
   position: relative !important; /* override oracle-sf absolute positioning */
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(1.25rem, 2.8vw, 2.2rem);
   font-weight: 900;
   letter-spacing: 0.20em;
@@ -2266,7 +2266,7 @@
   top: 11%;
   left: 5%;
   max-width: 42%;
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(0.95rem, 2.4vw, 1.75rem);
   letter-spacing: 0.13em;
   color: rgba(0, 255, 136, 0.82);
@@ -3393,9 +3393,6 @@
 }
 
 .oracle-lyria-card {
-  bottom: 11%;
-  width: clamp(300px, 88vw, 500px) !important;
-  padding: 32px 28px 24px !important;
   color: #f3d8ff;
 }
 
@@ -3691,7 +3688,7 @@
 }
 
 .oracle-artifact-title {
-   font-family: 'aAnotherTag', 'Orbitron', monospace;
+   font-family: 'adrip1', 'Orbitron', monospace;
    font-size: clamp(1.4rem, 4.5vw, 1.8rem);
    letter-spacing: 0.15em;
    /* Brand gradient */
@@ -4100,7 +4097,7 @@
 
 .oracle-exit-ceremony__text {
   position: relative !important;
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(1.6rem, 5.5vw, 2.8rem);
   font-weight: 900;
   letter-spacing: 0.28em;
@@ -4611,7 +4608,7 @@
 }
 
 .oracle-synthesis-label {
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: 1.2rem;
   color: #00ff88;
   text-shadow: 0 0 10px rgba(0,255,136,0.8);
@@ -5336,7 +5333,7 @@
 }
 
 .oracle-stage00-card__sigil {
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(2rem, 8vw, 3rem);
   background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%);
   -webkit-background-clip: text;
@@ -5346,7 +5343,7 @@
 }
 
 .oracle-stage00-card__greeting {
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(1.6rem, 5vw, 2.1rem);
   background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%);
   -webkit-background-clip: text;
@@ -5439,7 +5436,7 @@
 }
 
 .oracle-portrait-fullscreen__label {
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(1.5rem, 4vw, 2.2rem);
   background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%);
   -webkit-background-clip: text;

@@ -317,6 +317,11 @@ export function SurrogateOracleImmersion() {
   const [isGeminiSessionLive, setIsGeminiSessionLive] = useState(false);
   const [isMusicMode, setIsMusicMode] = useState(false);
   const [isMusicReturning, setIsMusicReturning] = useState(false);
+  // The Canvas can exist before its WebGL renderer has finished admission.
+  // Keep postprocessing out of that gap; EffectComposer is not safe to register
+  // passes against a context that is still initializing or recovering.
+  const [rendererReady, setRendererReady] = useState(false);
+  const [composerEpoch, setComposerEpoch] = useState(0);
   const [forceOracleManifest, setForceOracleManifest] = useState(false);
   const [hasManifested, setHasManifested] = useState(false);
   // Continuous target for the GLB-derived transporter. It starts moving as soon
@@ -1791,12 +1796,22 @@ export function SurrogateOracleImmersion() {
                           alpha: true,
                           powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
                         }}
+                        onCreated={() => setRendererReady(true)}
                         style={{ width: '100%', height: '100%', background: 'transparent' }}
                         frameloop="always"
                       >
                         <WebGLContextWatcher
-                          onContextLost={() => setIsContextLost(true)}
-                          onContextRestored={() => setIsContextLost(false)}
+                          onContextLost={() => {
+                            setIsContextLost(true);
+                            setRendererReady(false);
+                            setComposerEpoch(epoch => epoch + 1);
+                          }}
+                          onContextRestored={() => {
+                            setIsContextLost(false);
+                            // Let R3F finish reattaching the restored context
+                            // before allowing a fresh composer instance to mount.
+                            requestAnimationFrame(() => setRendererReady(true));
+                          }}
                         />
                         <WebGLTransparencyHarden />
                         {!isContextLost && (
@@ -1856,8 +1871,8 @@ export function SurrogateOracleImmersion() {
                                 </Physics>
                               </Suspense>
                             )}
-                            {renderTier >= 1 && (
-                              <EffectComposer multisampling={renderTier >= 2 ? 4 : 0}>
+                            {renderTier >= 1 && rendererReady && !isContextLost && (
+                              <EffectComposer key={`oracle-composer-${composerEpoch}`} multisampling={renderTier >= 2 ? 4 : 0}>
                                 {[
                                   <Bloom
                                     key="bloom"

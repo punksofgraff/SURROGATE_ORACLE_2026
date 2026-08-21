@@ -19,6 +19,7 @@ interface ParticleTypographyCardProps {
   accentColor?: string;
   territory: string;
   question: string;
+  presentation?: 'card' | 'ghost';
 }
 
 interface Spark {
@@ -47,6 +48,7 @@ export function ParticleTypographyCard({
   accentColor = '#00ff88',
   territory,
   question,
+  presentation = 'card',
 }: ParticleTypographyCardProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -223,7 +225,7 @@ export function ParticleTypographyCard({
   return (
     <div
       ref={containerRef}
-      className="oracle-knife-card-question"
+      className={`oracle-knife-card-question${presentation === 'ghost' ? ' oracle-particle-typography-ghost' : ''}`}
       aria-label={question}
       style={{
         position: 'relative',
@@ -252,11 +254,11 @@ export function ParticleTypographyCard({
       <div
         style={{
           fontFamily: "'PhillySans', 'Share Tech Mono', monospace",
-          fontSize: 'clamp(1.44rem, 4.2vw, 1.75rem)',
-          lineHeight: 1.72,
+          fontSize: presentation === 'ghost' ? 'clamp(1.05rem, 4vw, 1.8rem)' : 'clamp(1.44rem, 4.2vw, 1.75rem)',
+          lineHeight: presentation === 'ghost' ? 1.3 : 1.72,
           letterSpacing: '0.02em',
           textAlign: 'center',
-          maxWidth: '28ch',
+          maxWidth: presentation === 'ghost' ? '80vw' : '28ch',
           color: 'rgba(255, 255, 255, 0.95)',
           textShadow: '0 1px 14px rgba(0, 0, 0, 0.98), 0 0 24px rgba(0, 255, 136, 0.25)',
           opacity: isSelected && isThisSelected ? 0 : 1,

@@ -307,9 +307,9 @@
 .ghost-tx {
   position: absolute;
   z-index: 8;
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
   font-size: clamp(24px, 7vw, 36px);
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: 0.02em;
   line-height: 1.25;
   pointer-events: none;
@@ -328,6 +328,21 @@
   color: transparent !important;
   /* NO text-shadow or filter here — it breaks background-clip: text in many browsers */
   padding: 2px 0; /* slight vertical bleed prevents clipping on descenders */
+}
+
+.ghost-tx .oracle-particle-typography-ghost {
+  width: auto !important;
+  display: inline-flex !important;
+  align-items: center;
+  min-height: 1.4em;
+}
+
+.ghost-tx .oracle-particle-typography-ghost > div {
+  text-shadow: none;
+}
+
+.ghost-tx .oracle-particle-typography-ghost .oracle-knife-letter {
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
 }
 .ghost-tx--typing  { opacity: 0.78; filter: none; }
 .ghost-tx--holding { opacity: 0.68; filter: none; }
@@ -3334,7 +3349,7 @@
 
 /* ── Territory — color handled per-letter by JS (gradient landing) ───── */
 .oracle-knife-territory {
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-family: 'adrip1', 'Orbitron', monospace;
   font-size: clamp(2.0rem, 6.5vw, 2.9rem);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -3375,6 +3390,40 @@
   /* Let taps fall through to the card — a finger (or test) landing on an
      animating question letter must still select the card, not get intercepted. */
   pointer-events: none;
+}
+
+.oracle-lyria-card {
+  bottom: 11%;
+  width: clamp(300px, 88vw, 500px) !important;
+  padding: 32px 28px 24px !important;
+  color: #f3d8ff;
+}
+
+.oracle-lyria-card .oracle-knife-card-question {
+  min-height: 100px;
+}
+
+.oracle-lyria-status,
+.oracle-lyria-error {
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.12em;
+  text-align: center;
+  color: rgba(243, 216, 255, 0.82);
+}
+
+.oracle-lyria-error {
+  color: #ff8bdb;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+
+.oracle-lyria-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 /* shimmer replaced by letter-by-letter JS gradient landing */
@@ -5047,10 +5096,8 @@
    (WebGL) layers. Drop-shadow alone handles the holographic edge bleed.       */
  .oracle-stage[data-oracle-state="oracle"]:not([data-xr-mode="true"]) .oracle-avatar-canvas {
   border-radius: 0 !important;
-  filter:
-    drop-shadow(0 0 28px rgba(0,255,136,0.28))
-    drop-shadow(0 0 64px rgba(0,255,136,0.10));
-  transition: filter 0.4s ease;
+  filter: none !important; /* Fixed: CSS filters on WebGL canvas wrappers cause iOS Safari white-wall rendering bugs */
+  transition: none !important;
 }
 
 /* Speaking energy is driven by the avatar wrapper's amplitude halo above.

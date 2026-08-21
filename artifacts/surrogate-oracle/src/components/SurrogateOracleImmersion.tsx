@@ -207,6 +207,16 @@ function WebGLContextWatcher({
   return null;
 }
 
+function WebGLTransparencyHarden() {
+  const { gl, scene } = useThree();
+  useEffect(() => {
+    gl.setClearColor(0x000000, 0);
+    gl.setClearAlpha(0);
+    scene.background = null;
+  }, [gl, scene]);
+  return null;
+}
+
 /* ── Orbit-room canvas expansion ──────────────────────────────────────────────
    In oracle phase the WebGL canvas element is grown 2x in both axes (CSS
    `inset: -50%`) so particles can orbit wider than the avatar without clipping
@@ -1787,6 +1797,7 @@ export function SurrogateOracleImmersion() {
                           onContextLost={() => setIsContextLost(true)}
                           onContextRestored={() => setIsContextLost(false)}
                         />
+                        <WebGLTransparencyHarden />
                         {!isContextLost && (
                           <>
                             <OrbitZoomCompensator enabled={isOracleMode && !isXRMode} />
@@ -2389,23 +2400,29 @@ export function SurrogateOracleImmersion() {
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
+          className="oracle-knife-card oracle-lyria-card"
           style={{
             position: 'absolute', zIndex: 30, left: '50%', bottom: '11%',
-            transform: 'translateX(-50%)', width: 'min(92vw, 430px)',
-            padding: '16px 18px', border: '1px solid rgba(196,60,255,.55)',
-            background: 'rgba(5,0,15,.88)', backdropFilter: 'blur(14px)',
-            color: '#f3d8ff', fontFamily: "'Share Tech Mono', monospace",
-            boxShadow: '0 0 32px rgba(196,60,255,.22)',
+            transform: 'translateX(-50%)',
           }}
         >
-          <div style={{ letterSpacing: '.14em', color: '#d16cff', fontSize: 11 }}>◈ LYRIA // FRACTURE BEAT</div>
-          <div style={{ marginTop: 8, fontSize: 13 }}>
+          <div className="oracle-knife-territory">LYRIA // FRACTURE BEAT</div>
+          <div className="oracle-knife-divider" />
+          <ParticleTypographyCard
+            questionIndex={-1}
+            landedChars={lyria.status === 'generating' ? 0 : 25}
+            isSelected={false}
+            isThisSelected={false}
+            territory="LYRIA"
+            question="A signal for the fracture"
+          />
+          <div className="oracle-lyria-status">
             {lyria.status === 'generating' ? 'GENERATING 30-SECOND SIGNAL…' :
               lyria.status === 'error' ? 'SIGNAL FAILED — ORACLE STILL LISTENING' :
               lyria.isPlaying ? 'PLAYING // AUDIO-REACTIVE FIELD' : 'TRACK READY // TAP PLAY'}
           </div>
-          {lyria.error && <div style={{ marginTop: 7, color: '#ff8bdb', fontSize: 11 }}>{lyria.error}</div>}
-          <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+          {lyria.error && <div className="oracle-lyria-error">{lyria.error}</div>}
+          <div className="oracle-lyria-actions">
             {lyria.audioUrl && !lyria.isPlaying && (
               <button className="oc-send-btn" onClick={() => void lyria.play()}>PLAY</button>
             )}

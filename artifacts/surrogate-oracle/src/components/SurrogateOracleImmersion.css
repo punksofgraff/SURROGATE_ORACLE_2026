@@ -233,6 +233,12 @@
     );
 }
 
+/* Visual regression harness only: disable the alley curtain with
+   ?oracleCurtain=off. Normal URLs never receive this attribute. */
+html[data-oracle-curtain-test="off"] .oracle-stage[data-oracle-state="oracle"] .oracle-alley::after {
+  display: none !important;
+}
+
 @keyframes oracle-cabinet-glow {
   0%,  100% { opacity: 0.55; }
   50%        { opacity: 1.00; }

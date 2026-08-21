@@ -13,6 +13,7 @@
     "verify": "node scripts/oracle-morph-verify.mjs",
     "gaze-verify": "node scripts/oracle-gaze-verify.mjs",
     "smoke": "node scripts/oracle-smoke-screenshot.mjs",
+    "curtain-harness": "node scripts/oracle-curtain-harness.mjs",
     "deploy:functions": "npx supabase functions deploy gemini-live-proxy --project-ref $SUPABASE_PROJECT_REF --use-api",
     "set:gemini-secret": "npx supabase secrets set GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY --project-ref $SUPABASE_PROJECT_REF",
     "api-log": "node --experimental-vm-modules api-logger.mjs"

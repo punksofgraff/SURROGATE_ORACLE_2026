@@ -25,6 +25,12 @@ class RootBoundary extends Component<{ children: ReactNode }, { error: Error | n
 // ?reset — nuke all localStorage and reload clean (dev escape hatch)
 // ?fresh — clear only journey/lore state, keep auth
 const _sp = new URLSearchParams(window.location.search);
+// Visual regression harness switch. It is inert unless an explicit test URL is
+// used, so normal journeys and production URLs keep the ordinary curtain.
+const _oracleCurtainTest = _sp.get('oracleCurtain');
+if (_oracleCurtainTest === 'on' || _oracleCurtainTest === 'off') {
+  document.documentElement.dataset.oracleCurtainTest = _oracleCurtainTest;
+}
 if (_sp.has('reset')) {
   localStorage.clear();
   sessionStorage.clear();

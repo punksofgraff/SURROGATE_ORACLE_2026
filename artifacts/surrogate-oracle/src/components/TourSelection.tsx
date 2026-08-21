@@ -85,11 +85,13 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onCardProgress, o
     };
   }, [card.text]); // ← no callback in deps; ref read is always current
 
-  // Letter-by-letter reveal — types out the card text immediately when active.
-  // We do not let isOracleSpeaking block this, ensuring that the background
-  // tour orientation speech does not freeze the card typewriter.
+  // Letter-by-letter reveal — same pattern as KnifeSelection. The request is
+  // latched before the breath timer so an isOracleSpeaking state transition
+  // cannot resend the same card or interrupt its opening audio.
   useEffect(() => {
     if (spokenCardRef.current === card.text || previewRequestedRef.current === card.text) return;
+
+    if (isOracleSpeaking) return;
 
     const total = card.text.length;
     let count = 0;
@@ -111,7 +113,7 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onCardProgress, o
       }, 54);
     }, CARD_AUDIO_BREATH_MS);
 
-  }, [activeIdx, card.text]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeIdx, card.text, isOracleSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-advance 5s after Oracle finishes speaking the card
   useEffect(() => {

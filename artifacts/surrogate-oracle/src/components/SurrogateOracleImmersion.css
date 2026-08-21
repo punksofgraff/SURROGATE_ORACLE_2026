@@ -17,7 +17,6 @@
   --cabinet-top: 44%;
   --cabinet-left: 50%;
   --cabinet-width: clamp(114px, 18vw, 214px);  /* −12% area: prev × √0.88 ≈ 0.938× */
-  --oracle-thought-font-size: clamp(1.44rem, 4.2vw, 1.75rem);
 
   /* Animation Timings */
   --t-reveal: 1.8s;
@@ -290,6 +289,17 @@
   }
 }
 
+/* ── Layer 3: Atmosphere Canvas ───────────────────────────────────────── */
+.atmosphere-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: var(--z-atmosphere);
+  /* opacity is managed by useAtmosphere masterOpacity — no CSS transition needed */
+}
+
 /* ── Ghost Transmissions — Cheshire Cat signal field (dormant) ──────────
    Absolutely positioned across the full stage; each phrase types letter-
    by-letter then dissipates before the next appears.
@@ -297,11 +307,11 @@
 .ghost-tx {
   position: absolute;
   z-index: 8;
-  font-family: 'PhillySans', 'Share Tech Mono', monospace;
-  font-size: var(--oracle-thought-font-size);
-  font-weight: 400;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
+  font-size: clamp(24px, 7vw, 36px);
+  font-weight: 700;
   letter-spacing: 0.02em;
-  line-height: 1.72;
+  line-height: 1.25;
   pointer-events: none;
   max-width: 80vw;
   white-space: normal;
@@ -309,32 +319,23 @@
   transition: opacity 1.4s ease, filter 1.4s ease;
 }
 
-/* Ghost transmissions use the same landed-letter engine as knife questions,
-   while inheriting their existing absolute placement and fade lifecycle. */
-.ghost-tx__particle-copy {
-  width: auto !important;
-  min-height: 0 !important;
-  align-items: inherit !important;
-  justify-content: inherit !important;
+.ghost-tx__content {
+  display: inline-block;
+  background-image: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+  /* NO text-shadow or filter here — it breaks background-clip: text in many browsers */
+  padding: 2px 0; /* slight vertical bleed prevents clipping on descenders */
 }
-
-.ghost-tx__particle-copy > div {
-  font-size: inherit !important;
-  line-height: inherit !important;
-  letter-spacing: inherit !important;
-  max-width: none !important;
-  text-align: inherit !important;
-  color: inherit !important;
-  text-shadow: inherit !important;
-}
-
 .ghost-tx--typing  { opacity: 0.78; filter: none; }
 .ghost-tx--holding { opacity: 0.68; filter: none; }
 .ghost-tx--fading  { opacity: 0;    filter: blur(4px) saturate(0.3); }
 
 /* ── Sticky CTA variant — appears after 7 phrases, stays permanently ────── */
 .ghost-tx--cta {
-  font-size: var(--oracle-thought-font-size);
+  font-size: clamp(36px, 10vw, 56px);
   color: rgba(0, 255, 136, 1.0);
   text-shadow:
     0 0 14px rgba(0, 255, 136, 0.7),
@@ -373,24 +374,6 @@
   margin-left: 2px;
   animation: ghost-cur-blink 0.65s steps(1) infinite;
   box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
-}
-
-/* Landing field: the same Three/Quarks/Nebula/Rapier particles as Oracle mode,
-   expanded to the full stage so the ghost thought has dimensional depth. */
-.oracle-landing-particle-field {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  pointer-events: none;
-  overflow: hidden;
-  background: transparent !important;
-}
-
-.oracle-landing-particle-field canvas,
-.oracle-avatar-canvas,
-.oracle-avatar-canvas canvas {
-  background: transparent !important;
-  background-color: transparent !important;
 }
 @keyframes ghost-cur-blink {
   0%, 100% { opacity: 1; }
@@ -922,6 +905,29 @@
   transition: opacity 1.4s ease-out, filter 1.4s ease-out !important;
 }
 
+/* ── Fracture manifesting label — 6s fallback dead-connection path ─────────
+   Shown when forceOracleManifest is true but isGeminiConnected is still false.
+   Tells the seeker the rift is retrying, not silently broken.                */
+.oracle-fracture-label {
+  position: absolute;
+  bottom: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  font-family: 'Orbitron', 'PhillySans', monospace;
+  font-size: clamp(0.55rem, 1.4vw, 0.72rem);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: #00ff88;
+  text-shadow: 0 0 8px #00ff88, 0 0 18px rgba(0, 255, 136, 0.45);
+  pointer-events: none;
+  animation: oracle-fracture-flicker 1.2s ease-in-out infinite alternate;
+}
+@keyframes oracle-fracture-flicker {
+  0%   { opacity: 0.65; text-shadow: 0 0 6px #00ff88; }
+  60%  { opacity: 1;    text-shadow: 0 0 14px #00ff88, 0 0 28px rgba(0, 255, 136, 0.5); }
+  100% { opacity: 0.8;  text-shadow: 0 0 8px #00ff88, 0 0 20px rgba(0, 255, 136, 0.35); }
+}
 
 /* ── Talking face — freemium oracle path (z:2, above static, below video) ───
    ORACLE_AVATAR_URL: 1280×640 portrait. VisemeDetector drives glow/scale at
@@ -2962,6 +2968,30 @@
 }
 
 /* ════════════════════════════════════════════════════════════════════════
+   MATRIX RAIN — ambient falling-character layer (dormant state only)
+   ════════════════════════════════════════════════════════════════════════ */
+.matrix-rain-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2; /* above alley bg, below cabinet */
+  opacity: 0;
+  transition: opacity 1.4s ease;
+}
+
+/* Visible only in dormant state */
+.oracle-stage[data-oracle-state="dormant"] .matrix-rain-canvas {
+  opacity: 0.045;
+}
+
+/* Faint in terminal (lore) phase — fading as oracle rises */
+.oracle-stage[data-oracle-state="terminal"] .matrix-rain-canvas {
+  opacity: 0.018;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
    CONSENT GATE OVERLAY
    Full-viewport dark glass panel. Slides in from below on tap.
    ════════════════════════════════════════════════════════════════════════ */
@@ -3335,7 +3365,7 @@
 /* ── Question — white, legible, introspective weight ────────────────── */
 .oracle-knife-card-question {
   font-family: 'PhillySans', 'Share Tech Mono', monospace;
-  font-size: var(--oracle-thought-font-size);
+  font-size: clamp(1.44rem, 4.2vw, 1.75rem);
   color: rgba(255, 255, 255, 0.92);
   line-height: 1.72;
   letter-spacing: 0.02em;
@@ -5101,27 +5131,19 @@
    the Seeker has been in conversation for ~4s when the first signal break hits. */
 @keyframes oracle-phase-manifest {
   0%   { opacity: 0; transform: scale(1.08) translateY(8px); filter: blur(14px) brightness(0.2) saturate(0.1); }
-  6%   { opacity: 0.65; transform: scale(0.96) translateX(-14px) skewX(18deg); filter: blur(4px) brightness(1.20) saturate(1.8) contrast(1.4) drop-shadow(8px 0 0 rgba(255,0,80,0.9)) drop-shadow(-8px 0 0 rgba(0,255,200,0.9)); }
+  6%   { opacity: 0.65; transform: scale(0.96) translateX(-14px) skewX(18deg); filter: blur(4px) brightness(2.4) saturate(3.0) contrast(1.8) drop-shadow(8px 0 0 rgba(255,0,80,0.9)) drop-shadow(-8px 0 0 rgba(0,255,200,0.9)); }
   12%  { opacity: 0.25; transform: scale(1.05) translateX(10px) skewX(-12deg); filter: blur(6px) brightness(0.7) saturate(0.4); }
-  18%  { opacity: 0.95; transform: scale(1.03) translateY(-3px) skewX(6deg); filter: blur(1px) brightness(1.30) saturate(2.0) contrast(1.3) drop-shadow(-6px 0 0 rgba(255,0,80,0.95)) drop-shadow(6px 0 0 rgba(0,255,136,0.95)); }
-  26%  { opacity: 0.60; transform: scale(0.98) skewY(3deg); filter: blur(3px) brightness(1.0) saturate(1.2); }
-  35%  { opacity: 1.0; transform: scale(1.02) translateX(-4px); filter: blur(0px) brightness(1.15) saturate(1.4) drop-shadow(4px 0 0 rgba(0,255,204,0.8)); }
-  45%  { opacity: 0.88; transform: scale(1.01) skewX(-4deg); filter: blur(0.8px) brightness(1.10) drop-shadow(2px 0 0 rgba(255,0,80,0.6)) drop-shadow(-2px 0 0 rgba(0,255,136,0.6)); }
-  60%  { opacity: 1.0; transform: scale(0.995); filter: blur(0px) brightness(1.05) saturate(1.1); }
-  78%  { opacity: 0.96; transform: scale(1.004) translateX(1px); filter: brightness(1.05) drop-shadow(1px 0 0 rgba(255,0,80,0.3)) drop-shadow(-1px 0 0 rgba(0,255,136,0.3)); }
+  18%  { opacity: 0.95; transform: scale(1.03) translateY(-3px) skewX(6deg); filter: blur(1px) brightness(2.8) saturate(3.5) contrast(1.6) drop-shadow(-6px 0 0 rgba(255,0,80,0.95)) drop-shadow(6px 0 0 rgba(0,255,136,0.95)); }
+  26%  { opacity: 0.60; transform: scale(0.98) skewY(3deg); filter: blur(3px) brightness(1.1) saturate(1.4); }
+  35%  { opacity: 1.0; transform: scale(1.02) translateX(-4px); filter: blur(0px) brightness(2.0) saturate(2.2) drop-shadow(4px 0 0 rgba(0,255,204,0.8)); }
+  45%  { opacity: 0.88; transform: scale(1.01) skewX(-4deg); filter: blur(0.8px) brightness(1.5) drop-shadow(2px 0 0 rgba(255,0,80,0.6)) drop-shadow(-2px 0 0 rgba(0,255,136,0.6)); }
+  60%  { opacity: 1.0; transform: scale(0.995); filter: blur(0px) brightness(1.2) saturate(1.2); }
+  78%  { opacity: 0.96; transform: scale(1.004) translateX(1px); filter: brightness(1.15) drop-shadow(1px 0 0 rgba(255,0,80,0.3)) drop-shadow(-1px 0 0 rgba(0,255,136,0.3)); }
   100% { opacity: 1; transform: scale(1); filter: none; }
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-smoke-hook {
-  /* Match the production deploy's stable WebGL compositing boundary. The
-     oracle-phase-manifest animation used to filter/transform this entire
-     rectangular canvas wrapper, which could surface as a white sheet on
-     mobile compositors. The GLB transporter owns manifestation now. */
-  opacity: 1;
-  filter: none;
-  transform: none;
-  transition: none !important;
-  animation: none !important;
+  animation: oracle-phase-manifest 2s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-headroom-hook {
@@ -5158,6 +5180,10 @@
     animation: none !important;
   }
   
+  .atmosphere-layer {
+    display: none; /* Already handled in JS, but CSS as a second layer */
+  }
+
   /* Ensure elements are visible at their target state opacities even if animations are disabled */
   .oracle-stage[data-oracle-state="dormant"] .oracle-avatar-static { opacity: 0.35; }
   .oracle-stage[data-oracle-state="terminal"] .oracle-avatar-static { opacity: 0.60; }
@@ -5285,7 +5311,7 @@
 
 .oracle-stage00-card__cta {
   font-family: 'PhillySans', 'Share Tech Mono', monospace;
-  font-size: var(--oracle-thought-font-size);
+  font-size: clamp(0.88rem, 2.2vw, 1.02rem);
   letter-spacing: 0.15em;
   color: rgba(0, 255, 136, 0.92);
   text-shadow: 0 0 12px rgba(0, 255, 136, 0.6), 0 0 28px rgba(0, 255, 136, 0.25);
@@ -5296,20 +5322,6 @@
   cursor: pointer;
   animation: knife-cta-pulse 1.6s ease-in-out infinite;
   width: 100%;
-}
-
-.oracle-stage00-card__cta .oracle-stage00-card__particle-copy {
-  width: 100%;
-  min-height: 1.5em;
-}
-
-.oracle-stage00-card__cta .oracle-stage00-card__particle-copy > div {
-  font-size: inherit;
-  line-height: 1.2;
-  letter-spacing: inherit;
-  max-width: none;
-  color: inherit;
-  text-shadow: inherit;
 }
 
 .oracle-stage00-card__fafo {
@@ -5461,15 +5473,15 @@
 
 @keyframes profane-flash {
   0%   { opacity: 0; }
-  8%   { opacity: 0.22; }
-  35%  { opacity: 0.12; }
+  8%   { opacity: 0.48; }
+  35%  { opacity: 0.28; }
   100% { opacity: 0; }
 }
 
 @keyframes sacred-flux {
   0%   { opacity: 0; transform: scale(1); }
-  15%  { opacity: 0.18; transform: scale(1.009); }
-  55%  { opacity: 0.10; transform: scale(1.016); }
+  15%  { opacity: 0.38; transform: scale(1.009); }
+  55%  { opacity: 0.22; transform: scale(1.016); }
   100% { opacity: 0; transform: scale(1); }
 }
 

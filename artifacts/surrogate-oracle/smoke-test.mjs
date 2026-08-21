@@ -20,7 +20,7 @@ const FAIL = (msg) => { console.error(`  ❌  ${msg}`); process.exitCode = 1; };
 const INFO = (msg) => console.log(`  ℹ️   ${msg}`);
 
 async function screenshot(page, name) {
-  const p = `./smoke-${name}.png`;
+  const p = `/tmp/smoke-${name}.png`;
   await page.screenshot({ path: p, fullPage: false });
   INFO(`Screenshot → ${p}`);
 }
@@ -28,7 +28,7 @@ async function screenshot(page, name) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 const BASE = 'http://localhost:5173';
-const TIMEOUT = 15000;
+const TIMEOUT = 8000;
 
 async function run() {
   console.log('\n🔬  SURROGATE:ORACLE — Smoke Test\n');
@@ -61,18 +61,11 @@ async function run() {
 
   // ── TEST 1: App loads ─────────────────────────────────────────────────────
   console.log('TEST 1 — App loads and lands in DORMANT phase');
-  await page.goto(BASE + '/?newuser', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(async (e) => {
+  await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(async (e) => {
     FAIL(`Page failed to load: ${e.message}`);
     await browser.close();
     process.exit(1);
   });
-
-  // Clear any existing localStorage and sessionStorage to guarantee a pristine first-time run
-  await page.evaluate(() => {
-    localStorage.clear();
-    sessionStorage.clear();
-  });
-  await page.goto(BASE + '/?newuser', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
   // data-oracle-state should be "dormant"
   const initialState = await page.getAttribute('.oracle-stage', 'data-oracle-state');
@@ -153,11 +146,10 @@ async function run() {
   await page.waitForTimeout(2500);
   await screenshot(page, '03-terminal-lore-playing');
 
-  // Skip lore via dev hook (avoids pointer-intercept and first-time skip restriction issues)
+  // Skip lore — force click because the avatar wrapper may intercept
   await page.evaluate(() => {
-    if (typeof window.__oracle_skipLore === 'function') {
-      window.__oracle_skipLore();
-    }
+    const el = document.querySelector('.oracle-terminal-overlay');
+    if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
   INFO('Dispatched click to lore overlay to skip');
 
@@ -203,19 +195,17 @@ async function run() {
   await page.evaluate(() => {
     localStorage.setItem('surrogate_visited_smoke_ip', 'true');
     localStorage.setItem('surrogate_lore_completed_smoke_ip', 'true');
-    sessionStorage.clear(); // Clear sessionStorage so the page restarts in DORMANT on reload
   });
-  await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
 
   // Wait for useIpCheck async fetch to resolve (api.ipify.org mock is fast but React state is async)
   await page.waitForTimeout(1200);
 
   // Tap the cabinet — handleFirstTap detects isReturning=true and shows wallet overlay
   await page.click('.oracle-center');
-  await screenshot(page, '04c-returning-seeker-tapped');
 
   // Should show wallet connect overlay
-  await page.waitForSelector('text=CONNECT SURROGATE WALLET', { timeout: 10000 });
+  await page.waitForSelector('text=CONNECT CHAIN FUELZ', { timeout: 10000 });
   const buttonText = await page.textContent('button:has-text("RETURN TO ALLEY"), button:has-text("PROCEED UNBOUND")');
   if (buttonText && buttonText.includes('RETURN TO ALLEY')) {
     PASS('Wallet overlay shows "RETURN TO ALLEY" for completed lore Seeker ✓');
@@ -346,9 +336,8 @@ async function testBackendPanel(page, consoleErrors, screenshot) {
       id: 'smoke-test-user-001',
       email: 'smoke@test.io',
     }));
-    sessionStorage.clear(); // Clear sessionStorage so we start in DORMANT on reload
   });
-  await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 30000 });
   // Wait for React to mount (dormant state confirms the component is live)
   await page.waitForFunction(
     () => document.querySelector('.oracle-stage')?.getAttribute('data-oracle-state') === 'dormant',
@@ -365,7 +354,7 @@ async function testBackendPanel(page, consoleErrors, screenshot) {
   await page.waitForTimeout(600);
 
   // If wallet overlay appeared (Supabase found smoke_ip from earlier tests), dismiss it
-  const walletShowing = await page.isVisible('text=CONNECT SURROGATE WALLET').catch(() => false);
+  const walletShowing = await page.isVisible('text=CONNECT CHAIN FUELZ').catch(() => false);
   if (walletShowing) {
     INFO('Wallet overlay appeared — clicking through');
     await page.click('button:has-text("RETURN TO ALLEY")').catch(async () => {
@@ -385,9 +374,8 @@ async function testBackendPanel(page, consoleErrors, screenshot) {
   const stateAfterWallet = await page.getAttribute('.oracle-stage', 'data-oracle-state');
   if (stateAfterWallet === 'terminal') {
     await page.evaluate(() => {
-      if (typeof window.__oracle_skipLore === 'function') {
-        window.__oracle_skipLore();
-      }
+      const el = document.querySelector('.oracle-terminal-overlay');
+      if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     await page.waitForFunction(
       () => {
@@ -568,11 +556,9 @@ async function testBackendPanel(page, consoleErrors, screenshot) {
   // ── BP-TEST 9: DEV tab — password gate + unlock ───────────────────────────
   console.log('\nBP-TEST 9 — DEV tab: password-gated access');
   await page.click('[data-testid="tab-dev"]');
-  await screenshot(page, '07b-dev-tab-clicked');
+  await page.waitForTimeout(400);
 
-  const passwordInput = await page.waitForSelector('[data-testid="debug-password-input"]', { timeout: 4000 })
-    .then(() => true)
-    .catch(() => false);
+  const passwordInput = await page.isVisible('[data-testid="debug-password-input"]');
   if (passwordInput) {
     PASS('DEV tab shows password gate ✓');
   } else {

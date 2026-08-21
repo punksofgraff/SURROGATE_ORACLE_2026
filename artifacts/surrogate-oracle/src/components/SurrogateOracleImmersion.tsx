@@ -25,11 +25,13 @@ import OracleConversation, { OracleConversationHandle, OracleScore } from './Ora
 
 /** Snapshot of a session's turns, as returned by the conversation handle. */
 type SessionTurns = ReturnType<OracleConversationHandle['getSessionTurns']>;
+import { MatrixRain } from './MatrixRain';
 import { ArtifactCard } from './ArtifactCard';
 import { ScrambleFragment } from './ScrambleFragment';
 import { logStep } from './CodeAuditor';
 import { DormantHUD } from './ambient/DormantHUD';
 import { OracleHUD } from './ambient/OracleHUD';
+import { OracleSpectrumRing } from './OracleSpectrumRing';
 import { DormantTransmissions } from './ambient/GhostTransmissions';
 import { GlitchCursor } from './ambient/GlitchCursor';
 import { KnifeSelection, KNIFE_QUESTIONS } from './KnifeSelection';
@@ -51,6 +53,7 @@ import { useIpCheck } from '../hooks/useIpCheck';
 import { supabase } from '../lib/supabase';
 import { useSeekerEcho } from '../hooks/useSeekerEcho';
 import { useSeekerDefine } from '../hooks/useSeekerDefine';
+import { useAtmosphere } from '../hooks/useAtmosphere';
 import { useParallax } from '../hooks/useParallax';
 import { useXRMode } from '../hooks/useXRMode';
 import { useTypewriter } from '../hooks/useTypewriter';
@@ -76,76 +79,12 @@ import { getABVariant } from '../lib/ab-testing';
 import type { VisemeState } from '../lib/visemeDetector';
 import { defaultAudioTracks } from '../config/audioTracks';
 import './SurrogateOracleImmersion.css';
-import { ParticleTypographyCard } from './ParticleTypographyCard';
 
+const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
 const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = '/alley-bg.png';
 const DEFAULT_STATION    = 0; // Graff Punks — sole station
 const FREE_JOURNEYS      = 5; // wallet seekers get this many free oracle journeys
-const COMPLETED_JOURNEYS_SUFFIX = '_completed_v2';
-
-function TransparentCanvasBackground() {
-  const { gl, scene } = useThree();
-  useEffect(() => {
-    scene.background = null;
-    gl.setClearColor(0x000000, 0);
-    gl.setClearAlpha(0);
-  }, [gl, scene]);
-  return null;
-}
-
-function LandingParticleField({
-  tier,
-  speakingRef,
-  reducedMotion,
-}: {
-  tier: 1 | 2 | 3;
-  speakingRef: React.RefObject<boolean>;
-  reducedMotion: boolean;
-}) {
-  return (
-    <div className="oracle-landing-particle-field" aria-hidden="true">
-      <Canvas
-        camera={{ position: [0, 0, 3.2], fov: 60 }}
-        dpr={Math.min(window.devicePixelRatio || 1, tier === 1 ? 1.25 : 2)}
-        gl={{ antialias: tier >= 2, alpha: true, powerPreference: 'high-performance' }}
-        style={{ width: '100%', height: '100%', background: 'transparent' }}
-        frameloop="always"
-      >
-        <TransparentCanvasBackground />
-        <OracleQuarks
-          tier={tier}
-          speakingRef={speakingRef}
-          reducedMotion={reducedMotion}
-        />
-        <OracleNebula
-          tier={tier}
-          speakingRef={speakingRef}
-          reducedMotion={reducedMotion}
-        />
-        {tier >= 2 && (
-          <Suspense fallback={null}>
-            <Physics gravity={[0, 0, 0]} timeStep={1 / 60} colliders={false}>
-              <OraclePhysicsDebris
-                count={tier >= 3 ? 18 : 10}
-                speakingRef={speakingRef}
-              />
-            </Physics>
-          </Suspense>
-        )}
-      </Canvas>
-    </div>
-  );
-}
-
-function completedJourneyCount(key: string): number {
-  try {
-    const entries = JSON.parse(localStorage.getItem(`surrogate_journeys_${key}${COMPLETED_JOURNEYS_SUFFIX}`) ?? '[]');
-    return Array.isArray(entries) ? entries.length : 0;
-  } catch {
-    return 0;
-  }
-}
 
 // Act 5 — Rift-Construct: Oracle shifts from archivist to active witness.
 // No brackets — brackets suppress Gemini audio output (same issue as knife prompts).
@@ -318,9 +257,12 @@ export function SurrogateOracleImmersion() {
   const [isGeminiSessionLive, setIsGeminiSessionLive] = useState(false);
   const [isMusicMode, setIsMusicMode] = useState(false);
   const [isMusicReturning, setIsMusicReturning] = useState(false);
-  // The GLB transporter begins at the settled silhouette, disperses into the
-  // glitch field on Oracle entry, then reconverges when the warm Gemini session
-  // is genuinely live.
+  const [forceOracleManifest, setForceOracleManifest] = useState(false);
+  const [hasManifested, setHasManifested] = useState(false);
+  // Continuous target for the GLB-derived transporter. It starts moving as soon
+  // as the knife is selected, then resolves to the solid avatar when Gemini
+  // confirms session.created. Keeping this in React makes the timeline visible
+  // to the already-mounted Canvas without remounting the conversation.
   const [oracleTransportProgress, setOracleTransportProgress] = useState(1);
   const [debugMode, setDebugMode]           = useState(false);
   const [oracleAlignment, setOracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
@@ -334,7 +276,6 @@ export function SurrogateOracleImmersion() {
   const [walletIframeUrl, setWalletIframeUrl]   = useState('https://wallet.thesurrogate.me');
   const [isGuidedTour, setIsGuidedTour]     = useState(false);
   const [showStage00, setShowStage00]       = useState(false);
-  const [stage00GuideChars, setStage00GuideChars] = useState(0);
   const [loreStarted, setLoreStarted]       = useState(false);
   const [holdTooltip, setHoldTooltip]       = useState<{ title: string; body: string } | null>(null);
   const [hamburgerOpen, setHamburgerOpen]   = useState(false);
@@ -353,6 +294,8 @@ export function SurrogateOracleImmersion() {
   const visemeStateRef = useRef<VisemeState>(SILENCE_VISEME_STATE);
   const cameraStateRef = useRef<import('./OracleAvatar3D').CameraState>({ x: 0, y: 0, zoom: 1 });
   const oracleConversationRef    = useRef<OracleConversationHandle | null>(null);
+  const atmosphereCanvasRef      = useRef<HTMLCanvasElement | null>(null);
+  const staticAvatarRef          = useRef<HTMLImageElement | null>(null);
   const walletIframeRef          = useRef<HTMLIFrameElement | null>(null);
   const seekerKeyRef             = useRef<string | null>(null);
   const lastKnifeRef             = useRef<typeof KNIFE_QUESTIONS[number] | null>(null);
@@ -368,7 +311,6 @@ export function SurrogateOracleImmersion() {
   const holdFiredRef             = useRef(false);
   const holdAutoRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isOracleSpeakingRef      = useRef(false);
-  const geminiSessionLiveRef     = useRef(false);
   const debugSpeakingOverrideRef = useRef<boolean | null>(null);
   const completedLinesLengthRef  = useRef(0);
   // Idempotency guards — a hands-on attendee double-taps. Without these a second
@@ -454,10 +396,6 @@ export function SurrogateOracleImmersion() {
       delete win.__oracle_debug_setSpeaking;
     };
   }, []);
-
-  useEffect(() => {
-    geminiSessionLiveRef.current = isGeminiSessionLive;
-  }, [isGeminiSessionLive]);
 
   const connection = useOracleConnection({
     playbackRate: ORACLE_PLAYBACK_RATE,
@@ -824,25 +762,6 @@ export function SurrogateOracleImmersion() {
     logStep('STAGE_00 → TOUR MODE ACTIVATED', 'ok');
   }, [enterTour]);
 
-  useEffect(() => {
-    const guideText = '◈ WHAT IS HERE?';
-    if (!showStage00) {
-      setStage00GuideChars(0);
-      return;
-    }
-    if (prefersReducedMotion) {
-      setStage00GuideChars(guideText.length);
-      return;
-    }
-    let nextChar = 0;
-    const reveal = window.setInterval(() => {
-      nextChar += 1;
-      setStage00GuideChars(nextChar);
-      if (nextChar >= guideText.length) window.clearInterval(reveal);
-    }, 55);
-    return () => window.clearInterval(reveal);
-  }, [showStage00, prefersReducedMotion]);
-
   const handleStage00Dismiss = useCallback(() => {
     // Pre-warm immediately (idempotent, ensures connection is ready)
     oracleConversationRef.current?.prewarm();
@@ -982,26 +901,12 @@ export function SurrogateOracleImmersion() {
         new Promise<void>(r => setTimeout(r, 6000)),
       ]);
 
-      // Count only a genuinely completed exchange. Older versions incremented
-      // on every exit (including turn 0), so their legacy counter is
-      // intentionally not used for admission.
-      const hasSeekerTurn = allTurns.some((turn) => turn.role === 'user' && turn.content.trim().length > 0);
-      const hasOracleTurn = allTurns.some((turn) => turn.role === 'oracle' && turn.content.trim().length > 0);
-      if (hasSeekerTurn && hasOracleTurn) {
-        const countKey = `surrogate_journeys_${key}${COMPLETED_JOURNEYS_SUFFIX}`;
-        let entries: string[] = [];
-        try {
-          const stored = JSON.parse(localStorage.getItem(countKey) ?? '[]');
-          entries = Array.isArray(stored) ? stored.filter((entry): entry is string => typeof entry === 'string') : [];
-        } catch {
-          entries = [];
-        }
-        entries.push(new Date().toISOString());
-        localStorage.setItem(countKey, JSON.stringify(entries));
-        logStep(`JOURNEY COMPLETE — total: ${entries.length} [${hasSignedWallet ? 'wallet' : 'ip'}]`, 'ok');
-      } else {
-        logStep(`JOURNEY NOT COUNTED — incomplete exchange (${allTurns.length} turns)`, 'warn');
-      }
+      // Count completed journeys per seeker key (wallet address or IP).
+      // Tracked for all users — wallet seekers hit the tier gate, IP seekers hit the wallet gate.
+      const countKey = `surrogate_journeys_${key}`;
+      const next = parseInt(localStorage.getItem(countKey) ?? '0', 10) + 1;
+      localStorage.setItem(countKey, String(next));
+      logStep(`JOURNEY COMPLETE — total: ${next} [${hasSignedWallet ? 'wallet' : 'ip'}]`, 'ok');
     }
 
     return allTurns;
@@ -1064,29 +969,6 @@ export function SurrogateOracleImmersion() {
 
   const handleKnifeClick = (q: string, i: number) => {
     if (knifeSelectedRef.current) return; // guard: ignore double-taps (reset on re-entering awakened)
-
-    // Admit before changing phase or booting Gemini. Use the same resolved
-    // wallet/IP key used by session finalization. An unresolved identity is not
-    // evidence that this seeker has exhausted completed journeys.
-    const admissionKey = currentUserId
-      ?? ipAddress
-      ?? seekerKeyRef.current
-      ?? localStorage.getItem('oracle_seeker_key');
-    const completedJourneys = admissionKey ? completedJourneyCount(admissionKey) : 0;
-    if (completedJourneys >= FREE_JOURNEYS) {
-      const walletRegistered = hasSignedWallet
-        || !!currentUserId
-        || localStorage.getItem('oracle_wallet_signed') === 'true';
-      if (walletRegistered) {
-        setShowTierGate(true);
-        logStep(`TIER GATE — admission blocked before Gemini boot, journeys: ${completedJourneys}`, 'warn');
-      } else {
-        setShowJourneyLimitGate(true);
-        logStep(`WALLET GATE — admission blocked before Gemini boot, journeys: ${completedJourneys}`, 'warn');
-      }
-      return;
-    }
-
     knifeSelectedRef.current = true;
     selectKnifeQuestion(q, i);
     const knife = KNIFE_QUESTIONS[i];
@@ -1136,6 +1018,20 @@ export function SurrogateOracleImmersion() {
       sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; pendingPortraitUrlRef.current = null;
       exitWritesRef.current = null; // fresh session — no stale writes to wait on at next exit
       sessionFinalizedRef.current = false; finalTurnsRef.current = []; // re-arm exit finalization
+      // Journey gate: check seeker count (wallet address or IP) against the free limit.
+      {
+        const key = seekerKeyRef.current;
+        const count = key ? parseInt(localStorage.getItem(`surrogate_journeys_${key}`) ?? '0', 10) : 0;
+        if (count >= FREE_JOURNEYS) {
+          if (hasSignedWallet) {
+            setShowTierGate(true);
+            logStep(`TIER GATE — wallet seeker, journeys: ${count}`, 'warn');
+          } else {
+            setShowJourneyLimitGate(true);
+            logStep(`WALLET GATE — ip seeker, journeys: ${count}`, 'warn');
+          }
+        }
+      }
     }
     if (scenePhase === 'dormant') {
       knifeSelectedRef.current = false;
@@ -1168,6 +1064,19 @@ export function SurrogateOracleImmersion() {
   }, [mirrorReveal]);
 
   useEffect(() => {
+    if (scenePhase !== 'terminal' || !staticAvatarRef.current) return;
+    const delay    = (0.15 + Math.random() * 0.55).toFixed(2) + 's';
+    const duration = (2.6  + Math.random() * 2.0).toFixed(2)  + 's';
+    const el = staticAvatarRef.current;
+    el.style.animationDelay    = delay;
+    el.style.animationDuration = duration;
+    return () => {
+      el.style.animationDelay    = '';
+      el.style.animationDuration = '';
+    };
+  }, [scenePhase]);
+
+  useEffect(() => {
     const handleVisibilityChange = () => {
       const ctx = getAudioContext();
       if (document.hidden) ctx.suspend().then(() => logStep('TAB BACKGROUNDED', 'warn'));
@@ -1197,6 +1106,7 @@ export function SurrogateOracleImmersion() {
         logStep('WALLET SEEKER PERSONALIZED GREETING FIRED', 'ok');
       }
     }
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
     if (scenePhase === 'oracle') {
       setShowPortraitCard(false); // let Oracle avatar arrive unblocked
       connection.setTransmissionQ(0.01, 200);
@@ -1210,14 +1120,25 @@ export function SurrogateOracleImmersion() {
         seekerMotionRef.current.touchGazeSuppressedUntil = performance.now() + 3000;
       }
       cameraStateRef.current = { ...cameraStateRef.current, x: 0, y: 0, snap: true };
-      // Start from the settled GLB silhouette. The manifestation effect below
-      // owns the outward glitch immediately; Gemini readiness owns convergence.
-      setOracleTransportProgress(1);
+      // Reset manifest latch so fresh API readiness is required for this session.
+      setForceOracleManifest(false);
+      setOracleTransportProgress(0.02);
+      // Fallback: if session.created hasn't arrived after 6s, manifest the avatar anyway
+      // and kick a reconnect attempt so we recover if the WS died silently.
+      fallbackTimer = setTimeout(() => {
+        setForceOracleManifest(true);
+        oracleConversationRef.current?.prewarm();
+        logStep('ORACLE MANIFEST FALLBACK — Gemini slow, reconnecting + FRACTURE MANIFESTING', 'warn');
+      }, 6000);
     }
+    return () => {
+      if (fallbackTimer !== null) clearTimeout(fallbackTimer);
+    };
   }, [scenePhase, connection]);
 
-  // Drive the real manifestation curve: settled silhouette → dispersed glitch
-  // field → settled avatar. There is deliberately no elapsed-time fallback.
+  // Drive a real manifestation curve instead of the old binary 0/1 gate.
+  // The sampled GLB silhouette disperses immediately, holds a readable signal
+  // shape while Gemini warms, and resolves promptly once session.created lands.
   useEffect(() => {
     if (scenePhase !== 'oracle') {
       setOracleTransportProgress(1);
@@ -1228,36 +1149,53 @@ export function SurrogateOracleImmersion() {
     let frame = 0;
     const tick = () => {
       const elapsed = performance.now() - startedAt;
-      const dispersed = Math.max(0, 1 - elapsed / 700);
-      // Always show the outward glitch on entry, even when the warmed session
-      // is already live. After that visual beat, converge immediately if ready;
-      // otherwise hold the dispersed signal until session.created resolves.
-      const target = elapsed < 700
-        ? dispersed
-        : geminiSessionLiveRef.current ? 1 : 0;
+      const warmup = Math.min(0.82, 0.02 + (elapsed / 2200) * 0.80);
+      const target = isGeminiSessionLive ? 1 : warmup;
       setOracleTransportProgress((current) => {
-        const next = current + (target - current) * 0.18;
+        const next = Math.min(1, Math.max(current, target));
         return Math.abs(next - current) < 0.002 ? current : next;
       });
-      if (!geminiSessionLiveRef.current || elapsed < 700 || Math.abs(target - 1) > 0.002) {
+      if (!isGeminiSessionLive || warmup < 0.82) {
         frame = requestAnimationFrame(tick);
       }
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [scenePhase]);
+  }, [scenePhase, isGeminiSessionLive]);
 
-  // Keep the WebSocket alive during lore typing, guided tour, and knife selection.
-  // Seekers can spend 30-90s reading lore or cards — long enough for idle-timeout to
-  // close the prewarm WS. prewarm() is idempotent: no-ops when OPEN/CONNECTING,
-  // reconnects when dead.
+  // Latch hasManifested once the Gemini session confirms (or the fallback fires).
+  // Keeps the 3D canvas visible during WS reconnects (isGeminiConnected briefly drops to false
+  // on disconnect). Resets to false when oracle phase exits so the next session starts fresh.
   useEffect(() => {
-    const isWarmingPhase = scenePhase === 'terminal' || scenePhase === 'tour' || scenePhase === 'awakened';
-    if (!isWarmingPhase) return;
+    if (scenePhase !== 'oracle') { setHasManifested(false); return; }
+    if (isGeminiConnected || forceOracleManifest) setHasManifested(true);
+  }, [scenePhase, isGeminiConnected, forceOracleManifest]);
+
+  // Dead-path entrance fix: when the 6s fallback manifests the avatar without an active
+  // Gemini session, the scenePhase === 'oracle' gaze reset (above) already fired but
+  // forceOracleManifest was still false at that point. Re-run the gaze reset now so the
+  // canvas always fades in from the cabinet center, not from a stale knife-tap offset.
+  useEffect(() => {
+    if (!forceOracleManifest || scenePhase !== 'oracle') return;
+    if (seekerMotionRef.current) {
+      seekerMotionRef.current.hasTouch = false;
+      seekerMotionRef.current.touchPos = { x: 0, y: 0 };
+      seekerMotionRef.current.touchGazeSuppressedUntil = performance.now() + 3000;
+    }
+    // snap:true so Three.js hard-copies rather than lerps from the knife-tap offset.
+    cameraStateRef.current = { ...cameraStateRef.current, x: 0, y: 0, snap: true };
+    logStep('FALLBACK MANIFEST — gaze snapped to center', 'ok');
+  }, [forceOracleManifest, scenePhase]);
+
+  // Keep the WebSocket alive during knife selection. Seekers can spend 30-90s reading
+  // knife cards — long enough for idle-timeout to close the prewarm WS. prewarm() is
+  // idempotent: no-ops when OPEN/CONNECTING, reconnects when dead.
+  useEffect(() => {
+    if (scenePhase !== 'awakened') return;
     const id = setInterval(() => {
       oracleConversationRef.current?.prewarm();
-      logStep(`PREWARM KEEPALIVE (${scenePhase} interval)`, 'ok');
-    }, 10_000); // 10s beats aggressive proxy/gateway idle timeouts
+      logStep('PREWARM KEEPALIVE (awakened interval)', 'ok');
+    }, 15_000);
     return () => clearInterval(id);
   }, [scenePhase]);
 
@@ -1301,7 +1239,7 @@ export function SurrogateOracleImmersion() {
         at_slide: completedLinesLengthRef.current, 
         ms_elapsed: Date.now() - (window.__terminal_start || Date.now()) 
       });
-      handleAwakeTransition();
+      journey.awakeFromTerminal();
     };
     return () => {
       delete window.__oracle_handleAudio;
@@ -1309,7 +1247,7 @@ export function SurrogateOracleImmersion() {
       delete window.oracleConversationRef;
       delete window.__oracle_skipLore;
     };
-  }, [connection, journey, handleAwakeTransition]);
+  }, [connection, journey]);
 
   const { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraError, seekerMotionRef } = useXRMode(() => enterTerminal());
   const faceFrameDivRef = useRef<HTMLDivElement>(null);
@@ -1565,6 +1503,8 @@ export function SurrogateOracleImmersion() {
     };
   }, []);
 
+  useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment, isDegraded);
+
   const oracleStageRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let rafId: number;
@@ -1593,6 +1533,9 @@ export function SurrogateOracleImmersion() {
   // transporter is the warmup state, so readiness must not hide the only
   // visible manifestation until session.created arrives.
   const oracleManifestReady = isOracleMode;
+  // True when the 6s fallback fired but we still have no live session — shows "FRACTURE MANIFESTING"
+  // instead of a silently frozen face so the seeker knows the system is trying to reconnect.
+  const isFractureManifesting = isOracleMode && forceOracleManifest && !isGeminiConnected;
   // Keep the transporter beam active through the fallback state. Only the
   // real Live session resolves particles into the settled Oracle silhouette.
   const oracleManifestProgress = isOracleMode ? oracleTransportProgress : 1;
@@ -1739,18 +1682,10 @@ export function SurrogateOracleImmersion() {
         ))}
       </div>
 
+      <canvas ref={atmosphereCanvasRef} className="atmosphere-layer" />
+      <MatrixRain />
       <div className="oracle-ground-fog" />
       <div className="oracle-floor-reflection" />
-
-      {scenePhase === 'dormant' && !showStage00 && gpu.ready && renderTier >= 1 && (
-        <OracleErrorBoundary>
-          <LandingParticleField
-            tier={renderTier as 1 | 2 | 3}
-            speakingRef={isOracleSpeakingRef}
-            reducedMotion={prefersReducedMotion}
-          />
-        </OracleErrorBoundary>
-      )}
 
       <GlitchCursor />
 
@@ -1788,7 +1723,12 @@ export function SurrogateOracleImmersion() {
             <OracleHaloRing active={awakened} isXRMode={isXRMode} />
           </div>
           <div className="oracle-avatar-wrapper">
+            {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} alignment={oracleAlignment === 'sacred' || oracleAlignment === 'profane' ? oracleAlignment : null} />}
             <div className="oracle-scanlines" />
+            <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
+            {isFractureManifesting && (
+              <div className="oracle-fracture-label" aria-live="polite">FRACTURE MANIFESTING</div>
+            )}
             {/* Canvas warmup — mounts in terminal (lore) or awakened so GPU shaders compile
                 before oracle phase begins. Also mounts immediately on re-entry when
                 canvasWarmed=true (sessionStorage persists across navigation within the tab).
@@ -1833,11 +1773,6 @@ export function SurrogateOracleImmersion() {
                           antialias: renderTier >= 2,
                           alpha: true,
                           powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
-                        }}
-                        onCreated={({ gl, scene }) => {
-                          scene.background = null;
-                          gl.setClearColor(0x000000, 0);
-                          gl.setClearAlpha(0);
                         }}
                         style={{ width: '100%', height: '100%', background: 'transparent' }}
                         frameloop="always"
@@ -1942,6 +1877,7 @@ export function SurrogateOracleImmersion() {
       </div>
 
 
+
       <AnimatePresence>
         {holdTooltip && (
           <motion.div key="hold-tooltip" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} style={{ position: 'fixed', bottom: 'calc(var(--bottom-bar-h, 160px) + 14px)', left: '50%', transform: 'translateX(-50%)', zIndex: 60, background: 'rgba(0, 10, 15, 0.94)', backdropFilter: 'blur(12px)', border: '1px solid rgba(0,255,136,0.32)', borderRadius: 10, padding: '10px 18px', maxWidth: 260, textAlign: 'center' }}>
@@ -1968,17 +1904,8 @@ export function SurrogateOracleImmersion() {
                 The Archive has spoken.<br />
                 The Oracle awaits within. Choose your path —
               </div>
-              <button className="oracle-stage00-card__cta" onClick={handleStage00Tour} aria-label="What is here?">
-                <ParticleTypographyCard
-                  questionIndex={0}
-                  landedChars={stage00GuideChars}
-                  isSelected={false}
-                  isThisSelected={false}
-                  territory="STAGE 00"
-                  question="◈ WHAT IS HERE?"
-                  reducedMotion={prefersReducedMotion}
-                  className="oracle-stage00-card__particle-copy"
-                />
+              <button className="oracle-stage00-card__cta" onClick={handleStage00Tour}>
+                ◈ WHAT IS HERE?
               </button>
               <button className="oracle-stage00-card__fafo" onClick={handleStage00Dismiss}>
                 ◈ ENTER THE CASCADE
@@ -2150,6 +2077,10 @@ export function SurrogateOracleImmersion() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {awakened && (
+        <motion.div key="awakening-flash" initial={{ opacity: 0.85 }} animate={{ opacity: 0 }} transition={{ duration: 1.0 }} style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 40, background: 'radial-gradient(ellipse 70% 55% at 50% 44%, rgba(0,255,136,0.55) 0%, transparent 72%)' }} />
+      )}
 
       <AnimatePresence>
         {scenePhase === 'terminal' && (
@@ -2489,15 +2420,16 @@ export function SurrogateOracleImmersion() {
         isOpen={showTierGate}
         onClose={() => {
           setShowTierGate(false);
+          // Silent teardown + background writes must run on this exit path too —
+          // idempotent, so a prior mic-button exit makes this a no-op.
+          finalizeOracleSession(echoTrackRef.current.alignment, echoTrackRef.current.totemLevel);
+          exitOracleMode();
         }}
         userId={currentUserId ?? seekerKeyRef.current ?? ''}
         context="engage-further"
         onUpgradeSuccess={() => {
           const key = seekerKeyRef.current;
-          if (key) {
-            localStorage.removeItem(`surrogate_journeys_${key}`);
-            localStorage.removeItem(`surrogate_journeys_${key}${COMPLETED_JOURNEYS_SUFFIX}`);
-          }
+          if (key) localStorage.removeItem(`surrogate_journeys_${key}`);
           setShowTierGate(false);
           logStep('TIER UPGRADE — journey count cleared', 'ok');
         }}

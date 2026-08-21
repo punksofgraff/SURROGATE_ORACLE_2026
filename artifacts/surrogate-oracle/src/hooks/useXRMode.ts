@@ -420,7 +420,9 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
           setIsXRMode(true);
           startCamera();
           try {
-            (e.source as Window)?.postMessage({ type: 'oracle:ready', version: '2.0' }, '*');
+            if (e.source && e.source !== window && e.origin) {
+               (e.source as Window).postMessage({ type: 'oracle:ready', version: '2.0' }, e.origin);
+            }
           } catch (err) {
             console.warn('[XR] postMessage(oracle:ready) failed:', err);
           }
@@ -430,7 +432,9 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
           setMarkerActive(true);
           onMarkerRef.current?.();
           try {
-            (e.source as Window)?.postMessage({ type: 'oracle:awakened' }, '*');
+            if (e.source && e.source !== window && e.origin) {
+              (e.source as Window).postMessage({ type: 'oracle:awakened' }, e.origin);
+            }
           } catch (err) {
             console.warn('[XR] postMessage(oracle:awakened) failed:', err);
           }
@@ -439,7 +443,9 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
         case 'holodexr:marker-lost':
           setMarkerActive(false);
           try {
-            (e.source as Window)?.postMessage({ type: 'oracle:dormant' }, '*');
+            if (e.source && e.source !== window && e.origin) {
+              (e.source as Window).postMessage({ type: 'oracle:dormant' }, e.origin);
+            }
           } catch (err) {
             console.warn('[XR] postMessage(oracle:dormant) failed:', err);
           }
@@ -491,7 +497,9 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   useEffect(() => {
     if (!isXRMode || !cameraReady) return;
     try {
-      window.parent.postMessage({ type: 'oracle:camera-ready' }, '*');
+      if (window.parent && window.parent !== window) {
+         window.parent.postMessage({ type: 'oracle:camera-ready' }, window.location.origin);
+      }
     } catch (err) {
       console.warn('[XR] postMessage(oracle:camera-ready) failed:', err);
     }

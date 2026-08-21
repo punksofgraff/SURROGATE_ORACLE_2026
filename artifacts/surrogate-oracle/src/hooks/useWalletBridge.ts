@@ -76,7 +76,7 @@ export function useWalletBridge({
           type: 'wallet_signed',
           address: seeker,
           event: params.get('event') || 'signin'
-        }, '*'); // target '*' to support cross-origin proxy/localhost domains safely
+        }, window.location.origin); // target specific origin to prevent leakage
         window.close();
       } catch (e) {
         console.error('[POPUP-BRIDGE] Handshake failed, closing anyway:', e);
@@ -99,7 +99,7 @@ export function useWalletBridge({
           type: 'wallet_signed',
           address: seeker,
           event: params.get('event') || 'signin'
-        }, '*'); // public wallet address only — same trust model as the popup bridge
+        }, window.location.origin); // same trust model as the popup bridge
       } catch (e) {
         console.error('[FRAME-BRIDGE] Relay failed:', e);
       }

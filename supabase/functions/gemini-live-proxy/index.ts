@@ -23,6 +23,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '
 const GOOGLE_AI_KEY_FREE        = Deno.env.get('GOOGLE_AI_KEY_FREE') ?? '';
 const GOOGLE_AI_KEY_PAID        = Deno.env.get('GOOGLE_AI_KEY_PAID') ?? '';
 
+import { ORACLE_SYSTEM_PROMPT, buildWorldContextBlock } from './promptBlocks.ts';
+
 const FAIL_THRESHOLD = 3;
 const PAID_RESET_MS  = 24 * 60 * 60 * 1000;
 const GEMINI_BASE    = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
@@ -172,8 +174,16 @@ Deno.serve(async (req: Request) => {
       try {
         const msg = JSON.parse(rawData);
         if (msg.type === 'session.config') {
-          const setup: Record<string, unknown> = { model: msg.model };
-          if (msg.systemInstruction)               setup.systemInstruction    = msg.systemInstruction;
+          const setup: Record<string, unknown> = { model: 'models/gemini-2.5-flash-native-audio-latest' };
+          
+          let systemText = msg.clientConfig?.seekerSummary
+            ? ORACLE_SYSTEM_PROMPT + `\n\n[RETURNING SEEKER — what we remember from the last encounter:]\n${msg.clientConfig.seekerSummary}`
+            : ORACLE_SYSTEM_PROMPT;
+          if (msg.clientConfig?.worldBriefing) {
+            systemText += buildWorldContextBlock(msg.clientConfig.worldBriefing);
+          }
+          setup.systemInstruction = { parts: [{ text: systemText }] };
+
           if (msg.generationConfig)                setup.generationConfig     = msg.generationConfig;
           if (msg.tools !== undefined)             setup.tools                = msg.tools;
           if (msg.toolConfig !== undefined)        setup.toolConfig           = msg.toolConfig;
@@ -185,7 +195,7 @@ Deno.serve(async (req: Request) => {
           if (msg.inputAudioTranscription !== undefined)  setup.inputAudioTranscription  = msg.inputAudioTranscription;
           if (msg.outputAudioTranscription !== undefined) setup.outputAudioTranscription = msg.outputAudioTranscription;
           setup.contextWindowCompression = { slidingWindow: {} };
-          console.log('📤 setup → Gemini, model:', msg.model, '| key:', activeMode);
+          console.log('📤 setup → Gemini, model: enforced | key:', activeMode);
           gemini.send(JSON.stringify({ setup }));
         } else if (msg.type === 'client.realtimeInput') {
           gemini.send(JSON.stringify({ realtimeInput: msg.realtimeInput }));

@@ -84,12 +84,6 @@ export function usePortraitPipeline({
         ...(signals.alignment && { alignment: signals.alignment }),
         ...(signals.archetypeTitle && { archetypeTitle: signals.archetypeTitle }),
         ...(signals.sessionPhase && { sessionPhase: signals.sessionPhase }),
-        ...(seekerLines?.length && {
-          seekerLines: seekerLines
-            .filter(l => l.trim().length > 8)
-            .slice(-MAX_SEEKER_LINES)
-            .map(l => l.trim().slice(0, MAX_LINE_CHARS)),
-        }),
       };
       logStep(
         `PORTRAIT CONTEXT — themes: ${weightedThemes.map(t => `${t.theme}×${t.weight}`).join(', ')}` +
@@ -103,8 +97,6 @@ export function usePortraitPipeline({
         body: {
           themes: safeThemes, // backward-compat fallback field
           context,
-          email: userEmail || undefined,
-          sessionId: currentSessionId || undefined,
           enhancePrompt: true,
         },
       });
@@ -112,11 +104,6 @@ export function usePortraitPipeline({
       if (error) throw error;
       if (!data?.portraitUrl) throw new Error('No portraitUrl returned from generator');
 
-      if (data.promptUsed) {
-        // Surface the distilled prompt in the step log so headless verification
-        // can diff prompts across contrasting sessions (no raw transcript here).
-        logStep(`PORTRAIT PROMPT [fluid=${!!data.fluidContext}]: ${String(data.promptUsed).slice(0, 300)}`, 'ok');
-      }
       logStep('NEURAL PORTRAIT SYNTHESIZED ✓', 'ok');
       setLatestPortraitUrl(data.portraitUrl);
       onPortraitGenerated?.(data.portraitUrl);

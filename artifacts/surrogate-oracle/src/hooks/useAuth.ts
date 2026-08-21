@@ -62,7 +62,7 @@ export function useAuth(onSuccess: (user: AuthUser) => void): UseAuthReturn {
   };
 
   const handleEmailSignIn = async (email: string): Promise<boolean> => {
-    console.log('🔄 handleEmailSignIn invoked for:', email);
+    console.log('🔄 handleEmailSignIn invoked');
     setIsLoading(true);
     setError(null);
     try {
@@ -97,7 +97,7 @@ export function useAuth(onSuccess: (user: AuthUser) => void): UseAuthReturn {
   };
 
   const handleVerifyOtp = async (email: string, token: string) => {
-    console.log('🔄 handleVerifyOtp invoked for:', email, 'with token:', token);
+    console.log('🔄 handleVerifyOtp invoked');
     setIsLoading(true);
     setError(null);
     try {

@@ -1,0 +1,50 @@
+{
+  "captureMode": "browser-emulation",
+  "capturedAt": "2026-08-21T10:08:11.913Z",
+  "profile": "iphone-safari",
+  "deviceBrowser": "iPhone Safari (emulated)",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "dpr": 3
+  },
+  "url": "http://localhost:80/surrogate-oracle?devui&standard",
+  "entryScreenshot": "iphone-safari-entry.png",
+  "sustainedScreenshot": "iphone-safari-sustained-conversation.png",
+  "evidence": {
+    "scenePhase": "oracle",
+    "oracleSpeaking": false,
+    "userSpeaking": false,
+    "portraitReveal": {
+      "visible": false,
+      "className": null
+    },
+    "xr": {
+      "requested": false,
+      "bridge": null,
+      "cameraVideo": false
+    },
+    "webgl": {
+      "canvasMounted": true,
+      "contextAlive": true,
+      "cssRect": {
+        "x": -124.796875,
+        "y": -111.46875,
+        "width": 639.578125,
+        "height": 779.953125
+      },
+      "renderTier": 1,
+      "sceneProbe": {
+        "frameCount": 7,
+        "quarkTime": 0.21789599999999631,
+        "nebulaUpdates": 12,
+        "debrisUpdates": 0,
+        "particleCount": 0,
+        "glbTransportProgress": 0.9923710966582853
+      }
+    },
+    "whiteRectCandidate": false
+  },
+  "pageErrors": [],
+  "physicalDeviceEvidence": false
+}

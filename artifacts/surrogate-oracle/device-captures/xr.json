@@ -1,0 +1,55 @@
+{
+  "captureMode": "browser-emulation",
+  "capturedAt": "2026-08-21T10:11:09.205Z",
+  "profile": "xr",
+  "deviceBrowser": "XR bridge mode (emulated host)",
+  "viewport": {
+    "width": 393,
+    "height": 851,
+    "dpr": 3
+  },
+  "url": "http://localhost:80/surrogate-oracle?devui&xr&autostart",
+  "entryScreenshot": "xr-entry.png",
+  "sustainedScreenshot": "xr-sustained-conversation.png",
+  "evidence": {
+    "scenePhase": "oracle",
+    "oracleSpeaking": false,
+    "userSpeaking": false,
+    "portraitReveal": {
+      "visible": false,
+      "className": null
+    },
+    "xr": {
+      "requested": true,
+      "bridge": {
+        "xrMode": true,
+        "cameraReady": false,
+        "markerActive": false,
+        "phase": "oracle"
+      },
+      "cameraVideo": true
+    },
+    "webgl": {
+      "canvasMounted": true,
+      "contextAlive": true,
+      "cssRect": {
+        "x": 23.59772491455078,
+        "y": 110.58424377441406,
+        "width": 345.8045654296875,
+        "height": 404.0098876953125
+      },
+      "renderTier": 1,
+      "sceneProbe": {
+        "frameCount": 6,
+        "quarkTime": 0.25,
+        "nebulaUpdates": 16,
+        "debrisUpdates": 0,
+        "particleCount": 0,
+        "glbTransportProgress": 0.8234656619885691
+      }
+    },
+    "whiteRectCandidate": false
+  },
+  "pageErrors": [],
+  "physicalDeviceEvidence": false
+}

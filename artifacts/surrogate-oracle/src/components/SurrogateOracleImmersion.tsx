@@ -1301,7 +1301,7 @@ export function SurrogateOracleImmersion() {
         at_slide: completedLinesLengthRef.current, 
         ms_elapsed: Date.now() - (window.__terminal_start || Date.now()) 
       });
-      journey.awakeFromTerminal();
+      handleAwakeTransition();
     };
     return () => {
       delete window.__oracle_handleAudio;
@@ -1309,7 +1309,7 @@ export function SurrogateOracleImmersion() {
       delete window.oracleConversationRef;
       delete window.__oracle_skipLore;
     };
-  }, [connection, journey]);
+  }, [connection, journey, handleAwakeTransition]);
 
   const { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraError, seekerMotionRef } = useXRMode(() => enterTerminal());
   const faceFrameDivRef = useRef<HTMLDivElement>(null);

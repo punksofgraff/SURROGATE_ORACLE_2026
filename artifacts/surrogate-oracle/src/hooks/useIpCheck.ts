@@ -19,21 +19,22 @@ export function useIpCheck() {
   const [hasCompletedLore, setHasCompletedLore] = useState(false);
   const [hasSignedWallet, setHasSignedWallet] = useState(false);
   const [ipAddress, setIpAddress] = useState<string | null>(null);
-  const [isChecking, setIsChecking] = useState(!forceNew);
+  const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
-    if (forceNew) return; // skip all checks — dev fresh-user mode
-
     async function checkIp() {
       try {
         // Wallet sign flags are IP-agnostic-first: a stored wallet seeker key or the
         // agnostic signed flag counts immediately, before any network round-trip.
-        const walletFlagEarly = localStorage.getItem('oracle_wallet_signed')
-          || localStorage.getItem('oracle_seeker_key');
-        if (walletFlagEarly) {
-          setHasSignedWallet(true);
-          setHasCompletedLore(true);
-          setIsReturning(true);
+        let walletFlagEarly: string | null = null;
+        if (!forceNew) {
+          walletFlagEarly = localStorage.getItem('oracle_wallet_signed')
+            || localStorage.getItem('oracle_seeker_key');
+          if (walletFlagEarly) {
+            setHasSignedWallet(true);
+            setHasCompletedLore(true);
+            setIsReturning(true);
+          }
         }
 
         // Single round-trip: the edge function derives the caller IP server-side
@@ -44,6 +45,11 @@ export function useIpCheck() {
 
         const ip: string | null = fnData?.ip_address ?? null;
         if (ip) setIpAddress(ip);
+
+        if (forceNew) {
+          logStep('IP CHECK: FORCE NEW USER OVERRIDE', 'ok');
+          return;
+        }
 
         // Local storage check keyed by the server-derived IP
         if (ip) {

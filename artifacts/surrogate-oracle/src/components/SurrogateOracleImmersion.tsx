@@ -157,6 +157,56 @@ function OracleAvatarFallback() {
   );
 }
 
+function WebGLContextWatcher({
+  onContextLost,
+  onContextRestored,
+}: {
+  onContextLost: () => void;
+  onContextRestored: () => void;
+}) {
+  const { gl } = useThree();
+  useEffect(() => {
+    const canvasEl = gl.domElement;
+    const handleLost = (e: Event) => {
+      e.preventDefault();
+      console.warn('⚠️ WebGL context lost inside R3F Canvas!');
+      onContextLost();
+    };
+    const handleRestored = () => {
+      console.info('✅ WebGL context restored inside R3F Canvas!');
+      onContextRestored();
+    };
+    canvasEl.addEventListener('webglcontextlost', handleLost);
+    canvasEl.addEventListener('webglcontextrestored', handleRestored);
+    
+    // Dev bypass test interface
+    (window as any).__simulateContextLoss = () => {
+      const ext = gl.getExtension('WEBGL_lose_context');
+      if (ext) {
+        console.log('⚡ Simulating WebGL Context Loss...');
+        ext.loseContext();
+      } else {
+        console.warn('❌ WEBGL_lose_context extension not available.');
+      }
+    };
+    (window as any).__simulateContextRestore = () => {
+      const ext = gl.getExtension('WEBGL_lose_context');
+      if (ext) {
+        console.log('⚡ Simulating WebGL Context Restore...');
+        ext.restoreContext();
+      }
+    };
+
+    return () => {
+      canvasEl.removeEventListener('webglcontextlost', handleLost);
+      canvasEl.removeEventListener('webglcontextrestored', handleRestored);
+      delete (window as any).__simulateContextLoss;
+      delete (window as any).__simulateContextRestore;
+    };
+  }, [gl, onContextLost, onContextRestored]);
+  return null;
+}
+
 /* ── Orbit-room canvas expansion ──────────────────────────────────────────────
    In oracle phase the WebGL canvas element is grown 2x in both axes (CSS
    `inset: -50%`) so particles can orbit wider than the avatar without clipping
@@ -1459,6 +1509,7 @@ export function SurrogateOracleImmersion() {
 
   useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment, isDegraded);
 
+  const [isContextLost, setIsContextLost] = useState(false);
   const oracleStageRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let rafId: number;
@@ -1697,9 +1748,10 @@ export function SurrogateOracleImmersion() {
                 style={{
                   position: 'absolute', top: 0, left: 0,
                   width: '100%', height: '100%',
-                   opacity: isOracleMode || oracleManifestReady ? 1 : 0,
+                  opacity: isOracleMode || oracleManifestReady ? 1 : 0,
                   pointerEvents: oracleManifestReady ? 'auto' : 'none',
                   zIndex: 3,
+                  visibility: isContextLost ? 'hidden' : 'visible', // Hide if WebGL context is lost (prevents white rect on iOS)
                 }}
               >
                 <div className="oracle-avatar-headroom-hook" style={{ width: '100%', height: '100%' }}>
@@ -1731,81 +1783,89 @@ export function SurrogateOracleImmersion() {
                         style={{ width: '100%', height: '100%', background: 'transparent' }}
                         frameloop="always"
                       >
-                        <OrbitZoomCompensator enabled={isOracleMode && !isXRMode} />
-                        {import.meta.env.DEV && <OracleSceneDiagnostics />}
-                        {!isMusicMode && (
-                          <OracleAvatar3D
-                            visemeStateRef={visemeStateRef}
-                            cameraStateRef={cameraStateRef}
-                            seekerMotionRef={seekerMotionRef}
-                            transporterActive={isOracleMode}
-                            transporterProgress={isMusicReturning ? 0 : oracleManifestProgress}
-                            transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
-                            reducedMotion={prefersReducedMotion}
-                          />
-                        )}
-                        {isMusicMode && (
-                          <OracleMusicVisualizer
-                            getAnalyser={() => lyria.analyserRef.current}
-                            reducedMotion={prefersReducedMotion}
-                          />
-                        )}
-                        {/* The ambient field returns only after the GLB-source
-                            transporter has been released, so it never masks the
-                            recognizable particle silhouette during warmup. */}
-                        {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
-                          <OracleQuarks
-                            tier={renderTier as 1 | 2 | 3}
-                            speakingRef={isOracleSpeakingRef}
-                            amplitude={visemeStateRef.current?.amplitude ?? 0}
-                            reducedMotion={prefersReducedMotion}
-                          />
-                        )}
-                        {/* The GLB transporter owns the particle surface until
-                            Gemini is genuinely live. Ambient fields return after
-                            convergence so the TNG matrix remains legible. */}
-                        {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
-                          <OracleNebula
-                            tier={renderTier as 1 | 2 | 3}
-                            speakingRef={isOracleSpeakingRef}
-                            reducedMotion={prefersReducedMotion}
-                          />
-                        )}
-                        {/* Rapier glyph-shard debris field (tier 2+) — fixed 60Hz step,
-                            zero gravity, shards constrained behind the bust.
-                            Inner Suspense: Physics suspends while the Rapier WASM loads —
-                            without this boundary the whole Canvas (avatar included) would
-                            fall back to the outer Suspense fallback mid-session. */}
-                        {renderTier >= 2 && (!isOracleMode || isGeminiSessionLive) && (
-                          <Suspense fallback={null}>
-                            <Physics gravity={[0, 0, 0]} timeStep={1 / 60} colliders={false}>
-                              <OraclePhysicsDebris
-                                count={renderTier >= 3 ? 18 : 10}
-                                speakingRef={isOracleSpeakingRef}
+                        <WebGLContextWatcher
+                          onContextLost={() => setIsContextLost(true)}
+                          onContextRestored={() => setIsContextLost(false)}
+                        />
+                        {!isContextLost && (
+                          <>
+                            <OrbitZoomCompensator enabled={isOracleMode && !isXRMode} />
+                            {import.meta.env.DEV && <OracleSceneDiagnostics />}
+                            {!isMusicMode && (
+                              <OracleAvatar3D
+                                visemeStateRef={visemeStateRef}
+                                cameraStateRef={cameraStateRef}
+                                seekerMotionRef={seekerMotionRef}
+                                transporterActive={isOracleMode}
+                                transporterProgress={isMusicReturning ? 0 : oracleManifestProgress}
+                                transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
+                                reducedMotion={prefersReducedMotion}
                               />
-                            </Physics>
-                          </Suspense>
-                        )}
-                        {renderTier >= 1 && (
-                          <EffectComposer multisampling={renderTier >= 2 ? 4 : 0}>
-                            {[
-                              <Bloom
-                                key="bloom"
-                                intensity={renderTier >= 3 ? 1.45 : renderTier >= 2 ? 1.15 : 0.75}
-                                luminanceThreshold={0.20}
-                                luminanceSmoothing={0.32}
-                                mipmapBlur
-                              />,
-                              ...(renderTier >= 2 ? [
-                                <ChromaticAberration
-                                  key="ca"
-                                  offset={[0.0016, 0.0022]}
-                                  radialModulation
-                                  modulationOffset={0.42}
-                                />,
-                              ] : []),
-                            ]}
-                          </EffectComposer>
+                            )}
+                            {isMusicMode && (
+                              <OracleMusicVisualizer
+                                getAnalyser={() => lyria.analyserRef.current}
+                                reducedMotion={prefersReducedMotion}
+                              />
+                            )}
+                            {/* The ambient field returns only after the GLB-source
+                                transporter has been released, so it never masks the
+                                recognizable particle silhouette during warmup. */}
+                            {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
+                              <OracleQuarks
+                                tier={renderTier as 1 | 2 | 3}
+                                speakingRef={isOracleSpeakingRef}
+                                amplitude={visemeStateRef.current?.amplitude ?? 0}
+                                reducedMotion={prefersReducedMotion}
+                              />
+                            )}
+                            {/* The GLB transporter owns the particle surface until
+                                Gemini is genuinely live. Ambient fields return after
+                                convergence so the TNG matrix remains legible. */}
+                            {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
+                              <OracleNebula
+                                tier={renderTier as 1 | 2 | 3}
+                                speakingRef={isOracleSpeakingRef}
+                                reducedMotion={prefersReducedMotion}
+                              />
+                            )}
+                            {/* Rapier glyph-shard debris field (tier 2+) — fixed 60Hz step,
+                                zero gravity, shards constrained behind the bust.
+                                Inner Suspense: Physics suspends while the Rapier WASM loads —
+                                without this boundary the whole Canvas (avatar included) would
+                                fall back to the outer Suspense fallback mid-session. */}
+                            {renderTier >= 2 && (!isOracleMode || isGeminiSessionLive) && (
+                              <Suspense fallback={null}>
+                                <Physics gravity={[0, 0, 0]} timeStep={1 / 60} colliders={false}>
+                                  <OraclePhysicsDebris
+                                    count={renderTier >= 3 ? 18 : 10}
+                                    speakingRef={isOracleSpeakingRef}
+                                  />
+                                </Physics>
+                              </Suspense>
+                            )}
+                            {renderTier >= 1 && (
+                              <EffectComposer multisampling={renderTier >= 2 ? 4 : 0}>
+                                {[
+                                  <Bloom
+                                    key="bloom"
+                                    intensity={renderTier >= 3 ? 1.45 : renderTier >= 2 ? 1.15 : 0.75}
+                                    luminanceThreshold={0.20}
+                                    luminanceSmoothing={0.32}
+                                    mipmapBlur
+                                  />,
+                                  ...(renderTier >= 2 ? [
+                                    <ChromaticAberration
+                                      key="ca"
+                                      offset={[0.0016, 0.0022]}
+                                      radialModulation
+                                      modulationOffset={0.42}
+                                    />,
+                                  ] : []),
+                                ]}
+                              </EffectComposer>
+                            )}
+                          </>
                         )}
                       </Canvas>
                     </Suspense>

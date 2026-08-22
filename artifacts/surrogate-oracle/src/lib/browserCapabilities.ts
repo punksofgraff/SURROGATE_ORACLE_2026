@@ -35,6 +35,20 @@ export function isTouchPrimaryDevice(): boolean {
 }
 
 /**
+ * Quest Browser exposes touch-like input, but its intended output is a
+ * headset, not a phone speaker. Keep this narrow rather than enabling HRTF
+ * for every Android touch device.
+ */
+export function isQuestHeadset(): boolean {
+  try {
+    const ua = navigator.userAgent || '';
+    return /OculusBrowser|Quest(?:\s?2|\s?3|\s?Pro)?|Meta Quest/i.test(ua);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * True when running inside an iframe (same-origin or cross-origin). Fails
  * safe to `true` when the cross-origin check itself throws, since we can't
  * prove we're top-level in that case.

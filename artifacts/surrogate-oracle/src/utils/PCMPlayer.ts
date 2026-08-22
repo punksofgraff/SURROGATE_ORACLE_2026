@@ -8,7 +8,7 @@
  * back with minimal jitter and zero intermediate file creation.
  */
 
-import { createAudioContext, isTouchPrimaryDevice } from '../lib/browserCapabilities';
+import { createAudioContext, isQuestHeadset, isTouchPrimaryDevice } from '../lib/browserCapabilities';
 
 // The Oracle's baseline loudness. Applied as post-compression makeup gain
 // (mid-graph), NOT master gain. Previously this was a 2.5x master-gain boost
@@ -143,16 +143,13 @@ export class PCMPlayer {
     }
 
     // ── Spatial panner — Oracle voice follows head-tracking movement
-    // DESKTOP ONLY. On touch devices the head-tracking source is the gyroscope,
-    // whose permission is granted during the mic-tap gesture — so HRTF panning
-    // would switch on exactly when the Seeker unmutes, heard as a sudden
-    // "spatial audio" shift in the Oracle's voice (task: mic tap must be
-    // side-effect-free for playback). Mobile therefore plays through a fixed,
-    // non-spatialized chain; desktop keeps HRTF (mouse parallax runs from the
-    // start, so there is no toggle-correlated onset).
+    // Phones/tablets stay fixed because their OS audio session can change
+    // during mic activation. Quest is the deliberate exception: its browser
+    // is touch-like but its output is a headset, so HRTF is initialized before
+    // the first PCM chunk and never switches on mid-session.
     try {
-      if (isTouchPrimaryDevice()) {
-        console.log('[PCMPlayer] Touch device — HRTF spatial panner disabled (fixed playback chain)');
+      if (isTouchPrimaryDevice() && !isQuestHeadset()) {
+        console.log('[PCMPlayer] Phone/tablet — HRTF disabled (fixed playback chain)');
         throw new Error('skip-panner-on-touch');
       }
       const panner = this.context.createPanner();
@@ -171,6 +168,7 @@ export class PCMPlayer {
         panner.connect(this.context.destination);
       }
       this.panner = panner;
+      console.log(`[PCMPlayer] HRTF spatial audio active${isQuestHeadset() ? ' (Quest headset)' : ''}`);
     } catch (err) {
       if ((err as Error).message !== 'skip-panner-on-touch') {
         console.warn('[PCMPlayer] PannerNode (HRTF) unavailable, skipping:', err);

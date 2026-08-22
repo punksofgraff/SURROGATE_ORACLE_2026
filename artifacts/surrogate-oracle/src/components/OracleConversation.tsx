@@ -424,6 +424,9 @@ const OracleConversation = forwardRef(
     // Accumulates the Seeker's spoken words from inputTranscription frames.
     // Committed as a user turn when the Oracle starts responding (turn boundary).
     const currentUserTranscriptRef = useRef('');
+    // Input transcription can trail the first Oracle PCM chunk. Hold music
+    // intent until turnComplete so Lyria receives the complete spoken brief.
+    const pendingMusicPromptRef = useRef<string | null>(null);
     // Mirror of `turns` state — closure-safe ref for reconnect context injection
     const turnsRef = useRef<Turn[]>([]);
 
@@ -674,6 +677,8 @@ const OracleConversation = forwardRef(
       onConnectStart: () => {
         seekerEntryCountRef.current = 0;
         setSeekerCount(0);
+        currentUserTranscriptRef.current = '';
+        pendingMusicPromptRef.current = null;
         micAutoRestartEnabledRef.current = false; // Don't carry over armed mic from prior session
       },
       // Flushes the buffered voice transcript as a real user turn. Mirrors the
@@ -692,7 +697,12 @@ const OracleConversation = forwardRef(
           setSeekerCount(seekerEntryCountRef.current);
           onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
           if (seekerEntryCountRef.current === SEEKER_MAX) playSignalLockedSfx();
-           inspectMusicSignal(spoken);
+           if (MUSIC_INTENT.test(spoken)) {
+             pendingMusicPromptRef.current = spoken;
+             logStep('MUSIC INTENT QUEUED — WAITING FOR FULL TRANSCRIPT', 'ok');
+           } else if (musicModeRef.current && MUSIC_RETURN.test(spoken)) {
+             pendingMusicPromptRef.current = spoken;
+           }
           if (isPortraitRequest(spoken, seekerEntryCountRef.current)) {
             logStep('PORTRAIT INTENT DETECTED (voice)', 'ok');
             onPortraitRequestRef.current?.();
@@ -806,6 +816,12 @@ const OracleConversation = forwardRef(
           // Safety net for text-only turns (no audio chunk ever arrived) — commit
           // any buffered voice transcript before the oracle turn is recorded.
           commitUserTranscript();
+          // Wait until the complete turn boundary before dispatching music.
+          // Input transcription can trail the first Oracle PCM chunk, so
+          // dispatching earlier can send Lyria a truncated spoken brief.
+          const completedMusicPrompt = pendingMusicPromptRef.current;
+          pendingMusicPromptRef.current = null;
+          if (completedMusicPrompt) inspectMusicSignal(completedMusicPrompt);
           debugInfo.current.turnCount++;
           debugInfo.current.audioChunksReceived = 0; // reset for next turn
           const scored = parseScore(currentResponseText.current);

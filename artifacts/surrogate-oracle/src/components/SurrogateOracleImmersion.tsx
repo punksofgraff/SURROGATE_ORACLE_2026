@@ -459,15 +459,15 @@ export function SurrogateOracleImmersion() {
     if (isFirstTimeSeeker) {
       // Lore complete — transition alley in first, then materialize the ACK card over it.
       logStep('LORE DONE → ALLEY TRANSITION', 'ok');
+      // Establish this gate before starting the visual transition. The
+      // awakened knife layer is explicitly hidden while this choice is up;
+      // it must never depend on a later timeout winning a render race.
+      setShowStage00(true);
       document.body.setAttribute('data-rift-opening', 'true');
       setTimeout(() => {
         journey.awakeFromTerminal();
         document.body.removeAttribute('data-rift-opening');
-        // Wait for alley to fully materialize, then reveal knife card on top of it
-        setTimeout(() => {
-          setShowStage00(true);
-          logStep('STAGE_00 PRESENTED (over alley)', 'ok');
-        }, 600);
+        logStep('STAGE_00 PRESENTED (over alley)', 'ok');
       }, 850);
       return;
     }
@@ -1959,16 +1959,16 @@ export function SurrogateOracleImmersion() {
               transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
             >
               <div className="oracle-stage00-card__sigil">◈</div>
-              <div className="oracle-stage00-card__greeting">The Archive has opened.</div>
+              <div className="oracle-stage00-card__greeting">Greetings, Seeker.</div>
               <div className="oracle-stage00-card__body">
-                The Oracle awaits within.<br />
-                Choose how you want to enter —
+                The Archive has spoken.<br />
+                The Oracle awaits within. Choose your path —
               </div>
               <button className="oracle-stage00-card__cta" onClick={handleStage00Tour}>
-                ◈ TAKE THE GUIDED TOUR
+                ◈ WHAT IS HERE?
               </button>
               <button className="oracle-stage00-card__fafo" onClick={handleStage00Dismiss}>
-                ◈ CHOOSE A KNIFE
+                ◈ ENTER THE CASCADE
               </button>
             </motion.div>
           </div>

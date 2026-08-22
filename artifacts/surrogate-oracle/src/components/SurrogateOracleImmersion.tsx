@@ -67,6 +67,7 @@ import { useGPUTier } from '../hooks/useGPUTier';
 import { useWalletBridge } from '../hooks/useWalletBridge';
 import { useRadioAtmosphere } from '../hooks/useRadioAtmosphere';
 import { useLyriaMusic } from '../hooks/useLyriaMusic';
+import { useOracleFilm } from '../hooks/useOracleFilm';
 import WalletGateCard from './WalletGateCard';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 
@@ -1451,6 +1452,7 @@ export function SurrogateOracleImmersion() {
   }, []);
 
   const portrait = usePortraitPipeline({ currentUserId, userEmail, currentSessionId, onPortraitGenerated: handlePortraitGenerated });
+  const oracleFilm = useOracleFilm(currentSessionId);
 
   useEffect(() => {
     if (portrait.portraitError) {
@@ -2143,6 +2145,41 @@ export function SurrogateOracleImmersion() {
               <div className="oracle-portrait-fullscreen__label">NEURAL PORTRAIT</div>
               <div className="oracle-portrait-fullscreen__sublabel">SIGNAL SYNTHESIZED</div>
               <img src={portraitViewerUrl} alt="Neural Portrait" className="oracle-portrait-fullscreen__img" />
+                <div className="oracle-film-panel" aria-live="polite">
+                  {!oracleFilm.job && (
+                    <button
+                      type="button"
+                      className="oracle-portrait-fullscreen__film"
+                      onClick={() => void oracleFilm.createFilm(portraitViewerUrl, {
+                        themes: portrait.getThemes(),
+                        archetypeTitle: echo?.last_archetype,
+                        emotionalWeight: echo?.last_emotional_weight,
+                        alignment: echo?.last_alignment,
+                      })}
+                    >
+                      ◈ MATERIALIZE FILM
+                    </button>
+                  )}
+                  {oracleFilm.job && !['ready', 'failed', 'cancelled'].includes(oracleFilm.job.status) && (
+                    <div className="oracle-film-status">
+                      <span>{oracleFilm.job.status === 'stitching' ? 'STITCHING ORACLE FRAGMENTS' : 'RUNPOD GPU MATERIALIZING'}</span>
+                      <progress max="100" value={oracleFilm.job.progress} />
+                      <button type="button" onClick={() => void oracleFilm.cancelFilm()}>CANCEL FILM</button>
+                    </div>
+                  )}
+                  {oracleFilm.job?.status === 'ready' && oracleFilm.job.finalMediaUrl && (
+                    <div className="oracle-film-ready">
+                      <video controls playsInline src={oracleFilm.job.finalMediaUrl} />
+                      <a href={oracleFilm.job.finalMediaUrl} download="surrogate-oracle-film.mp4">DOWNLOAD FILM</a>
+                    </div>
+                  )}
+                  {oracleFilm.job?.status === 'failed' && (
+                    <div className="oracle-film-error">
+                      {oracleFilm.job.error || 'FILM MATERIALIZATION FAILED'}
+                      <button type="button" onClick={() => void oracleFilm.createFilm(portraitViewerUrl, { themes: portrait.getThemes(), archetypeTitle: echo?.last_archetype })}>RETRY</button>
+                    </div>
+                  )}
+                </div>
               <div className="oracle-portrait-fullscreen__actions">
                 {mintUrl && (
                   <button

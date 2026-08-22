@@ -1525,6 +1525,10 @@ export function SurrogateOracleImmersion() {
   // The dormant landing gets the first restrained glimpse of the same field;
   // awakened/knife selection keeps it alive until the full Oracle manifests.
   const oraclePreviewVisible = scenePhase === 'dormant' || scenePhase === 'awakened';
+  // Do not make the first landing frame wait for the asynchronous GPU
+  // benchmark. The Canvas has its own error boundary; a supported browser can
+  // begin the quark field immediately while the benchmark resolves.
+  const previewRenderTier = renderTier === 0 && oraclePreviewVisible ? 1 : renderTier;
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
   const subtitleText = useTypewriter('SNEAKAR XR Anthropology AI', awakened && titleText.length >= 16, 35);
 
@@ -1721,7 +1725,7 @@ export function SurrogateOracleImmersion() {
                 CSS opacity + transition handles the same 1.2 s fade-in that motion.div gave.
                 Suspense fallback: transparent (null) when canvasWarmed, so re-entering seekers
                 never see a "frozen static image" flash during WebGL context init. */}
-            {gpu.ready && renderTier >= 1 && (scenePhase === 'dormant' || awakened || scenePhase === 'terminal' || canvasWarmed) && (
+            {(gpu.ready || oraclePreviewVisible) && previewRenderTier >= 1 && (scenePhase === 'dormant' || awakened || scenePhase === 'terminal' || canvasWarmed) && (
               <div
                 className="oracle-avatar-canvas oracle-avatar-smoke-hook"
                 style={{
@@ -1787,9 +1791,9 @@ export function SurrogateOracleImmersion() {
                         {/* The ambient field returns only after the GLB-source
                             transporter has been released, so it never masks the
                             recognizable particle silhouette during warmup. */}
-                        {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
+                          {previewRenderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
                           <OracleQuarks
-                            tier={renderTier as 1 | 2 | 3}
+                            tier={previewRenderTier as 1 | 2 | 3}
                             speakingRef={isOracleSpeakingRef}
                             amplitude={visemeStateRef.current?.amplitude ?? 0}
                             thinking={isOracleThinking}

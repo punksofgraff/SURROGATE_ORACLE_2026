@@ -400,6 +400,8 @@ const OracleConversation = forwardRef(
       lastSupabaseTurnCountRef.current = 0;
       lastTracedTurnCountRef.current = 0;
       currentResponseText.current = '';
+      currentUserTranscriptRef.current = '';
+      pendingMusicPromptRef.current = null;
       geminiSession.resetSessionBoot();
       sessionCoinsRef.current = 0;
       sessionAlignRef.current = 'neutral';

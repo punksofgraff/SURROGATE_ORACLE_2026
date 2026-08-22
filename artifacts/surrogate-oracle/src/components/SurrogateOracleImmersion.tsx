@@ -88,6 +88,9 @@ const ALLEY_BG_URL       = '/alley-bg.png';
 const DEFAULT_STATION    = 0; // Graff Punks — sole station
 const FREE_EXCHANGES     = 20; // two rounds of ten completed Seeker + Oracle exchanges, not exits
 const COMPLETION_LEDGER_PREFIX = 'surrogate_completed_exchanges_v1_';
+// Development previews must remain usable for repeated testing. This is compiled
+// out of production behavior: published builds still enforce the free-session cap.
+const DEV_BYPASS_EXCHANGE_GATE = import.meta.env.DEV;
 
 // Act 5 — Rift-Construct: Oracle shifts from archivist to active witness.
 // No brackets — brackets suppress Gemini audio output (same issue as knife prompts).
@@ -1068,7 +1071,7 @@ export function SurrogateOracleImmersion() {
         // This ref tracks only exchanges completed in the current live
         // conversation; the durable ledger above tracks prior encounters.
         completedExchangeCountRef.current = 0;
-        if (count >= FREE_EXCHANGES) {
+        if (!DEV_BYPASS_EXCHANGE_GATE && count >= FREE_EXCHANGES) {
           if (hasSignedWallet) {
             setShowTierGate(true);
             logStep(`TIER GATE — wallet seeker, exchanges: ${count}`, 'warn');
@@ -2402,7 +2405,7 @@ export function SurrogateOracleImmersion() {
                const stored = parseInt(localStorage.getItem(ledgerKey) ?? '0', 10);
                const next = stored + newlyCompleted;
                localStorage.setItem(ledgerKey, String(next));
-               if (next >= FREE_EXCHANGES) {
+                if (!DEV_BYPASS_EXCHANGE_GATE && next >= FREE_EXCHANGES) {
                  if (hasSignedWallet) setShowTierGate(true);
                  else setShowJourneyLimitGate(true);
                  logStep(`EXCHANGE LIMIT — ${next}/${FREE_EXCHANGES} completed`, 'warn');

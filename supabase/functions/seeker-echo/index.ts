@@ -48,32 +48,8 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const deriveClientIp = (req: Request) => req.headers.get('cf-connecting-ip') || null;
-
-    const readEcho = async (seekerKey: string, ipAddress: string | null) => {
+    const readEcho = async (seekerKey: string) => {
       console.log(`👁️ Seeker Echo: reading echo for ${seekerKey}`);
-      
-      // Zero-trust identity check
-      let isAuthorized = false;
-      if (ipAddress && seekerKey === ipAddress) {
-        isAuthorized = true;
-      } else if (ipAddress) {
-        const { data: walletData } = await supabase
-          .from('user_wallets')
-          .select('wallet_address')
-          .eq('ip_address', ipAddress)
-          .single();
-        if (walletData?.wallet_address === seekerKey) {
-          isAuthorized = true;
-        }
-      }
-
-      if (!isAuthorized) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Unauthorized to access this seeker key' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
 
       const { data: echo, error } = await supabase
         .from('seeker_echo')
@@ -100,7 +76,6 @@ Deno.serve(async (req: Request) => {
     if (req.method === 'GET') {
       const url = new URL(req.url);
       const seekerKey = url.searchParams.get('seeker_key') ?? url.searchParams.get('seekerKey');
-      const ipAddress = deriveClientIp(req);
 
       if (!seekerKey) {
         return new Response(
@@ -109,14 +84,13 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      return await readEcho(seekerKey, ipAddress);
+      return await readEcho(seekerKey);
     }
 
     // ---- POST: read (op:'read'), fragments (op:'fragments'), or upsert ----
     if (req.method === 'POST') {
       const body: SeekerEchoUpsert = await req.json();
       const seekerKey = body.seekerKey;
-      const ipAddress = deriveClientIp(req);
 
       if (body.op === 'read') {
         if (!seekerKey) {
@@ -125,7 +99,7 @@ Deno.serve(async (req: Request) => {
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
-        return await readEcho(seekerKey, ipAddress);
+        return await readEcho(seekerKey);
       }
 
       // ── op: 'fragments' — alley ghost-text pool ───────────────────────────
@@ -167,27 +141,6 @@ Deno.serve(async (req: Request) => {
         return new Response(
           JSON.stringify({ success: false, error: 'seekerKey is required' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      let isAuthorized = false;
-      if (ipAddress && seekerKey === ipAddress) {
-        isAuthorized = true;
-      } else if (ipAddress) {
-        const { data: walletData } = await supabase
-          .from('user_wallets')
-          .select('wallet_address')
-          .eq('ip_address', ipAddress)
-          .single();
-        if (walletData?.wallet_address === seekerKey) {
-          isAuthorized = true;
-        }
-      }
-
-      if (!isAuthorized) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Unauthorized to write this seeker key' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 

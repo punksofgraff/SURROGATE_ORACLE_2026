@@ -98,7 +98,7 @@
 }
 
 .ec-hdr__brand {
-  font-family: 'adrip1', sans-serif;
+  font-family: 'aAnotherTag', sans-serif;
   font-size: clamp(1.6rem, 6vw, 2.2rem);
   font-weight: 900;
   letter-spacing: 0.05em;
@@ -314,7 +314,7 @@
 
 /* ── Territory title — knife card scale — glitch-settle on every mount ───── */
 .ec-territory {
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(2.0rem, 6.5vw, 2.9rem);
   font-weight: 900;
   letter-spacing: 0.05em;
@@ -596,7 +596,7 @@
   border-left: 4px solid #b026ff;
   border-radius: 4px 20px 4px 20px;
   color: rgba(255,255,255,0.93);
-  font-family: 'adrip1', sans-serif;
+  font-family: 'aAnotherTag', sans-serif;
   font-size: clamp(1.2rem, 4vw, 1.6rem);
   font-weight: 900;
   letter-spacing: 0.1em;

@@ -26,7 +26,7 @@ export const Learn2EarnInterface = ({ userId: _userId, navigateToDebug }: Learn2
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
         <div style={{ color, filter: `drop-shadow(0 0 8px ${color})` }}>{icon}</div>
         <div>
-          <div style={{ fontFamily: "'adrip1', sans-serif", fontSize: 'clamp(1.3rem, 4vw, 1.8rem)', color, letterSpacing: '0.05em', lineHeight: 1 }}>{title}</div>
+          <div style={{ fontFamily: "'aAnotherTag', sans-serif", fontSize: 'clamp(1.3rem, 4vw, 1.8rem)', color, letterSpacing: '0.05em', lineHeight: 1 }}>{title}</div>
           <div style={{ fontFamily: "'Share Tech Mono', monospace", fontSize: '0.82rem', color: 'rgba(255,255,255,0.45)', letterSpacing: '0.1em', marginTop: 3 }}>LEVEL {level}</div>
         </div>
       </div>
@@ -94,7 +94,7 @@ export const Learn2EarnInterface = ({ userId: _userId, navigateToDebug }: Learn2
       case 'tiers':
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ fontFamily: "'adrip1', sans-serif", fontSize: 'clamp(1.6rem, 6vw, 2.4rem)', color: '#00ff88', letterSpacing: '0.05em', marginBottom: 4 }}>CONSCIOUSNESS TIERS</div>
+            <div style={{ fontFamily: "'aAnotherTag', sans-serif", fontSize: 'clamp(1.6rem, 6vw, 2.4rem)', color: '#00ff88', letterSpacing: '0.05em', marginBottom: 4 }}>CONSCIOUSNESS TIERS</div>
             <TierCard title="SEEKER" level="1-3" description="Begin your digital consciousness journey." color="#00ff88" icon={<Star size={22} />} benefits={['2× Coin Multiplier', 'Essential Oracle Wisdom', 'Basic Consciousness Tracking']} />
             <TierCard title="TRANS-HUMANIST" level="4-7" description="Evolve beyond biological limitations." color="#b026ff" icon={<Sparkles size={22} />} benefits={['3× Coin Multiplier', 'Advanced Oracle Insights', 'Enhanced Consciousness Metrics']} popular />
             <TierCard title="CULTURAL ARCHITECT" level="8-10" description="Shape the fabric of digital culture itself." color="#00ffcc" icon={<Crown size={22} />} benefits={['5× Coin Multiplier', 'Source-Level Wisdom', 'Full Consciousness Evolution']} />
@@ -105,7 +105,7 @@ export const Learn2EarnInterface = ({ userId: _userId, navigateToDebug }: Learn2
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ padding: '22px 20px', background: 'rgba(0,0,0,0.48)', border: '1px solid rgba(0,255,136,0.1)', borderLeft: '4px solid #00ff88', borderRadius: '3px 16px 3px 16px' }}>
-              <div style={{ fontFamily: "'adrip1', sans-serif", fontSize: 'clamp(1.6rem, 6vw, 2.4rem)', color: '#00ff88', letterSpacing: '0.05em', lineHeight: 1, marginBottom: 6 }}>SURROGATE<br />MISSION</div>
+              <div style={{ fontFamily: "'aAnotherTag', sans-serif", fontSize: 'clamp(1.6rem, 6vw, 2.4rem)', color: '#00ff88', letterSpacing: '0.05em', lineHeight: 1, marginBottom: 6 }}>SURROGATE<br />MISSION</div>
               <div style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.84rem', fontWeight: 800, letterSpacing: '0.2em', color: '#b026ff', marginBottom: 16, textTransform: 'uppercase' }}>Anthropological Transhumanism</div>
               <p style={{ fontFamily: "'PhillySans', monospace", fontSize: 'clamp(0.95rem, 3vw, 1.1rem)', color: 'rgba(255,255,255,0.82)', lineHeight: 1.7, fontWeight: 600, marginBottom: 16 }}>
                 The SURROGATE Oracle documents the evolution from physical to digital consciousness,

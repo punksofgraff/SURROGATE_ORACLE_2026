@@ -193,8 +193,7 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const sessionId = req.headers.get('x-oracle-session-id');
-  const { themes, context, style = 'freakdali-graff-punks', userPrompt, fixedSeed } = body;
+  const { sessionId, email, themes, context, style = 'freakdali-graff-punks', userPrompt, fixedSeed } = body;
 
   if (!sessionId || !themes?.length) {
     return new Response(
@@ -206,6 +205,7 @@ Deno.serve(async (req: Request) => {
   const hasFluidContext = !!(
     context && (
       context.weightedThemes?.length ||
+      context.seekerLines?.length ||
       context.emotionalWeight ||
       context.archetypeTitle ||
       context.alignment
@@ -260,9 +260,17 @@ Deno.serve(async (req: Request) => {
       const json = await r.json();
       const candidate = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
       if (candidate) {
-        enhancedPrompt = candidate;
-        googleAiGenerated = true;
-        console.log(`✅ Gemini ${hasFluidContext ? 'distilled (fluid context)' : 'enhanced'}:`, enhancedPrompt.slice(0, 80) + '…');
+        // Deterministic privacy boundary: if the distilled prompt reproduces any
+        // seeker line (4-word n-gram), REJECT it — fall back to the context-aware
+        // base prompt, which is built purely from themes/signals and contains no
+        // seeker text. Instructions to the model are not a boundary; this check is.
+        if (context?.seekerLines?.length && promptLeaksSeekerLines(candidate, context.seekerLines, basePrompt)) {
+          console.warn('🛑 Distilled prompt leaked seeker line n-gram — rejected, using base prompt');
+        } else {
+          enhancedPrompt = candidate;
+          googleAiGenerated = true;
+          console.log(`✅ Gemini ${hasFluidContext ? 'distilled (fluid context)' : 'enhanced'}:`, enhancedPrompt.slice(0, 80) + '…');
+        }
       }
     } catch (e: unknown) {
       googleAiError = e instanceof Error ? e.message : String(e);
@@ -559,13 +567,9 @@ Deno.serve(async (req: Request) => {
   // NOTE: column is `dalle_generated` (legacy name from the DALL-E era) — there is
   // no `google_ai_generated` column; inserting one fails with PGRST204 and the
   // portrait is silently never persisted.
-  const deriveClientIp = (req: Request) => req.headers.get('cf-connecting-ip') || null;
-  const ipAddress = deriveClientIp(req);
-
   const { error: dbError } = await supabase.from('surrogate_portraits').insert({
     session_id: sessionId,
-    email: null,
-    user_id: ipAddress, // Bind portrait ownership to the caller's IP
+    email: email ?? null,
     conversation_themes: themes,
     dalle_prompt: enhancedPrompt,
     image_url: portraitUrl,
@@ -592,6 +596,15 @@ Deno.serve(async (req: Request) => {
     JSON.stringify({
       success: !!portraitUrl,
       portraitUrl,
+      googleAiGenerated,
+      generationMethod,
+      // The distilled prompt actually sent to image providers — returned to the
+      // requesting session so differential verification can confirm two different
+      // conversations produce different prompts. Contains no raw transcript.
+      promptUsed: enhancedPrompt,
+      fluidContext: hasFluidContext,
+      ...(googleAiError && { googleAiError }),
+      ...(imageErrors.length && { imageErrors }),
       apiUsed: generationMethod,
     }),
     { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -717,6 +730,12 @@ function buildDistillInstruction(basePrompt: string, ctx: PortraitContext): stri
   }
   if (ctx.alignment) {
     parts.push(`Alignment: ${ctx.alignment === 'sacred' ? 'sacred — halo geometry, ascending light' : 'profane — inverted glyphs, smoldering underglow'}.`);
+  }
+  if (ctx.seekerLines?.length) {
+    parts.push(
+      'What the seeker confessed (distill into 1-2 symbolic visual elements woven into the portrait — do NOT quote or transcribe their words into the prompt):',
+      ...ctx.seekerLines.map(l => `- "${l.replace(/"/g, "'")}"`),
+    );
   }
   parts.push('Output ONLY the final image prompt.');
   return parts.join('\n');

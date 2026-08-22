@@ -77,21 +77,6 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const ipAddress = req.headers.get('cf-connecting-ip');
-    
-    // Authorization: IP address or wallet match
-    const allowedKeys = [ipAddress].filter(Boolean);
-    if (ipAddress) {
-      const { data: walletData } = await supabase
-        .from('user_wallets')
-        .select('wallet_address')
-        .eq('ip_address', ipAddress)
-        .single();
-      if (walletData?.wallet_address) {
-        allowedKeys.push(walletData.wallet_address);
-      }
-    }
-
     // ---- LIST: fetch portraits belonging to this session only ----
     if (action === 'list') {
       const limit = Math.min(Math.max(Number(body.limit) || 20, 1), 100);
@@ -100,7 +85,6 @@ Deno.serve(async (req: Request) => {
         .from('surrogate_portraits')
         .select('*')
         .eq('session_id', sessionId)
-        .in('user_id', allowedKeys) // Require ownership
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -123,7 +107,6 @@ Deno.serve(async (req: Request) => {
         .delete()
         .eq('id', body.id)
         .eq('session_id', sessionId)
-        .in('user_id', allowedKeys) // Require ownership
         .select();
 
       if (error) {

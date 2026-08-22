@@ -36,31 +36,13 @@ function oracleLogRelayPlugin() {
       });
 
       server.middlewares.use('/api/oracle-log', (req: any, res: any) => {
-        if (process.env.NODE_ENV === 'production') {
-          res.writeHead(404); res.end(); return;
-        }
-        
-        const origin = req.headers.origin;
-        const host = req.headers.host;
-        
-        // Exact origin checks
-        if (origin && !origin.includes('localhost') && !origin.includes('127.0.0.1') && origin !== `http://${host}` && origin !== `https://${host}`) {
-          res.writeHead(403); res.end(); return;
-        }
-
-        res.setHeader('Access-Control-Allow-Origin', origin || '*');
+        res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
         if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
         if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
         let body = '';
-        req.on('data', (chunk: any) => { 
-          body += chunk; 
-          // Body limit to prevent disk filling
-          if (body.length > 50000) {
-            req.destroy();
-          }
-        });
+        req.on('data', (chunk: any) => { body += chunk; });
         req.on('end', () => {
           try {
             const line = JSON.stringify({ ...JSON.parse(body), _t: Date.now() });

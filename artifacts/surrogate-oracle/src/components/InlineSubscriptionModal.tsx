@@ -48,12 +48,10 @@ export function InlineSubscriptionModal({
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const result = await response.json();
 
-       if (result.success && result.purchaseInitiated) {
-         setShowSuccess(true);
-         onUpgradeSuccess?.(productId);
-         setTimeout(onClose, 2000);
-       } else if (response.status === 202) {
-         setError('Finish checkout in the RevenueCat app purchase flow. Premium access appears here after the verified store event arrives.');
+      if (result.success) {
+        setShowSuccess(true);
+        onUpgradeSuccess?.(productId);
+        setTimeout(onClose, 2000);
       } else {
         throw new Error(result.error || 'Upgrade failed');
       }
@@ -117,7 +115,7 @@ export function InlineSubscriptionModal({
                   <Crown size={32} style={{ color: '#00ccff', marginBottom: 12 }} />
                   <h2 style={{
                     fontSize: '1.1rem',
-                    fontFamily: "'adrip1', 'Orbitron', monospace",
+                    fontFamily: "'aAnotherTag', 'Orbitron', monospace",
                     letterSpacing: '0.14em',
                     marginBottom: 6,
                     display: 'inline-block',

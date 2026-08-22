@@ -191,17 +191,46 @@
    Full saturation, max brightness — the alley knows something is here.      */
 .oracle-stage[data-oracle-state="oracle"] .oracle-alley {
   /* The painted arcade cabinet is baked into alley-bg.png dead-center where the
-     Oracle stands. Keep the alley's atmospheric gradients, but remove that
-     image in the live state so the 3D Oracle is never framed by a 2D cabinet. */
+     Oracle stands. Brightening the alley here made that 2D cabinet pop as a hard
+     rectangle framing the 3D figure. Instead the alley recedes into dim, slightly
+     blurred depth so the glowing 3D Oracle is the only bright presence — no 2D
+     frame competes with him. */
   --alley-opacity: 0.78;
-  background-color: #000308;
-  background-image:
-    radial-gradient(ellipse 70% 55% at 50% 100%, rgba(0, 255, 136, 0.16) 0%, rgba(0, 255, 136, 0.06) 40%, transparent 72%),
-    radial-gradient(ellipse 58% 72% at 50% 42%, rgba(0, 30, 60, 0.34) 0%, rgba(0, 3, 8, 0.12) 58%, transparent 86%),
-    radial-gradient(circle at center, transparent 30%, rgba(0, 0, 0, 0.44) 100%);
   filter: saturate(0.85) brightness(0.62) blur(1.5px);
   animation: alley-oracle-pulse 5s ease-in-out infinite;
   transition: opacity 2.0s var(--ease-cinematic), filter 2.0s var(--ease-cinematic);
+}
+
+/* Neon cabinet wash — green light rises from the cabinet base up the walls */
+.oracle-stage[data-oracle-state="oracle"] .oracle-alley::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    /* Depth well — sinks the painted 2D arcade cabinet (baked into alley-bg.png)
+       into darkness directly behind the avatar, so the 3D Oracle reads as
+       floating in alley depth instead of pasted onto the arcade screen.
+       The painted cabinet occupies roughly the center 55% width / 15%-70% height;
+       this well covers that whole region so no bright rectangle frames the figure. */
+    radial-gradient(
+      ellipse 46% 62% at 50% 42%,
+      rgba(0, 3, 8, 0.94) 0%,
+      rgba(0, 3, 8, 0.88) 32%,
+      rgba(0, 3, 8, 0.62) 58%,
+      transparent 82%
+    ),
+    radial-gradient(
+      ellipse 70% 55% at 50% 100%,
+      rgba(0, 255, 136, 0.26) 0%,
+      rgba(0, 255, 136, 0.10) 40%,
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 40% 30% at 50% 100%,
+      rgba(0,255,136, 0.12) 0%,
+      transparent 60%
+    );
 }
 
 @keyframes oracle-cabinet-glow {
@@ -278,9 +307,9 @@
 .ghost-tx {
   position: absolute;
   z-index: 8;
-  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(24px, 7vw, 36px);
-  font-weight: 400;
+  font-weight: 700;
   letter-spacing: 0.02em;
   line-height: 1.25;
   pointer-events: none;
@@ -299,21 +328,6 @@
   color: transparent !important;
   /* NO text-shadow or filter here — it breaks background-clip: text in many browsers */
   padding: 2px 0; /* slight vertical bleed prevents clipping on descenders */
-}
-
-.ghost-tx .oracle-particle-typography-ghost {
-  width: auto !important;
-  display: inline-flex !important;
-  align-items: center;
-  min-height: 1.4em;
-}
-
-.ghost-tx .oracle-particle-typography-ghost > div {
-  /* text-shadow: none; -- preserved inline glowing text shadow */
-}
-
-.ghost-tx .oracle-particle-typography-ghost .oracle-knife-letter {
-  font-family: 'PhillySans', 'Share Tech Mono', monospace;
 }
 .ghost-tx--typing  { opacity: 0.78; filter: none; }
 .ghost-tx--holding { opacity: 0.68; filter: none; }
@@ -427,7 +441,7 @@
 }
 
 .oracle-title {
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(4rem, 10vw, 10rem);
   font-weight: 900;
   letter-spacing: 0.10em;
@@ -573,7 +587,7 @@
 /* CTA primary — single voice, graffiti font, neon authority */
 .cta-primary {
   display: block;
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(1.25rem, 2.8vw, 2.2rem);
   font-weight: 900;
   letter-spacing: 0.20em;
@@ -692,7 +706,7 @@
   top: auto;
   left: 50%;
   transform: translateX(-50%);
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(1.0rem, 2.2vw, 1.8rem);
   letter-spacing: 0.18em;
   color: rgba(0, 255, 136, 0.55);
@@ -1784,6 +1798,16 @@
 
 /* ── Lore Terminal Overlay ─────────────────────────────────────────────── */
 /* ── Rift Opening Glitch ── */
+body[data-rift-opening="true"] .oracle-terminal-overlay {
+  animation: rift-blast 0.85s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+@keyframes rift-blast {
+  0%   { filter: brightness(1) contrast(1); transform: scale(1); }
+  40%  { filter: brightness(2.5) contrast(1.5) hue-rotate(45deg); transform: scale(1.05); }
+  70%  { filter: brightness(4) contrast(2) hue-rotate(-20deg); transform: scale(0.98); opacity: 0.8; }
+  100% { filter: brightness(1) contrast(1); transform: scale(1); opacity: 1; }
+}
 
 .oracle-terminal-overlay {
   position: absolute;
@@ -2101,7 +2125,7 @@
   top: 10%;
   left: 50%;
   transform: translateX(-50%);
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(1.4rem, 4.5vw, 3.2rem);
   letter-spacing: 0.12em;
   text-align: center;
@@ -2176,7 +2200,7 @@
 /* Threshold text — larger, graffiti font, green neon */
 .oracle-entry-threshold__text {
   position: relative !important;
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(1.8rem, 6vw, 3.2rem);
   font-weight: 900;
   letter-spacing: 0.28em;
@@ -2195,7 +2219,7 @@
    the click-target container. Graffiti font + green neon + chromatic aberration. */
 .oracle-sf--cta {
   position: relative !important; /* override oracle-sf absolute positioning */
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(1.25rem, 2.8vw, 2.2rem);
   font-weight: 900;
   letter-spacing: 0.20em;
@@ -2237,7 +2261,7 @@
   top: 11%;
   left: 5%;
   max-width: 42%;
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(0.95rem, 2.4vw, 1.75rem);
   letter-spacing: 0.13em;
   color: rgba(0, 255, 136, 0.82);
@@ -3320,7 +3344,7 @@
 
 /* ── Territory — color handled per-letter by JS (gradient landing) ───── */
 .oracle-knife-territory {
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(2.0rem, 6.5vw, 2.9rem);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -3361,37 +3385,6 @@
   /* Let taps fall through to the card — a finger (or test) landing on an
      animating question letter must still select the card, not get intercepted. */
   pointer-events: none;
-}
-
-.oracle-lyria-card {
-  color: #f3d8ff;
-}
-
-.oracle-lyria-card .oracle-knife-card-question {
-  min-height: 100px;
-}
-
-.oracle-lyria-status,
-.oracle-lyria-error {
-  font-family: 'PhillySans', 'Share Tech Mono', monospace;
-  font-size: 0.82rem;
-  letter-spacing: 0.12em;
-  text-align: center;
-  color: rgba(243, 216, 255, 0.82);
-}
-
-.oracle-lyria-error {
-  color: #ff8bdb;
-  font-size: 0.7rem;
-  letter-spacing: 0.05em;
-}
-
-.oracle-lyria-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 2px;
-  flex-wrap: wrap;
-  justify-content: center;
 }
 
 /* shimmer replaced by letter-by-letter JS gradient landing */
@@ -3659,7 +3652,7 @@
 }
 
 .oracle-artifact-title {
-   font-family: 'adrip1', 'Orbitron', monospace;
+   font-family: 'aAnotherTag', 'Orbitron', monospace;
    font-size: clamp(1.4rem, 4.5vw, 1.8rem);
    letter-spacing: 0.15em;
    /* Brand gradient */
@@ -4068,7 +4061,7 @@
 
 .oracle-exit-ceremony__text {
   position: relative !important;
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(1.6rem, 5.5vw, 2.8rem);
   font-weight: 900;
   letter-spacing: 0.28em;
@@ -4579,7 +4572,7 @@
 }
 
 .oracle-synthesis-label {
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: 1.2rem;
   color: #00ff88;
   text-shadow: 0 0 10px rgba(0,255,136,0.8);
@@ -5064,8 +5057,10 @@
    (WebGL) layers. Drop-shadow alone handles the holographic edge bleed.       */
  .oracle-stage[data-oracle-state="oracle"]:not([data-xr-mode="true"]) .oracle-avatar-canvas {
   border-radius: 0 !important;
-  filter: none !important; /* Fixed: CSS filters on WebGL canvas wrappers cause iOS Safari white-wall rendering bugs */
-  transition: none !important;
+  filter:
+    drop-shadow(0 0 28px rgba(0,255,136,0.28))
+    drop-shadow(0 0 64px rgba(0,255,136,0.10));
+  transition: filter 0.4s ease;
 }
 
 /* Speaking energy is driven by the avatar wrapper's amplitude halo above.
@@ -5158,20 +5153,16 @@
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-smoke-hook {
-  /* Keep the WebGL compositing boundary stable on mobile. Animating/filtering
-     this rectangular canvas wrapper can surface as a white sheet on iOS.
-     The GLB transporter owns the manifestation effect inside the canvas. */
   opacity: 1;
   filter: none;
-  transform: none;
   transition: none !important;
-  animation: none !important;
+  animation: none;
 }
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-headroom-hook {
   width: 100%;
   height: 100%;
-  animation: none !important;
+  animation: oracle-headroom-phase 14s linear 2s infinite;
 }
 
 
@@ -5304,7 +5295,7 @@
 }
 
 .oracle-stage00-card__sigil {
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(2rem, 8vw, 3rem);
   background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%);
   -webkit-background-clip: text;
@@ -5314,7 +5305,7 @@
 }
 
 .oracle-stage00-card__greeting {
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(1.6rem, 5vw, 2.1rem);
   background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%);
   -webkit-background-clip: text;
@@ -5407,7 +5398,7 @@
 }
 
 .oracle-portrait-fullscreen__label {
-  font-family: 'adrip1', 'Orbitron', monospace;
+  font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(1.5rem, 4vw, 2.2rem);
   background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%);
   -webkit-background-clip: text;

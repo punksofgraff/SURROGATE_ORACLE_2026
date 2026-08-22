@@ -109,7 +109,7 @@ export function CultureCoinDisplay({ userId, onLevelUp, onMetricsFetched }: Cult
           >
             <div style={{ textAlign: 'center' }}>
               <Sparkles size={56} style={{ color: '#00ff88', marginBottom: 16, filter: 'drop-shadow(0 0 24px #00ff88)' }} />
-              <div style={{ fontFamily: "'adrip1', sans-serif", fontSize: 'clamp(2.2rem, 8vw, 3.4rem)', color: '#00ff88', filter: 'drop-shadow(0 0 28px #00ff88)', letterSpacing: '0.05em' }}>LEVEL UP</div>
+              <div style={{ fontFamily: "'aAnotherTag', sans-serif", fontSize: 'clamp(2.2rem, 8vw, 3.4rem)', color: '#00ff88', filter: 'drop-shadow(0 0 28px #00ff88)', letterSpacing: '0.05em' }}>LEVEL UP</div>
               <div style={{ fontFamily: "'PhillySans', monospace", fontSize: '1.1rem', color: '#00ffcc', letterSpacing: '0.2em', marginTop: 8, fontWeight: 800 }}>{metrics.consciousnessTitle.toUpperCase()}</div>
             </div>
           </motion.div>

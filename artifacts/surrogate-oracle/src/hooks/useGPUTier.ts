@@ -15,7 +15,6 @@
  */
 import { useEffect, useState } from 'react';
 import { getGPUTier } from 'detect-gpu';
-import { WebGLRenderer } from 'three';
 
 export interface GPUProfile {
   /** 0 (no effects) → 3 (everything, high DPR). */
@@ -59,15 +58,6 @@ function getWebGLRendererInfo(): { renderer: string; isMobile: boolean; supporte
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
     if (!gl) return { renderer: '', isMobile, supported: false };
-    
-    // Test actual WebGLRenderer construction to catch headless/container WebGL driver failures early
-    try {
-      const testRenderer = new WebGLRenderer({ canvas, context: gl });
-      testRenderer.dispose();
-    } catch {
-      return { renderer: '', isMobile, supported: false };
-    }
-
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
     const renderer = ext ? (gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '') : (gl.getParameter(gl.RENDERER) || '');
     return { renderer: String(renderer), isMobile, supported: true };

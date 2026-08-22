@@ -10,7 +10,6 @@ export function useLyriaMusic() {
   const gainRef = useRef<GainNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const fadeTimerRef = useRef<number | null>(null);
-  const generationRef = useRef(0);
   const [status, setStatus] = useState<LyriaMusicStatus>('idle');
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +32,7 @@ export function useLyriaMusic() {
       gainRef.current = gain;
       analyserRef.current = analyser;
     }
+    if (ctx.state === 'suspended') void ctx.resume();
     return { ctx, gain: gainRef.current! };
   }, []);
 
@@ -40,27 +40,16 @@ export function useLyriaMusic() {
     const { ctx, gain } = ensureGraph();
     const audio = audioRef.current;
     if (!audio || !audioUrl) return;
-    // Safari can create the shared context in a suspended state after the
-    // async generation request. Awaiting the resume here makes the explicit
-    // Play button a reliable user-gesture recovery path on iPhone.
-    if (ctx.state === 'suspended') await ctx.resume();
-    if (ctx.state !== 'running') throw new Error('Audio output is not ready. Tap PLAY again.');
     if (fadeTimerRef.current !== null) window.clearInterval(fadeTimerRef.current);
     gain.gain.cancelScheduledValues(ctx.currentTime);
     gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.001), ctx.currentTime);
     gain.gain.linearRampToValueAtTime(0.9, ctx.currentTime + 0.35);
-    audio.setAttribute('playsinline', '');
-    audio.setAttribute('webkit-playsinline', '');
     await audio.play();
     setIsPlaying(true);
     setStatus('playing');
   }, [audioUrl, ensureGraph]);
 
   const stop = useCallback((fadeMs = 500) => {
-    // Invalidate an in-flight generation as well as stopping a current track.
-    // Returning to the Oracle during generation must not install a late track
-    // into the hidden audio element after music mode has closed.
-    generationRef.current += 1;
     const audio = audioRef.current;
     const gain = gainRef.current;
     if (!audio || !gain) {
@@ -69,22 +58,19 @@ export function useLyriaMusic() {
       return;
     }
     const ctx = getAudioContext();
-    if (fadeTimerRef.current !== null) window.clearTimeout(fadeTimerRef.current);
     gain.gain.cancelScheduledValues(ctx.currentTime);
     gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.001), ctx.currentTime);
     gain.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + fadeMs / 1000);
-    fadeTimerRef.current = window.setTimeout(() => {
+    window.setTimeout(() => {
       audio.pause();
       audio.currentTime = 0;
       gain.gain.setValueAtTime(0, ctx.currentTime);
       setIsPlaying(false);
       setStatus(audioUrl ? 'ready' : 'idle');
-      fadeTimerRef.current = null;
     }, fadeMs);
   }, [audioUrl]);
 
   const generate = useCallback(async (prompt: string) => {
-    const requestId = ++generationRef.current;
     setStatus('generating');
     setError(null);
     try {
@@ -118,7 +104,6 @@ export function useLyriaMusic() {
         throw new Error(detail || 'Lyria generation failed.');
       }
       if (!data?.audioBase64) throw new Error(data?.error || 'No playable track returned.');
-      if (requestId !== generationRef.current) return null;
       const binary = atob(data.audioBase64.replace(/\s/g, ''));
       const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
       const nextUrl = URL.createObjectURL(new Blob([bytes], { type: data.mimeType || 'audio/mpeg' }));
@@ -145,8 +130,7 @@ export function useLyriaMusic() {
   }, []);
 
   useEffect(() => () => {
-    generationRef.current += 1;
-    if (fadeTimerRef.current !== null) window.clearTimeout(fadeTimerRef.current);
+    if (fadeTimerRef.current !== null) window.clearInterval(fadeTimerRef.current);
     audioRef.current?.pause();
     if (audioUrl) URL.revokeObjectURL(audioUrl);
   }, [audioUrl]);

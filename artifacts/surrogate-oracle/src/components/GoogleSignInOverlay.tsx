@@ -28,7 +28,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
     handleDevBypass: authDevBypass 
   } = useAuth(onSuccess);
 
-  console.log(`🖼️ Overlay Render - Step: ${step}, IsLoading: ${isLoading}`);
+  console.log(`🖼️ Overlay Render - Step: ${step}, IsLoading: ${isLoading}, Email: ${email}`);
 
   const handleDevBypass = () => {
     authDevBypass(devPassword);
@@ -37,7 +37,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
 
   const onEmailSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    console.log('🔘 onEmailSubmit triggered!');
+    console.log('🔘 onEmailSubmit triggered! Email value:', email);
     if (!email) {
       console.warn('⚠️ No email provided, aborting submission');
       return;
@@ -166,7 +166,7 @@ export function GoogleSignInOverlay({ onClose, onSuccess }: GoogleSignInOverlayP
           <Terminal size={48} style={{ color: '#00ff88', margin: '0 auto 16px', opacity: 0.8 }} />
           <h2 style={{ 
             fontSize: '1.4rem', 
-            fontFamily: "'adrip1', 'Orbitron', monospace",
+            fontFamily: "'aAnotherTag', 'Orbitron', monospace",
             letterSpacing: '0.15em', 
             marginBottom: 8, 
             background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',

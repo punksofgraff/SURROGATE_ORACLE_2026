@@ -18,38 +18,6 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { createClient } = await import('npm:@supabase/supabase-js@2');
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    const ipAddress = req.headers.get('cf-connecting-ip');
-    const allowedKeys = [ipAddress].filter(Boolean);
-    if (ipAddress) {
-      const { data: walletData } = await supabase
-        .from('user_wallets')
-        .select('wallet_address')
-        .eq('ip_address', ipAddress)
-        .single();
-      if (walletData?.wallet_address) {
-        allowedKeys.push(walletData.wallet_address);
-      }
-    }
-
-    const { data: portrait } = await supabase
-      .from('surrogate_portraits')
-      .select('id')
-      .eq('image_url', imageUrl)
-      .in('user_id', allowedKeys)
-      .maybeSingle();
-
-    if (!portrait) {
-      return new Response(JSON.stringify({ error: 'Unauthorized or portrait not found' }), {
-        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
     const secret = Deno.env.get('CLAIM_LINK_SECRET');
     if (!secret) {
       return new Response(JSON.stringify({ error: 'CLAIM_LINK_SECRET not configured' }), {

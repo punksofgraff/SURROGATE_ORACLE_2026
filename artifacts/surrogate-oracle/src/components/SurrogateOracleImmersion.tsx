@@ -157,66 +157,6 @@ function OracleAvatarFallback() {
   );
 }
 
-function WebGLContextWatcher({
-  onContextLost,
-  onContextRestored,
-}: {
-  onContextLost: () => void;
-  onContextRestored: () => void;
-}) {
-  const { gl } = useThree();
-  useEffect(() => {
-    const canvasEl = gl.domElement;
-    const handleLost = (e: Event) => {
-      e.preventDefault();
-      console.warn('⚠️ WebGL context lost inside R3F Canvas!');
-      onContextLost();
-    };
-    const handleRestored = () => {
-      console.info('✅ WebGL context restored inside R3F Canvas!');
-      onContextRestored();
-    };
-    canvasEl.addEventListener('webglcontextlost', handleLost);
-    canvasEl.addEventListener('webglcontextrestored', handleRestored);
-    
-    // Dev bypass test interface
-    (window as any).__simulateContextLoss = () => {
-      const ext = gl.getExtension('WEBGL_lose_context');
-      if (ext) {
-        console.log('⚡ Simulating WebGL Context Loss...');
-        ext.loseContext();
-      } else {
-        console.warn('❌ WEBGL_lose_context extension not available.');
-      }
-    };
-    (window as any).__simulateContextRestore = () => {
-      const ext = gl.getExtension('WEBGL_lose_context');
-      if (ext) {
-        console.log('⚡ Simulating WebGL Context Restore...');
-        ext.restoreContext();
-      }
-    };
-
-    return () => {
-      canvasEl.removeEventListener('webglcontextlost', handleLost);
-      canvasEl.removeEventListener('webglcontextrestored', handleRestored);
-      delete (window as any).__simulateContextLoss;
-      delete (window as any).__simulateContextRestore;
-    };
-  }, [gl, onContextLost, onContextRestored]);
-  return null;
-}
-
-function WebGLTransparencyHarden() {
-  const { gl, scene } = useThree();
-  useEffect(() => {
-    gl.setClearColor(0x000000, 0);
-    gl.setClearAlpha(0);
-    scene.background = null;
-  }, [gl, scene]);
-  return null;
-}
-
 /* ── Orbit-room canvas expansion ──────────────────────────────────────────────
    In oracle phase the WebGL canvas element is grown 2x in both axes (CSS
    `inset: -50%`) so particles can orbit wider than the avatar without clipping
@@ -286,7 +226,7 @@ export function SurrogateOracleImmersion() {
   );
 
   const [oracleAvatarDataUrl] = useState<string>(ORACLE_AVATAR_URL);
-  const [currentUserId, setCurrentUserId]   = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId]   = useState<string | null>(() => localStorage.getItem('oracle_seeker_key'));
   const [currentSessionId, setCurrentSessionId] = useState(() => {
     const stored = localStorage.getItem('oracle_active_session_id');
     if (stored) return stored;
@@ -317,18 +257,8 @@ export function SurrogateOracleImmersion() {
   const [isGeminiSessionLive, setIsGeminiSessionLive] = useState(false);
   const [isMusicMode, setIsMusicMode] = useState(false);
   const [isMusicReturning, setIsMusicReturning] = useState(false);
-  // The Canvas can exist before its WebGL renderer has finished admission.
-  // Keep postprocessing out of that gap; EffectComposer is not safe to register
-  // passes against a context that is still initializing or recovering.
-  const [rendererReady, setRendererReady] = useState(false);
-  const [composerEpoch, setComposerEpoch] = useState(0);
   const [forceOracleManifest, setForceOracleManifest] = useState(false);
   const [hasManifested, setHasManifested] = useState(false);
-  // Continuous target for the GLB-derived transporter. It starts moving as soon
-  // as the knife is selected, then resolves to the solid avatar when Gemini
-  // confirms session.created. Keeping this in React makes the timeline visible
-  // to the already-mounted Canvas without remounting the conversation.
-  const [oracleTransportProgress, setOracleTransportProgress] = useState(1);
   const [debugMode, setDebugMode]           = useState(false);
   const [oracleAlignment, setOracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
   const [profanePulse, setProfanePulse] = useState(0);
@@ -405,10 +335,7 @@ export function SurrogateOracleImmersion() {
   const finalTurnsRef = useRef<SessionTurns>([]);
 
   // ── Service Hooks ───────────────────────────────────────────────────────
-  const { isReturning, hasCompletedLore, hasSignedWallet, markVisited, markLoreCompleted, markWalletSigned, ipAddress, verifiedWalletAddress } = useIpCheck();
-  useEffect(() => {
-    if (verifiedWalletAddress) setCurrentUserId(verifiedWalletAddress);
-  }, [verifiedWalletAddress]);
+  const { isReturning, hasCompletedLore, hasSignedWallet, markVisited, markLoreCompleted, markWalletSigned, ipAddress } = useIpCheck();
   const { echo, loadEcho, saveEcho } = useSeekerEcho();
   const { defineSeeker } = useSeekerDefine();
 
@@ -522,7 +449,7 @@ export function SurrogateOracleImmersion() {
     // animation for the WS to establish before knife cards are interactive.
     // Safe to call even if prewarm already fired (idempotent — no-ops if OPEN/CONNECTING).
     oracleConversationRef.current?.prewarm();
-    const hasWalletKey = !!currentUserId;
+    const hasWalletKey = !!(currentUserId || localStorage.getItem('oracle_seeker_key'));
     const isFirstTimeSeeker = (!hasCompletedLore && !hasWalletKey) || new URLSearchParams(window.location.search).has('newuser');
     markLoreCompleted();
     trackOracleEvent({
@@ -533,16 +460,24 @@ export function SurrogateOracleImmersion() {
     if (isFirstTimeSeeker) {
       // Lore complete — transition alley in first, then materialize the ACK card over it.
       logStep('LORE DONE → ALLEY TRANSITION', 'ok');
-      journey.awakeFromTerminal();
-      // Wait briefly for alley to mount, then reveal knife card on top of it
+      document.body.setAttribute('data-rift-opening', 'true');
       setTimeout(() => {
-        setShowStage00(true);
-        logStep('STAGE_00 PRESENTED (over alley)', 'ok');
-      }, 300);
+        journey.awakeFromTerminal();
+        document.body.removeAttribute('data-rift-opening');
+        // Wait for alley to fully materialize, then reveal knife card on top of it
+        setTimeout(() => {
+          setShowStage00(true);
+          logStep('STAGE_00 PRESENTED (over alley)', 'ok');
+        }, 600);
+      }, 850);
       return;
     }
 
-    journey.awakeFromTerminal();
+    document.body.setAttribute('data-rift-opening', 'true');
+    setTimeout(() => {
+      journey.awakeFromTerminal();
+      document.body.removeAttribute('data-rift-opening');
+    }, 850);
   }, [markLoreCompleted, journey, hasCompletedLore, currentUserId]);
 
   const { completedLines, currentLine } = useLoreSequence(
@@ -694,9 +629,6 @@ export function SurrogateOracleImmersion() {
 
   const handleFirstTap = useCallback(async () => {
     if (scenePhase !== 'dormant' || showStage00) return;
-    // Pre-warm the Gemini WebSocket connection immediately on first tap
-    oracleConversationRef.current?.prewarm();
-    
     // iOS Safari: ALL audio operations must be synchronous within the gesture handler.
     // setupAudioSpine is now fully sync — creates/unlocks AudioContext and wires the
     // radio graph without any await or setTimeout boundary. initializePCMPlayer must
@@ -713,16 +645,65 @@ export function SurrogateOracleImmersion() {
     // Stored in priorCompactSummariesRef so handleKnifeClick can inject them into the seed.
     const _seekerKey = seekerKeyRef.current;
     if (_seekerKey) {
-      // (The legacy direct REST fetches to surrogate_sessions and conversation_turns
-      // have been removed to close unauthenticated data leaks. Returning Seeker
-      // context is now provided via the seeker-echo EFA which authenticates the caller.)
+      const supaUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supaKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (supaUrl && supaKey) {
+        const hdrs = { 'apikey': supaKey, 'Authorization': `Bearer ${supaKey}` };
+
+        fetch(
+          `${supaUrl}/rest/v1/surrogate_sessions?seeker_key=eq.${encodeURIComponent(_seekerKey)}&select=session_id,conversation_data&order=created_at.desc&limit=4`,
+          { headers: hdrs }
+        )
+          .then((r) => r.json())
+          .then(async (rows: Array<{ session_id: string; conversation_data?: { compact_summaries?: Array<{ summary: string; compacted_at: string }> } }>) => {
+            // Primary path: compact summaries
+            const all: Array<{ summary: string; compacted_at: string }> = [];
+            for (const row of rows) {
+              const cs = row?.conversation_data?.compact_summaries;
+              if (Array.isArray(cs)) all.push(...cs);
+            }
+            all.sort((a, b) => b.compacted_at.localeCompare(a.compacted_at));
+            priorCompactSummariesRef.current = all.slice(0, 4).map((e) => e.summary);
+
+            if (priorCompactSummariesRef.current.length) {
+              logStep(`PRIOR COMPACT SUMMARIES LOADED — ${priorCompactSummariesRef.current.length} blocks`, 'ok');
+              return;
+            }
+
+            // Backup path: no compact summaries yet — grab raw turns from prior sessions
+            const sessionIds = rows.map((r) => r.session_id).filter(Boolean);
+            if (!sessionIds.length) return;
+
+            const ids = sessionIds.map((id) => `"${id}"`).join(',');
+            const turnsRes = await fetch(
+              `${supaUrl}/rest/v1/conversation_turns?session_id=in.(${ids})&select=role,content,turn_index,session_id&order=turn_index.desc&limit=20`,
+              { headers: hdrs }
+            );
+            if (!turnsRes.ok) return;
+
+            const rawTurns: Array<{ role: string; content: string; turn_index: number }> = await turnsRes.json();
+            if (!rawTurns.length) return;
+
+            // Reverse into chronological order and format as a compact exchange log
+            rawTurns.reverse();
+            const excerpt = rawTurns
+              .map((t) => `${t.role === 'user' ? 'Seeker' : 'Oracle'}: ${t.content.slice(0, 120).replace(/\n/g, ' ')}`)
+              .join('\n');
+
+            priorCompactSummariesRef.current = [
+              `[Raw signal fragment — last ${rawTurns.length} exchanges from a prior encounter:\n${excerpt}]`
+            ];
+            logStep(`BACKUP CONTEXT LOADED — ${rawTurns.length} raw turns from prior sessions`, 'ok');
+          })
+          .catch(() => { /* non-fatal — Oracle simply won't have prior compact context */ });
+      }
     }
 
     // Wallet-signed returning seeker — skip lore + terminal, land straight in the alley.
     // Check both the React state (set by async IP check) AND the IP-agnostic localStorage
     // key directly so fast tappers before the IP check resolves are still recognised.
     const forceNew = new URLSearchParams(window.location.search).has('newuser');
-    const walletSigned = hasSignedWallet;
+    const walletSigned = hasSignedWallet || !!localStorage.getItem('oracle_wallet_signed');
     if (walletSigned && !forceNew) {
       logStep('WALLET SIGNED → DIRECT ALLEY ENTRY', 'ok');
       // Build a personalized greeting if the seeker has a known echo record
@@ -782,11 +763,15 @@ export function SurrogateOracleImmersion() {
   }, [enterTour]);
 
   const handleStage00Dismiss = useCallback(() => {
-    // Pre-warm immediately (idempotent, ensures connection is ready)
+    // Pre-warm immediately — gives the full 850ms rift transition for the WS to establish.
     oracleConversationRef.current?.prewarm();
     setShowStage00(false);
     logStep('STAGE_00 → ENTER CASCADE', 'ok');
-    journey.awakeFromTerminal();
+    document.body.setAttribute('data-rift-opening', 'true');
+    setTimeout(() => {
+      journey.awakeFromTerminal();
+      document.body.removeAttribute('data-rift-opening');
+    }, 850);
   }, [journey]);
 
   const startHold = useCallback((title: string, body: string) => {
@@ -1003,8 +988,8 @@ export function SurrogateOracleImmersion() {
 
     // Fire startSession immediately — the existing queue path handles the case where the
     // WS is still CONNECTING (pendingBootRef + pendingMessagesRef flush on session.created).
-  // The Oracle scene enters immediately; booting at t=0 keeps the existing warm
-  // connection and lets the GLB transporter provide the visual handoff.
+    // The 1600ms scene-cut in selectKnifeQuestion stays unchanged; booting the session at
+    // t=0 gives Gemini the full dramatic pause to establish before the Oracle scene lands.
     {
       const fullStory = LORE_SEQUENCE.join('\n');
       let memoryBlock = '';
@@ -1141,7 +1126,6 @@ export function SurrogateOracleImmersion() {
       cameraStateRef.current = { ...cameraStateRef.current, x: 0, y: 0, snap: true };
       // Reset manifest latch so fresh API readiness is required for this session.
       setForceOracleManifest(false);
-      setOracleTransportProgress(0.02);
       // Fallback: if session.created hasn't arrived after 6s, manifest the avatar anyway
       // and kick a reconnect attempt so we recover if the WS died silently.
       fallbackTimer = setTimeout(() => {
@@ -1154,33 +1138,6 @@ export function SurrogateOracleImmersion() {
       if (fallbackTimer !== null) clearTimeout(fallbackTimer);
     };
   }, [scenePhase, connection]);
-
-  // Drive a real manifestation curve instead of the old binary 0/1 gate.
-  // The sampled GLB silhouette disperses immediately, holds a readable signal
-  // shape while Gemini warms, and resolves promptly once session.created lands.
-  useEffect(() => {
-    if (scenePhase !== 'oracle') {
-      setOracleTransportProgress(1);
-      return;
-    }
-
-    const startedAt = performance.now();
-    let frame = 0;
-    const tick = () => {
-      const elapsed = performance.now() - startedAt;
-      const warmup = Math.min(0.82, 0.02 + (elapsed / 2200) * 0.80);
-      const target = isGeminiSessionLive ? 1 : warmup;
-      setOracleTransportProgress((current) => {
-        const next = Math.min(1, Math.max(current, target));
-        return Math.abs(next - current) < 0.002 ? current : next;
-      });
-      if (!isGeminiSessionLive || warmup < 0.82) {
-        frame = requestAnimationFrame(tick);
-      }
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [scenePhase, isGeminiSessionLive]);
 
   // Latch hasManifested once the Gemini session confirms (or the fallback fires).
   // Keeps the 3D canvas visible during WS reconnects (isGeminiConnected briefly drops to false
@@ -1323,6 +1280,9 @@ export function SurrogateOracleImmersion() {
     setShowRiftRitual(false);
     setIsRiftOpening(true);
 
+    // Visual rift-opening animation
+    document.body.setAttribute('data-rift-opening', 'true');
+
     try {
       playActivationSfx();
     } catch (e) {
@@ -1331,6 +1291,7 @@ export function SurrogateOracleImmersion() {
 
     setTimeout(() => {
       setIsRiftOpening(false);
+      document.body.removeAttribute('data-rift-opening');
 
       // Now activate XR / camera stream!
       activateXRMode();
@@ -1440,7 +1401,6 @@ export function SurrogateOracleImmersion() {
   }, [portraitRevealPhase, portraitViewerUrl, echo?.last_archetype]);
 
   useEffect(() => {
-    logStep('🔮 SECURE-COMPOSTING-VERIFIED-CB', 'ok');
     logStep('NEURAL LINK AWAKENING', 'ok');
     window.__session_start = Date.now();
     setShowConversation(true);
@@ -1525,7 +1485,6 @@ export function SurrogateOracleImmersion() {
 
   useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment, isDegraded);
 
-  const [isContextLost, setIsContextLost] = useState(false);
   const oracleStageRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let rafId: number;
@@ -1550,16 +1509,15 @@ export function SurrogateOracleImmersion() {
   useParallax(scenePhase, handleParallaxUpdate, handleZoom);
 
   const isOracleMode = scenePhase === 'oracle';
-  // The Canvas is visible for the entire Oracle handoff. Its sampled GLB
-  // transporter is the warmup state, so readiness must not hide the only
-  // visible manifestation until session.created arrives.
-  const oracleManifestReady = isOracleMode;
+  // 3D canvas only becomes visible once Gemini confirms session.created (or a 6s fallback fires).
+  // hasManifested latches true after first reveal so WS reconnects don't briefly hide the avatar.
+  const oracleManifestReady = isOracleMode && (hasManifested || isGeminiConnected || forceOracleManifest);
   // True when the 6s fallback fired but we still have no live session — shows "FRACTURE MANIFESTING"
   // instead of a silently frozen face so the seeker knows the system is trying to reconnect.
   const isFractureManifesting = isOracleMode && forceOracleManifest && !isGeminiConnected;
   // Keep the transporter beam active through the fallback state. Only the
   // real Live session resolves particles into the settled Oracle silhouette.
-  const oracleManifestProgress = isOracleMode ? oracleTransportProgress : 1;
+  const oracleManifestProgress = isOracleMode && isGeminiSessionLive ? 1 : 0;
   const awakened     = scenePhase === 'awakened' || scenePhase === 'tour' || isOracleMode;
   const isAlive      = scenePhase !== 'dormant';
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
@@ -1764,10 +1722,9 @@ export function SurrogateOracleImmersion() {
                 style={{
                   position: 'absolute', top: 0, left: 0,
                   width: '100%', height: '100%',
-                  opacity: isOracleMode || oracleManifestReady ? 1 : 0,
+                   opacity: isOracleMode || oracleManifestReady ? 1 : 0,
                   pointerEvents: oracleManifestReady ? 'auto' : 'none',
                   zIndex: 3,
-                  visibility: isContextLost ? 'hidden' : 'visible', // Hide if WebGL context is lost (prevents white rect on iOS)
                 }}
               >
                 <div className="oracle-avatar-headroom-hook" style={{ width: '100%', height: '100%' }}>
@@ -1796,103 +1753,84 @@ export function SurrogateOracleImmersion() {
                           alpha: true,
                           powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
                         }}
-                        onCreated={() => setRendererReady(true)}
                         style={{ width: '100%', height: '100%', background: 'transparent' }}
                         frameloop="always"
                       >
-                        <WebGLContextWatcher
-                          onContextLost={() => {
-                            setIsContextLost(true);
-                            setRendererReady(false);
-                            setComposerEpoch(epoch => epoch + 1);
-                          }}
-                          onContextRestored={() => {
-                            setIsContextLost(false);
-                            // Let R3F finish reattaching the restored context
-                            // before allowing a fresh composer instance to mount.
-                            requestAnimationFrame(() => setRendererReady(true));
-                          }}
-                        />
-                        <WebGLTransparencyHarden />
-                        {!isContextLost && (
-                          <>
-                            <OrbitZoomCompensator enabled={isOracleMode && !isXRMode} />
-                            {import.meta.env.DEV && <OracleSceneDiagnostics />}
-                            {!isMusicMode && (
-                              <OracleAvatar3D
-                                visemeStateRef={visemeStateRef}
-                                cameraStateRef={cameraStateRef}
-                                seekerMotionRef={seekerMotionRef}
-                                transporterActive={isOracleMode}
-                                transporterProgress={isMusicReturning ? 0 : oracleManifestProgress}
-                                transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
-                                reducedMotion={prefersReducedMotion}
-                              />
-                            )}
-                            {isMusicMode && (
-                              <OracleMusicVisualizer
-                                getAnalyser={() => lyria.analyserRef.current}
-                                reducedMotion={prefersReducedMotion}
-                              />
-                            )}
-                            {/* The ambient field returns only after the GLB-source
-                                transporter has been released, so it never masks the
-                                recognizable particle silhouette during warmup. */}
-                            {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
-                              <OracleQuarks
-                                tier={renderTier as 1 | 2 | 3}
+                        <OrbitZoomCompensator enabled={isOracleMode && !isXRMode} />
+                        {import.meta.env.DEV && <OracleSceneDiagnostics />}
+                        {!isMusicMode && (
+                          <OracleAvatar3D
+                            visemeStateRef={visemeStateRef}
+                            cameraStateRef={cameraStateRef}
+                            seekerMotionRef={seekerMotionRef}
+                            transporterActive={isOracleMode}
+                            transporterProgress={isMusicReturning ? 0 : oracleManifestProgress}
+                            transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
+                            reducedMotion={prefersReducedMotion}
+                          />
+                        )}
+                        {isMusicMode && (
+                          <OracleMusicVisualizer
+                            getAnalyser={() => lyria.analyserRef.current}
+                            reducedMotion={prefersReducedMotion}
+                          />
+                        )}
+                        {/* The ambient field returns only after the GLB-source
+                            transporter has been released, so it never masks the
+                            recognizable particle silhouette during warmup. */}
+                        {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
+                          <OracleQuarks
+                            tier={renderTier as 1 | 2 | 3}
+                            speakingRef={isOracleSpeakingRef}
+                            amplitude={visemeStateRef.current?.amplitude ?? 0}
+                            reducedMotion={prefersReducedMotion}
+                          />
+                        )}
+                        {/* The GLB transporter owns the particle surface until
+                            Gemini is genuinely live. Ambient fields return after
+                            convergence so the TNG matrix remains legible. */}
+                        {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
+                          <OracleNebula
+                            tier={renderTier as 1 | 2 | 3}
+                            speakingRef={isOracleSpeakingRef}
+                            reducedMotion={prefersReducedMotion}
+                          />
+                        )}
+                        {/* Rapier glyph-shard debris field (tier 2+) — fixed 60Hz step,
+                            zero gravity, shards constrained behind the bust.
+                            Inner Suspense: Physics suspends while the Rapier WASM loads —
+                            without this boundary the whole Canvas (avatar included) would
+                            fall back to the outer Suspense fallback mid-session. */}
+                        {renderTier >= 2 && (!isOracleMode || isGeminiSessionLive) && (
+                          <Suspense fallback={null}>
+                            <Physics gravity={[0, 0, 0]} timeStep={1 / 60} colliders={false}>
+                              <OraclePhysicsDebris
+                                count={renderTier >= 3 ? 18 : 10}
                                 speakingRef={isOracleSpeakingRef}
-                                amplitude={visemeStateRef.current?.amplitude ?? 0}
-                                reducedMotion={prefersReducedMotion}
                               />
-                            )}
-                            {/* The GLB transporter owns the particle surface until
-                                Gemini is genuinely live. Ambient fields return after
-                                convergence so the TNG matrix remains legible. */}
-                            {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
-                              <OracleNebula
-                                tier={renderTier as 1 | 2 | 3}
-                                speakingRef={isOracleSpeakingRef}
-                                reducedMotion={prefersReducedMotion}
-                              />
-                            )}
-                            {/* Rapier glyph-shard debris field (tier 2+) — fixed 60Hz step,
-                                zero gravity, shards constrained behind the bust.
-                                Inner Suspense: Physics suspends while the Rapier WASM loads —
-                                without this boundary the whole Canvas (avatar included) would
-                                fall back to the outer Suspense fallback mid-session. */}
-                            {renderTier >= 2 && (!isOracleMode || isGeminiSessionLive) && (
-                              <Suspense fallback={null}>
-                                <Physics gravity={[0, 0, 0]} timeStep={1 / 60} colliders={false}>
-                                  <OraclePhysicsDebris
-                                    count={renderTier >= 3 ? 18 : 10}
-                                    speakingRef={isOracleSpeakingRef}
-                                  />
-                                </Physics>
-                              </Suspense>
-                            )}
-                            {renderTier >= 1 && rendererReady && !isContextLost && (
-                              <EffectComposer key={`oracle-composer-${composerEpoch}`} multisampling={renderTier >= 2 ? 4 : 0}>
-                                {[
-                                  <Bloom
-                                    key="bloom"
-                                    intensity={renderTier >= 3 ? 1.45 : renderTier >= 2 ? 1.15 : 0.75}
-                                    luminanceThreshold={0.20}
-                                    luminanceSmoothing={0.32}
-                                    mipmapBlur
-                                  />,
-                                  ...(renderTier >= 2 ? [
-                                    <ChromaticAberration
-                                      key="ca"
-                                      offset={[0.0016, 0.0022]}
-                                      radialModulation
-                                      modulationOffset={0.42}
-                                    />,
-                                  ] : []),
-                                ]}
-                              </EffectComposer>
-                            )}
-                          </>
+                            </Physics>
+                          </Suspense>
+                        )}
+                        {renderTier >= 1 && (
+                          <EffectComposer multisampling={renderTier >= 2 ? 4 : 0}>
+                            {[
+                              <Bloom
+                                key="bloom"
+                                intensity={renderTier >= 3 ? 1.45 : renderTier >= 2 ? 1.15 : 0.75}
+                                luminanceThreshold={0.20}
+                                luminanceSmoothing={0.32}
+                                mipmapBlur
+                              />,
+                              ...(renderTier >= 2 ? [
+                                <ChromaticAberration
+                                  key="ca"
+                                  offset={[0.0016, 0.0022]}
+                                  radialModulation
+                                  modulationOffset={0.42}
+                                />,
+                              ] : []),
+                            ]}
+                          </EffectComposer>
                         )}
                       </Canvas>
                     </Suspense>
@@ -1922,7 +1860,7 @@ export function SurrogateOracleImmersion() {
       <AnimatePresence>
         {holdTooltip && (
           <motion.div key="hold-tooltip" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} style={{ position: 'fixed', bottom: 'calc(var(--bottom-bar-h, 160px) + 14px)', left: '50%', transform: 'translateX(-50%)', zIndex: 60, background: 'rgba(0, 10, 15, 0.94)', backdropFilter: 'blur(12px)', border: '1px solid rgba(0,255,136,0.32)', borderRadius: 10, padding: '10px 18px', maxWidth: 260, textAlign: 'center' }}>
-            <div style={{ fontFamily: "'adrip1', 'Orbitron', monospace", fontSize: '0.70rem', color: '#00ff88', marginBottom: 4 }}>{holdTooltip.title}</div>
+            <div style={{ fontFamily: "'aAnotherTag', 'Orbitron', monospace", fontSize: '0.70rem', color: '#00ff88', marginBottom: 4 }}>{holdTooltip.title}</div>
             <div style={{ fontFamily: "'PhillySans', 'Orbitron', monospace", fontSize: '0.66rem', color: 'rgba(255,255,255,0.68)' }}>{holdTooltip.body}</div>
           </motion.div>
         )}
@@ -2089,7 +2027,7 @@ export function SurrogateOracleImmersion() {
             style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
           >
             <div className="neural-link-terminal" style={{ maxWidth: 320, width: '100%', padding: '1.5rem', border: '1px solid rgba(0,255,136,0.4)', background: 'rgba(0,10,5,0.94)' }}>
-              <div style={{ fontFamily: "'adrip1', monospace", fontSize: '1rem', color: '#00ff88', marginBottom: '0.5rem', letterSpacing: '0.15em' }}>SIGNAL IMPRINT</div>
+              <div style={{ fontFamily: "'aAnotherTag', monospace", fontSize: '1rem', color: '#00ff88', marginBottom: '0.5rem', letterSpacing: '0.15em' }}>SIGNAL IMPRINT</div>
               <div style={{ fontSize: '0.65rem', color: '#00ccaa', fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em', marginBottom: '1.25rem', lineHeight: 1.6 }}>
                 The Oracle remembers those who name themselves. What handle do you carry?
               </div>
@@ -2129,7 +2067,7 @@ export function SurrogateOracleImmersion() {
             <div className="oracle-lore-text">
               {scenePhase === 'terminal' && !hasCompletedLore && !loreStarted && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '2rem' }}>
-                  <div style={{ fontFamily: "'adrip1', 'Orbitron', monospace", fontSize: '0.8rem', color: '#00ff88', letterSpacing: '0.2em' }}>UNIDENTIFIED SIGNAL DETECTED</div>
+                  <div style={{ fontFamily: "'aAnotherTag', 'Orbitron', monospace", fontSize: '0.8rem', color: '#00ff88', letterSpacing: '0.2em' }}>UNIDENTIFIED SIGNAL DETECTED</div>
                   <button onClick={(e) => { e.stopPropagation(); startLore(); }} style={{ background: 'none', border: '1px solid #00ff88', color: '#00ff88', padding: '1rem 2rem', fontFamily: "'PhillySans', 'Orbitron', monospace", cursor: 'pointer' }}>[ TAP TO ACTIVATE SIGNAL ]</button>
                 </div>
               )}
@@ -2157,7 +2095,7 @@ export function SurrogateOracleImmersion() {
               >
                 <div style={{ textAlign: 'center', padding: '2rem', maxWidth: 400 }}>
                   <div style={{ 
-                    fontFamily: "'adrip1', 'Orbitron', monospace",
+                    fontFamily: "'aAnotherTag', 'Orbitron', monospace",
                     fontSize: '1.2rem', color: '#00ff88', marginBottom: '1rem'
                   }}>
                     SIGNAL RECOGNIZED
@@ -2413,73 +2351,37 @@ export function SurrogateOracleImmersion() {
       )}
 
       {isOracleMode && isMusicMode && (
-        <div className="oracle-knife-section">
-          <div className="oracle-knife-stage">
-            <div className="oracle-knife-cards-container" style={{
-              position: 'relative',
-              width: '100%',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              perspective: '1000px',
-            }}>
-              <motion.div
-                initial={{
-                  scaleY: 0.03,
-                  scaleX: 0.88,
-                  opacity: 0.95,
-                  y: 0,
-                  filter: 'brightness(7) saturate(0)',
-                }}
-                animate={{
-                  scaleY: [0.03, 1.07, 1.0],
-                  scaleX: [0.88, 1.01, 1.0],
-                  opacity: 1,
-                  filter: [
-                    'brightness(7) saturate(0)',
-                    'brightness(1.5) saturate(1.1)',
-                    'brightness(1.0) saturate(1.0)',
-                  ],
-                  y: 0,
-                }}
-                exit={{ opacity: 0, scaleY: 0.88, y: 18, filter: 'blur(4px)', transition: { duration: 0.3 } }}
-                transition={{ duration: 0.68, ease: [0.16, 1.0, 0.3, 1], times: [0, 0.48, 1] }}
-                className="oracle-knife-card oracle-lyria-card"
-                style={{
-                  transformOrigin: 'top center',
-                }}
-              >
-                <div className="oracle-knife-territory">LYRIA // FRACTURE BEAT</div>
-                <div className="oracle-knife-divider" />
-                <ParticleTypographyCard
-                  questionIndex={-1}
-                  landedChars={lyria.status === 'generating' ? 0 : 25}
-                  isSelected={false}
-                  isThisSelected={false}
-                  territory="LYRIA"
-                  question="A signal for the fracture"
-                />
-                <div className="oracle-lyria-status">
-                  {lyria.status === 'generating' ? 'GENERATING 30-SECOND SIGNAL…' :
-                    lyria.status === 'error' ? 'SIGNAL FAILED — ORACLE STILL LISTENING' :
-                    lyria.isPlaying ? 'PLAYING // AUDIO-REACTIVE FIELD' : 'TRACK READY // TAP PLAY'}
-                </div>
-                {lyria.error && <div className="oracle-lyria-error">{lyria.error}</div>}
-                <div className="oracle-lyria-actions">
-                  {lyria.audioUrl && !lyria.isPlaying && (
-                    <button className="oc-send-btn" onClick={() => void lyria.play()}>PLAY</button>
-                  )}
-                  {lyria.audioUrl && (
-                    <a className="oc-send-btn" href={lyria.audioUrl} download="surrogate-oracle-lyria.mp3" style={{ textDecoration: 'none' }}>
-                      DOWNLOAD
-                    </a>
-                  )}
-                  <button className="oc-send-btn" onClick={exitMusicMode}>RETURN TO ORACLE</button>
-                </div>
-              </motion.div>
-            </div>
+        <motion.div
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{
+            position: 'absolute', zIndex: 30, left: '50%', bottom: '11%',
+            transform: 'translateX(-50%)', width: 'min(92vw, 430px)',
+            padding: '16px 18px', border: '1px solid rgba(196,60,255,.55)',
+            background: 'rgba(5,0,15,.88)', backdropFilter: 'blur(14px)',
+            color: '#f3d8ff', fontFamily: "'Share Tech Mono', monospace",
+            boxShadow: '0 0 32px rgba(196,60,255,.22)',
+          }}
+        >
+          <div style={{ letterSpacing: '.14em', color: '#d16cff', fontSize: 11 }}>◈ LYRIA // FRACTURE BEAT</div>
+          <div style={{ marginTop: 8, fontSize: 13 }}>
+            {lyria.status === 'generating' ? 'GENERATING 30-SECOND SIGNAL…' :
+              lyria.status === 'error' ? 'SIGNAL FAILED — ORACLE STILL LISTENING' :
+              lyria.isPlaying ? 'PLAYING // AUDIO-REACTIVE FIELD' : 'TRACK READY // TAP PLAY'}
           </div>
-        </div>
+          {lyria.error && <div style={{ marginTop: 7, color: '#ff8bdb', fontSize: 11 }}>{lyria.error}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+            {lyria.audioUrl && !lyria.isPlaying && (
+              <button className="oc-send-btn" onClick={() => void lyria.play()}>PLAY</button>
+            )}
+            {lyria.audioUrl && (
+              <a className="oc-send-btn" href={lyria.audioUrl} download="surrogate-oracle-lyria.mp3" style={{ textDecoration: 'none' }}>
+                DOWNLOAD
+              </a>
+            )}
+            <button className="oc-send-btn" onClick={exitMusicMode}>RETURN TO ORACLE</button>
+          </div>
+        </motion.div>
       )}
 
       {showJourneyLimitGate && (
@@ -2547,7 +2449,7 @@ export function SurrogateOracleImmersion() {
               animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
               transition={{ delay: 0.9, duration: 1.4, ease: [0.22, 1, 0.36, 1] }}
               style={{
-                fontFamily: "'adrip1', 'Orbitron', monospace", fontWeight: 900,
+                fontFamily: "'aAnotherTag', 'Orbitron', monospace", fontWeight: 900,
                 fontSize: 'clamp(1.8rem, 8vw, 3.4rem)', lineHeight: 1.05, letterSpacing: '0.02em',
                 background: 'linear-gradient(135deg, #00ff88 0%, #00ffcc 100%)',
                 WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
@@ -2591,7 +2493,7 @@ export function SurrogateOracleImmersion() {
               zIndex: 120, pointerEvents: 'auto', cursor: 'pointer',
               background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(176,38,255,0.55)',
               borderRadius: '10px', padding: '12px 22px',
-              fontFamily: "'adrip1', 'Orbitron', monospace", fontWeight: 900,
+              fontFamily: "'aAnotherTag', 'Orbitron', monospace", fontWeight: 900,
               fontSize: '0.92rem', letterSpacing: '0.14em', color: '#00ffcc',
               boxShadow: '0 0 22px rgba(176,38,255,0.4), inset 0 0 14px rgba(0,255,204,0.08)',
               animation: 'oracle-pulse 2.4s ease-in-out infinite',
@@ -2646,7 +2548,7 @@ export function SurrogateOracleImmersion() {
               {/* Header */}
               <div style={{ textAlign: 'center' }}>
                 <h2 style={{
-                  fontFamily: "'adrip1', 'Orbitron', monospace",
+                  fontFamily: "'aAnotherTag', 'Orbitron', monospace",
                   fontSize: '1.25rem',
                   fontWeight: 900,
                   letterSpacing: '0.12em',
@@ -2715,7 +2617,7 @@ export function SurrogateOracleImmersion() {
                   style={{
                     width: '100%',
                     padding: '12px',
-                    fontFamily: "'adrip1', 'Orbitron', monospace",
+                    fontFamily: "'aAnotherTag', 'Orbitron', monospace",
                     fontWeight: 900,
                     fontSize: '0.85rem',
                     letterSpacing: '0.1em',
@@ -2777,7 +2679,7 @@ export function SurrogateOracleImmersion() {
             }}
           >
             <div style={{
-              fontFamily: "'adrip1', 'Orbitron', monospace",
+              fontFamily: "'aAnotherTag', 'Orbitron', monospace",
               fontSize: '1.8rem',
               fontWeight: 900,
               letterSpacing: '0.2em',

@@ -1,0 +1,313 @@
+/*
+ * OracleInfoCard
+ * A phone-first archive pane: one reading beat per viewport, with the knife
+ * card's green-to-cyan signal and violet residue at the edge.
+ */
+
+@keyframes oracle-info-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes oracle-info-card-marker {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+.oracle-info-card {
+  --oracle-info-accent: #00ff88;
+  --oracle-info-accent-soft: rgba(0, 255, 136, 0.16);
+  box-sizing: border-box;
+  min-height: 100dvh;
+  width: 100%;
+  padding: max(28px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
+  display: grid;
+  place-items: center;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  background:
+    radial-gradient(ellipse 88% 48% at 50% 4%, var(--oracle-info-accent-soft), transparent 70%),
+    linear-gradient(180deg, rgba(0, 8, 17, 0.96), rgba(0, 2, 9, 0.98));
+  color: rgba(239, 255, 247, 0.94);
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+}
+
+.oracle-info-card::before,
+.oracle-info-card::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.oracle-info-card::before {
+  inset: 7% 0;
+  background:
+    linear-gradient(90deg, transparent 0 7%, rgba(0, 255, 204, 0.055) 7.1%, transparent 7.2% 92.8%, rgba(0, 255, 136, 0.05) 92.9%, transparent 93%),
+    repeating-linear-gradient(0deg, transparent 0 28px, rgba(0, 255, 136, 0.035) 29px, transparent 30px);
+  opacity: 0.55;
+}
+
+.oracle-info-card::after {
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='oracleInfoNoise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.72' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23oracleInfoNoise)'/%3E%3C/svg%3E");
+  opacity: 0.045;
+  mix-blend-mode: overlay;
+}
+
+.oracle-info-card__shell {
+  box-sizing: border-box;
+  width: min(100%, 720px);
+  min-height: min(86dvh, 820px);
+  padding: clamp(28px, 8vw, 74px) clamp(18px, 7vw, 72px) clamp(24px, 6vw, 58px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  border-radius: 3px 30px 3px 30px;
+  background:
+    linear-gradient(158deg, rgba(0, 255, 136, 0.085), rgba(0, 3, 10, 0.22) 45%, rgba(176, 38, 255, 0.075));
+  backdrop-filter: blur(10px) saturate(1.65);
+  -webkit-backdrop-filter: blur(10px) saturate(1.65);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.09),
+    inset 0 -1px 0 rgba(176, 38, 255, 0.15),
+    0 24px 90px rgba(0, 0, 0, 0.38);
+  animation: oracle-info-card-enter 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Knife-card mask frame: bright at the signal source, violet where it fades. */
+.oracle-info-card__shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    125deg,
+    var(--oracle-info-accent) 0%,
+    rgba(0, 255, 204, 0.36) 38%,
+    rgba(176, 38, 255, 0.34) 70%,
+    #b026ff 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.74;
+}
+
+.oracle-info-card__shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 4px,
+    rgba(0, 255, 136, 0.026) 4px 5px
+  );
+  opacity: 0.8;
+}
+
+.oracle-info-card__topline,
+.oracle-info-card__foot,
+.oracle-info-card__marker,
+.oracle-info-card__title,
+.oracle-info-card__rule,
+.oracle-info-card__copy {
+  position: relative;
+  z-index: 1;
+}
+
+.oracle-info-card__topline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: clamp(22px, 6vw, 46px);
+}
+
+.oracle-info-card__eyebrow,
+.oracle-info-card__index,
+.oracle-info-card__signal {
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+
+.oracle-info-card__eyebrow {
+  color: var(--oracle-info-accent);
+  font-size: clamp(0.7rem, 2.7vw, 0.92rem);
+  font-weight: 800;
+  line-height: 1.25;
+  text-shadow: 0 0 12px color-mix(in srgb, var(--oracle-info-accent) 48%, transparent);
+}
+
+.oracle-info-card__index {
+  flex-shrink: 0;
+  color: rgba(229, 255, 244, 0.42);
+  font: 0.68rem/1.2 'Share Tech Mono', monospace;
+}
+
+.oracle-info-card__marker {
+  width: min(100%, 184px);
+  height: 12px;
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  margin-bottom: clamp(18px, 4vw, 32px);
+}
+
+.oracle-info-card__marker span {
+  width: 5px;
+  height: 5px;
+  background: var(--oracle-info-accent);
+  box-shadow: 0 0 11px var(--oracle-info-accent);
+  animation: oracle-info-card-marker 2.4s ease-in-out infinite;
+}
+
+.oracle-info-card__marker span:nth-child(2) { height: 10px; animation-delay: 110ms; }
+.oracle-info-card__marker span:nth-child(3) { height: 7px; animation-delay: 220ms; }
+.oracle-info-card__marker span:nth-child(4) { height: 4px; animation-delay: 330ms; opacity: 0.6; }
+
+.oracle-info-card__title {
+  max-width: 10ch;
+  margin: 0;
+  color: var(--oracle-info-accent);
+  font-family: 'aAnotherTag', 'PhillySans', sans-serif;
+  font-size: clamp(2.65rem, 14vw, 6.8rem);
+  font-weight: 900;
+  letter-spacing: 0.045em;
+  line-height: 0.9;
+  text-wrap: balance;
+  text-shadow:
+    0 0 14px color-mix(in srgb, var(--oracle-info-accent) 55%, transparent),
+    3px 0 0 rgba(176, 38, 255, 0.14);
+}
+
+.oracle-info-card__rule {
+  width: min(76%, 310px);
+  height: 1px;
+  margin: clamp(24px, 6vw, 44px) 0 clamp(24px, 6vw, 42px);
+  background: linear-gradient(
+    90deg,
+    var(--oracle-info-accent),
+    rgba(0, 255, 204, 0.42) 42%,
+    rgba(176, 38, 255, 0.38) 70%,
+    transparent
+  );
+  box-shadow: 0 0 10px color-mix(in srgb, var(--oracle-info-accent) 32%, transparent);
+}
+
+.oracle-info-card__copy {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(22px, 5vw, 38px);
+}
+
+.oracle-info-card__paragraph {
+  min-width: 0;
+}
+
+/* ParticleTypographyCard owns its sizing inline; this is the intentional
+   phone-first reading override for this informational context. */
+.oracle-info-card .oracle-knife-card-question {
+  min-height: 0 !important;
+  width: 100% !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+}
+
+.oracle-info-card .oracle-knife-card-question > div {
+  max-width: 24ch !important;
+  font-size: clamp(1.68rem, 7.4vw, 2.9rem) !important;
+  line-height: 1.46 !important;
+  letter-spacing: 0.012em !important;
+  text-align: left !important;
+  color: rgba(241, 255, 247, 0.94) !important;
+  text-shadow:
+    0 1px 15px rgba(0, 0, 0, 0.98),
+    0 0 24px rgba(0, 255, 136, 0.18) !important;
+}
+
+.oracle-info-card .oracle-knife-card-question .oracle-knife-letter {
+  text-shadow: 0 0 11px color-mix(in srgb, var(--oracle-info-accent) 52%, transparent) !important;
+}
+
+.oracle-info-card__sr-copy {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.oracle-info-card__foot {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: clamp(30px, 8vw, 62px);
+  padding-top: 18px;
+  border-top: 1px solid rgba(0, 255, 136, 0.16);
+}
+
+.oracle-info-card__signal {
+  margin: 0;
+  color: rgba(0, 255, 204, 0.62);
+  font: 0.68rem/1.65 'Share Tech Mono', monospace;
+}
+
+.oracle-info-card__footer {
+  color: rgba(239, 255, 247, 0.56);
+  font: 0.78rem/1.5 'Share Tech Mono', monospace;
+}
+
+.oracle-info-card--cyan .oracle-info-card__shell {
+  background:
+    linear-gradient(158deg, rgba(0, 255, 204, 0.08), rgba(0, 3, 10, 0.22) 45%, rgba(0, 255, 136, 0.055));
+}
+
+.oracle-info-card--violet .oracle-info-card__shell {
+  background:
+    linear-gradient(158deg, rgba(176, 38, 255, 0.09), rgba(0, 3, 10, 0.22) 45%, rgba(0, 255, 136, 0.05));
+}
+
+@media (min-width: 700px) {
+  .oracle-info-card {
+    padding-inline: 32px;
+  }
+
+  .oracle-info-card__shell {
+    min-height: min(78dvh, 820px);
+  }
+
+  .oracle-info-card .oracle-knife-card-question > div {
+    font-size: clamp(1.85rem, 4.2vw, 3rem) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oracle-info-card__shell,
+  .oracle-info-card__marker span {
+    animation: none !important;
+  }
+
+  .oracle-info-card .oracle-knife-card-question .oracle-knife-letter {
+    filter: none !important;
+    transition: none !important;
+  }
+}

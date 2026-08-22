@@ -1579,6 +1579,7 @@ export function SurrogateOracleImmersion() {
       data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
       data-oracle-thinking={isOracleThinking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
+      data-music-mode={isMusicMode ? 'true' : undefined}
       data-camera-active={cameraActive ? 'true' : undefined}
       data-audio-target-vol={targetVol}
       data-xr-mode={isXRMode ? 'true' : undefined}
@@ -1852,6 +1853,7 @@ export function SurrogateOracleImmersion() {
                             getAnalyser={() => lyria.analyserRef.current}
                             getAudioTime={() => lyria.audioRef.current?.currentTime ?? 0}
                             reducedMotion={prefersReducedMotion}
+                            intensity={lyria.status === 'generating' ? 0.12 : lyria.status === 'ready' ? 0.34 : 1}
                           />
                         )}
                         {/* The ambient field returns only after the GLB-source

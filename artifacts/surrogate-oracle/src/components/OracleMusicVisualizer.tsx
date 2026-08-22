@@ -9,6 +9,7 @@ const MUSIC_VERTEX_SHADER = /* glsl */ `
   uniform float uEnergy;
   uniform float uPulse;
   uniform float uMotion;
+  uniform float uIntensity;
   attribute float aRadius;
   attribute float aPhase;
   attribute float aSpeed;
@@ -59,8 +60,8 @@ const MUSIC_FRAGMENT_SHADER = /* glsl */ `
     float core = exp(-distanceFromCenter * distanceFromCenter * 24.0);
     float halo = exp(-distanceFromCenter * distanceFromCenter * 5.0) * 0.7;
     vec3 color = mix(vec3(0.0, 1.0, 0.8), vec3(0.77, 0.18, 1.0), clamp(vEnergy * 0.65, 0.0, 1.0));
-    float alpha = (core + halo) * (0.14 + vEnergy * 0.34) * vDepth;
-    gl_FragColor = vec4(color * (core * 1.15 + 0.2), alpha);
+    float alpha = (core + halo) * (0.14 + vEnergy * 0.34) * vDepth * uIntensity;
+    gl_FragColor = vec4(color * (core * 1.15 + 0.2) * uIntensity, alpha);
   }
 `;
 
@@ -68,11 +69,14 @@ export function OracleMusicVisualizer({
   getAnalyser,
   getAudioTime,
   reducedMotion = false,
+  intensity = 1,
 }: {
   getAnalyser: () => AnalyserNode | null;
   /** Current Lyria media timestamp in seconds, when the audio element is active. */
   getAudioTime?: () => number;
   reducedMotion?: boolean;
+  /** Keeps the handoff dark while the audio clip is still being generated. */
+  intensity?: number;
 }) {
   const pointsRef = useRef<THREE.Points>(null);
   const dataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
@@ -114,7 +118,8 @@ export function OracleMusicVisualizer({
     uEnergy: { value: 0.08 },
     uPulse: { value: 0 },
     uMotion: { value: reducedMotion ? 0.25 : 1 },
-  }), [reducedMotion]);
+    uIntensity: { value: intensity },
+  }), [intensity, reducedMotion]);
 
   useFrame((state, delta) => {
     const points = pointsRef.current;
@@ -167,6 +172,7 @@ export function OracleMusicVisualizer({
     material.uniforms.uEnergy.value = smoothEnergy;
     material.uniforms.uPulse.value = pulseRef.current;
     material.uniforms.uMotion.value = reducedMotion ? 0.25 : 1;
+    material.uniforms.uIntensity.value = intensity;
     points.rotation.y += delta * (0.04 + smoothEnergy * 0.08);
     points.rotation.x = Math.sin(audioTimeRef.current * 0.12) * 0.08;
   });

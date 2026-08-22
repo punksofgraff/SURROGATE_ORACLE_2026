@@ -56,6 +56,14 @@ export class PCMPlayer {
   private analyser: AnalyserNode;
   private compressor: DynamicsCompressorNode | null = null;
   private transmissionFilter: BiquadFilterNode | null = null;
+  // Pre-selection taunt bus. It stays in the graph permanently so switching
+  // between taunt and clean voice never rebuilds the mobile playback chain.
+  private tauntInput: GainNode | null = null;
+  private tauntDryGain: GainNode | null = null;
+  private tauntDelay: DelayNode | null = null;
+  private tauntEchoGain: GainNode | null = null;
+  private tauntFeedbackGain: GainNode | null = null;
+  private tauntActive = false;
 
   // ── Viseme watchdog / analyser fallback ────────────────────────────────────
   // When the AudioWorklet fails to load (flaky mobile network, Safari quirk),
@@ -170,13 +178,48 @@ export class PCMPlayer {
       this.panner = null;
     }
 
-    // ── Build the processing chain (Filter → Compressor → Makeup → Analyser → Output)
+    // ── Build the processing chain (Taunt bus → Filter → Compressor → Makeup → Analyser → Output)
     // We connect these statically in the constructor so the signal path is ready 
     // for both AudioWorklet and legacy fallback.
     
     // The node feeding the analyser: makeup gain when available, else direct.
     const preAnalyser: AudioNode = this.makeupGain ?? this.analyser;
     if (this.makeupGain) this.makeupGain.connect(this.analyser);
+
+    // The taunt bus is always present. In clean mode its echo gain is zero and
+    // the dry gain is unity, so the selected-knife voice takes the same path.
+    try {
+      const input = this.context.createGain();
+      const dry = this.context.createGain();
+      const delay = this.context.createDelay(1.0);
+      const echo = this.context.createGain();
+      const feedback = this.context.createGain();
+      input.gain.setValueAtTime(1, this.context.currentTime);
+      dry.gain.setValueAtTime(1, this.context.currentTime);
+      delay.delayTime.setValueAtTime(0.17, this.context.currentTime);
+      echo.gain.setValueAtTime(0, this.context.currentTime);
+      feedback.gain.setValueAtTime(0.18, this.context.currentTime);
+      input.connect(dry);
+      input.connect(delay);
+      delay.connect(echo);
+      delay.connect(feedback);
+      feedback.connect(delay);
+      this.tauntInput = input;
+      this.tauntDryGain = dry;
+      this.tauntDelay = delay;
+      this.tauntEchoGain = echo;
+      this.tauntFeedbackGain = feedback;
+    } catch (err) {
+      console.warn('[PCMPlayer] Taunt bus unavailable, using clean voice:', err);
+    }
+
+    const voiceInput: AudioNode = this.transmissionFilter ?? this.compressor ?? this.makeupGain ?? this.analyser;
+    if (this.tauntInput && this.tauntDryGain && this.tauntDelay && this.tauntEchoGain) {
+      this.tauntDryGain.connect(voiceInput);
+      this.tauntEchoGain.connect(voiceInput);
+    } else {
+      // The fallback source connection below will feed the normal chain.
+    }
 
     // Start with the nodes that are always present or optional but early in chain
     if (this.transmissionFilter && this.compressor) {
@@ -229,8 +272,10 @@ export class PCMPlayer {
           console.error('[PCMPlayer] AudioWorklet Processor Error:', err);
         };
 
-        // Connect worklet to the start of our chain
-        if (this.transmissionFilter) {
+        // Connect worklet to the taunt bus, which is transparent in clean mode.
+        if (this.tauntInput) {
+          this.workletNode.connect(this.tauntInput);
+        } else if (this.transmissionFilter) {
           this.workletNode.connect(this.transmissionFilter);
         } else if (this.compressor) {
           this.workletNode.connect(this.compressor);
@@ -330,13 +375,50 @@ export class PCMPlayer {
   public setTransmissionQ(q: number, rampMs: number = 0): void {
     if (!this.transmissionFilter) return;
     const now = this.context.currentTime;
-    const safeQ = Math.max(0.0001, q);
+    // During the taunt, occasionally make the existing tunnel filter catch
+    // and release the voice. The normal progress sweep remains the baseline;
+    // this only adds sparse, restrained interruptions.
+    const tauntQ = this.tauntActive && Math.random() < 0.22
+      ? (Math.random() < 0.5 ? 0.12 : 7.5)
+      : q;
+    const safeQ = Math.max(0.0001, tauntQ);
     this.transmissionFilter.Q.cancelScheduledValues(now);
     this.transmissionFilter.Q.setValueAtTime(Math.max(0.0001, this.transmissionFilter.Q.value), now);
     if (rampMs <= 0) {
       this.transmissionFilter.Q.setValueAtTime(safeQ, now);
     } else {
       this.transmissionFilter.Q.linearRampToValueAtTime(safeQ, now + rampMs / 1000);
+    }
+  }
+
+  /** Turn the pre-selection echo taunt on/off without rebuilding audio nodes. */
+  public setTauntMode(enabled: boolean): void {
+    if (!this.tauntInput || !this.tauntDryGain || !this.tauntEchoGain || !this.tauntFeedbackGain || !this.tauntDelay) return;
+    const now = this.context.currentTime;
+    this.tauntActive = enabled;
+    this.tauntInput.gain.cancelScheduledValues(now);
+    this.tauntDryGain.gain.cancelScheduledValues(now);
+    this.tauntEchoGain.gain.cancelScheduledValues(now);
+    this.tauntFeedbackGain.gain.cancelScheduledValues(now);
+    this.tauntDelay.delayTime.cancelScheduledValues(now);
+
+    if (enabled) {
+      // Attack is intentionally quiet, then the dry voice blooms; the echo
+      // remains below the dry path so the words stay intelligible.
+      this.tauntInput.gain.setValueAtTime(0.5, now);
+      this.tauntInput.gain.linearRampToValueAtTime(1.0, now + 0.42);
+      this.tauntInput.gain.linearRampToValueAtTime(0.68, now + 1.35);
+      this.tauntDryGain.gain.setValueAtTime(1.0, now);
+      this.tauntEchoGain.gain.setValueAtTime(0.22, now);
+      this.tauntFeedbackGain.gain.setValueAtTime(0.16, now);
+      this.tauntDelay.delayTime.setValueAtTime(0.17, now);
+    } else {
+      this.tauntInput.gain.setValueAtTime(Math.max(0.0001, this.tauntInput.gain.value), now);
+      this.tauntInput.gain.linearRampToValueAtTime(1.0, now + 0.08);
+      this.tauntEchoGain.gain.setValueAtTime(Math.max(0.0001, this.tauntEchoGain.gain.value), now);
+      this.tauntEchoGain.gain.linearRampToValueAtTime(0.0001, now + 0.06);
+      this.tauntFeedbackGain.gain.setValueAtTime(0.0001, now);
+      this.tauntActive = false;
     }
   }
 
@@ -560,8 +642,10 @@ export class PCMPlayer {
     source.buffer = buffer;
     source.playbackRate.value = this.playbackRate;
 
-    // Connect source to the start of our pre-connected chain
-    if (this.transmissionFilter) {
+    // Connect source to the taunt bus, transparent in clean mode.
+    if (this.tauntInput) {
+      source.connect(this.tauntInput);
+    } else if (this.transmissionFilter) {
       source.connect(this.transmissionFilter);
     } else if (this.compressor) {
       source.connect(this.compressor);

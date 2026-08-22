@@ -979,6 +979,7 @@ export function SurrogateOracleImmersion() {
     portrait.addThemes(knife.themes);
 
     // Stop any active card preview/voiceover immediately
+    connection.setTauntMode(false);
     connection.flushPlayback();
 
     // The knife is the engagement gesture: request optional sensors and open
@@ -2288,6 +2289,10 @@ export function SurrogateOracleImmersion() {
                   true
                 );
               }}
+               onTauntStart={() => {
+                 connection.setTauntMode(true);
+                 logStep('KNIFE TAUNT → ECHO / FILTER ENGAGED', 'ok');
+               }}
               onQuestionProgress={(charCount, total) => { const progress = Math.min(charCount / total, 1); const q = 12 * (1 - progress) + 0.1 * progress; connection.setTransmissionQ(q, 54); }}
               onStartTracking={connection.startQuestionTracking}
               onActiveCardChange={() => connection.flushPlayback()}

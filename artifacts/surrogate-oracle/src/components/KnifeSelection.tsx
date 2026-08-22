@@ -76,6 +76,7 @@ interface KnifeSelectionProps {
   selectedKnifeIndex: number | null;
   onSelect: (question: string, index: number) => void;
   onSpeakQuestion?: (question: string) => void;
+  onTauntStart?: () => void;
   onQuestionProgress?: (charCount: number, total: number) => void;
   // Audio-sync hooks — when provided, the typewriter follows actual PCM playback position.
   onStartTracking?: () => void;
@@ -87,7 +88,7 @@ interface KnifeSelectionProps {
 // lets the opening word land audibly before text begins revealing.
 const CARD_AUDIO_BREATH_MS = 650;
 
-export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKnifeIndex, onSelect, onSpeakQuestion, onQuestionProgress, onStartTracking, onActiveCardChange }: KnifeSelectionProps) {
+export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKnifeIndex, onSelect, onSpeakQuestion, onTauntStart, onQuestionProgress, onStartTracking, onActiveCardChange }: KnifeSelectionProps) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [isEmitting, setIsEmitting] = useState(false);
   const [landedChars, setLandedChars] = useState(0);
@@ -161,6 +162,7 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
     // Fire Oracle immediately to absorb Gemini's ~3s response latency —
     // voice arrives during or after the breath window, never after the text.
     onStartTracking?.();
+    onTauntStart?.();
     onSpeakQuestion?.(question);
 
     startDelayRef.current = setTimeout(() => {

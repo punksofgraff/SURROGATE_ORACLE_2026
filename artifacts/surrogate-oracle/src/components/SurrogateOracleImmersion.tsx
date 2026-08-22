@@ -583,12 +583,25 @@ export function SurrogateOracleImmersion() {
     // Try autoplay after generation; browsers that reject it leave the
     // explicit PLAY button visible in the overlay.
     try {
+      connection.setVolume(0, 550);
       await lyria.play();
       logStep('LYRIA PLAYBACK STARTED', 'ok');
     } catch (error) {
       logStep(`LYRIA PLAYBACK NEEDS TAP: ${error instanceof Error ? error.message : 'autoplay blocked'}`, 'warn');
     }
   }, [connection, fadeToVolume, isMusicMode, lyria]);
+
+  const playLyria = useCallback(async () => {
+    // Let any last buffered Oracle syllable fall away over half a second;
+    // Lyria owns the speakers from this point onward.
+    connection.setVolume(0, 550);
+    try {
+      await lyria.play();
+      logStep('LYRIA PLAYBACK STARTED', 'ok');
+    } catch (error) {
+      logStep(`LYRIA PLAYBACK NEEDS TAP: ${error instanceof Error ? error.message : 'autoplay blocked'}`, 'warn');
+    }
+  }, [connection, lyria]);
 
   // ── Actions ─────────────────────────────────────────────────────────────
   const startLore = useCallback(async () => {
@@ -2463,14 +2476,14 @@ export function SurrogateOracleImmersion() {
             <div className="oracle-lyria-card__eyebrow">◈ LYRIA // FRACTURE BEAT</div>
             <div className="oracle-lyria-card__title">MANIFESTED SIGNAL</div>
             <div className="oracle-lyria-card__status">
-              {lyria.status === 'generating' ? 'GENERATING UP TO 60-SECOND SIGNAL…' :
+              {lyria.status === 'generating' ? 'GENERATING UP TO 3-MINUTE SIGNAL…' :
                 lyria.status === 'error' ? 'SIGNAL FAILED — ORACLE STILL LISTENING' :
                 lyria.isPlaying ? 'PLAYING // AUDIO-REACTIVE FIELD' : 'TRACK READY // TAP PLAY'}
             </div>
             {lyria.error && <div className="oracle-lyria-card__error">{lyria.error}</div>}
             <div className="oracle-lyria-card__actions">
               {lyria.audioUrl && !lyria.isPlaying && (
-                <button className="oc-send-btn" onClick={() => void lyria.play()}>PLAY</button>
+                <button className="oc-send-btn" onClick={() => void playLyria()}>PLAY</button>
               )}
               {lyria.audioUrl && (
                 <a className="oc-send-btn" href={lyria.audioUrl} download="surrogate-oracle-lyria.mp3" style={{ textDecoration: 'none' }}>

@@ -281,8 +281,10 @@ const OracleConversation = forwardRef(
     const [inputText, setInputText] = useState('');
     const onMusicRequestRef = useRef(onMusicRequest);
     const onMusicReturnRef = useRef(onMusicReturn);
+    const musicModeRef = useRef(musicMode);
     onMusicRequestRef.current = onMusicRequest;
     onMusicReturnRef.current = onMusicReturn;
+    musicModeRef.current = musicMode;
 
     const inspectMusicSignal = (text: string): boolean => {
       if (musicMode && MUSIC_RETURN.test(text)) {
@@ -735,6 +737,10 @@ const OracleConversation = forwardRef(
         for (const part of parts) {
           if (part.text && part.thought !== true) currentResponseText.current += part.text;
           if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
+            // Lyria owns the speakers once playback starts. Gemini can still
+            // finish an already-issued turn, but never let late PCM escape
+            // into the music bed.
+            if (musicModeRef.current) continue;
             if (debugInfo.current.audioChunksReceived === 0) {
               // Real Oracle audio has arrived — abort TTS fetch + cancel timer + flush any
               // already-playing filler phrase so real audio plays without overlap.

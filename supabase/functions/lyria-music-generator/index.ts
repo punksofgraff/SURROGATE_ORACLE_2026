@@ -1,5 +1,5 @@
 /**
- * Generate a short, instrumental Lyria 3 clip.
+ * Generate a natural-length Lyria 3 clip, capped at three minutes.
  *
  * The browser never receives the Google key. The function returns the MP3 as
  * base64 because a generated clip is short and this keeps the client contract
@@ -12,6 +12,7 @@ const corsHeaders = {
 };
 
 const MAX_PROMPT_LENGTH = 600;
+const MAX_DURATION_SECONDS = 180;
 const INTERACTION_TIMEOUT_MS = 90_000;
 const INTERACTION_POLL_MS = 1_500;
 const DEFAULT_PROMPT =
@@ -130,9 +131,17 @@ Deno.serve(async (req: Request) => {
   // Instrumental is the default, but an explicit request for a song/lyrics is
   // allowed through. Do not silently rewrite a seeker's creative brief.
   const asksForLyrics = /\b(lyric|lyrics|vocal|vocals|sing|singer|verse|verses|chorus|hook|song)\b/i.test(prompt);
+  const durationInstruction =
+    `Create a complete, dynamically arranged track with a natural ending. ` +
+    `Do not exceed ${MAX_DURATION_SECONDS} seconds. Let the arrangement develop beyond the opening minute.`;
+  const jazzGuard = /\b(jazz|bebop|swing|straight[- ]ahead|hard[- ]bop|cool jazz|jazz trio)\b/i.test(prompt)
+    ? ` This is jazz: use acoustic jazz harmony, walking or conversational bass, ride-cymbal swing, ` +
+      `improvised piano/guitar interplay, and a real jazz ending. Do not use country, folk, bluegrass, ` +
+      `Nashville, pedal steel, banjo, twang, or four-on-the-floor pop production.`
+    : '';
   const safePrompt = asksForLyrics
-    ? `${prompt}. Write and perform original lyrics that fit the requested story.`
-    : `${prompt}. Instrumental only. No vocals. No lyrics.`;
+    ? `${prompt}. ${durationInstruction}${jazzGuard} Write and perform original lyrics that fit the requested story.`
+    : `${prompt}. ${durationInstruction}${jazzGuard} Instrumental only. No vocals. No lyrics.`;
   const model = 'lyria-3-pro-preview';
 
   let upstream: Response | null = null;
@@ -261,7 +270,7 @@ Deno.serve(async (req: Request) => {
           : 'audio/mpeg',
       // Pro is the long-form model; keep this as an honest upper-bound hint
       // rather than claiming an exact duration before the browser decodes it.
-      durationSeconds: 60,
+      durationSeconds: MAX_DURATION_SECONDS,
       model,
     });
   } catch {

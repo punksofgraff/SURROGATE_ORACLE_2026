@@ -1652,6 +1652,36 @@ export function SurrogateOracleImmersion() {
       <div className="oracle-side-bleeds" />
       <div className="oracle-light-rays" />
 
+      {gpu.ready && renderTier >= 1 && scenePhase === 'dormant' && (
+        <div className="oracle-landing-field" aria-hidden="true">
+          <Canvas
+            camera={{ position: [0, 0, 1.8], fov: 68 }}
+            dpr={renderTier === 1 ? Math.min(window.devicePixelRatio, 1.25) : Math.min(window.devicePixelRatio, 1.75)}
+            gl={{
+              antialias: renderTier >= 2,
+              alpha: true,
+              powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
+            }}
+            style={{ width: '100%', height: '100%', background: 'transparent' }}
+            frameloop="always"
+          >
+            {import.meta.env.DEV && <OracleSceneDiagnostics />}
+            <OracleQuarks
+              tier={renderTier as 1 | 2 | 3}
+              speakingRef={isOracleSpeakingRef}
+              amplitude={0}
+              preview
+              reducedMotion={prefersReducedMotion}
+            />
+            <OracleNebula
+              tier={renderTier as 1 | 2 | 3}
+              speakingRef={isOracleSpeakingRef}
+              reducedMotion={prefersReducedMotion}
+            />
+          </Canvas>
+        </div>
+      )}
+
       <div className="oracle-debris-layer" aria-hidden="true">
         {DEBRIS.map(([glyph, _color, left, top, delay, dur], i) => (
           <span key={i} className="oracle-debris-piece"
@@ -1721,9 +1751,9 @@ export function SurrogateOracleImmersion() {
                 CSS opacity + transition handles the same 1.2 s fade-in that motion.div gave.
                 Suspense fallback: transparent (null) when canvasWarmed, so re-entering seekers
                 never see a "frozen static image" flash during WebGL context init. */}
-            {gpu.ready && renderTier >= 1 && (scenePhase === 'dormant' || awakened || scenePhase === 'terminal' || canvasWarmed) && (
+            {gpu.ready && renderTier >= 1 && (awakened || scenePhase === 'terminal' || canvasWarmed) && (
               <div
-                 className={`oracle-avatar-canvas oracle-avatar-smoke-hook${scenePhase === 'dormant' ? ' oracle-landing-particle-canvas' : ''}`}
+                 className="oracle-avatar-canvas oracle-avatar-smoke-hook"
                 style={{
                   position: 'absolute', top: 0, left: 0,
                   width: '100%', height: '100%',

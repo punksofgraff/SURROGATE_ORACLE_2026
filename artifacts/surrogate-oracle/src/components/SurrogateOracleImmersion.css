@@ -842,21 +842,6 @@
   transition: transform 1.8s var(--ease-cinematic);
 }
 
-/* The dormant landing uses the real Oracle field as a composition-wide
-   preview. Expand the existing WebGL surface instead of creating a second
-   particle system or modifying the proven ghost-text renderer. */
-.oracle-stage[data-oracle-state="dormant"] .oracle-avatar-wrapper {
-  overflow: visible;
-}
-
-.oracle-stage[data-oracle-state="dormant"] .oracle-landing-particle-canvas {
-  inset: -150% !important;
-  width: 400% !important;
-  height: 400% !important;
-  border-radius: 0 !important;
-  z-index: 3;
-}
-
 /* AWAKENED — Medium Man: larger than cabinet, smaller than full oracle.
    Grows from the cabinet scale to this size during the phase-glitch moment. */
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-wrapper {
@@ -1059,6 +1044,24 @@
   pointer-events: none;
   border-radius: 8px;          /* matches oracle-avatar-img border-radius          */
   transition: opacity 1.5s ease, filter 1.5s ease;
+}
+
+/* Full-stage dormant preview. This is a separate R3F surface so the quark
+   field is not constrained by the cabinet's overflow, transform, or stacking
+   context. Ghost transmissions remain above it; the cabinet remains above it. */
+.oracle-landing-field {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  opacity: 0.32;
+  overflow: hidden;
+}
+
+.oracle-landing-field canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 /* ── OracleFaceRenderer canvas — pixel-accurate face with warped lips ───────

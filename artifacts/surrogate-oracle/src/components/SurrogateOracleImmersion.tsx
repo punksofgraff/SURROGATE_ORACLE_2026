@@ -86,7 +86,7 @@ const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.pn
 const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = '/alley-bg.png';
 const DEFAULT_STATION    = 0; // Graff Punks — sole station
-const FREE_EXCHANGES     = 10; // ten completed Seeker + Oracle exchanges, not exits
+const FREE_EXCHANGES     = 20; // two rounds of ten completed Seeker + Oracle exchanges, not exits
 const COMPLETION_LEDGER_PREFIX = 'surrogate_completed_exchanges_v1_';
 
 // Act 5 — Rift-Construct: Oracle shifts from archivist to active witness.
@@ -319,7 +319,8 @@ export function SurrogateOracleImmersion() {
   const sessionEndedRef          = useRef(false);
   const completedExchangeCountRef = useRef(0);
   const mirrorRevealedRef        = useRef(false); // fire the Mirror reveal once per session
-  const portraitTriggeredRef     = useRef(false); // fire portrait generation once per session
+  const portraitTriggeredRef     = useRef(false); // dedupe a portrait unlock while its request is in flight
+  const portraitGenerationCountRef = useRef(0); // two procedural portraits are valid in one full session
   const pendingPortraitUrlRef    = useRef<string | null>(null); // staged portrait URL — released at turn-complete
   const portraitAnnounceRef      = useRef(false); // Oracle announces portrait on next turn-complete
   const pendingNewSeekerLoreRef  = useRef(false); // startLore waiting for WS connection
@@ -1038,7 +1039,7 @@ export function SurrogateOracleImmersion() {
       oracleHasSpokenRef.current = false;
     }
     if (scenePhase === 'oracle') {
-      sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; pendingPortraitUrlRef.current = null;
+      sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; portraitGenerationCountRef.current = 0; pendingPortraitUrlRef.current = null;
       exitWritesRef.current = null; // fresh session — no stale writes to wait on at next exit
       sessionFinalizedRef.current = false; finalTurnsRef.current = []; // re-arm exit finalization
       // Admission gate: only the versioned paired-exchange ledger is trusted.
@@ -1069,6 +1070,7 @@ export function SurrogateOracleImmersion() {
       setMirrorReveal(null);
       setOfferRift(false);
       portraitTriggeredRef.current = false;
+      portraitGenerationCountRef.current = 0;
       pendingPortraitUrlRef.current = null;
       portraitAnnounceRef.current = false;
       setTalismanData(null);
@@ -1485,14 +1487,20 @@ export function SurrogateOracleImmersion() {
       const { trigger, userId, sessionId, themes } = e.detail || {};
       logStep(`UNLOCK RECEIVED: ${trigger}`, 'ok');
       if (trigger === 'portrait_unlock') {
-        if (portraitTriggeredRef.current) {
-          logStep('PORTRAIT ALREADY TRIGGERED THIS SESSION — SKIPPED', 'warn');
+        if (portraitTriggeredRef.current || portraitGenerationCountRef.current >= 2) {
+          logStep(
+            portraitGenerationCountRef.current >= 2
+              ? 'PORTRAIT SESSION CAP REACHED — SKIPPED'
+              : 'PORTRAIT REQUEST ALREADY IN FLIGHT — SKIPPED',
+            'warn'
+          );
           return;
         }
-        // Latch optimistically to dedupe rapid double-unlocks, but RESET on failure —
-        // a single failed provider call must never silently disable portraits for the
-        // rest of the session (the seeker can simply ask again).
+        // Latch optimistically to dedupe rapid double-unlocks. Two successful
+        // procedural portraits are intentionally allowed during the 20-exchange
+        // session; reset only the in-flight latch on failure.
         portraitTriggeredRef.current = true;
+        portraitGenerationCountRef.current += 1;
         const seekerLines = (oracleConversationRef.current?.getSessionTurns() ?? [])
           .filter(t => t.role === 'user')
           .map(t => t.content);
@@ -1506,9 +1514,10 @@ export function SurrogateOracleImmersion() {
           .generatePortrait(merged, seekerLines)
           .then((ok) => {
             if (!ok) {
-              portraitTriggeredRef.current = false;
+              portraitGenerationCountRef.current = Math.max(0, portraitGenerationCountRef.current - 1);
               logStep('PORTRAIT TRIGGER RE-ARMED AFTER FAILURE', 'warn');
             }
+            portraitTriggeredRef.current = false;
           });
       } else {
         if (userId) setCurrentUserId(userId);
@@ -2434,23 +2443,26 @@ export function SurrogateOracleImmersion() {
           micAutoRestartAllowed={scenePhase === 'oracle'}
           onBargeIn={connection.flushPlayback}
           onPortraitRequest={() => {
-            if (portraitViewerUrl) {
-              setShowPortraitCard(true);   // re-surface existing portrait
-            } else if (portrait.isGenerating) {
+            if (portrait.isGenerating) {
               logStep('PORTRAIT REQUEST — generation already in flight', 'warn');
+            } else if (portraitGenerationCountRef.current >= 2) {
+              if (portraitViewerUrl) setShowPortraitCard(true); // re-surface the latest portrait
+              logStep('PORTRAIT SESSION CAP REACHED — LATEST PORTRAIT SHOWN', 'warn');
             } else {
-              // Mirror the unlock path's dedupe latch so an explicit seeker request
-              // and a score-block unlock can't double-generate; reset on failure so
-              // asking again always retries.
+              // Explicit seeker requests can produce a second procedural portrait
+              // later in the same full session. Count the request before awaiting
+              // the provider so repeated taps cannot create concurrent generations.
+              portraitGenerationCountRef.current += 1;
               portraitTriggeredRef.current = true;
               const seekerLines = (oracleConversationRef.current?.getSessionTurns() ?? [])
                 .filter(t => t.role === 'user')
                 .map(t => t.content);
               void portrait.generatePortrait(portrait.getThemes(), seekerLines).then((ok) => {
                 if (!ok) {
-                  portraitTriggeredRef.current = false;
+                  portraitGenerationCountRef.current = Math.max(0, portraitGenerationCountRef.current - 1);
                   logStep('PORTRAIT TRIGGER RE-ARMED AFTER FAILURE', 'warn');
                 }
+                portraitTriggeredRef.current = false;
               });
             }
           }}

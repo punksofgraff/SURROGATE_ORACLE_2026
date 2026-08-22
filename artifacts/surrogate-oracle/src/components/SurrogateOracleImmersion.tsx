@@ -1723,7 +1723,7 @@ export function SurrogateOracleImmersion() {
                 never see a "frozen static image" flash during WebGL context init. */}
             {gpu.ready && renderTier >= 1 && (scenePhase === 'dormant' || awakened || scenePhase === 'terminal' || canvasWarmed) && (
               <div
-                className="oracle-avatar-canvas oracle-avatar-smoke-hook"
+                 className={`oracle-avatar-canvas oracle-avatar-smoke-hook${scenePhase === 'dormant' ? ' oracle-landing-particle-canvas' : ''}`}
                 style={{
                   position: 'absolute', top: 0, left: 0,
                   width: '100%', height: '100%',

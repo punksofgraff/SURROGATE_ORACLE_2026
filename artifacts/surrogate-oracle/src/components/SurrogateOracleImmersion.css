@@ -842,6 +842,21 @@
   transition: transform 1.8s var(--ease-cinematic);
 }
 
+/* The dormant landing uses the real Oracle field as a composition-wide
+   preview. Expand the existing WebGL surface instead of creating a second
+   particle system or modifying the proven ghost-text renderer. */
+.oracle-stage[data-oracle-state="dormant"] .oracle-avatar-wrapper {
+  overflow: visible;
+}
+
+.oracle-stage[data-oracle-state="dormant"] .oracle-landing-particle-canvas {
+  inset: -150% !important;
+  width: 400% !important;
+  height: 400% !important;
+  border-radius: 0 !important;
+  z-index: 3;
+}
+
 /* AWAKENED — Medium Man: larger than cabinet, smaller than full oracle.
    Grows from the cabinet scale to this size during the phase-glitch moment. */
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-wrapper {

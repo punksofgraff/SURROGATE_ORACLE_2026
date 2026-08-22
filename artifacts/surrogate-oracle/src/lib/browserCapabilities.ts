@@ -80,6 +80,11 @@ export function needsDeviceOrientationPermission(): boolean {
   return typeof DE?.requestPermission === 'function';
 }
 
+// useParallax and useXRMode both consume device orientation, but iOS only
+// needs one permission request for the document. Keep the in-flight request
+// shared so two first-touch listeners cannot produce duplicate prompts.
+let deviceOrientationPermissionRequest: Promise<boolean> | null = null;
+
 /**
  * Requests DeviceOrientation permission (iOS Safari only). Must be called
  * from within a user-gesture handler (e.g. a `touchstart` listener).
@@ -91,11 +96,13 @@ export async function requestDeviceOrientationPermission(logPrefix: string): Pro
     requestPermission?: () => Promise<'granted' | 'denied'>;
   };
   if (typeof DE?.requestPermission !== 'function') return true;
-  try {
-    const result = await DE.requestPermission();
-    return result === 'granted';
-  } catch (err) {
-    console.warn(`${logPrefix} DeviceOrientation permission request failed or unsupported:`, err);
-    return false;
+  if (!deviceOrientationPermissionRequest) {
+    deviceOrientationPermissionRequest = DE.requestPermission()
+      .then((result) => result === 'granted')
+      .catch((err) => {
+        console.warn(`${logPrefix} DeviceOrientation permission request failed or unsupported:`, err);
+        return false;
+      });
   }
+  return deviceOrientationPermissionRequest;
 }

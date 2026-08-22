@@ -223,6 +223,8 @@ export interface OracleAvatar3DProps {
   seekerMotionRef?: React.RefObject<SeekerMotion | null>;
   transporterActive?: boolean;
   transporterProgress?: number;
+  /** Lets the surface transporter create a visual presence before Gemini is live. */
+  transporterWarmup?: boolean;
   transporterTier?: 1 | 2 | 3;
   reducedMotion?: boolean;
 }
@@ -260,6 +262,7 @@ export function OracleAvatar3D({
   seekerMotionRef,
   transporterActive = false,
   transporterProgress = 1,
+  transporterWarmup = false,
   transporterTier = 1,
   reducedMotion = false,
 }: OracleAvatar3DProps) {
@@ -548,7 +551,19 @@ export function OracleAvatar3D({
     // The solid GLB stays hidden while its own sampled vertices are in the
     // transporter field. It becomes visible only once that exact point cloud has
     // nearly reconstructed the silhouette, avoiding an avatar handoff or snap.
-    const transportTarget = transporterActive ? transporterProgress : 1;
+    const t      = state.clock.elapsedTime;
+    // Stamp mount time on the very first frame (used by the greeting grace period
+    // and the animation-owned transporter warmup below).
+    if (mountTimeRef.current < 0) mountTimeRef.current = t;
+    // The model owns this visual warmup. It starts as a dispersed signal, then
+    // gathers into a partial silhouette over ~2.4s while the live session is
+    // still being established. Gemini readiness later takes the target to 1.
+    const warmupT = THREE.MathUtils.clamp((t - (mountTimeRef.current + 0.15)) / 2.4, 0, 1);
+    const warmupEase = warmupT * warmupT * (3 - 2 * warmupT);
+    const warmupTarget = THREE.MathUtils.lerp(0.16, 0.62, warmupEase);
+    const transportTarget = transporterActive
+      ? (transporterWarmup ? warmupTarget : transporterProgress)
+      : 1;
     if (transporterActive && transportTarget < 0.5) {
       scene.visible = false;
     } else if (transporterProgressRef.current > 0.94 || !transporterActive) {
@@ -557,10 +572,6 @@ export function OracleAvatar3D({
     const vs     = visemeStateRef.current;
     const amp    = vs?.amplitude ?? 0;
     const lerpDt = Math.min(delta * 60, 1); // frame-rate independent
-    const t      = state.clock.elapsedTime;
-
-    // Stamp mount time on the very first frame (used by greeting grace period below)
-    if (mountTimeRef.current < 0) mountTimeRef.current = t;
 
     // ── Calibrate eye-level camera target (once, from the settled scene) ─────
     // Read the eye bone's true world Y now that the group offset + scale are applied

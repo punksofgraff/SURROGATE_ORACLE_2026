@@ -1563,6 +1563,7 @@ export function SurrogateOracleImmersion() {
   // Do not wait for the knife→oracle timer to reveal the already-mounted 3D
   // surface; only the interactive Oracle controls remain oracle-phase gated.
   const oracleManifestReady = awakened && (hasManifested || isGeminiConnected || forceOracleManifest);
+  const oracleWarmupActive = isOracleMode && !isGeminiSessionLive && !isMusicMode && !isMusicReturning;
   // True when the 6s fallback fired but we still have no live session — shows "FRACTURE MANIFESTING"
   // instead of a silently frozen face so the seeker knows the system is trying to reconnect.
   const isFractureManifesting = isOracleMode && forceOracleManifest && !isGeminiConnected;
@@ -1809,8 +1810,12 @@ export function SurrogateOracleImmersion() {
                    // During knife selection show only a restrained preview of
                    // the same quark field that will surround the live Oracle.
                    // The full avatar stays hidden until Oracle phase.
-                   opacity: oracleManifestReady ? 1 : oraclePreviewVisible ? (scenePhase === 'dormant' ? 0.12 : 0.24) : 0,
-                  pointerEvents: isOracleMode && oracleManifestReady ? 'auto' : 'none',
+                   opacity: isOracleMode
+                     ? (isGeminiSessionLive ? 1 : forceOracleManifest ? 0.44 : 0.36)
+                     : oraclePreviewVisible
+                       ? (scenePhase === 'dormant' ? 0.12 : 0.24)
+                       : 0,
+                  pointerEvents: isOracleMode && isGeminiSessionLive ? 'auto' : 'none',
                   zIndex: 3,
                 }}
               >
@@ -1852,6 +1857,7 @@ export function SurrogateOracleImmersion() {
                             seekerMotionRef={seekerMotionRef}
                             transporterActive
                             transporterProgress={isMusicMode || isMusicReturning ? 0 : oracleManifestProgress}
+                            transporterWarmup={oracleWarmupActive}
                             transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
                             reducedMotion={prefersReducedMotion}
                           />

@@ -1144,7 +1144,7 @@ export function SurrogateOracleImmersion() {
   // Keeps the 3D canvas visible during WS reconnects (isGeminiConnected briefly drops to false
   // on disconnect). Resets to false when oracle phase exits so the next session starts fresh.
   useEffect(() => {
-    if (scenePhase !== 'oracle') { setHasManifested(false); return; }
+    if (scenePhase !== 'awakened' && scenePhase !== 'oracle') { setHasManifested(false); return; }
     if (isGeminiConnected || forceOracleManifest) setHasManifested(true);
   }, [scenePhase, isGeminiConnected, forceOracleManifest]);
 
@@ -1510,16 +1510,17 @@ export function SurrogateOracleImmersion() {
   useParallax(scenePhase, handleParallaxUpdate, handleZoom);
 
   const isOracleMode = scenePhase === 'oracle';
-  // 3D canvas only becomes visible once Gemini confirms session.created (or a 6s fallback fires).
-  // hasManifested latches true after first reveal so WS reconnects don't briefly hide the avatar.
-  const oracleManifestReady = isOracleMode && (hasManifested || isGeminiConnected || forceOracleManifest);
+  const awakened = scenePhase === 'awakened' || scenePhase === 'tour' || isOracleMode;
+  // The warm connection and avatar are useful during knife selection itself.
+  // Do not wait for the knife→oracle timer to reveal the already-mounted 3D
+  // surface; only the interactive Oracle controls remain oracle-phase gated.
+  const oracleManifestReady = awakened && (hasManifested || isGeminiConnected || forceOracleManifest);
   // True when the 6s fallback fired but we still have no live session — shows "FRACTURE MANIFESTING"
   // instead of a silently frozen face so the seeker knows the system is trying to reconnect.
   const isFractureManifesting = isOracleMode && forceOracleManifest && !isGeminiConnected;
   // Keep the transporter beam active through the fallback state. Only the
   // real Live session resolves particles into the settled Oracle silhouette.
   const oracleManifestProgress = isOracleMode && isGeminiSessionLive ? 1 : 0;
-  const awakened     = scenePhase === 'awakened' || scenePhase === 'tour' || isOracleMode;
   const isAlive      = scenePhase !== 'dormant';
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
   const subtitleText = useTypewriter('SNEAKAR XR Anthropology AI', awakened && titleText.length >= 16, 35);
@@ -1723,8 +1724,8 @@ export function SurrogateOracleImmersion() {
                 style={{
                   position: 'absolute', top: 0, left: 0,
                   width: '100%', height: '100%',
-                   opacity: isOracleMode || oracleManifestReady ? 1 : 0,
-                  pointerEvents: oracleManifestReady ? 'auto' : 'none',
+                   opacity: oracleManifestReady ? 1 : 0,
+                  pointerEvents: isOracleMode && oracleManifestReady ? 'auto' : 'none',
                   zIndex: 3,
                 }}
               >

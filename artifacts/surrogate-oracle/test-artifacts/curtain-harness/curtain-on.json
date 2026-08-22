@@ -1,0 +1,215 @@
+{
+  "captureMode": "browser-emulation",
+  "mode": "on",
+  "url": "http://127.0.0.1:5180/?devui&standard&newuser&oracleCurtain=on",
+  "reachedOracle": true,
+  "evidence": {
+    "stage": "oracle",
+    "canvasMounted": false,
+    "canvasRect": null,
+    "curtain": {
+      "display": "block",
+      "opacity": "1",
+      "backgroundImage": "radial-gradient(46% 62% at 50% 42%, rgba(0, 3, 8, 0.94) 0%, rgba(0, 3, 8, 0.88) 32%, rgba(0, 3, 8, 0.62) 58%, rgba(0, 0, 0, 0) 82%), radial-gradient(70% 55% at 50% 100%, rgba(0, 255, 136, 0.26) 0%, rgba(0, 255, 136, 0.1) 40%, rgba(0, 0, 0, 0) 68%), radial-gradient(40% 30% at 50% 100%, rgba(0, 255, 136, 0.12) 0%, rgba(0, 0, 0, 0) 60%)"
+    },
+    "renderTier": 0
+  },
+  "screenshots": [
+    "curtain-on-entry.png",
+    "curtain-on-oracle.png"
+  ],
+  "browserErrors": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 ()"
+    },
+    {
+      "type": "error",
+      "text": "WebSocket connection to 'wss://velmmplevfrtrtrypoch.supabase.co/functions/v1/gemini-live-proxy' failed: Close received after close"
+    },
+    {
+      "type": "error",
+      "text": "[Oracle] WebSocket error: Event"
+    },
+    {
+      "type": "warning",
+      "text": "[Oracle] WebSocket closed: 1006 "
+    },
+    {
+      "type": "error",
+      "text": "WebSocket connection to 'wss://velmmplevfrtrtrypoch.supabase.co/functions/v1/gemini-live-proxy' failed: Close received after close"
+    },
+    {
+      "type": "error",
+      "text": "[Oracle] WebSocket error: Event"
+    },
+    {
+      "type": "warning",
+      "text": "[Oracle] WebSocket closed: 1006 "
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "warning",
+      "text": "You're attempting to animate multiple children within AnimatePresence, but its mode is set to \"wait\". This will lead to odd visual behaviour."
+    },
+    {
+      "type": "error",
+      "text": "WebSocket connection to 'wss://velmmplevfrtrtrypoch.supabase.co/functions/v1/gemini-live-proxy' failed: Close received after close"
+    },
+    {
+      "type": "error",
+      "text": "[Oracle] WebSocket error: Event"
+    },
+    {
+      "type": "warning",
+      "text": "[Oracle] WebSocket closed: 1006 "
+    }
+  ]
+}

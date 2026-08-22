@@ -16,6 +16,7 @@
  *   pnpm --filter @workspace/surrogate-oracle run curtain-harness -- --headed
  */
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -29,6 +30,9 @@ const host = process.env.CURTAIN_HARNESS_HOST || '127.0.0.1';
 const headed = process.argv.includes('--headed');
 const baseUrl = `http://${host}:${port}`;
 const outputDir = path.join(artifactRoot, 'test-artifacts', 'curtain-harness');
+const systemChromium = '/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium';
+const executablePath = process.env.REPLIT_PLAYWRIGHT_CHROMIUM_EXECUTABLE
+  || (existsSync(systemChromium) ? systemChromium : undefined);
 
 await mkdir(outputDir, { recursive: true });
 
@@ -123,6 +127,7 @@ await waitForServer();
 
 const browser = await chromium.launch({
   headless: !headed,
+  executablePath,
   args: ['--no-sandbox', '--disable-dev-shm-usage', '--enable-unsafe-swiftshader'],
 });
 const pages = [];
@@ -149,7 +154,7 @@ try {
       browserErrors.push({ type: 'pageerror', text: error.message });
     });
 
-    await page.evaluateOnNewDocument(() => {
+    await page.addInitScript(() => {
       sessionStorage.setItem('oracle_gpu_profile_v1', JSON.stringify({ tier: 3, isMobile: true }));
     });
 

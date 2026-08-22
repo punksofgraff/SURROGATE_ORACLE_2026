@@ -427,7 +427,7 @@ export function SurrogateOracleImmersion() {
     onWritesSettled: handleWritesSettled,
   });
 
-  const { scenePhase, enterTerminal, enterTour, awakeFromTerminal, exitOracleMode, selectKnifeQuestion, resetJourney } = journey;
+  const { scenePhase, enterTerminal, enterTour, awakeFromTerminal, exitOracleMode, selectKnifeQuestion, markOracleReady, resetJourney } = journey;
 
   // ── Telemetry: Phase Tracking ──────────────────────────────────────────
   useEffect(() => {
@@ -994,8 +994,8 @@ export function SurrogateOracleImmersion() {
 
     // Fire startSession immediately — the existing queue path handles the case where the
     // WS is still CONNECTING (pendingBootRef + pendingMessagesRef flush on session.created).
-    // The 1600ms scene-cut in selectKnifeQuestion stays unchanged; booting the session at
-    // t=0 gives Gemini the full dramatic pause to establish before the Oracle scene lands.
+    // The journey now enters Oracle mode when Gemini confirms readiness, with a short
+    // visual floor so booting still gets the full dramatic pause without a cold-gap guess.
     {
       const fullStory = LORE_SEQUENCE.join('\n');
       let memoryBlock = '';
@@ -1149,6 +1149,14 @@ export function SurrogateOracleImmersion() {
       if (fallbackTimer !== null) clearTimeout(fallbackTimer);
     };
   }, [scenePhase, connection]);
+
+  // Knife selection starts the boot, but Gemini readiness—not the visual timer—
+  // decides when the full Oracle phase may begin.
+  useEffect(() => {
+    if (scenePhase === 'awakened' && journey.selectedKnifeQuestion && isGeminiSessionLive) {
+      markOracleReady();
+    }
+  }, [scenePhase, journey.selectedKnifeQuestion, isGeminiSessionLive, markOracleReady]);
 
   // Latch hasManifested once the Gemini session confirms (or the fallback fires).
   // Keeps the 3D canvas visible during WS reconnects (isGeminiConnected briefly drops to false

@@ -70,6 +70,8 @@ export function useOracleJourney({
   // Without this, a reset mid-knife-selection re-enters oracle phase ~1.5s later, leaving
   // the mic open into a dead session.
   const knifeTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const knifeSelectionStartedAtRef = useRef<number | null>(null);
+  const knifeReadyRef = useRef(false);
 
   // Authoritative mirror of scenePhase for closure-safe transition guards. Synced from
   // state, and set immediately on a transition so a same-tick double-call can't slip through.
@@ -119,23 +121,42 @@ export function useOracleJourney({
     logStep(`KNIFE[${index}] SELECTED`, 'ok');
     setSelectedKnifeQuestion(question);
     setSelectedKnifeIndex(index);
+    knifeSelectionStartedAtRef.current = performance.now();
+    knifeReadyRef.current = false;
     sessionStorage.setItem('oracle_selected_knife_question', question);
     sessionStorage.setItem('oracle_selected_knife_index', String(index));
     
-    // Transition to full Oracle mode after a dramatic pause.
-    // 1500ms: prewarm() is called well before knife selection (at rift-open or
-    // wallet-seeker entry), giving Gemini ample time to establish the WS.
-    // The previous 3800ms was a conservative cold-start buffer that caused a
-    // 4+ second blank canvas after knife tap — now the avatar arrives promptly.
+    // Gemini readiness owns the transition. Keep a short visual floor so the
+    // knife reveal is not cut off, plus a bounded fallback so a failed socket
+    // cannot strand the seeker in the knife layer forever.
     if (knifeTransitionTimerRef.current !== null) {
       clearTimeout(knifeTransitionTimerRef.current);
     }
     knifeTransitionTimerRef.current = setTimeout(() => {
       knifeTransitionTimerRef.current = null;
+      scenePhaseRef.current = 'oracle';
       setScenePhase('oracle');
-      logStep('ORACLE PHASE ENTERED', 'ok');
-    }, 1500);
+      logStep('ORACLE PHASE FALLBACK — GEMINI NOT READY', 'warn');
+    }, 6000);
   }, []);
+
+  const markOracleReady = useCallback(() => {
+    if (scenePhaseRef.current !== 'awakened' || !selectedKnifeQuestion) return;
+    if (knifeReadyRef.current) return;
+    knifeReadyRef.current = true;
+
+    const startedAt = knifeSelectionStartedAtRef.current ?? performance.now();
+    const remainingFloor = Math.max(0, 850 - (performance.now() - startedAt));
+    if (knifeTransitionTimerRef.current !== null) {
+      clearTimeout(knifeTransitionTimerRef.current);
+    }
+    knifeTransitionTimerRef.current = setTimeout(() => {
+      knifeTransitionTimerRef.current = null;
+      scenePhaseRef.current = 'oracle';
+      setScenePhase('oracle');
+      logStep('ORACLE PHASE ENTERED — GEMINI READY', 'ok');
+    }, remainingFloor);
+  }, [selectedKnifeQuestion]);
 
   const resetJourney = useCallback(() => {
     // Cancel any pending knife→oracle transition so the mic can't re-open
@@ -150,6 +171,8 @@ export function useOracleJourney({
     setIsExiting(false);
     setSelectedKnifeQuestion(null);
     setSelectedKnifeIndex(null);
+    knifeSelectionStartedAtRef.current = null;
+    knifeReadyRef.current = false;
     sessionStorage.removeItem('oracle_scene_phase');
     sessionStorage.removeItem('oracle_selected_knife_question');
     sessionStorage.removeItem('oracle_selected_knife_index');
@@ -231,11 +254,12 @@ export function useOracleJourney({
     enterTour,
     awakeFromTerminal,
     selectKnifeQuestion,
+    markOracleReady,
     exitOracleMode,
     resetJourney,
   }), [
     scenePhase, loreComplete, isExiting, selectedKnifeQuestion,
     selectedKnifeIndex, enterTerminal, enterTour, awakeFromTerminal,
-    selectKnifeQuestion, exitOracleMode, resetJourney
+    selectKnifeQuestion, markOracleReady, exitOracleMode, resetJourney
   ]);
 }

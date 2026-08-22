@@ -88,13 +88,26 @@ async function readEvidence(page) {
     const stage = document.querySelector('.oracle-stage');
     const alley = document.querySelector('.oracle-alley');
     const canvas = document.querySelector('.oracle-avatar-canvas canvas');
+    const canvasWrapper = document.querySelector('.oracle-avatar-smoke-hook');
     const canvasRect = canvas?.getBoundingClientRect();
     const curtainStyle = alley ? getComputedStyle(alley, '::after') : null;
+    const wrapperStyle = canvasWrapper ? getComputedStyle(canvasWrapper) : null;
     return {
       stage: stage?.getAttribute('data-oracle-state') ?? 'missing',
+      oracleSpeaking: stage?.getAttribute('data-oracle-speaking') === 'true',
+      userSpeaking: stage?.getAttribute('data-user-speaking') === 'true',
       canvasMounted: Boolean(canvas),
       canvasRect: canvasRect
         ? { x: canvasRect.x, y: canvasRect.y, width: canvasRect.width, height: canvasRect.height }
+        : null,
+      canvasWrapper: wrapperStyle
+        ? {
+            opacity: wrapperStyle.opacity,
+            filter: wrapperStyle.filter,
+            transform: wrapperStyle.transform,
+            backgroundColor: wrapperStyle.backgroundColor,
+            backgroundImage: wrapperStyle.backgroundImage,
+          }
         : null,
       curtain: curtainStyle
         ? {
@@ -166,20 +179,76 @@ try {
       fullPage: true,
     });
 
-    const reachedOracle = await enterOracle(page);
-    const evidence = await readEvidence(page);
+    const evidenceByState = {
+      entry: await readEvidence(page),
+    };
+    await page.locator('.oracle-center').click({ timeout: 8_000 }).catch(() => {});
+    await sleep(1_000);
+    await page.evaluate(() => window.__oracle_skipLore?.());
+    await page.locator('.oracle-knife-card').first().waitFor({ state: 'visible', timeout: 25_000 });
+    evidenceByState.knifeSelection = await readEvidence(page);
+    await page.screenshot({
+      path: path.join(outputDir, `curtain-${mode}-knife-selection.png`),
+      fullPage: true,
+    });
+    await page.locator('.oracle-knife-card').first().click();
+    evidenceByState.warmup = await readEvidence(page);
+    await page.screenshot({
+      path: path.join(outputDir, `curtain-${mode}-warmup.png`),
+      fullPage: true,
+    });
+
+    let reachedAwakened = evidenceByState.warmup.stage === 'awakened';
+    let reachedOracle = evidenceByState.warmup.stage === 'oracle';
+    for (let i = 0; i < 90 && !reachedOracle; i += 1) {
+      await sleep(500);
+      const state = await page.locator('.oracle-stage').getAttribute('data-oracle-state').catch(() => null);
+      if (state === 'awakened' && !reachedAwakened) {
+        reachedAwakened = true;
+        evidenceByState.awakened = await readEvidence(page);
+        await page.screenshot({
+          path: path.join(outputDir, `curtain-${mode}-awakened.png`),
+          fullPage: true,
+        });
+      }
+      if (state === 'oracle') reachedOracle = true;
+    }
+    evidenceByState.oracle = await readEvidence(page);
+    await page.screenshot({
+      path: path.join(outputDir, `curtain-${mode}-${reachedOracle ? 'oracle' : 'not-oracle'}.png`),
+      fullPage: true,
+    });
+
+    // A rotation/toolbar change is a common iOS Safari compositor boundary.
+    await page.setViewportSize({ width: 844, height: 390 });
+    await sleep(500);
+    evidenceByState.viewportChange = await readEvidence(page);
+    await page.screenshot({
+      path: path.join(outputDir, `curtain-${mode}-viewport-change.png`),
+      fullPage: true,
+    });
+
+    // The harness cannot synthesize Gemini audio, but records the speaking
+    // state if a dev session exposes it so real-device evidence can compare it.
+    evidenceByState.speaking = await readEvidence(page);
     const screenshotName = `curtain-${mode}-${reachedOracle ? 'oracle' : 'not-oracle'}.png`;
-    await page.screenshot({ path: path.join(outputDir, screenshotName), fullPage: true });
 
     const result = {
       captureMode: 'browser-emulation',
       mode,
       url,
+      viewport: { width: 390, height: 844, deviceScaleFactor: 2 },
+      checkedStates: ['entry', 'knifeSelection', 'warmup', 'awakened', 'oracle', 'speaking', 'viewportChange'],
+      reachedAwakened,
       reachedOracle,
-      evidence,
+      evidenceByState,
       screenshots: [
         `curtain-${mode}-entry.png`,
+        `curtain-${mode}-knife-selection.png`,
+        `curtain-${mode}-warmup.png`,
+        ...(reachedAwakened ? [`curtain-${mode}-awakened.png`] : []),
         screenshotName,
+        `curtain-${mode}-viewport-change.png`,
       ],
       browserErrors,
     };

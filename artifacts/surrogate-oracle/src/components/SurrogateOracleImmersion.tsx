@@ -574,6 +574,11 @@ export function SurrogateOracleImmersion() {
     setIsMusicMode(false);
     setIsMusicReturning(true);
     fadeToVolume(0, 120);
+    // requestMusic mutes the live PCM player while Lyria owns the speakers.
+    // Explicitly restore unity here; reassertPlayback only corrects drift and
+    // cannot restore a deliberately ramped-to-zero gain.
+    connection.setVolume(1.0, 700);
+    connection.reassertPlayback('lyria-exit');
     logStep('LYRIA EXIT — RESTORING ORACLE', 'ok');
     // Keep the existing Gemini socket and conversation alive. A short
     // transporter pass makes the handoff visible without greeting/reconnecting.
@@ -582,7 +587,7 @@ export function SurrogateOracleImmersion() {
       musicReleaseTimerRef.current = null;
     }, 700);
     window.setTimeout(() => setIsMusicReturning(false), 1500);
-  }, [fadeToVolume, isMusicMode, lyria]);
+  }, [connection, fadeToVolume, isMusicMode, lyria]);
 
   const requestMusic = useCallback(async (prompt: string) => {
     try {

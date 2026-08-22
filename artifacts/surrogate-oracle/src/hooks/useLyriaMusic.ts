@@ -109,6 +109,10 @@ export function useLyriaMusic() {
   }, []);
 
   const release = useCallback(() => {
+    // Invalidate a provider response that is still decoding or in flight.
+    // Closing the music surface must not let a late response remount an audio
+    // URL after the Oracle has already been restored.
+    generationRef.current += 1;
     if (fadeTimerRef.current !== null) {
       window.clearTimeout(fadeTimerRef.current);
       fadeTimerRef.current = null;

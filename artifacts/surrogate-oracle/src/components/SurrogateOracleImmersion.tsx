@@ -554,6 +554,11 @@ export function SurrogateOracleImmersion() {
     oracleHasSpokenRef,
   });
   const lyria = useLyriaMusic();
+  // React state is intentionally not the request lock: a voice transcript and
+  // its committed user turn can arrive in the same tick, before isMusicMode or
+  // lyria.status has re-rendered. Without this ref, two Lyria generations race
+  // to replace the same audio element and the first attempt can flash as failed.
+  const musicRequestInFlightRef = useRef(false);
 
   const exitMusicMode = useCallback(() => {
     if (!isMusicMode && lyria.status !== 'generating') return;
@@ -568,27 +573,32 @@ export function SurrogateOracleImmersion() {
   }, [fadeToVolume, isMusicMode, lyria]);
 
   const requestMusic = useCallback(async (prompt: string) => {
-    if (isMusicMode || lyria.status === 'generating') return;
-    setIsMusicMode(true);
-    setIsMusicReturning(false);
-    connection.flushPlayback();
-    fadeToVolume(0, 120);
-    logStep('LYRIA REQUEST — GENERATING CLIP', 'ok');
-    const generatedUrl = await lyria.generate(prompt);
-    if (!generatedUrl) {
-      setIsMusicMode(false);
-      fadeToVolume(0, 120);
-      logStep('LYRIA FAILED — ORACLE SESSION AVAILABLE', 'warn');
-      return;
-    }
-    // Try autoplay after generation; browsers that reject it leave the
-    // explicit PLAY button visible in the overlay.
     try {
-      connection.setVolume(0, 550);
-      await lyria.play();
-      logStep('LYRIA PLAYBACK STARTED', 'ok');
-    } catch (error) {
-      logStep(`LYRIA PLAYBACK NEEDS TAP: ${error instanceof Error ? error.message : 'autoplay blocked'}`, 'warn');
+      if (musicRequestInFlightRef.current || isMusicMode || lyria.status === 'generating') return;
+      musicRequestInFlightRef.current = true;
+      setIsMusicMode(true);
+      setIsMusicReturning(false);
+      connection.flushPlayback();
+      fadeToVolume(0, 120);
+      logStep('LYRIA REQUEST — GENERATING CLIP', 'ok');
+      const generatedUrl = await lyria.generate(prompt);
+      if (!generatedUrl) {
+        setIsMusicMode(false);
+        fadeToVolume(0, 120);
+        logStep('LYRIA FAILED — ORACLE SESSION AVAILABLE', 'warn');
+        return;
+      }
+      // Try autoplay after generation; browsers that reject it leave the
+      // explicit PLAY button visible in the overlay.
+      try {
+        connection.setVolume(0, 550);
+        await lyria.play();
+        logStep('LYRIA PLAYBACK STARTED', 'ok');
+      } catch (error) {
+        logStep(`LYRIA PLAYBACK NEEDS TAP: ${error instanceof Error ? error.message : 'autoplay blocked'}`, 'warn');
+      }
+    } finally {
+      musicRequestInFlightRef.current = false;
     }
   }, [connection, fadeToVolume, isMusicMode, lyria]);
 

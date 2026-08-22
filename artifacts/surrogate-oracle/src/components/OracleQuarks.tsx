@@ -28,6 +28,8 @@ interface OracleQuarksProps {
   thinking?: boolean;
   /** Seeker microphone is open and the channel is listening. */
   listening?: boolean;
+  /** Use a slightly more legible fluid flow for the pre-reveal field. */
+  preview?: boolean;
   /** Preserve the field but slow its continuous stream for accessibility. */
   reducedMotion?: boolean;
 }

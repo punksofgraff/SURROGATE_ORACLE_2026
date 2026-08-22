@@ -2153,8 +2153,6 @@ export function SurrogateOracleImmersion() {
                       onClick={() => void oracleFilm.createFilm(portraitViewerUrl, {
                         themes: portrait.getThemes(),
                         archetypeTitle: echo?.last_archetype,
-                        emotionalWeight: echo?.last_emotional_weight,
-                        alignment: echo?.last_alignment,
                       })}
                     >
                       ◈ MATERIALIZE FILM

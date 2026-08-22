@@ -41,7 +41,12 @@ function safeText(value: unknown, max = 120): string {
 
 function safeSlugs(input: unknown): string[] {
   const values = Array.isArray(input) ? input : [];
-  return values.map(value => safeText(value, 48).toLowerCase())
+  return values.map(value => {
+    const raw = value && typeof value === 'object' && 'theme' in value
+      ? (value as { theme?: unknown }).theme
+      : value;
+    return safeText(raw, 48).toLowerCase();
+  })
     .filter(value => value && !/copyright|artist|singer|celebrity|style of|in the style/i.test(value))
     .slice(0, 8);
 }

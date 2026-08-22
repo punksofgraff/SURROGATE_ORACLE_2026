@@ -191,52 +191,17 @@
    Full saturation, max brightness — the alley knows something is here.      */
 .oracle-stage[data-oracle-state="oracle"] .oracle-alley {
   /* The painted arcade cabinet is baked into alley-bg.png dead-center where the
-     Oracle stands. Brightening the alley here made that 2D cabinet pop as a hard
-     rectangle framing the 3D figure. Instead the alley recedes into dim, slightly
-     blurred depth so the glowing 3D Oracle is the only bright presence — no 2D
-     frame competes with him. */
+     Oracle stands. Keep the alley's atmospheric gradients, but remove that
+     image in the live state so the 3D Oracle is never framed by a 2D cabinet. */
   --alley-opacity: 0.78;
+  background-color: #000308;
+  background-image:
+    radial-gradient(ellipse 70% 55% at 50% 100%, rgba(0, 255, 136, 0.16) 0%, rgba(0, 255, 136, 0.06) 40%, transparent 72%),
+    radial-gradient(ellipse 58% 72% at 50% 42%, rgba(0, 30, 60, 0.34) 0%, rgba(0, 3, 8, 0.12) 58%, transparent 86%),
+    radial-gradient(circle at center, transparent 30%, rgba(0, 0, 0, 0.44) 100%);
   filter: saturate(0.85) brightness(0.62) blur(1.5px);
   animation: alley-oracle-pulse 5s ease-in-out infinite;
   transition: opacity 2.0s var(--ease-cinematic), filter 2.0s var(--ease-cinematic);
-}
-
-/* Neon cabinet wash — green light rises from the cabinet base up the walls */
-.oracle-stage[data-oracle-state="oracle"] .oracle-alley::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    /* Depth well — sinks the painted 2D arcade cabinet (baked into alley-bg.png)
-       into darkness directly behind the avatar, so the 3D Oracle reads as
-       floating in alley depth instead of pasted onto the arcade screen.
-       The painted cabinet occupies roughly the center 55% width / 15%-70% height;
-       this well covers that whole region so no bright rectangle frames the figure. */
-    radial-gradient(
-      ellipse 46% 62% at 50% 42%,
-      rgba(0, 3, 8, 0.94) 0%,
-      rgba(0, 3, 8, 0.88) 32%,
-      rgba(0, 3, 8, 0.62) 58%,
-      transparent 82%
-    ),
-    radial-gradient(
-      ellipse 70% 55% at 50% 100%,
-      rgba(0, 255, 136, 0.26) 0%,
-      rgba(0, 255, 136, 0.10) 40%,
-      transparent 68%
-    ),
-    radial-gradient(
-      ellipse 40% 30% at 50% 100%,
-      rgba(0,255,136, 0.12) 0%,
-      transparent 60%
-    );
-}
-
-/* Visual regression harness only: disable the alley curtain with
-   ?oracleCurtain=off. Normal URLs never receive this attribute. */
-html[data-oracle-curtain-test="off"] .oracle-stage[data-oracle-state="oracle"] .oracle-alley::after {
-  display: none !important;
 }
 
 @keyframes oracle-cabinet-glow {

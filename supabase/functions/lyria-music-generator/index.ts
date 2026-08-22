@@ -19,6 +19,19 @@ const DEFAULT_PROMPT =
   'A dark, cinematic instrumental cyberpunk beat for a neon alley oracle, 96 BPM, D minor, ' +
   'deep analog bass, fractured percussion, glassy synth pulses, no vocals, no lyrics.';
 
+// Google may reject prompts that ask for a living artist's recognizable style.
+// Preserve the seeker's musical intent by replacing the reference with high-level
+// traits rather than forwarding an imitation request to the provider.
+function neutralizeArtistReferences(prompt: string): string {
+  const replacements: Array<[RegExp, string]> = [
+    [/\bBrad\s+Mehldau(?:['’]s)?(?:-style|\s+style)?/gi, 'exploratory modern jazz piano'],
+    [/\bQwel(?:['’]s)?(?:-style|\s+style)?/gi, 'abstract spoken-word hip-hop rhythmic energy'],
+    [/\bKurt\s+Rosenwinkel(?:['’]s)?(?:-style|\s+style)?/gi, 'angular lyrical electric-guitar harmony'],
+    [/\bBryan\s+Blade(?:['’]s)?(?:-style|\s+style)?/gi, 'dynamic acoustic jazz drumming'],
+  ];
+  return replacements.reduce((value, [pattern, replacement]) => value.replace(pattern, replacement), prompt);
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -130,7 +143,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const requested = typeof payload.prompt === 'string' ? payload.prompt.trim() : '';
-  const prompt = (requested || DEFAULT_PROMPT).slice(0, MAX_PROMPT_LENGTH);
+  const prompt = neutralizeArtistReferences(requested || DEFAULT_PROMPT).slice(0, MAX_PROMPT_LENGTH);
   // Instrumental is the default, but an explicit request for a song/lyrics is
   // allowed through. Do not silently rewrite a seeker's creative brief.
   const asksForLyrics = /\b(lyric|lyrics|vocal|vocals|sing|singer|verse|verses|chorus|hook|song)\b/i.test(prompt);

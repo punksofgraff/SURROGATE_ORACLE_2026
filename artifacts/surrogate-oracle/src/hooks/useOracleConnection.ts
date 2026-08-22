@@ -177,6 +177,10 @@ export function useOracleConnection({
     pcmPlayerRef.current?.setTransmissionQ(q, rampMs);
   }, []);
 
+  const setTauntMode = useCallback((enabled: boolean) => {
+    pcmPlayerRef.current?.setTauntMode(enabled);
+  }, []);
+
   const startQuestionTracking = useCallback(() => {
     pcmPlayerRef.current?.startQuestionTracking();
   }, []);
@@ -215,6 +219,7 @@ export function useOracleConnection({
     boostMicVolume,
     getAnalyser,
     setTransmissionQ,
+    setTauntMode,
     flushPlayback,
     startQuestionTracking,
     getQuestionPlaybackMs,
@@ -227,7 +232,7 @@ export function useOracleConnection({
   }), [
     error,
     initializePCMPlayer, initializeOracle,
-    handleOracleResponse, resetFirstChunk, cleanup, boostMicVolume, getAnalyser, setTransmissionQ,
+    handleOracleResponse, resetFirstChunk, cleanup, boostMicVolume, getAnalyser, setTransmissionQ, setTauntMode,
     flushPlayback, startQuestionTracking, getQuestionPlaybackMs, getQuestionBufferedMs,
     startLoreTracking, getLorePlaybackMs, getLoreBufferedMs, setVolume, reassertPlayback,
   ]);

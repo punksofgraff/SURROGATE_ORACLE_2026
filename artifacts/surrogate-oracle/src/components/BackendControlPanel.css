@@ -251,8 +251,19 @@
   position: relative;
   z-index: 5;
   overscroll-behavior-y: contain;
+  scroll-snap-type: y proximity;
   scrollbar-width: thin;
   scrollbar-color: rgba(0,255,136,0.14) transparent;
+}
+.ec-journey-card {
+  flex: 0 0 auto;
+  margin: -8px -2px 2px;
+}
+
+/* Explanatory beats own the reading viewport; operational cards follow them
+   and intentionally remain compact evidence/action modules. */
+.ec-page > .ec-card {
+  scroll-snap-align: start;
 }
 .ec-page::-webkit-scrollbar { width: 3px; }
 .ec-page::-webkit-scrollbar-thumb { background: rgba(0,255,136,0.18); border-radius: 2px; }
@@ -755,9 +766,11 @@
     letter-spacing: 0.08em;
   }
   .ec-page {
-    padding: 18px 12px 40px;
-    gap: 14px;
+    padding: 10px 8px 40px;
+    gap: 18px;
+    scroll-snap-type: y proximity;
   }
+  .ec-journey-card { margin-inline: -8px; }
   .ec-card {
     padding: 22px 18px 20px;
     border-radius: 14px;
@@ -793,4 +806,8 @@
   .ec-safe {
     min-height: env(safe-area-inset-bottom, 0px);
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ec-page { scroll-behavior: auto; }
 }

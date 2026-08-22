@@ -5377,6 +5377,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 }
 
 .oracle-stage00-card__greeting {
+  width: 100%;
   font-family: 'aAnotherTag', 'Orbitron', monospace;
   font-size: clamp(1.6rem, 5vw, 2.1rem);
   background: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%);
@@ -5384,6 +5385,18 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   letter-spacing: 0.08em;
+}
+
+.oracle-stage00-card__greeting .oracle-ghost-particle-question {
+  min-height: 3.4rem !important;
+}
+
+.oracle-stage00-card__greeting .oracle-ghost-particle-copy {
+  font-family: 'aAnotherTag', 'Orbitron', monospace !important;
+  font-size: clamp(1.45rem, 5vw, 2.1rem) !important;
+  line-height: 1.1 !important;
+  letter-spacing: 0.08em !important;
+  text-align: center !important;
 }
 
 .oracle-stage00-card__body {

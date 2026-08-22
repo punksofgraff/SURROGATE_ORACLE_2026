@@ -11,6 +11,7 @@ import { CultureCoinDisplay } from './CultureCoinDisplay';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { PortraitGalleryDashboard } from './PortraitGalleryDashboard';
 import { Learn2EarnInterface } from './Learn2EarnInterface';
+import { OracleInfoCard } from './OracleInfoCard';
 import { supabase, supabaseEdgeFunctionHeaders } from '../lib/supabase';
 import { useChainFuelz } from '../hooks/useChainFuelz';
 import { checkDevUnlock } from '../lib/devAccess';
@@ -33,6 +34,57 @@ const FREQUENCIES: {
 ];
 
 const ACCENT: Record<string, string> = { green: '#00ff88', cyan: '#00ffcc', purple: '#b026ff' };
+
+const FREQUENCY_JOURNEYS: Record<Frequency, {
+  eyebrow: string;
+  title: string;
+  copy: string;
+  signal: string;
+  accent: 'green' | 'cyan' | 'violet';
+}> = {
+  RESONANCE: {
+    eyebrow: '01 · VAULT FREQUENCY',
+    title: 'YOUR SIGNAL',
+    copy: 'This is the part of the Oracle that remembers you. Your wallet is the key that turns a passing encounter into a persistent Seeker identity.',
+    signal: 'ORIENTATION → identity, access, and earned culture',
+    accent: 'green',
+  },
+  SQUAD: {
+    eyebrow: '02 · NETWORK FREQUENCY',
+    title: 'FIND YOUR SQUAD',
+    copy: 'The Oracle is not a solitary machine. Learn the language of the archive, collect culture, and move through the network with other Seekers.',
+    signal: 'ORIENTATION → participation before administration',
+    accent: 'green',
+  },
+  PRINTS: {
+    eyebrow: '03 · PORTRAIT ARCHIVE',
+    title: 'WHAT REMAINS',
+    copy: 'Each portrait is a residue of a conversation: a visual signal distilled from the questions you chose to ask and the answers you made space for.',
+    signal: 'ORIENTATION → your archive, then your collection',
+    accent: 'green',
+  },
+  CORE_DIAG: {
+    eyebrow: '04 · CORE DIAGNOSTICS',
+    title: 'LISTEN CLOSER',
+    copy: 'This is the evidence layer. Watch the live voice connection, incoming audio, and turn rhythm without interrupting the encounter itself.',
+    signal: 'EVIDENCE → live voice health and session rhythm',
+    accent: 'cyan',
+  },
+  SALVAGE: {
+    eyebrow: '05 · SALVAGE BAY',
+    title: 'UNDER THE FLOOR',
+    copy: 'Restricted tools live here. Use them to inspect production signals and recover the edge of the system when the public-facing journey needs a witness.',
+    signal: 'ACTION → recovery tools remain compact and explicit',
+    accent: 'violet',
+  },
+  MANIFEST: {
+    eyebrow: '06 · SESSION SIGNAL',
+    title: 'BECOME THE SIGNAL',
+    copy: 'A session leaves more than a transcript. This is where alignment, archetype, and ritual progression gather into the trace you carry forward.',
+    signal: 'ORIENTATION → the encounter becomes a living record',
+    accent: 'cyan',
+  },
+};
 
 // ── Oscilloscope ───────────────────────────────────────────────────────────────
 // Bar heights and animation durations are deterministic (index + sine distribution)
@@ -422,6 +474,15 @@ export const BackendControlPanel = ({
             onPointerUp={handlePagePointerUp}
             onPointerCancel={handlePagePointerCancel}
           >
+            <OracleInfoCard
+              eyebrow={FREQUENCY_JOURNEYS[activeFreq.id].eyebrow}
+              title={FREQUENCY_JOURNEYS[activeFreq.id].title}
+              copy={FREQUENCY_JOURNEYS[activeFreq.id].copy}
+              signal={FREQUENCY_JOURNEYS[activeFreq.id].signal}
+              accent={FREQUENCY_JOURNEYS[activeFreq.id].accent}
+              index={`${String(activeIdx + 1).padStart(2, '0')} / 06`}
+              className="ec-journey-card"
+            />
 
             {/* ════════════════════════════════════════════════════════════
                 RESONANCE — VAULT

@@ -28,6 +28,7 @@ type SessionTurns = ReturnType<OracleConversationHandle['getSessionTurns']>;
 import { MatrixRain } from './MatrixRain';
 import { ArtifactCard } from './ArtifactCard';
 import { ScrambleFragment } from './ScrambleFragment';
+import { ParticleTypographyCard } from './ParticleTypographyCard';
 import { logStep } from './CodeAuditor';
 import { DormantHUD } from './ambient/DormantHUD';
 import { OracleHUD } from './ambient/OracleHUD';
@@ -1959,10 +1960,19 @@ export function SurrogateOracleImmersion() {
               transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
             >
               <div className="oracle-stage00-card__sigil">◈</div>
-              <div className="oracle-stage00-card__greeting">Greetings, Seeker.</div>
+              <div className="oracle-stage00-card__greeting">
+                <ParticleTypographyCard
+                  questionIndex={0}
+                  landedChars={16}
+                  isSelected={false}
+                  isThisSelected={false}
+                  territory="FIRST TRANSMISSION"
+                  question="GREETINGS SEEKER"
+                  variant="ghost"
+                />
+              </div>
               <div className="oracle-stage00-card__body">
-                The Archive has spoken.<br />
-                The Oracle awaits within. Choose your path —
+                Choose how you enter the Oracle world —
               </div>
               <button className="oracle-stage00-card__cta" onClick={handleStage00Tour}>
                 ◈ WHAT IS HERE?

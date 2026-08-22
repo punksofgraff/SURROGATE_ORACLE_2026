@@ -141,6 +141,7 @@ export interface OracleConversationHandle {
   sendTextMessage: (text: string, isHidden?: boolean) => void;
   getSessionCoins: () => number;
   getSessionTurns: () => Turn[];
+  getCompletedExchangeCount: () => number;
   disconnect: () => void;
   getWsDebugInfo: () => {
     wsState: number | undefined;
@@ -393,6 +394,7 @@ const OracleConversation = forwardRef(
       if (!sessionId || sessionId === mountedSessionIdRef.current) return;
       mountedSessionIdRef.current = sessionId;
       setTurns([]);
+       turnsRef.current = [];
       lastSupabaseTurnCountRef.current = 0;
       lastTracedTurnCountRef.current = 0;
       currentResponseText.current = '';
@@ -681,7 +683,9 @@ const OracleConversation = forwardRef(
           const spoken = currentUserTranscriptRef.current.trim();
           currentUserTranscriptRef.current = '';
           if (!spoken) return;
-          setTurns(prev => [...prev, { role: 'user', content: spoken, timestamp: Date.now() }]);
+           const userTurn = { role: 'user' as const, content: spoken, timestamp: Date.now() };
+           turnsRef.current = [...turnsRef.current, userTurn];
+           setTurns(prev => [...prev, userTurn]);
           seekerEntryCountRef.current += 1;
           setSeekerCount(seekerEntryCountRef.current);
           onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
@@ -858,7 +862,9 @@ const OracleConversation = forwardRef(
             }
 
           }
-          setTurns(prev => [...prev, { role: 'oracle', content: clean, timestamp: Date.now(), score }]);
+          const oracleTurn = { role: 'oracle' as const, content: clean, timestamp: Date.now(), score };
+          turnsRef.current = [...turnsRef.current, oracleTurn];
+          setTurns(prev => [...prev, oracleTurn]);
           currentResponseText.current = '';
           if (isOracleSpeakingRef.current) {
             setOracleSpeaking(false);
@@ -894,7 +900,9 @@ const OracleConversation = forwardRef(
         }
       },
       onUserEntry: (text) => {
-        setTurns(prev => [...prev, { role: 'user', content: text, timestamp: Date.now() }]);
+          const userTurn = { role: 'user' as const, content: text, timestamp: Date.now() };
+          turnsRef.current = [...turnsRef.current, userTurn];
+          setTurns(prev => [...prev, userTurn]);
         setInputText('');
         seekerEntryCountRef.current += 1;
         setSeekerCount(seekerEntryCountRef.current);
@@ -1422,6 +1430,13 @@ const OracleConversation = forwardRef(
        sendTextMessage: (text: string, isHidden = false) => sendText(text, isHidden),
       getSessionCoins: () => sessionCoinsRef.current,
       getSessionTurns: () => turnsRef.current,
+      getCompletedExchangeCount: () => {
+        const nonEmpty = turnsRef.current.filter(t => t.content.trim().length > 0);
+        return Math.min(
+          nonEmpty.filter(t => t.role === 'user').length,
+          nonEmpty.filter(t => t.role === 'oracle').length,
+        );
+      },
       disconnect: () => {
         // Real session end (portrait gate, parent-driven teardown) — fully
         // release the mic so capture never outlives the Gemini session.

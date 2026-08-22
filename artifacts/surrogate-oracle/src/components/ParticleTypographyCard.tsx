@@ -230,7 +230,9 @@ export function ParticleTypographyCard({
       aria-label={question}
       style={{
         position: 'relative',
-        width: '100%',
+         width: variant === 'ghost' ? '100%' : '100%',
+         minWidth: variant === 'ghost' ? '12rem' : undefined,
+         minHeight: variant === 'ghost' ? '3.2rem' : undefined,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -248,6 +250,7 @@ export function ParticleTypographyCard({
           height: '100%',
           pointerEvents: 'none',
           zIndex: 12,
+           display: 'block',
         }}
       />
 

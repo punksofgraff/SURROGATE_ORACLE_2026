@@ -84,7 +84,8 @@ const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.pn
 const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = '/alley-bg.png';
 const DEFAULT_STATION    = 0; // Graff Punks — sole station
-const FREE_JOURNEYS      = 5; // wallet seekers get this many free oracle journeys
+const FREE_EXCHANGES     = 10; // ten completed Seeker + Oracle exchanges, not exits
+const COMPLETION_LEDGER_PREFIX = 'surrogate_completed_exchanges_v1_';
 
 // Act 5 — Rift-Construct: Oracle shifts from archivist to active witness.
 // No brackets — brackets suppress Gemini audio output (same issue as knife prompts).
@@ -314,6 +315,7 @@ export function SurrogateOracleImmersion() {
   const knifeSelectedRef         = useRef(false);
   const oracleHasSpokenRef       = useRef(false);
   const sessionEndedRef          = useRef(false);
+  const completedExchangeCountRef = useRef(0);
   // One-time joint mic+camera permission warm-up per page load (task #99) —
   // repeating it on later mic taps added iOS audio-session flips.
   const jointPermsWarmedRef      = useRef(false);
@@ -905,12 +907,6 @@ export function SurrogateOracleImmersion() {
         new Promise<void>(r => setTimeout(r, 6000)),
       ]);
 
-      // Count completed journeys per seeker key (wallet address or IP).
-      // Tracked for all users — wallet seekers hit the tier gate, IP seekers hit the wallet gate.
-      const countKey = `surrogate_journeys_${key}`;
-      const next = parseInt(localStorage.getItem(countKey) ?? '0', 10) + 1;
-      localStorage.setItem(countKey, String(next));
-      logStep(`JOURNEY COMPLETE — total: ${next} [${hasSignedWallet ? 'wallet' : 'ip'}]`, 'ok');
     }
 
     return allTurns;
@@ -1022,17 +1018,22 @@ export function SurrogateOracleImmersion() {
       sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; pendingPortraitUrlRef.current = null;
       exitWritesRef.current = null; // fresh session — no stale writes to wait on at next exit
       sessionFinalizedRef.current = false; finalTurnsRef.current = []; // re-arm exit finalization
-      // Journey gate: check seeker count (wallet address or IP) against the free limit.
+      // Admission gate: only the versioned paired-exchange ledger is trusted.
+      // The legacy exit counter is intentionally ignored; it counted abandoned
+      // sessions and could lock a seeker out before their first real exchange.
       {
         const key = seekerKeyRef.current;
-        const count = key ? parseInt(localStorage.getItem(`surrogate_journeys_${key}`) ?? '0', 10) : 0;
-        if (count >= FREE_JOURNEYS) {
+        const count = key ? parseInt(localStorage.getItem(`${COMPLETION_LEDGER_PREFIX}${key}`) ?? '0', 10) : 0;
+        // This ref tracks only exchanges completed in the current live
+        // conversation; the durable ledger above tracks prior encounters.
+        completedExchangeCountRef.current = 0;
+        if (count >= FREE_EXCHANGES) {
           if (hasSignedWallet) {
             setShowTierGate(true);
-            logStep(`TIER GATE — wallet seeker, journeys: ${count}`, 'warn');
+            logStep(`TIER GATE — wallet seeker, exchanges: ${count}`, 'warn');
           } else {
             setShowJourneyLimitGate(true);
-            logStep(`WALLET GATE — ip seeker, journeys: ${count}`, 'warn');
+            logStep(`WALLET GATE — ip seeker, exchanges: ${count}`, 'warn');
           }
         }
       }
@@ -2230,6 +2231,25 @@ export function SurrogateOracleImmersion() {
           onTurnComplete={(turn, score, themes) => {
             if (themes.length) portrait.addThemes(themes);
             handleTurnComplete(turn, score);
+             // OracleConversation reaches this callback only after appending
+             // the completed Oracle response. Count only paired, non-empty
+             // Seeker/Oracle turns, and persist the high-water mark so reloads
+             // cannot reset a genuinely completed free allowance.
+             const key = seekerKeyRef.current;
+             const completed = oracleConversationRef.current?.getCompletedExchangeCount() ?? 0;
+             if (key && completed > completedExchangeCountRef.current) {
+               const newlyCompleted = completed - completedExchangeCountRef.current;
+               completedExchangeCountRef.current = completed;
+               const ledgerKey = `${COMPLETION_LEDGER_PREFIX}${key}`;
+               const stored = parseInt(localStorage.getItem(ledgerKey) ?? '0', 10);
+               const next = stored + newlyCompleted;
+               localStorage.setItem(ledgerKey, String(next));
+               if (next >= FREE_EXCHANGES) {
+                 if (hasSignedWallet) setShowTierGate(true);
+                 else setShowJourneyLimitGate(true);
+                 logStep(`EXCHANGE LIMIT — ${next}/${FREE_EXCHANGES} completed`, 'warn');
+               }
+             }
             // Portrait is now seeker-initiated (fuzzy command in OracleConversation) after ≥5 entries.
             // No auto-trigger here.
             // Flush staged portrait URL now that the Oracle has finished this turn —
@@ -2405,7 +2425,8 @@ export function SurrogateOracleImmersion() {
         context="engage-further"
         onUpgradeSuccess={() => {
           const key = seekerKeyRef.current;
-          if (key) localStorage.removeItem(`surrogate_journeys_${key}`);
+           if (key) localStorage.removeItem(`${COMPLETION_LEDGER_PREFIX}${key}`);
+           if (key) localStorage.removeItem(`surrogate_journeys_${key}`);
           setShowTierGate(false);
           logStep('TIER UPGRADE — journey count cleared', 'ok');
         }}

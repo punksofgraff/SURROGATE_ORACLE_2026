@@ -225,6 +225,8 @@ export interface OracleAvatar3DProps {
   transporterProgress?: number;
   /** Lets the surface transporter create a visual presence before Gemini is live. */
   transporterWarmup?: boolean;
+  transporterMode?: 'manifest' | 'lyria';
+  getTransporterAnalyser?: () => AnalyserNode | null;
   transporterTier?: 1 | 2 | 3;
   reducedMotion?: boolean;
 }
@@ -263,6 +265,8 @@ export function OracleAvatar3D({
   transporterActive = false,
   transporterProgress = 1,
   transporterWarmup = false,
+  transporterMode = 'manifest',
+  getTransporterAnalyser,
   transporterTier = 1,
   reducedMotion = false,
 }: OracleAvatar3DProps) {
@@ -1158,6 +1162,8 @@ export function OracleAvatar3D({
         active={transporterActive}
         targetProgress={transporterProgress}
         progressRef={transporterProgressRef}
+        mode={transporterMode}
+        getAnalyser={getTransporterAnalyser}
         reducedMotion={reducedMotion}
       />
       <OracleSceneLights />

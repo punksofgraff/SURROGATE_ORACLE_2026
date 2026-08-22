@@ -1858,6 +1858,8 @@ export function SurrogateOracleImmersion() {
                             transporterActive
                             transporterProgress={isMusicMode || isMusicReturning ? 0 : oracleManifestProgress}
                             transporterWarmup={oracleWarmupActive}
+                            transporterMode={isMusicMode || isMusicReturning ? 'lyria' : 'manifest'}
+                            getTransporterAnalyser={() => lyria.analyserRef.current}
                             transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
                             reducedMotion={prefersReducedMotion}
                           />

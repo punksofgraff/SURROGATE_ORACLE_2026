@@ -12,6 +12,8 @@ interface OracleGLBTransporterProps {
   active: boolean;
   targetProgress: number;
   progressRef: MutableRefObject<number>;
+  mode?: 'manifest' | 'lyria';
+  getAnalyser?: () => AnalyserNode | null;
   reducedMotion?: boolean;
 }
 
@@ -188,10 +190,15 @@ export function OracleGLBTransporter({
   active,
   targetProgress,
   progressRef,
+  mode = 'manifest',
+  getAnalyser,
   reducedMotion = false,
 }: OracleGLBTransporterProps) {
   const pointsRef = useRef<THREE.Points>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
+  const audioDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const smoothEnergyRef = useRef(0.08);
+  const smoothBassRef = useRef(0.08);
   const count = PARTICLE_COUNTS[tier];
   const geometry = useMemo(() => buildGLBPointGeometry(scene, count), [scene, count]);
   const uniforms = useMemo(() => ({
@@ -211,7 +218,42 @@ export function OracleGLBTransporter({
   useFrame((state, delta) => {
     const material = materialRef.current;
     if (!material) return;
-    const target = active ? Math.max(0, Math.min(1, targetProgress)) : 1;
+    let target = active ? Math.max(0, Math.min(1, targetProgress)) : 1;
+
+    if (active && mode === 'lyria') {
+      const analyser = getAnalyser?.();
+      let energy = 0.08;
+      let bass = 0.08;
+      if (analyser) {
+        if (!audioDataRef.current || audioDataRef.current.length !== analyser.frequencyBinCount) {
+          audioDataRef.current = new Uint8Array(analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
+        }
+        analyser.getByteFrequencyData(audioDataRef.current);
+        const data = audioDataRef.current;
+        const lowBins = Math.max(1, Math.floor(data.length * 0.12));
+        let total = 0;
+        let lowTotal = 0;
+        for (let i = 0; i < data.length; i++) {
+          total += data[i] ?? 0;
+          if (i < lowBins) lowTotal += data[i] ?? 0;
+        }
+        energy = total / data.length / 255;
+        bass = lowTotal / lowBins / 255;
+      }
+      const blend = Math.min(1, delta * 8);
+      const smoothEnergy = THREE.MathUtils.lerp(smoothEnergyRef.current, energy, blend);
+      const smoothBass = THREE.MathUtils.lerp(smoothBassRef.current, bass, blend);
+      smoothEnergyRef.current = smoothEnergy;
+      smoothBassRef.current = smoothBass;
+
+      // Lyria reverses the manifestation relationship: sustained energy
+      // gathers the surface, while bass briefly fractures it outward.
+      target = THREE.MathUtils.clamp(
+        0.36 + smoothEnergy * 0.42 - smoothBass * 0.12,
+        0.28,
+        0.68,
+      );
+    }
     const speed = target > progressRef.current ? 1.25 : 5.5;
     progressRef.current = THREE.MathUtils.lerp(
       progressRef.current,

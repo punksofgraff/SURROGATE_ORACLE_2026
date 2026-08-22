@@ -37,6 +37,8 @@ const QUARKS_VERTEX_SHADER = /* glsl */ `
   uniform float uSpeaking;
   uniform float uSize;
   uniform float uMotionScale;
+   uniform float uThinking;
+   uniform float uListening;
   
   attribute float aScale;
   attribute float aSpeed;
@@ -146,9 +148,14 @@ const QUARKS_VERTEX_SHADER = /* glsl */ `
     float pSize = aScale * uSize * (1.0 + uSpeaking * 0.65) * vLife;
     gl_PointSize = pSize * (300.0 / -mvPosition.z);
 
-    // Color transition based on speaking state & life
-    vec4 activeCol = mix(aColor, vec4(0.69, 0.15, 1.0, 1.0), uSpeaking * 0.6);
-    vColor = activeCol * vLife;
+   // Thinking is a warm threshold state: purple and orange alternate softly.
+   // Speaking/listening override the base palette toward green-white.
+   float thinkPulse = 0.5 + 0.5 * sin(uTime * 4.6);
+   vec3 thinkColor = mix(vec3(0.69, 0.15, 1.0), vec3(1.0, 0.34, 0.04), thinkPulse);
+   float channelOpen = clamp(uListening + uSpeaking * 0.85, 0.0, 1.0);
+   vec3 channelColor = mix(aColor.rgb, vec3(0.92, 1.0, 0.96), channelOpen);
+   vec3 finalColor = mix(channelColor, thinkColor, uThinking);
+   vColor = vec4(finalColor, aColor.a) * vLife;
   }
 `;
 
@@ -257,6 +264,8 @@ export function OracleQuarks({
       // uSpeaking target in useFrame). A motionScale < 1 here makes the orbit
       // imperceptible on a phone and causes the "one-shot freeze" regression.
       uMotionScale: { value: 1.0 },
+       uThinking: { value: 0.0 },
+       uListening: { value: 0.0 },
     };
 
     return { geometry: geo, uniforms: unis };
@@ -306,6 +315,16 @@ export function OracleQuarks({
       mat.uniforms.uSpeaking.value,
       targetSpeak,
       Math.min(1, delta * 12.0)
+    );
+    mat.uniforms.uThinking.value = THREE.MathUtils.lerp(
+      mat.uniforms.uThinking.value,
+      thinking ? 1.0 : 0.0,
+      Math.min(1, delta * 5.0),
+    );
+    mat.uniforms.uListening.value = THREE.MathUtils.lerp(
+      mat.uniforms.uListening.value,
+      listening ? 1.0 : 0.0,
+      Math.min(1, delta * 8.0),
     );
   });
 

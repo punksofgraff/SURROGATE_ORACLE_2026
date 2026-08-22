@@ -1794,6 +1794,7 @@ export function SurrogateOracleImmersion() {
                             amplitude={visemeStateRef.current?.amplitude ?? 0}
                             thinking={isOracleThinking}
                             listening={isMicActive}
+                            preview={oraclePreviewVisible && !isOracleMode}
                             reducedMotion={prefersReducedMotion}
                           />
                         )}

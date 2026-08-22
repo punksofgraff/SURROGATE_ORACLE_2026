@@ -39,6 +39,7 @@ const QUARKS_VERTEX_SHADER = /* glsl */ `
   uniform float uMotionScale;
    uniform float uThinking;
    uniform float uListening;
+  uniform float uPreview;
   
   attribute float aScale;
   attribute float aSpeed;
@@ -109,7 +110,14 @@ const QUARKS_VERTEX_SHADER = /* glsl */ `
     // A small turbulent deviation rides on top of the actual stream. This is
     // intentionally not the motion itself: an offset around a static spawn
     // point only reads as twinkle on a phone.
-    vec3 noiseCoord = pos * 1.8 + vec3(0.0, uTime * 0.5, 0.0);
+   // The landing preview uses the same live field, with a slightly more
+   // legible curl so it reads as fluid motion rather than a static star map.
+   float flowSpeed = mix(0.5, 0.82, uPreview);
+   vec3 noiseCoord = pos * 1.8 + vec3(
+     sin(uTime * 0.17) * 0.22,
+     uTime * flowSpeed,
+     cos(uTime * 0.13) * 0.18
+   );
     vec3 noiseOffset = vec3(
       snoise(noiseCoord),
       snoise(noiseCoord + vec3(43.12, 12.8, 8.4)),
@@ -132,7 +140,12 @@ const QUARKS_VERTEX_SHADER = /* glsl */ `
     // Speaking excitation surge
     vec3 speechSurge = aVelocity * (uSpeaking * 2.2);
 
-    vec3 finalPos = streamPos + (noiseOffset * 0.065) + speechSurge;
+   vec3 curlOffset = vec3(
+     noiseOffset.x + sin(uTime * 0.41 + pos.y * 2.4) * 0.18 * uPreview,
+     noiseOffset.y + cos(uTime * 0.33 + pos.x * 2.1) * 0.16 * uPreview,
+     noiseOffset.z + sin(uTime * 0.27 + pos.z * 3.0) * 0.14 * uPreview
+   );
+   vec3 finalPos = streamPos + (curlOffset * (0.065 + uPreview * 0.035)) + speechSurge;
 
     // Face zone protection: push away if within face cylinder
     vec2 faceDist = finalPos.xy - vec2(0.0, 0.0);
@@ -189,6 +202,7 @@ export function OracleQuarks({
   amplitude = 0,
   thinking = false,
   listening = false,
+  preview = false,
   reducedMotion = false,
 }: OracleQuarksProps) {
   const pointsRef = useRef<THREE.Points>(null);
@@ -266,6 +280,7 @@ export function OracleQuarks({
       uMotionScale: { value: 1.0 },
        uThinking: { value: 0.0 },
        uListening: { value: 0.0 },
+       uPreview: { value: preview ? 1.0 : 0.0 },
     };
 
     return { geometry: geo, uniforms: unis };
@@ -325,6 +340,11 @@ export function OracleQuarks({
       mat.uniforms.uListening.value,
       listening ? 1.0 : 0.0,
       Math.min(1, delta * 8.0),
+    );
+    mat.uniforms.uPreview.value = THREE.MathUtils.lerp(
+      mat.uniforms.uPreview.value,
+      preview ? 1.0 : 0.0,
+      Math.min(1, delta * 4.0),
     );
   });
 

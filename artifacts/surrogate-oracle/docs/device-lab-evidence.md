@@ -59,3 +59,24 @@ exercise the same entry path and record the live canvas context, render tier,
 GLB transporter progress, particle counters, XR bridge status, and portrait
 viewer state. SwiftShader may trigger the app's intentional render-tier
 degradation; that is not evidence of a mobile GPU failure.
+
+### 2026-08-22 capture attempt
+
+No physical iPhone was attached to this workspace, so a Safari session could
+not be opened and no hardware screenshots or screen recording could be
+captured. The exact iPhone model, iOS version, and Safari version are
+therefore **not available**. The hardware acceptance gap remains open.
+
+As a fallback sanity check, the paired curtain harness was run with its
+iPhone-sized emulated viewport. Both `oracleCurtain=on` and
+`oracleCurtain=off` reached the `oracle` state and recorded the
+`viewportChange` state; the canvas was mounted with a transparent wrapper and
+no CSS background image. The run remains
+`captureMode: "browser-emulation"` and is not evidence of physical Safari
+behavior. The environment emitted SwiftShader/WebGL context errors during
+the run, so those errors are also retained as a limitation rather than
+treated as an iPhone result.
+
+| Physical device | Model | iOS | Safari | Journey/screenshots | Result |
+|---|---|---|---|---|---|
+| iPhone Safari | not available | not available | not available | not captured | **BLOCKED: no iPhone attached** |

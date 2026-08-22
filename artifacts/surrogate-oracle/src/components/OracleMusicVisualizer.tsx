@@ -144,11 +144,12 @@ export function OracleMusicVisualizer({
       average = total / data.length / 255;
       bass = lowTotal / lowBins / 255;
        const mediaTime = getAudioTime?.() ?? 0;
-       audioTimeRef.current = mediaTime > 0
-         ? mediaTime
-         : typeof analyser.context.currentTime === 'number'
-           ? analyser.context.currentTime
-           : state.clock.elapsedTime;
+        // Safari can briefly report a frozen media currentTime while an object
+        // URL is buffering. Keep the field moving from the render clock until
+        // the audio clock advances, then let the music take over.
+        audioTimeRef.current = mediaTime > 0
+          ? mediaTime
+          : state.clock.elapsedTime;
     } else {
        audioTimeRef.current = getAudioTime?.() || state.clock.elapsedTime;
     }
@@ -171,10 +172,14 @@ export function OracleMusicVisualizer({
     material.uniforms.uAudioTime.value = audioTimeRef.current;
     material.uniforms.uEnergy.value = smoothEnergy;
     material.uniforms.uPulse.value = pulseRef.current;
-    material.uniforms.uMotion.value = reducedMotion ? 0.25 : 1;
-    material.uniforms.uIntensity.value = intensity;
-    points.rotation.y += delta * (0.04 + smoothEnergy * 0.08);
-    points.rotation.x = Math.sin(audioTimeRef.current * 0.12) * 0.08;
+     material.uniforms.uMotion.value = reducedMotion
+       ? 0.25
+       : 1.1 + smoothEnergy * 1.8;
+     material.uniforms.uIntensity.value = intensity;
+     // Keep the field visibly alive between analyser peaks while letting bass
+     // energy accelerate the orbit rather than only changing brightness.
+     points.rotation.y += delta * (0.07 + smoothEnergy * 0.22);
+     points.rotation.x = Math.sin(audioTimeRef.current * (0.12 + smoothEnergy * 0.18)) * 0.1;
   });
 
   return (

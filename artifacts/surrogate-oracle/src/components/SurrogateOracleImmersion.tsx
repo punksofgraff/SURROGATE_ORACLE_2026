@@ -1837,13 +1837,13 @@ export function SurrogateOracleImmersion() {
                       >
                         <OrbitZoomCompensator enabled={isOracleMode && !isXRMode} />
                         {import.meta.env.DEV && <OracleSceneDiagnostics />}
-                        {!isMusicMode && isOracleMode && (
+                        {isOracleMode && (
                           <OracleAvatar3D
                             visemeStateRef={visemeStateRef}
                             cameraStateRef={cameraStateRef}
                             seekerMotionRef={seekerMotionRef}
                             transporterActive
-                            transporterProgress={isMusicReturning ? 0 : oracleManifestProgress}
+                            transporterProgress={isMusicMode || isMusicReturning ? 0 : oracleManifestProgress}
                             transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
                             reducedMotion={prefersReducedMotion}
                           />
@@ -2431,34 +2431,34 @@ export function SurrogateOracleImmersion() {
       )}
 
       {isOracleMode && isMusicMode && (
-        <motion.div
-          className="oracle-lyria-card"
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          style={{
-            zIndex: 30,
-          }}
-        >
-          <div className="oracle-lyria-card__eyebrow">◈ LYRIA // FRACTURE BEAT</div>
-          <div className="oracle-lyria-card__title">MANIFESTED SIGNAL</div>
-          <div className="oracle-lyria-card__status">
-            {lyria.status === 'generating' ? 'GENERATING 30-SECOND SIGNAL…' :
-              lyria.status === 'error' ? 'SIGNAL FAILED — ORACLE STILL LISTENING' :
-              lyria.isPlaying ? 'PLAYING // AUDIO-REACTIVE FIELD' : 'TRACK READY // TAP PLAY'}
-          </div>
-          {lyria.error && <div className="oracle-lyria-card__error">{lyria.error}</div>}
-          <div className="oracle-lyria-card__actions">
-            {lyria.audioUrl && !lyria.isPlaying && (
-              <button className="oc-send-btn" onClick={() => void lyria.play()}>PLAY</button>
-            )}
-            {lyria.audioUrl && (
-              <a className="oc-send-btn" href={lyria.audioUrl} download="surrogate-oracle-lyria.mp3" style={{ textDecoration: 'none' }}>
-                DOWNLOAD
-              </a>
-            )}
-            <button className="oc-send-btn" onClick={exitMusicMode}>RETURN TO ORACLE</button>
-          </div>
-        </motion.div>
+        <div className="oracle-lyria-section" aria-live="polite">
+          <motion.div
+            className="oracle-lyria-card"
+            initial={{ opacity: 0, x: '-50%', y: 18 }}
+            animate={{ opacity: 1, x: '-50%', y: 0 }}
+            transition={{ duration: 0.72, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className="oracle-lyria-card__eyebrow">◈ LYRIA // FRACTURE BEAT</div>
+            <div className="oracle-lyria-card__title">MANIFESTED SIGNAL</div>
+            <div className="oracle-lyria-card__status">
+              {lyria.status === 'generating' ? 'GENERATING 30-SECOND SIGNAL…' :
+                lyria.status === 'error' ? 'SIGNAL FAILED — ORACLE STILL LISTENING' :
+                lyria.isPlaying ? 'PLAYING // AUDIO-REACTIVE FIELD' : 'TRACK READY // TAP PLAY'}
+            </div>
+            {lyria.error && <div className="oracle-lyria-card__error">{lyria.error}</div>}
+            <div className="oracle-lyria-card__actions">
+              {lyria.audioUrl && !lyria.isPlaying && (
+                <button className="oc-send-btn" onClick={() => void lyria.play()}>PLAY</button>
+              )}
+              {lyria.audioUrl && (
+                <a className="oc-send-btn" href={lyria.audioUrl} download="surrogate-oracle-lyria.mp3" style={{ textDecoration: 'none' }}>
+                  DOWNLOAD
+                </a>
+              )}
+              <button className="oc-send-btn" onClick={exitMusicMode}>RETURN TO ORACLE</button>
+            </div>
+          </motion.div>
+        </div>
       )}
 
       {showJourneyLimitGate && (

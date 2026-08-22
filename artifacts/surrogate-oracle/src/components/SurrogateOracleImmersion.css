@@ -391,16 +391,32 @@
   box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
 }
 
+/* Lyria uses the same lower-stage anchor as knife selection. The section is
+   deliberately separate from the card so Framer Motion cannot replace the
+   centering transform with its own inline transform. */
+.oracle-lyria-section {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 72vh;
+  z-index: calc(var(--z-oracle) + 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 20px 90px;
+  pointer-events: none;
+}
+
 /* Lyria is the same manifested object language as the knife card: glass,
    gradient frame, scanlines, and a compact control rail. */
 .oracle-lyria-card {
-  width: min(92vw, 500px);
+  width: clamp(300px, 88vw, 500px);
   box-sizing: border-box;
   position: absolute;
   left: 50%;
-  bottom: 11%;
   transform: translateX(-50%);
-  padding: 24px 26px 20px;
+  padding: 32px 28px 24px;
   border-radius: 16px;
   border: 0;
   /* This card sits above a live transparent Canvas during the mode swap.
@@ -413,6 +429,8 @@
   box-shadow: 0 0 30px rgba(176,38,255,.2), inset 0 0 22px rgba(0,255,204,.04);
   overflow: hidden;
   isolation: isolate;
+  pointer-events: auto;
+  will-change: transform, opacity, filter;
 }
 .oracle-lyria-card::before {
   content: '';
@@ -452,6 +470,17 @@
 .oracle-lyria-card__status { margin-top: 8px; font-size: 12px; color: rgba(243,216,255,.78); }
 .oracle-lyria-card__error { margin-top: 7px; color: #ff8bdb; font: 11px 'Share Tech Mono', monospace; }
 .oracle-lyria-card__actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; position: relative; z-index: 1; }
+
+@media (max-width: 480px) {
+  .oracle-lyria-section {
+    padding: 24px 12px 36px;
+    height: 68vh;
+  }
+
+  .oracle-lyria-card {
+    width: min(88vw, 500px);
+  }
+}
 @keyframes ghost-cur-blink {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0; }

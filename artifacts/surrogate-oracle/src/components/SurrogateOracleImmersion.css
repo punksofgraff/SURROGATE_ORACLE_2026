@@ -468,6 +468,22 @@
   text-shadow: 0 0 16px rgba(0,255,204,.4);
 }
 .oracle-lyria-card__status { margin-top: 8px; font-size: 12px; color: rgba(243,216,255,.78); }
+.oracle-lyria-card__brief {
+  margin-top: 14px;
+  color: rgba(0,255,204,.86);
+  font: 11px/1.45 'Share Tech Mono', monospace;
+  letter-spacing: .04em;
+  max-height: 3.1em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.oracle-lyria-card__meta {
+  margin-top: 7px;
+  color: rgba(243,216,255,.54);
+  font: 9px/1.35 'Share Tech Mono', monospace;
+  letter-spacing: .06em;
+  overflow-wrap: anywhere;
+}
 .oracle-lyria-card__error { margin-top: 7px; color: #ff8bdb; font: 11px 'Share Tech Mono', monospace; }
 .oracle-lyria-card__actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; position: relative; z-index: 1; }
 

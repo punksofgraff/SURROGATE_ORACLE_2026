@@ -1627,6 +1627,7 @@ export function SurrogateOracleImmersion() {
         src={lyria.audioUrl ?? undefined}
         preload="auto"
         playsInline
+        onLoadedMetadata={lyria.handleLoadedMetadata}
         onEnded={exitMusicMode}
         onError={() => { if (isMusicMode) logStep('LYRIA PLAYBACK ERROR', 'warn'); }}
       />
@@ -2467,12 +2468,7 @@ export function SurrogateOracleImmersion() {
 
       {isOracleMode && isMusicMode && (
         <div className="oracle-lyria-section" aria-live="polite">
-          <motion.div
-            className="oracle-lyria-card"
-            initial={{ opacity: 0, x: '-50%', y: 18 }}
-            animate={{ opacity: 1, x: '-50%', y: 0 }}
-            transition={{ duration: 0.72, ease: [0.16, 1, 0.3, 1] }}
-          >
+          <div className="oracle-lyria-card">
             <div className="oracle-lyria-card__eyebrow">◈ LYRIA // FRACTURE BEAT</div>
             <div className="oracle-lyria-card__title">MANIFESTED SIGNAL</div>
             <div className="oracle-lyria-card__status">
@@ -2480,6 +2476,18 @@ export function SurrogateOracleImmersion() {
                 lyria.status === 'error' ? 'SIGNAL FAILED — ORACLE STILL LISTENING' :
                 lyria.isPlaying ? 'PLAYING // AUDIO-REACTIVE FIELD' : 'TRACK READY // TAP PLAY'}
             </div>
+            {lyria.prompt && (
+              <div className="oracle-lyria-card__brief" title={lyria.prompt}>
+                BRIEF // {lyria.prompt}
+              </div>
+            )}
+            {(lyria.model || lyria.requestId || lyria.durationSeconds) && (
+              <div className="oracle-lyria-card__meta">
+                {lyria.model && `MODEL // ${lyria.model}`}
+                {lyria.requestId && ` · REF // ${lyria.requestId.slice(0, 8)}`}
+                {lyria.durationSeconds && ` · DECODED // ${lyria.durationSeconds.toFixed(1)}s`}
+              </div>
+            )}
             {lyria.error && <div className="oracle-lyria-card__error">{lyria.error}</div>}
             <div className="oracle-lyria-card__actions">
               {lyria.audioUrl && !lyria.isPlaying && (
@@ -2492,7 +2500,7 @@ export function SurrogateOracleImmersion() {
               )}
               <button className="oc-send-btn" onClick={exitMusicMode}>RETURN TO ORACLE</button>
             </div>
-          </motion.div>
+          </div>
         </div>
       )}
 

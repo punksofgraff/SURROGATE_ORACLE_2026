@@ -88,6 +88,9 @@ function responseShape(result: Record<string, unknown>): Record<string, unknown>
     topLevelKeys: Object.keys(result).slice(0, 20),
     status: result.status,
     interactionId: typeof result.id === 'string' ? result.id : undefined,
+    outputAudio: result.output_audio && typeof result.output_audio === 'object'
+      ? Object.keys(result.output_audio as Record<string, unknown>).slice(0, 12)
+      : undefined,
     outputs: outputs.slice(0, 8).map((value) => (
       value && typeof value === 'object'
         ? Object.keys(value as Record<string, unknown>).slice(0, 12)
@@ -236,14 +239,30 @@ Deno.serve(async (req: Request) => {
       result = JSON.parse(pollRaw) as Record<string, unknown>;
     }
     if (interactionId && result.status !== 'completed') {
+      const status = typeof result.status === 'string' ? result.status : 'unknown';
       return json({
-        error: 'Lyria took too long to return a track. The Oracle remains available.',
-        code: 'INTERACTION_TIMEOUT',
+        error: status === 'failed'
+          ? 'Lyria rejected this music brief. The Oracle remains available.'
+          : status === 'cancelled'
+            ? 'Lyria cancelled this music brief. The Oracle remains available.'
+            : 'Lyria took too long to return a track. The Oracle remains available.',
+        code: status === 'failed'
+          ? 'INTERACTION_FAILED'
+          : status === 'cancelled'
+            ? 'INTERACTION_CANCELLED'
+            : 'INTERACTION_TIMEOUT',
         requestId,
         responseShape: responseShape(result),
-      }, 504);
+      }, status === 'failed' || status === 'cancelled' ? 502 : 504);
     }
-    const audio = findAudioPayload(result);
+    // Google documents output_audio as the generated audio convenience field.
+    // Only use the older recursive search as a compatibility path when that
+    // documented field is absent; never choose an arbitrary earlier audio step
+    // when the final generated output is available.
+    const documentedAudio = result.output_audio ?? result.outputAudio;
+    const audio = documentedAudio && typeof documentedAudio === 'object'
+      ? documentedAudio as AudioPayload
+      : findAudioPayload(result);
     const audioBase64 = typeof audio?.data === 'string'
       ? audio.data
       : typeof audio?.base64 === 'string'
@@ -272,6 +291,15 @@ Deno.serve(async (req: Request) => {
       // rather than claiming an exact duration before the browser decodes it.
       durationSeconds: MAX_DURATION_SECONDS,
       model,
+      prompt: safePrompt,
+      requestId,
+      interactionId: interactionId || undefined,
+      outputText: typeof result.output_text === 'string'
+        ? result.output_text
+        : typeof result.outputText === 'string'
+          ? result.outputText
+          : undefined,
+      responseShape: responseShape(result),
     });
   } catch {
     return json({

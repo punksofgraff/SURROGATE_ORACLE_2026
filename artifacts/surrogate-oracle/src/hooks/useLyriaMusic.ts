@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getAudioContext } from '../lib/oracleSfx';
 import { supabase } from '../lib/supabase';
+import { traceEvent } from '../lib/sessionTrace';
 
 export type LyriaMusicStatus = 'idle' | 'generating' | 'ready' | 'playing' | 'error';
 
@@ -14,6 +15,18 @@ export function useLyriaMusic() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [prompt, setPrompt] = useState<string | null>(null);
+  const [model, setModel] = useState<string | null>(null);
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const [durationSeconds, setDurationSeconds] = useState<number | null>(null);
+
+  const handleLoadedMetadata = useCallback(() => {
+    const duration = audioRef.current?.duration;
+    if (typeof duration === 'number' && Number.isFinite(duration) && duration > 0) {
+      setDurationSeconds(duration);
+      traceEvent('lyria_duration_decoded', { duration_seconds: Math.round(duration * 100) / 100 });
+    }
+  }, []);
 
   const ensureGraph = useCallback(() => {
     const audio = audioRef.current;
@@ -71,11 +84,20 @@ export function useLyriaMusic() {
   }, [audioUrl]);
 
   const generate = useCallback(async (prompt: string) => {
+    const requestedPrompt = prompt.trim().slice(0, 600);
     setStatus('generating');
     setError(null);
+    setPrompt(requestedPrompt || null);
+    setModel(null);
+    setRequestId(null);
+    setDurationSeconds(null);
+    traceEvent('lyria_request', {
+      prompt: requestedPrompt,
+      prompt_chars: requestedPrompt.length,
+    });
     try {
       const { data, error: invokeError } = await supabase.functions.invoke('lyria-music-generator', {
-        body: { prompt: prompt.slice(0, 600) },
+        body: { prompt: requestedPrompt },
       });
       if (invokeError) {
         const context = (invokeError as { context?: Response }).context;
@@ -101,9 +123,20 @@ export function useLyriaMusic() {
             // Keep the SDK error when the function response is not JSON.
           }
         }
+        traceEvent('lyria_error', { message: detail.slice(0, 500) });
         throw new Error(detail || 'Lyria generation failed.');
       }
       if (!data?.audioBase64) throw new Error(data?.error || 'No playable track returned.');
+      setPrompt(typeof data.prompt === 'string' ? data.prompt : requestedPrompt);
+      setModel(typeof data.model === 'string' ? data.model : null);
+      setRequestId(typeof data.requestId === 'string' ? data.requestId : null);
+      traceEvent('lyria_response', {
+        request_id: typeof data.requestId === 'string' ? data.requestId : null,
+        interaction_id: typeof data.interactionId === 'string' ? data.interactionId : null,
+        model: typeof data.model === 'string' ? data.model : null,
+        response_shape: data.responseShape ?? null,
+        output_text_present: typeof data.outputText === 'string' && data.outputText.length > 0,
+      });
       const binary = atob(data.audioBase64.replace(/\s/g, ''));
       const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
       const nextUrl = URL.createObjectURL(new Blob([bytes], { type: data.mimeType || 'audio/mpeg' }));
@@ -124,6 +157,7 @@ export function useLyriaMusic() {
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Lyria generation failed.';
       setError(message);
+      traceEvent('lyria_error', { message: message.slice(0, 500) });
       setStatus('error');
       return null;
     }
@@ -142,6 +176,11 @@ export function useLyriaMusic() {
     audioUrl,
     error,
     isPlaying,
+    prompt,
+    model,
+    requestId,
+    durationSeconds,
+    handleLoadedMetadata,
     generate,
     play,
     stop,

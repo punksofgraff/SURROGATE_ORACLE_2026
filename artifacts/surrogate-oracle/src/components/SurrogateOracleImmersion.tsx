@@ -1522,6 +1522,7 @@ export function SurrogateOracleImmersion() {
   // real Live session resolves particles into the settled Oracle silhouette.
   const oracleManifestProgress = isOracleMode && isGeminiSessionLive ? 1 : 0;
   const isAlive      = scenePhase !== 'dormant';
+  const oraclePreviewVisible = scenePhase === 'awakened';
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
   const subtitleText = useTypewriter('SNEAKAR XR Anthropology AI', awakened && titleText.length >= 16, 35);
 
@@ -1724,7 +1725,10 @@ export function SurrogateOracleImmersion() {
                 style={{
                   position: 'absolute', top: 0, left: 0,
                   width: '100%', height: '100%',
-                   opacity: oracleManifestReady ? 1 : 0,
+                   // During knife selection show only a restrained preview of
+                   // the same quark field that will surround the live Oracle.
+                   // The full avatar stays hidden until Oracle phase.
+                   opacity: oracleManifestReady ? 1 : oraclePreviewVisible ? 0.24 : 0,
                   pointerEvents: isOracleMode && oracleManifestReady ? 'auto' : 'none',
                   zIndex: 3,
                 }}
@@ -1760,12 +1764,12 @@ export function SurrogateOracleImmersion() {
                       >
                         <OrbitZoomCompensator enabled={isOracleMode && !isXRMode} />
                         {import.meta.env.DEV && <OracleSceneDiagnostics />}
-                        {!isMusicMode && (
+                        {!isMusicMode && isOracleMode && (
                           <OracleAvatar3D
                             visemeStateRef={visemeStateRef}
                             cameraStateRef={cameraStateRef}
                             seekerMotionRef={seekerMotionRef}
-                            transporterActive={isOracleMode}
+                            transporterActive
                             transporterProgress={isMusicReturning ? 0 : oracleManifestProgress}
                             transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
                             reducedMotion={prefersReducedMotion}
@@ -1774,6 +1778,7 @@ export function SurrogateOracleImmersion() {
                         {isMusicMode && (
                           <OracleMusicVisualizer
                             getAnalyser={() => lyria.analyserRef.current}
+                            getAudioTime={() => lyria.audioRef.current?.currentTime ?? 0}
                             reducedMotion={prefersReducedMotion}
                           />
                         )}

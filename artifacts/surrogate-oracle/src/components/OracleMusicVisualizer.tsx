@@ -58,9 +58,12 @@ const MUSIC_FRAGMENT_SHADER = /* glsl */ `
 
 export function OracleMusicVisualizer({
   getAnalyser,
+  getAudioTime,
   reducedMotion = false,
 }: {
   getAnalyser: () => AnalyserNode | null;
+  /** Current Lyria media timestamp in seconds, when the audio element is active. */
+  getAudioTime?: () => number;
   reducedMotion?: boolean;
 }) {
   const pointsRef = useRef<THREE.Points>(null);
@@ -127,11 +130,14 @@ export function OracleMusicVisualizer({
       }
       average = total / data.length / 255;
       bass = lowTotal / lowBins / 255;
-      audioTimeRef.current = typeof analyser.context.currentTime === 'number'
-        ? analyser.context.currentTime
-        : state.clock.elapsedTime;
+       const mediaTime = getAudioTime?.() ?? 0;
+       audioTimeRef.current = mediaTime > 0
+         ? mediaTime
+         : typeof analyser.context.currentTime === 'number'
+           ? analyser.context.currentTime
+           : state.clock.elapsedTime;
     } else {
-      audioTimeRef.current = state.clock.elapsedTime;
+       audioTimeRef.current = getAudioTime?.() || state.clock.elapsedTime;
     }
 
     const energy = average * 0.65 + bass * 0.35;

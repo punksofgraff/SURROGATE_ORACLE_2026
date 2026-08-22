@@ -50,6 +50,7 @@ const MUSIC_VERTEX_SHADER = /* glsl */ `
 `;
 
 const MUSIC_FRAGMENT_SHADER = /* glsl */ `
+  uniform float uIntensity;
   varying float vEnergy;
   varying float vDepth;
 

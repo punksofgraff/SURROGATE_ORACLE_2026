@@ -422,9 +422,9 @@
   /* This card sits above a live transparent Canvas during the mode swap.
      Keep its backing surface dark so an intermediate framebuffer cannot read
      as a white sheet through the glass treatment. */
-  background: linear-gradient(158deg, rgba(0,18,20,.96), rgba(0,3,10,.94) 48%, rgba(34,4,42,.94));
-  backdrop-filter: blur(8px) saturate(1.8);
-  -webkit-backdrop-filter: blur(8px) saturate(1.8);
+   background: linear-gradient(158deg, rgba(0,18,20,.70), rgba(0,3,10,.62) 48%, rgba(34,4,42,.68));
+   backdrop-filter: blur(8px) saturate(1.35);
+   -webkit-backdrop-filter: blur(8px) saturate(1.35);
   color: #f3d8ff;
   box-shadow: 0 0 30px rgba(176,38,255,.2), inset 0 0 22px rgba(0,255,204,.04);
   overflow: hidden;

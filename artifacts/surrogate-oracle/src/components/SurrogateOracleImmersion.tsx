@@ -1856,9 +1856,13 @@ export function SurrogateOracleImmersion() {
                             cameraStateRef={cameraStateRef}
                             seekerMotionRef={seekerMotionRef}
                             transporterActive
-                            transporterProgress={isMusicMode || isMusicReturning ? 0 : oracleManifestProgress}
+                            // Lyria is an overlay, not a second manifestation.
+                            // Keep the settled Oracle mesh in place throughout
+                            // generation and playback; re-entering transporter
+                            // mode here created the white bloom curtain on iOS.
+                            transporterProgress={oracleManifestProgress}
                             transporterWarmup={oracleWarmupActive}
-                            transporterMode={isMusicMode || isMusicReturning ? 'lyria' : 'manifest'}
+                            transporterMode="manifest"
                             getTransporterAnalyser={() => lyria.analyserRef.current}
                             transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
                             reducedMotion={prefersReducedMotion}

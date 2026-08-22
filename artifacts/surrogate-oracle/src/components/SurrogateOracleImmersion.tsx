@@ -1790,6 +1790,8 @@ export function SurrogateOracleImmersion() {
                             tier={renderTier as 1 | 2 | 3}
                             speakingRef={isOracleSpeakingRef}
                             amplitude={visemeStateRef.current?.amplitude ?? 0}
+                            thinking={isOracleThinking}
+                            listening={isMicActive}
                             reducedMotion={prefersReducedMotion}
                           />
                         )}

@@ -24,6 +24,10 @@ interface OracleQuarksProps {
   speakingRef: React.RefObject<boolean>;
   /** Live viseme amplitude ref if available */
   amplitude?: number;
+  /** Oracle is between turns, preparing a response. */
+  thinking?: boolean;
+  /** Seeker microphone is open and the channel is listening. */
+  listening?: boolean;
   /** Preserve the field but slow its continuous stream for accessibility. */
   reducedMotion?: boolean;
 }
@@ -176,6 +180,8 @@ export function OracleQuarks({
   tier,
   speakingRef,
   amplitude = 0,
+  thinking = false,
+  listening = false,
   reducedMotion = false,
 }: OracleQuarksProps) {
   const pointsRef = useRef<THREE.Points>(null);

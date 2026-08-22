@@ -42,7 +42,14 @@ export function isTouchPrimaryDevice(): boolean {
 export function isQuestHeadset(): boolean {
   try {
     const ua = navigator.userAgent || '';
-    return /OculusBrowser|Quest(?:\s?2|\s?3|\s?Pro)?|Meta Quest/i.test(ua);
+    const questUserAgent = /OculusBrowser|Quest(?:\s?2|\s?3|\s?Pro)?|Meta Quest/i.test(ua);
+    // Some headset browsers can reduce or alter their UA. WebXR plus an
+    // Android/touch profile is the safe capability fallback; navigator.xr
+    // alone would also match ordinary desktop WebXR browsers.
+    const androidWebXR = /Android/i.test(ua)
+      && navigator.maxTouchPoints > 0
+      && 'xr' in navigator;
+    return questUserAgent || androidWebXR;
   } catch {
     return false;
   }

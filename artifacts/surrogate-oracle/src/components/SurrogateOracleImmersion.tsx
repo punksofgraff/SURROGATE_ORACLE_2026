@@ -77,6 +77,7 @@ import { COST_NAMES } from '../data/archetypes';
 import { getAudioContext, playActivationSfx } from '../lib/oracleSfx';
 import { trackOracleEvent } from '../lib/analytics';
 import { getABVariant } from '../lib/ab-testing';
+import { requestDeviceOrientationPermission } from '../lib/browserCapabilities';
 import type { VisemeState } from '../lib/visemeDetector';
 import { defaultAudioTracks } from '../config/audioTracks';
 import './SurrogateOracleImmersion.css';
@@ -756,6 +757,9 @@ export function SurrogateOracleImmersion() {
   }, [scenePhase, showStage00, setupAudioSpine, enterTerminal, awakeFromTerminal, markVisited, loadEcho, hasCompletedLore, hasSignedWallet, connection, startLore]);
 
   const handleStage00Tour = useCallback(() => {
+    // Start the silent socket warmup as soon as the seeker chooses the
+    // orientation journey; tour narration still boots later when tour begins.
+    oracleConversationRef.current?.prewarm();
     setShowStage00(false);
     setIsGuidedTour(true);
     enterTour();
@@ -763,9 +767,10 @@ export function SurrogateOracleImmersion() {
   }, [enterTour]);
 
   const handleStage00Dismiss = useCallback(() => {
-    // Keep this path deliberately quiet: the seeker has chosen knives, but the
-    // actual engagement gesture is the knife tap itself. That is where Gemini,
-    // sensors, and the mic all begin together.
+    // The card choice is the journey-entry gesture. Warm the socket now while
+    // the rift animation and knife-card reading happen; the actual knife tap
+    // still owns session boot, sensors, and microphone engagement.
+    oracleConversationRef.current?.prewarm();
     setShowStage00(false);
     logStep('POST-LORE CHOICE → KNIFE QUESTIONS', 'ok');
     document.body.setAttribute('data-rift-opening', 'true');
@@ -1243,15 +1248,10 @@ export function SurrogateOracleImmersion() {
     localStorage.setItem('oracle_session_muted', 'false');
     oracleConversationRef.current?.enableMicAutoRestart();
 
-    const orientation = (DeviceOrientationEvent as any);
-    const orientationRequest = typeof orientation?.requestPermission === 'function'
-      ? orientation.requestPermission()
-          .then((result: string) => logStep(`MOTION PERMISSION — ${result.toUpperCase()}`, result === 'granted' ? 'ok' : 'warn'))
-          .catch((err: unknown) => {
-            console.warn('[Parallax] DeviceOrientation permission request failed:', err);
-            logStep('MOTION PERMISSION — UNAVAILABLE', 'warn');
-          })
-      : Promise.resolve();
+    const orientationRequest = requestDeviceOrientationPermission('[Engagement]')
+      .then((granted) => {
+        logStep(`MOTION PERMISSION — ${granted ? 'GRANTED' : 'DENIED'}`, granted ? 'ok' : 'warn');
+      });
 
     // Start both real acquisition paths from this same user gesture. Camera
     // denial is optional and must never prevent the voice encounter.

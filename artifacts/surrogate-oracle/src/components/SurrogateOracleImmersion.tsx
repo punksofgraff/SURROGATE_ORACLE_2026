@@ -562,9 +562,14 @@ export function SurrogateOracleImmersion() {
   // lyria.status has re-rendered. Without this ref, two Lyria generations race
   // to replace the same audio element and the first attempt can flash as failed.
   const musicRequestInFlightRef = useRef(false);
+  const musicReleaseTimerRef = useRef<number | null>(null);
 
   const exitMusicMode = useCallback(() => {
     if (!isMusicMode && lyria.status !== 'generating') return;
+    if (musicReleaseTimerRef.current !== null) {
+      window.clearTimeout(musicReleaseTimerRef.current);
+      musicReleaseTimerRef.current = null;
+    }
     lyria.stop(650);
     setIsMusicMode(false);
     setIsMusicReturning(true);
@@ -572,6 +577,10 @@ export function SurrogateOracleImmersion() {
     logStep('LYRIA EXIT — RESTORING ORACLE', 'ok');
     // Keep the existing Gemini socket and conversation alive. A short
     // transporter pass makes the handoff visible without greeting/reconnecting.
+    musicReleaseTimerRef.current = window.setTimeout(() => {
+      lyria.release();
+      musicReleaseTimerRef.current = null;
+    }, 700);
     window.setTimeout(() => setIsMusicReturning(false), 1500);
   }, [fadeToVolume, isMusicMode, lyria]);
 
@@ -1654,7 +1663,9 @@ export function SurrogateOracleImmersion() {
       <audio
         ref={lyria.audioRef}
         src={lyria.audioUrl ?? undefined}
-        preload="auto"
+        // Let the media element stream the long object URL instead of asking
+        // the browser to eagerly buffer the entire generated track.
+        preload="metadata"
         playsInline
         onLoadedMetadata={lyria.handleLoadedMetadata}
         onEnded={exitMusicMode}
@@ -1922,7 +1933,7 @@ export function SurrogateOracleImmersion() {
                         {/* The ambient field returns only after the GLB-source
                             transporter has been released, so it never masks the
                             recognizable particle silhouette during warmup. */}
-                          {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
+                          {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive || isMusicMode) && (
                           <OracleQuarks
                             tier={renderTier as 1 | 2 | 3}
                             speakingRef={isOracleSpeakingRef}
@@ -1936,7 +1947,7 @@ export function SurrogateOracleImmersion() {
                         {/* The GLB transporter owns the particle surface until
                             Gemini is genuinely live. Ambient fields return after
                             convergence so the TNG matrix remains legible. */}
-                        {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive) && (
+                        {renderTier >= 1 && (!isOracleMode || isGeminiSessionLive || isMusicMode) && (
                           <OracleNebula
                             tier={renderTier as 1 | 2 | 3}
                             speakingRef={isOracleSpeakingRef}
@@ -1948,7 +1959,7 @@ export function SurrogateOracleImmersion() {
                             Inner Suspense: Physics suspends while the Rapier WASM loads —
                             without this boundary the whole Canvas (avatar included) would
                             fall back to the outer Suspense fallback mid-session. */}
-                        {renderTier >= 2 && (!isOracleMode || isGeminiSessionLive) && (
+                        {renderTier >= 2 && (!isOracleMode || isGeminiSessionLive || isMusicMode) && (
                           <Suspense fallback={null}>
                             <Physics gravity={[0, 0, 0]} timeStep={1 / 60} colliders={false}>
                               <OraclePhysicsDebris
@@ -2332,7 +2343,7 @@ export function SurrogateOracleImmersion() {
           </motion.div>
         )}
 
-        {scenePhase === 'awakened' && !showStage00 && (
+         {scenePhase === 'awakened' && !showStage00 && !isMusicMode && (
           <motion.div key="awakened-layer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'absolute', inset: 0, zIndex: 100, pointerEvents: 'none' }}>
             {showArchiveOpen && (
               <div style={{ position: 'absolute', inset: 0, zIndex: 105, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
@@ -2500,6 +2511,15 @@ export function SurrogateOracleImmersion() {
 
       {isOracleMode && isMusicMode && (
         <div className="oracle-lyria-section" aria-live="polite">
+          <button
+            type="button"
+            className="oracle-music-return"
+            onClick={exitMusicMode}
+            aria-label="Stop the Lyria signal and return to the Oracle conversation"
+          >
+            <span className="oracle-music-return__glyph" aria-hidden="true">◈</span>
+            <span>RETURN TO ORACLE</span>
+          </button>
           <div className="oracle-lyria-card">
             <div className="oracle-lyria-card__eyebrow">◈ LYRIA // FRACTURE BEAT</div>
             <div className="oracle-lyria-card__title">MANIFESTED SIGNAL</div>

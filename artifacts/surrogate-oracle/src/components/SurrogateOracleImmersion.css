@@ -487,6 +487,55 @@
 .oracle-lyria-card__error { margin-top: 7px; color: #ff8bdb; font: 11px 'Share Tech Mono', monospace; }
 .oracle-lyria-card__actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; position: relative; z-index: 1; }
 
+/* Always-visible escape hatch for the music state. It lives outside the card
+   so a long brief, mobile wrapping, or a pending generation can never hide
+   the path back to the live Oracle. */
+.oracle-music-return {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  z-index: calc(var(--z-system) + 5);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 14px;
+  border: 1px solid rgba(0, 255, 204, 0.62);
+  border-radius: 999px;
+  background: rgba(0, 8, 14, 0.88);
+  color: #00ffcc;
+  box-shadow: 0 0 18px rgba(0, 255, 204, 0.22), inset 0 0 12px rgba(0, 255, 204, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font: 11px 'Share Tech Mono', monospace;
+  letter-spacing: 0.11em;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+.oracle-music-return:hover,
+.oracle-music-return:focus-visible {
+  background: rgba(0, 28, 34, 0.96);
+  border-color: #00ffcc;
+  box-shadow: 0 0 25px rgba(0, 255, 204, 0.44), inset 0 0 16px rgba(0, 255, 204, 0.14);
+  transform: translateY(-1px);
+}
+.oracle-music-return:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+.oracle-music-return__glyph {
+  color: #b026ff;
+  font-size: 15px;
+  line-height: 1;
+  animation: oracle-music-return-pulse 2.4s ease-in-out infinite;
+}
+@keyframes oracle-music-return-pulse {
+  0%, 100% { opacity: 0.68; text-shadow: 0 0 5px rgba(176,38,255,.4); }
+  50% { opacity: 1; text-shadow: 0 0 14px rgba(176,38,255,.9); }
+}
+
 @media (max-width: 480px) {
   .oracle-lyria-section {
     padding: 24px 12px 36px;
@@ -495,6 +544,12 @@
 
   .oracle-lyria-card {
     width: min(88vw, 500px);
+  }
+
+  .oracle-music-return {
+    right: max(12px, env(safe-area-inset-right));
+    font-size: 10px;
+    letter-spacing: 0.08em;
   }
 }
 @keyframes ghost-cur-blink {

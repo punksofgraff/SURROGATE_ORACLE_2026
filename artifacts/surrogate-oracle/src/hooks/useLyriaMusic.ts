@@ -5,12 +5,32 @@ import { traceEvent } from '../lib/sessionTrace';
 
 export type LyriaMusicStatus = 'idle' | 'generating' | 'ready' | 'playing' | 'error';
 
+// Decode in bounded pieces instead of creating one giant binary string and a
+// second full-size Uint8Array. The provider still returns one base64 response,
+// but releasing each piece after Blob construction avoids the transient
+// string+binary peak that was especially punishing on mobile Safari.
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const parts: Uint8Array<ArrayBuffer>[] = [];
+  const chunkChars = 512 * 1024;
+  for (let offset = 0; offset < base64.length; offset += chunkChars) {
+    const binary = atob(base64.slice(offset, offset + chunkChars));
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    parts.push(bytes);
+  }
+  return new Blob(parts, { type: mimeType });
+}
+
 export function useLyriaMusic() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const fadeTimerRef = useRef<number | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const generationRef = useRef(0);
   const [status, setStatus] = useState<LyriaMusicStatus>('idle');
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,25 +85,53 @@ export function useLyriaMusic() {
   const stop = useCallback((fadeMs = 500) => {
     const audio = audioRef.current;
     const gain = gainRef.current;
+    if (fadeTimerRef.current !== null) {
+      window.clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = null;
+    }
     if (!audio || !gain) {
       setIsPlaying(false);
-      setStatus(audioUrl ? 'ready' : 'idle');
+      setStatus(audioUrlRef.current ? 'ready' : 'idle');
       return;
     }
     const ctx = getAudioContext();
     gain.gain.cancelScheduledValues(ctx.currentTime);
     gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.001), ctx.currentTime);
     gain.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + fadeMs / 1000);
-    window.setTimeout(() => {
+    fadeTimerRef.current = window.setTimeout(() => {
       audio.pause();
       audio.currentTime = 0;
       gain.gain.setValueAtTime(0, ctx.currentTime);
       setIsPlaying(false);
-      setStatus(audioUrl ? 'ready' : 'idle');
+      setStatus(audioUrlRef.current ? 'ready' : 'idle');
+      fadeTimerRef.current = null;
     }, fadeMs);
-  }, [audioUrl]);
+  }, []);
+
+  const release = useCallback(() => {
+    if (fadeTimerRef.current !== null) {
+      window.clearTimeout(fadeTimerRef.current);
+      fadeTimerRef.current = null;
+    }
+    const audio = audioRef.current;
+    audio?.pause();
+    if (audio) {
+      audio.removeAttribute('src');
+      audio.load();
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+    setAudioUrl(null);
+    setDurationSeconds(null);
+    setIsPlaying(false);
+    setStatus('idle');
+  }, []);
 
   const generate = useCallback(async (prompt: string) => {
+    const generationId = generationRef.current + 1;
+    generationRef.current = generationId;
     const requestedPrompt = prompt.trim().slice(0, 600);
     setStatus('generating');
     setError(null);
@@ -137,9 +185,10 @@ export function useLyriaMusic() {
         response_shape: data.responseShape ?? null,
         output_text_present: typeof data.outputText === 'string' && data.outputText.length > 0,
       });
-      const binary = atob(data.audioBase64.replace(/\s/g, ''));
-      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-      const nextUrl = URL.createObjectURL(new Blob([bytes], { type: data.mimeType || 'audio/mpeg' }));
+      if (generationRef.current !== generationId) return null;
+      const cleanedBase64 = data.audioBase64.replace(/\s/g, '');
+      const blob = base64ToBlob(cleanedBase64, data.mimeType || 'audio/mpeg');
+      const nextUrl = URL.createObjectURL(blob);
       // Set the element immediately as well as through React state. This keeps
       // the post-generation play attempt from racing the next render (important
       // on mobile, where a stale src otherwise turns a successful generation
@@ -148,10 +197,9 @@ export function useLyriaMusic() {
         audioRef.current.src = nextUrl;
         audioRef.current.load();
       }
-      setAudioUrl((previous) => {
-        if (previous) URL.revokeObjectURL(previous);
-        return nextUrl;
-      });
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = nextUrl;
+      setAudioUrl(nextUrl);
       setStatus('ready');
       return nextUrl;
     } catch (cause) {
@@ -164,10 +212,11 @@ export function useLyriaMusic() {
   }, []);
 
   useEffect(() => () => {
-    if (fadeTimerRef.current !== null) window.clearInterval(fadeTimerRef.current);
+    generationRef.current += 1;
+    if (fadeTimerRef.current !== null) window.clearTimeout(fadeTimerRef.current);
     audioRef.current?.pause();
-    if (audioUrl) URL.revokeObjectURL(audioUrl);
-  }, [audioUrl]);
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+  }, []);
 
   return {
     audioRef,
@@ -184,5 +233,6 @@ export function useLyriaMusic() {
     generate,
     play,
     stop,
+    release,
   };
 }

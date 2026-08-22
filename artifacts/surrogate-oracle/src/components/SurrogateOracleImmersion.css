@@ -324,6 +324,7 @@
   width: min(80vw, 30rem) !important;
   max-width: min(80vw, 30rem);
   box-sizing: border-box;
+  overflow: visible;
   line-height: 1.25 !important;
   text-align: inherit !important;
   align-items: flex-start !important;

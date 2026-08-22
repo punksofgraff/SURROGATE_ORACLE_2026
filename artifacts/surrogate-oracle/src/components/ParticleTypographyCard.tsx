@@ -95,20 +95,30 @@ export function ParticleTypographyCard({
           const relX = rect.left - containerRect.left + rect.width / 2;
           const relY = rect.top - containerRect.top + rect.height / 2;
 
-          // Spawn 3-5 particle sparks per landing character
-          const count = 3 + Math.floor(Math.random() * 3);
+           // Ghost lettering is viewed against a very dark, moving alley.
+           // Give each landed character a readable burst instead of a
+           // one-frame pinprick that disappears into the background.
+           const count = variant === 'ghost'
+             ? 8 + Math.floor(Math.random() * 5)
+             : 3 + Math.floor(Math.random() * 3);
           for (let s = 0; s < count; s++) {
             const angle = Math.random() * Math.PI * 2;
-            const speed = 25 + Math.random() * 45;
+             const speed = variant === 'ghost'
+               ? 18 + Math.random() * 42
+               : 25 + Math.random() * 45;
             sparksRef.current.push({
               x: relX + (Math.random() - 0.5) * 6,
               y: relY + (Math.random() - 0.5) * 6,
               vx: Math.cos(angle) * speed,
               vy: Math.sin(angle) * speed - 15,
-              radius: 1.2 + Math.random() * 1.6,
+               radius: variant === 'ghost'
+                 ? 1.8 + Math.random() * 2.2
+                 : 1.2 + Math.random() * 1.6,
               color: Math.random() > 0.3 ? '#00ff88' : '#00ffcc',
               alpha: 1.0,
-              decay: 1.8 + Math.random() * 1.2,
+               decay: variant === 'ghost'
+                 ? 0.65 + Math.random() * 0.45
+                 : 1.8 + Math.random() * 1.2,
             });
           }
         }
@@ -251,6 +261,8 @@ export function ParticleTypographyCard({
           pointerEvents: 'none',
           zIndex: 12,
            display: 'block',
+           overflow: 'visible',
+           mixBlendMode: 'screen',
         }}
       />
 

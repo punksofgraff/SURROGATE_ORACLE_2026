@@ -1522,7 +1522,9 @@ export function SurrogateOracleImmersion() {
   // real Live session resolves particles into the settled Oracle silhouette.
   const oracleManifestProgress = isOracleMode && isGeminiSessionLive ? 1 : 0;
   const isAlive      = scenePhase !== 'dormant';
-  const oraclePreviewVisible = scenePhase === 'awakened';
+  // The dormant landing gets the first restrained glimpse of the same field;
+  // awakened/knife selection keeps it alive until the full Oracle manifests.
+  const oraclePreviewVisible = scenePhase === 'dormant' || scenePhase === 'awakened';
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
   const subtitleText = useTypewriter('SNEAKAR XR Anthropology AI', awakened && titleText.length >= 16, 35);
 
@@ -1719,7 +1721,7 @@ export function SurrogateOracleImmersion() {
                 CSS opacity + transition handles the same 1.2 s fade-in that motion.div gave.
                 Suspense fallback: transparent (null) when canvasWarmed, so re-entering seekers
                 never see a "frozen static image" flash during WebGL context init. */}
-            {gpu.ready && renderTier >= 1 && (awakened || scenePhase === 'terminal' || canvasWarmed) && (
+            {gpu.ready && renderTier >= 1 && (scenePhase === 'dormant' || awakened || scenePhase === 'terminal' || canvasWarmed) && (
               <div
                 className="oracle-avatar-canvas oracle-avatar-smoke-hook"
                 style={{
@@ -1728,7 +1730,7 @@ export function SurrogateOracleImmersion() {
                    // During knife selection show only a restrained preview of
                    // the same quark field that will surround the live Oracle.
                    // The full avatar stays hidden until Oracle phase.
-                   opacity: oracleManifestReady ? 1 : oraclePreviewVisible ? 0.24 : 0,
+                   opacity: oracleManifestReady ? 1 : oraclePreviewVisible ? (scenePhase === 'dormant' ? 0.12 : 0.24) : 0,
                   pointerEvents: isOracleMode && oracleManifestReady ? 'auto' : 'none',
                   zIndex: 3,
                 }}

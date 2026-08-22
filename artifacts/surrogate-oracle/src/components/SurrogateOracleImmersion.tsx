@@ -574,7 +574,9 @@ export function SurrogateOracleImmersion() {
 
   const requestMusic = useCallback(async (prompt: string) => {
     try {
-      if (musicRequestInFlightRef.current || isMusicMode || lyria.status === 'generating') return;
+      // An errored music panel is recoverable: allow its RETRY action to reuse
+      // the same mode instead of requiring a fresh spoken command.
+      if (musicRequestInFlightRef.current || (isMusicMode && lyria.status !== 'error') || lyria.status === 'generating') return;
       musicRequestInFlightRef.current = true;
       setIsMusicMode(true);
       setIsMusicReturning(false);
@@ -583,9 +585,10 @@ export function SurrogateOracleImmersion() {
       logStep('LYRIA REQUEST — GENERATING CLIP', 'ok');
       const generatedUrl = await lyria.generate(prompt);
       if (!generatedUrl) {
-        setIsMusicMode(false);
-        fadeToVolume(0, 120);
-        logStep('LYRIA FAILED — ORACLE SESSION AVAILABLE', 'warn');
+        // Keep the panel mounted so the actual error remains readable and the
+        // seeker can retry without repeating the voice command. Returning to
+        // the Oracle remains an explicit choice via RETURN TO ORACLE.
+        logStep('LYRIA FAILED — RETRY AVAILABLE', 'warn');
         return;
       }
       // Try autoplay after generation; browsers that reject it leave the
@@ -613,6 +616,10 @@ export function SurrogateOracleImmersion() {
       logStep(`LYRIA PLAYBACK NEEDS TAP: ${error instanceof Error ? error.message : 'autoplay blocked'}`, 'warn');
     }
   }, [connection, lyria]);
+
+  const retryLyria = useCallback(() => {
+    if (lyria.prompt) void requestMusic(lyria.prompt);
+  }, [lyria.prompt, requestMusic]);
 
   // ── Actions ─────────────────────────────────────────────────────────────
   const startLore = useCallback(async () => {
@@ -2512,6 +2519,9 @@ export function SurrogateOracleImmersion() {
             )}
             {lyria.error && <div className="oracle-lyria-card__error">{lyria.error}</div>}
             <div className="oracle-lyria-card__actions">
+              {lyria.status === 'error' && lyria.prompt && (
+                <button className="oc-send-btn" onClick={retryLyria}>RETRY SIGNAL</button>
+              )}
               {lyria.audioUrl && !lyria.isPlaying && (
                 <button className="oc-send-btn" onClick={() => void playLyria()}>PLAY</button>
               )}

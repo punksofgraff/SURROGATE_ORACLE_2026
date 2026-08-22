@@ -316,9 +316,6 @@ export function SurrogateOracleImmersion() {
   const oracleHasSpokenRef       = useRef(false);
   const sessionEndedRef          = useRef(false);
   const completedExchangeCountRef = useRef(0);
-  // One-time joint mic+camera permission warm-up per page load (task #99) —
-  // repeating it on later mic taps added iOS audio-session flips.
-  const jointPermsWarmedRef      = useRef(false);
   const mirrorRevealedRef        = useRef(false); // fire the Mirror reveal once per session
   const portraitTriggeredRef     = useRef(false); // fire portrait generation once per session
   const pendingPortraitUrlRef    = useRef<string | null>(null); // staged portrait URL — released at turn-complete
@@ -761,14 +758,15 @@ export function SurrogateOracleImmersion() {
     setShowStage00(false);
     setIsGuidedTour(true);
     enterTour();
-    logStep('STAGE_00 → TOUR MODE ACTIVATED', 'ok');
+    logStep('POST-LORE CHOICE → GUIDED TOUR', 'ok');
   }, [enterTour]);
 
   const handleStage00Dismiss = useCallback(() => {
-    // Pre-warm immediately — gives the full 850ms rift transition for the WS to establish.
-    oracleConversationRef.current?.prewarm();
+    // Keep this path deliberately quiet: the seeker has chosen knives, but the
+    // actual engagement gesture is the knife tap itself. That is where Gemini,
+    // sensors, and the mic all begin together.
     setShowStage00(false);
-    logStep('STAGE_00 → ENTER CASCADE', 'ok');
+    logStep('POST-LORE CHOICE → KNIFE QUESTIONS', 'ok');
     document.body.setAttribute('data-rift-opening', 'true');
     setTimeout(() => {
       journey.awakeFromTerminal();
@@ -970,6 +968,11 @@ export function SurrogateOracleImmersion() {
   const handleKnifeClick = (q: string, i: number) => {
     if (knifeSelectedRef.current) return; // guard: ignore double-taps (reset on re-entering awakened)
     knifeSelectedRef.current = true;
+    // This is the earliest reliable intent signal after the seeker has spent
+    // time choosing a card. Re-warm here so a long knife-selection dwell
+    // cannot leave the connection cold at the moment of selection.
+    oracleConversationRef.current?.prewarm();
+    logStep('KNIFE INTENT → GEMINI PREWARM STARTED', 'ok');
     selectKnifeQuestion(q, i);
     const knife = KNIFE_QUESTIONS[i];
     lastKnifeRef.current = knife;
@@ -978,9 +981,9 @@ export function SurrogateOracleImmersion() {
     // Stop any active card preview/voiceover immediately
     connection.flushPlayback();
 
-    // Mark Oracle as muted on arrival. Permissions (mic, camera, gyro) are consolidated
-    // and requested simultaneously on the first Microphone "SIGNAL CONNECT" tap.
-    localStorage.setItem('oracle_session_muted', 'true');
+    // The knife is the engagement gesture: request optional sensors and open
+    // the retained mic track immediately, rather than waiting for a second tap.
+    void engageSensorsAndMic();
 
     // Fire startSession immediately — the existing queue path handles the case where the
     // WS is still CONNECTING (pendingBootRef + pendingMessagesRef flush on session.created).
@@ -1228,6 +1231,41 @@ export function SurrogateOracleImmersion() {
 
   const { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraError, seekerMotionRef } = useXRMode(() => enterTerminal());
   const faceFrameDivRef = useRef<HTMLDivElement>(null);
+
+  // All optional sensors join the same explicit seeker gesture as the mic.
+  // Do not use a throwaway audio+video getUserMedia stream here: the retained
+  // mic-track path must acquire the real mic once and keep that iOS audio
+  // session stable across later mute/unmute toggles.
+  const engageSensorsAndMic = useCallback(async () => {
+    setIsAudioPlaying(false);
+    localStorage.setItem('oracle_session_muted', 'false');
+    oracleConversationRef.current?.enableMicAutoRestart();
+
+    const orientation = (DeviceOrientationEvent as any);
+    const orientationRequest = typeof orientation?.requestPermission === 'function'
+      ? orientation.requestPermission()
+          .then((result: string) => logStep(`MOTION PERMISSION — ${result.toUpperCase()}`, result === 'granted' ? 'ok' : 'warn'))
+          .catch((err: unknown) => {
+            console.warn('[Parallax] DeviceOrientation permission request failed:', err);
+            logStep('MOTION PERMISSION — UNAVAILABLE', 'warn');
+          })
+      : Promise.resolve();
+
+    // Start both real acquisition paths from this same user gesture. Camera
+    // denial is optional and must never prevent the voice encounter.
+    activateCamera();
+    const micRequest = oracleConversationRef.current
+      ? oracleConversationRef.current.startMic()
+          .then(() => logStep('MIC UNMUTED — KNIFE ENGAGEMENT READY', 'ok'))
+          .catch((err: unknown) => {
+            console.warn('[Mic] Knife engagement could not open mic:', err);
+            logStep('MIC UNMUTE — UNAVAILABLE (CONTINUE IN TYPE MODE)', 'warn');
+          })
+      : Promise.resolve();
+
+    await Promise.allSettled([orientationRequest, micRequest]);
+    logStep('SENSOR ENGAGEMENT COMPLETE', 'ok');
+  }, [activateCamera]);
 
   // Drive face frame overlay position directly from faceBoundsRef — no React state lag.
   useEffect(() => {
@@ -1920,16 +1958,16 @@ export function SurrogateOracleImmersion() {
               transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
             >
               <div className="oracle-stage00-card__sigil">◈</div>
-              <div className="oracle-stage00-card__greeting">Greetings, Seeker.</div>
+              <div className="oracle-stage00-card__greeting">The Archive has opened.</div>
               <div className="oracle-stage00-card__body">
-                The Archive has spoken.<br />
-                The Oracle awaits within. Choose your path —
+                The Oracle awaits within.<br />
+                Choose how you want to enter —
               </div>
               <button className="oracle-stage00-card__cta" onClick={handleStage00Tour}>
-                ◈ WHAT IS HERE?
+                ◈ TAKE THE GUIDED TOUR
               </button>
               <button className="oracle-stage00-card__fafo" onClick={handleStage00Dismiss}>
-                ◈ ENTER THE CASCADE
+                ◈ CHOOSE A KNIFE
               </button>
             </motion.div>
           </div>
@@ -2334,45 +2372,9 @@ export function SurrogateOracleImmersion() {
             setTimeout(() => connection.reassertPlayback(`${phase}+1s`), 1000);
           }}
           onTypeModeChange={setIsTypeMode}
-          onMicClick={async (willListen) => {
-            if (willListen) {
-              setIsAudioPlaying(false);
-              
-              // Request gyro and camera permissions in a single unified user gesture.
-              // NOTE: deliberately NO setVolume() here — mic activation must preserve
-              // the pre-tap Oracle playback level (task #80: mic tap must not shift
-              // Oracle volume). Audibility is guaranteed by the first-audio-chunk path
-              // in useOracleConnection ("always start audible"), which owns the one
-              // intentional volume set at session start.
-              localStorage.setItem('oracle_session_muted', 'false');
-              
-              // Enable mic auto-restart for subsequent speech turns
-              oracleConversationRef.current?.enableMicAutoRestart();
-              
-              // 1. Gyro (DeviceOrientation) - Request first and synchronously to guarantee user gesture validation on iOS
-              const _DE = (DeviceOrientationEvent as any);
-              if (typeof _DE?.requestPermission === 'function') _DE.requestPermission().catch((err: unknown) => console.warn('[Parallax] DeviceOrientation permission request failed:', err));
-              
-              // 2. One-time consolidated Mic + Camera permission warm-up (single native prompt).
-              // STRICTLY once per page load (task #99): opening and stopping a combined
-              // audio+video stream flips the iOS audio session; doing it on every mic
-              // toggle added extra session transitions that shifted Oracle loudness.
-              if (!jointPermsWarmedRef.current) {
-                jointPermsWarmedRef.current = true;
-                try {
-                  const jointStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-                  jointStream.getTracks().forEach(t => t.stop()); // release tracks immediately
-                } catch (err) {
-                  console.warn('[Consolidated Perms] Joint prompt denied or error:', err);
-                }
-              }
-
-              // 3. Camera for face tracking (starts instantly with 0 prompts because of the joint warmer above)
-              activateCamera();
-              
-              logStep('SIGNAL CONNECTED — SENSORS ACTIVE', 'ok');
-            }
-          }}
+           onMicClick={(willListen) => {
+             if (willListen) void engageSensorsAndMic();
+           }}
           onUserSpeakingChange={(speaking) => setIsUserSpeaking(prev => prev !== speaking ? speaking : prev)}
           isVisible={isOracleMode}
           autoStart={false}

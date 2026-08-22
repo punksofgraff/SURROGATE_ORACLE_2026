@@ -1720,24 +1720,8 @@ const OracleConversation = forwardRef(
           )}
         </AnimatePresence>
 
-        {/* Deaf-accessible hint — persists above the terminal when Oracle is transmitting */}
-        <AnimatePresence>
-          {isOracleSpeaking && (
-            <motion.div
-              key="terminal-hint"
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 4 }}
-              transition={{ duration: 0.25 }}
-              className="oc-terminal-hint"
-            >
-              <Zap size={10} />
-              <span>ORACLE TRANSMITTING · TYPE VIA TERMINAL ⌨</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Signal pad — opened via hamburger menu TYPE MODE button */}
+        {/* Signal pad — opened via the hamburger menu. The base stays visually
+            empty until the Seeker explicitly opens the terminal. */}
         <div className={`oc-signal-pad ${showSignalPad ? 'oc-signal-pad--open' : ''}`}>
 
           <AnimatePresence>

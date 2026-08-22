@@ -127,9 +127,13 @@ Deno.serve(async (req: Request) => {
 
   const requested = typeof payload.prompt === 'string' ? payload.prompt.trim() : '';
   const prompt = (requested || DEFAULT_PROMPT).slice(0, MAX_PROMPT_LENGTH);
-  // Keep the feature an instrumental interlude even when the seeker asks for
-  // lyrics or a song; the Oracle conversation remains the vocal channel.
-  const safePrompt = `${prompt}. Instrumental only. No vocals. No lyrics.`;
+  // Instrumental is the default, but an explicit request for a song/lyrics is
+  // allowed through. Do not silently rewrite a seeker's creative brief.
+  const asksForLyrics = /\b(lyric|lyrics|vocal|vocals|sing|singer|verse|verses|chorus|hook|song)\b/i.test(prompt);
+  const safePrompt = asksForLyrics
+    ? `${prompt}. Write and perform original lyrics that fit the requested story.`
+    : `${prompt}. Instrumental only. No vocals. No lyrics.`;
+  const model = 'lyria-3-pro-preview';
 
   let upstream: Response | null = null;
   let raw = '';
@@ -143,7 +147,7 @@ Deno.serve(async (req: Request) => {
           'x-goog-api-key': apiKey,
         },
         body: JSON.stringify({
-          model: 'lyria-3-clip-preview',
+          model,
           input: safePrompt,
         }),
       });
@@ -255,8 +259,10 @@ Deno.serve(async (req: Request) => {
         : typeof audio.mimeType === 'string'
           ? audio.mimeType
           : 'audio/mpeg',
-      durationSeconds: 30,
-      model: 'lyria-3-clip-preview',
+      // Pro is the long-form model; keep this as an honest upper-bound hint
+      // rather than claiming an exact duration before the browser decodes it.
+      durationSeconds: 60,
+      model,
     });
   } catch {
     return json({

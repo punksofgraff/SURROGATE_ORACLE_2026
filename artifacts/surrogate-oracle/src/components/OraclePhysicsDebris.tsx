@@ -28,32 +28,38 @@ interface OraclePhysicsDebrisProps {
   count: number;
   /** Live "oracle is speaking" flag. */
   speakingRef: React.RefObject<boolean>;
+  musicActive?: boolean;
+  getAnalyser?: () => AnalyserNode | null;
 }
 
 /** Volume the shards are allowed to roam (cabinet perimeter surrounding the bust). */
 const HOME = new THREE.Vector3(0, 0.05, -0.38);
 const ROAM_RADIUS = 1.05;
 
-export function OraclePhysicsDebris({ count, speakingRef }: OraclePhysicsDebrisProps) {
+export function OraclePhysicsDebris({ count, speakingRef, musicActive = false, getAnalyser }: OraclePhysicsDebrisProps) {
   const bodiesRef = useRef<(RapierRigidBody | null)[] | null>(null);
   const wasSpeakingRef = useRef(false);
+  const audioDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
+  const energyRef = useRef(0.08);
+  const bassRef = useRef(0.08);
 
   const instances = useMemo<InstancedRigidBodyProps[]>(() => {
     const list: InstancedRigidBodyProps[] = [];
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2;
-      // Orbiting ring around the avatar bust
-      const r = 0.55 + Math.random() * 0.45;
+      // A filled ellipsoid, not a flat orbit ring. The Rapier bodies provide
+      // the depth and the shader/GLB fields provide the fine grain.
+      const r = Math.cbrt(Math.random()) * 1.15;
       list.push({
         key: `oracle-shard-${i}`,
         position: [
-          HOME.x + Math.cos(angle) * r,
-          HOME.y + (Math.random() - 0.5) * 1.1,
-          HOME.z + (Math.random() - 0.5) * 0.35,
+           HOME.x + Math.cos(angle) * r,
+           HOME.y + (Math.random() - 0.5) * 1.35 * r,
+           HOME.z + Math.sin(angle) * r * 0.72,
         ],
         rotation: [Math.random() * Math.PI, Math.random() * Math.PI, 0],
         linearVelocity: [
-          -Math.sin(angle) * 0.08,
+           -Math.sin(angle) * 0.08,
           (Math.random() - 0.5) * 0.05,
           0,
         ],
@@ -85,6 +91,28 @@ export function OraclePhysicsDebris({ count, speakingRef }: OraclePhysicsDebrisP
       win.__oracle_scene_probe = probe;
     }
 
+    let energy = 0.08;
+    let bass = 0.08;
+    const analyser = musicActive ? getAnalyser?.() : null;
+    if (analyser) {
+      if (!audioDataRef.current || audioDataRef.current.length !== analyser.frequencyBinCount) {
+        audioDataRef.current = new Uint8Array(analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
+      }
+      analyser.getByteFrequencyData(audioDataRef.current);
+      const data = audioDataRef.current;
+      const lowBins = Math.max(1, Math.floor(data.length * 0.12));
+      let total = 0;
+      let lowTotal = 0;
+      for (let i = 0; i < data.length; i++) {
+        total += data[i] ?? 0;
+        if (i < lowBins) lowTotal += data[i] ?? 0;
+      }
+      energy = total / data.length / 255;
+      bass = lowTotal / lowBins / 255;
+    }
+    energyRef.current = THREE.MathUtils.lerp(energyRef.current, energy, 0.12);
+    bassRef.current = THREE.MathUtils.lerp(bassRef.current, bass, 0.18);
+
     const speaking = !!speakingRef.current;
     const speakingEdge = speaking && !wasSpeakingRef.current;
     wasSpeakingRef.current = speaking;
@@ -102,14 +130,17 @@ export function OraclePhysicsDebris({ count, speakingRef }: OraclePhysicsDebrisP
       // target. The old micro-impulse was quickly erased by Rapier damping:
       // shards moved during the entrance/speaking impulse, then settled into a
       // visually frozen ring even though the frame loop was still alive.
-      if (dist > ROAM_RADIUS) {
-        scratch.force.normalize().multiplyScalar(0.00010 * (dist - ROAM_RADIUS + 0.2));
+       const musicEnergy = musicActive ? energyRef.current : 0;
+       const musicBass = musicActive ? bassRef.current : 0;
+       const shell = ROAM_RADIUS + musicEnergy * 0.45;
+       if (dist > shell) {
+         scratch.force.normalize().multiplyScalar(0.00010 * (dist - shell + 0.2));
         body.applyImpulse(scratch.force, true);
       } else if (dist > 1e-4) {
         // Tangential orbit with a small radial correction back toward HOME.
         scratch.force.normalize();
         const tx = scratch.force.z, tz = -scratch.force.x;
-        scratch.velocity.set(tx * 0.12, 0, tz * 0.12);
+         scratch.velocity.set(tx * (0.12 + musicEnergy * 0.24), (Math.sin(i + performance.now() * 0.001) * musicEnergy * 0.03), tz * (0.12 + musicEnergy * 0.24));
         const current = body.linvel();
         scratch.force.set(
           scratch.velocity.x - current.x,
@@ -136,6 +167,16 @@ export function OraclePhysicsDebris({ count, speakingRef }: OraclePhysicsDebrisP
         );
         body.applyImpulse(scratch.force, true);
       }
+       if (musicActive) {
+         // Bass is a depth impulse: the cloud breathes outward on the z axis
+         // while sustained energy keeps the volume orbiting rather than settling.
+         scratch.force.set(
+           (t.x - HOME.x) * musicBass * 0.00018,
+           (t.y - HOME.y) * musicEnergy * 0.00012,
+           (t.z - HOME.z) * (musicBass * 0.00042 + musicEnergy * 0.00008),
+         );
+         body.applyImpulse(scratch.force, true);
+       }
     }
   });
 
@@ -158,7 +199,7 @@ export function OraclePhysicsDebris({ count, speakingRef }: OraclePhysicsDebrisP
           roughness={0.2}
           metalness={0.65}
           transparent
-          opacity={0.95}
+          opacity={musicActive ? 0.82 : 0.95}
         />
       </instancedMesh>
     </InstancedRigidBodies>

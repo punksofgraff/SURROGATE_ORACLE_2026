@@ -1905,8 +1905,10 @@ export function SurrogateOracleImmersion() {
                           <Suspense fallback={null}>
                             <Physics gravity={[0, 0, 0]} timeStep={1 / 60} colliders={false}>
                               <OraclePhysicsDebris
-                                count={renderTier >= 3 ? 18 : 10}
+                                count={renderTier >= 3 ? 64 : 28}
                                 speakingRef={isOracleSpeakingRef}
+                                musicActive={isMusicMode}
+                                getAnalyser={() => lyria.analyserRef.current}
                               />
                             </Physics>
                           </Suspense>
@@ -2457,7 +2459,7 @@ export function SurrogateOracleImmersion() {
             <div className="oracle-lyria-card__eyebrow">◈ LYRIA // FRACTURE BEAT</div>
             <div className="oracle-lyria-card__title">MANIFESTED SIGNAL</div>
             <div className="oracle-lyria-card__status">
-              {lyria.status === 'generating' ? 'GENERATING 30-SECOND SIGNAL…' :
+              {lyria.status === 'generating' ? 'GENERATING UP TO 60-SECOND SIGNAL…' :
                 lyria.status === 'error' ? 'SIGNAL FAILED — ORACLE STILL LISTENING' :
                 lyria.isPlaying ? 'PLAYING // AUDIO-REACTIVE FIELD' : 'TRACK READY // TAP PLAY'}
             </div>
@@ -2789,7 +2791,12 @@ export function SurrogateOracleImmersion() {
 
       {isOracleMode && (
         <div style={{ position: 'fixed', top: '14px', right: '14px', zIndex: 100 }}>
-          <button onClick={() => setHamburgerOpen(!hamburgerOpen)} style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(0,255,136,0.4)', borderRadius: '8px', color: '#00ff88', padding: '8px 12px', cursor: 'pointer', width: '44px', height: '44px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+          <button
+            onClick={() => setHamburgerOpen(!hamburgerOpen)}
+            className="oracle-hamburger"
+            aria-label={hamburgerOpen ? 'Close Oracle menu' : 'Open Oracle menu'}
+            data-tooltip="Open menu for terminal typing"
+          >
             {hamburgerOpen ? '✕' : '☰'}
           </button>
           <AnimatePresence>

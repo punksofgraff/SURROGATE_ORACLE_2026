@@ -3952,26 +3952,6 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   letter-spacing: 0.1em;
 }
 
-/* Deaf-accessible terminal hint — sits above the signal input, never hidden in oracle mode */
-.oc-terminal-hint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 5px 14px;
-  background: rgba(0, 255, 136, 0.07);
-  border: 1px solid rgba(0, 255, 136, 0.22);
-  border-radius: 20px;
-  font-family: 'Share Tech Mono', monospace;
-  font-size: 0.63rem;
-  color: rgba(0, 255, 136, 0.75);
-  letter-spacing: 0.1em;
-  width: fit-content;
-  align-self: center;
-  margin-bottom: 6px;
-  pointer-events: none;
-}
-
 .oc-log {
   flex: 1;
   width: 100%;
@@ -4023,6 +4003,53 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   gap: 10px;
   pointer-events: auto;
   z-index: 100;
+}
+
+/* Keep the base of the encounter quiet. Terminal guidance appears only when
+   the menu affordance is hovered or keyboard-focused. */
+.oracle-hamburger {
+  position: relative;
+  background: rgba(0,0,0,0.6);
+  border: 1px solid rgba(0,255,136,0.4);
+  border-radius: 8px;
+  color: #00ff88;
+  padding: 8px 12px;
+  cursor: pointer;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.oracle-hamburger::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: max-content;
+  max-width: 190px;
+  padding: 7px 10px;
+  border: 1px solid rgba(0,255,136,0.3);
+  border-radius: 4px;
+  background: rgba(0,4,2,0.94);
+  color: rgba(0,255,204,0.86);
+  font: 0.58rem/1.35 'Share Tech Mono', monospace;
+  letter-spacing: 0.08em;
+  text-align: right;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  box-shadow: 0 5px 18px rgba(0,0,0,0.35);
+}
+
+.oracle-hamburger:hover::after,
+.oracle-hamburger:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .oc-signal-pad-toggle {

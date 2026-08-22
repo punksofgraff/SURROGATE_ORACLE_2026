@@ -34,7 +34,15 @@ const MUSIC_VERTEX_SHADER = /* glsl */ `
 
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
-    gl_PointSize = aSize * (1.0 + uEnergy * 1.8 + uPulse * 0.9) * (280.0 / -mvPosition.z);
+    // Keep the additive field atmospheric on phone-sized canvases. Without a
+    // ceiling, the nearest particles become hundreds of pixels wide during
+    // the Oracle → Lyria swap and their overlapping halos saturate the
+    // transparent Canvas into a white curtain.
+    gl_PointSize = clamp(
+      aSize * (1.0 + uEnergy * 1.8 + uPulse * 0.9) * (150.0 / max(0.35, -mvPosition.z)),
+      1.0,
+      34.0
+    );
     vEnergy = uEnergy + uPulse * 0.7;
     vDepth = clamp(1.0 - (-mvPosition.z / 4.0), 0.25, 1.0);
   }
@@ -51,8 +59,8 @@ const MUSIC_FRAGMENT_SHADER = /* glsl */ `
     float core = exp(-distanceFromCenter * distanceFromCenter * 24.0);
     float halo = exp(-distanceFromCenter * distanceFromCenter * 5.0) * 0.7;
     vec3 color = mix(vec3(0.0, 1.0, 0.8), vec3(0.77, 0.18, 1.0), clamp(vEnergy * 0.65, 0.0, 1.0));
-    float alpha = (core + halo) * (0.32 + vEnergy * 0.72) * vDepth;
-    gl_FragColor = vec4(color * (core * 1.7 + 0.35), alpha);
+    float alpha = (core + halo) * (0.14 + vEnergy * 0.34) * vDepth;
+    gl_FragColor = vec4(color * (core * 1.15 + 0.2), alpha);
   }
 `;
 

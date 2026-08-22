@@ -307,8 +307,8 @@
 .ghost-tx {
   position: absolute;
   z-index: 8;
-  font-family: 'aAnotherTag', 'Orbitron', monospace;
-  font-size: clamp(24px, 7vw, 36px);
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: clamp(18px, 4.8vw, 28px);
   font-weight: 700;
   letter-spacing: 0.02em;
   line-height: 1.25;
@@ -316,22 +316,35 @@
   max-width: 80vw;
   white-space: normal;
   word-break: break-word;
-  transition: opacity 1.4s ease, filter 1.4s ease;
+  transition: opacity 1.4s ease;
 }
 
-.ghost-tx__content {
-  display: inline-block;
-  background-image: linear-gradient(135deg, #00ff88 0%, #00ffcc 100%) !important;
-  background-clip: text !important;
-  -webkit-background-clip: text !important;
-  -webkit-text-fill-color: transparent !important;
-  color: transparent !important;
-  /* NO text-shadow or filter here — it breaks background-clip: text in many browsers */
-  padding: 2px 0; /* slight vertical bleed prevents clipping on descenders */
+.oracle-ghost-particle-question {
+  min-height: 0;
+  width: max-content !important;
+  max-width: min(80vw, 30rem);
+  line-height: 1.25 !important;
+  text-align: inherit !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  text-shadow: none !important;
+}
+.oracle-ghost-particle-copy {
+  max-width: min(80vw, 30rem) !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+  letter-spacing: 0.035em !important;
+  text-align: inherit !important;
+  text-shadow: 0 0 12px rgba(0,255,136,0.35) !important;
+  white-space: normal;
+}
+.oracle-ghost-particle-copy .oracle-knife-letter {
+  text-shadow: 0 0 9px rgba(0,255,136,0.35) !important;
+  transition: opacity 0.35s ease-out, filter 0.35s ease-out, color 0.35s ease-out;
 }
 .ghost-tx--typing  { opacity: 0.78; filter: none; }
 .ghost-tx--holding { opacity: 0.68; filter: none; }
-.ghost-tx--fading  { opacity: 0;    filter: blur(4px) saturate(0.3); }
+.ghost-tx--fading  { opacity: 0; }
 
 /* ── Sticky CTA variant — appears after 7 phrases, stays permanently ────── */
 .ghost-tx--cta {
@@ -375,6 +388,64 @@
   animation: ghost-cur-blink 0.65s steps(1) infinite;
   box-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
 }
+
+/* Lyria is the same manifested object language as the knife card: glass,
+   gradient frame, scanlines, and a compact control rail. */
+.oracle-lyria-card {
+  width: min(92vw, 500px);
+  box-sizing: border-box;
+  position: absolute;
+  left: 50%;
+  bottom: 11%;
+  transform: translateX(-50%);
+  padding: 24px 26px 20px;
+  border-radius: 16px;
+  border: 0;
+  background: linear-gradient(158deg, rgba(0,255,136,.08), rgba(0,0,0,.16) 48%, rgba(176,38,255,.13));
+  backdrop-filter: blur(8px) saturate(1.8);
+  -webkit-backdrop-filter: blur(8px) saturate(1.8);
+  color: #f3d8ff;
+  box-shadow: 0 0 30px rgba(176,38,255,.2), inset 0 0 22px rgba(0,255,204,.04);
+  overflow: hidden;
+}
+.oracle-lyria-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  padding: 1px;
+  background: linear-gradient(to bottom, #00ff88, rgba(0,255,136,.3) 38%, rgba(176,38,255,.35) 62%, #b026ff);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: .75;
+}
+.oracle-lyria-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom, transparent 0 3px, rgba(0,255,136,.035) 3px 4px);
+}
+.oracle-lyria-card__eyebrow,
+.oracle-lyria-card__status {
+  font-family: 'Share Tech Mono', monospace;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.oracle-lyria-card__eyebrow { color: #d16cff; font-size: 11px; }
+.oracle-lyria-card__title {
+  margin-top: 7px;
+  font-family: 'adrip1', 'Orbitron', monospace;
+  font-size: clamp(1.5rem, 5vw, 2.2rem);
+  letter-spacing: .08em;
+  color: #00ffcc;
+  text-shadow: 0 0 16px rgba(0,255,204,.4);
+}
+.oracle-lyria-card__status { margin-top: 8px; font-size: 12px; color: rgba(243,216,255,.78); }
+.oracle-lyria-card__error { margin-top: 7px; color: #ff8bdb; font: 11px 'Share Tech Mono', monospace; }
+.oracle-lyria-card__actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; position: relative; z-index: 1; }
 @keyframes ghost-cur-blink {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0; }
@@ -5107,27 +5178,6 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   }
 }
 
-/* ── Max Headroom glitch-phase — unconditional, every oracle session ────────
-   Two signal-dropout bursts per 14s cycle. Pure CSS, data-oracle-state driven.
-   Applied to oracle-avatar-smoke-hook (the canvas wrapper) so transform glitch
-   phases the whole canvas without conflicting with the oval-mask filter chain. */
-@keyframes oracle-headroom-phase {
-  0%    { transform: translateX(0)    scaleX(1);     opacity: 1; filter: none; }
-  /* — GLITCH 1 at ~8s (57–58.2%) — horizontal jitter + RGB channel split — */
-  57.0% { transform: translateX(0)    scaleX(1);     opacity: 1;    filter: none; }
-  57.1% { transform: translateX(5px)  scaleX(1.013); opacity: 0.72; filter: drop-shadow(4px 0 0 rgba(255,0,80,0.85)) drop-shadow(-4px 0 0 rgba(0,180,255,0.85)); }
-  57.5% { transform: translateX(-4px) scaleX(0.987); opacity: 1.0;  filter: none; }
-  57.9% { transform: translateX(2px)  scaleX(1.006); opacity: 0.88; filter: drop-shadow(2px 0 0 rgba(255,0,80,0.50)) drop-shadow(-2px 0 0 rgba(0,180,255,0.50)); }
-  58.2% { transform: translateX(0)    scaleX(1);     opacity: 1;    filter: none; }
-  /* — GLITCH 2 at ~10.5s (74.7–76.1%) — stronger dropout + wider RGB split — */
-  74.7% { transform: translateX(0)    scaleX(1);     opacity: 1;    filter: none; }
-  74.9% { transform: translateX(-7px) scaleX(1.020); opacity: 0.65; filter: drop-shadow(6px 0 0 rgba(255,0,80,0.90)) drop-shadow(-6px 0 0 rgba(0,180,255,0.90)); }
-  75.3% { transform: translateX(5px)  scaleX(0.981); opacity: 1.0;  filter: none; }
-  75.7% { transform: translateX(-2px) scaleX(1.009); opacity: 0.82; filter: drop-shadow(3px 0 0 rgba(255,0,80,0.60)) drop-shadow(-3px 0 0 rgba(0,180,255,0.60)); }
-  76.1% { transform: translateX(0)    scaleX(1);     opacity: 1;    filter: none; }
-  100%  { transform: translateX(0)    scaleX(1);     opacity: 1;    filter: none; }
-}
-
 /* Awakened (knife-select): canvas dimmed until oracle phase. CSS-driven, not JS. */
 .oracle-stage[data-oracle-state="awakened"] .oracle-avatar-smoke-hook {
   opacity: 0.45;
@@ -5162,7 +5212,9 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-headroom-hook {
   width: 100%;
   height: 100%;
-  animation: oracle-headroom-phase 14s linear 2s infinite;
+  /* Keep the live WebGL compositing surface stable; manifestation belongs
+     to the transporter shader and lightweight overlays, not this wrapper. */
+  animation: none;
 }
 
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { trackOracleEvent } from '../../lib/analytics';
+import { ParticleTypographyCard } from '../ParticleTypographyCard';
 
 // Evidence that something was here before the Seeker arrived.
 // Street-coded, post-cascade. Not slogans — fragments.
@@ -121,9 +122,15 @@ function GhostText({
 
   return (
     <div className={cls} style={style} onClick={onClick}>
-      <span className="ghost-tx__content">
-        {inst.text.slice(0, chars)}
-      </span>
+      <ParticleTypographyCard
+        questionIndex={inst.id}
+        landedChars={chars}
+        isSelected={false}
+        isThisSelected={false}
+        territory=""
+        question={inst.text}
+        variant="ghost"
+      />
       {phase === 'typing' && <span className="ghost-tx__cur" />}
     </div>
   );

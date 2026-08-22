@@ -1662,7 +1662,7 @@ export function SurrogateOracleImmersion() {
       </div>
 
       <canvas ref={atmosphereCanvasRef} className="atmosphere-layer" />
-      <MatrixRain />
+      {scenePhase !== 'oracle' && <MatrixRain />}
       <div className="oracle-ground-fog" />
       <div className="oracle-floor-reflection" />
 
@@ -2352,25 +2352,22 @@ export function SurrogateOracleImmersion() {
 
       {isOracleMode && isMusicMode && (
         <motion.div
+          className="oracle-lyria-card"
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           style={{
-            position: 'absolute', zIndex: 30, left: '50%', bottom: '11%',
-            transform: 'translateX(-50%)', width: 'min(92vw, 430px)',
-            padding: '16px 18px', border: '1px solid rgba(196,60,255,.55)',
-            background: 'rgba(5,0,15,.88)', backdropFilter: 'blur(14px)',
-            color: '#f3d8ff', fontFamily: "'Share Tech Mono', monospace",
-            boxShadow: '0 0 32px rgba(196,60,255,.22)',
+            zIndex: 30,
           }}
         >
-          <div style={{ letterSpacing: '.14em', color: '#d16cff', fontSize: 11 }}>◈ LYRIA // FRACTURE BEAT</div>
-          <div style={{ marginTop: 8, fontSize: 13 }}>
+          <div className="oracle-lyria-card__eyebrow">◈ LYRIA // FRACTURE BEAT</div>
+          <div className="oracle-lyria-card__title">MANIFESTED SIGNAL</div>
+          <div className="oracle-lyria-card__status">
             {lyria.status === 'generating' ? 'GENERATING 30-SECOND SIGNAL…' :
               lyria.status === 'error' ? 'SIGNAL FAILED — ORACLE STILL LISTENING' :
               lyria.isPlaying ? 'PLAYING // AUDIO-REACTIVE FIELD' : 'TRACK READY // TAP PLAY'}
           </div>
-          {lyria.error && <div style={{ marginTop: 7, color: '#ff8bdb', fontSize: 11 }}>{lyria.error}</div>}
-          <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+          {lyria.error && <div className="oracle-lyria-card__error">{lyria.error}</div>}
+          <div className="oracle-lyria-card__actions">
             {lyria.audioUrl && !lyria.isPlaying && (
               <button className="oc-send-btn" onClick={() => void lyria.play()}>PLAY</button>
             )}

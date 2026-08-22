@@ -4,7 +4,8 @@
 
 @font-face {
   font-family: 'aAnotherTag';
-  src: url('https://sneakar-public.s3.us-east-1.amazonaws.com/SNEAKARCADE+FONTS/SNEAKAR-SURROGATE%3AORACLE/aAnotherTag.otf') format('opentype');
+  /* Compatibility alias: legacy inline styles now use the approved dripping marker. */
+  src: url('https://sneakar-public.s3.us-east-1.amazonaws.com/SNEAKARCADE+FONTS/SNEAKAR-SURROGATE%3AORACLE/adrip1.ttf') format('truetype');
   font-weight: normal;
   font-style: normal;
   font-display: swap;

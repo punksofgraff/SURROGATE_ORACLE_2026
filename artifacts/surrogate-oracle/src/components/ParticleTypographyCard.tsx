@@ -19,6 +19,8 @@ interface ParticleTypographyCardProps {
   accentColor?: string;
   territory: string;
   question: string;
+  /** Ghost transmissions reuse the particle engine without knife selection chrome. */
+  variant?: 'knife' | 'ghost';
 }
 
 interface Spark {
@@ -47,6 +49,7 @@ export function ParticleTypographyCard({
   accentColor = '#00ff88',
   territory,
   question,
+  variant = 'knife',
 }: ParticleTypographyCardProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -223,7 +226,7 @@ export function ParticleTypographyCard({
   return (
     <div
       ref={containerRef}
-      className="oracle-knife-card-question"
+      className={`oracle-knife-card-question${variant === 'ghost' ? ' oracle-ghost-particle-question' : ''}`}
       aria-label={question}
       style={{
         position: 'relative',
@@ -250,6 +253,7 @@ export function ParticleTypographyCard({
 
       {/* Crystal-Clear, Full-Scale Typography Spans */}
       <div
+        className={variant === 'ghost' ? 'oracle-ghost-particle-copy' : undefined}
         style={{
           fontFamily: "'PhillySans', 'Share Tech Mono', monospace",
           fontSize: 'clamp(1.44rem, 4.2vw, 1.75rem)',
@@ -259,7 +263,7 @@ export function ParticleTypographyCard({
           maxWidth: '28ch',
           color: 'rgba(255, 255, 255, 0.95)',
           textShadow: '0 1px 14px rgba(0, 0, 0, 0.98), 0 0 24px rgba(0, 255, 136, 0.25)',
-          opacity: isSelected && isThisSelected ? 0 : 1,
+           opacity: isSelected && isThisSelected ? 0 : 1,
           transition: 'opacity 0.4s ease-out',
         }}
       >

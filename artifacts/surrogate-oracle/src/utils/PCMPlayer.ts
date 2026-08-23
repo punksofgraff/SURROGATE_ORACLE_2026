@@ -18,6 +18,12 @@ import { createAudioContext, isQuestHeadset, isTouchPrimaryDevice } from '../lib
 // boost read as "one volume muted, another unmuted". Living mid-graph, this is
 // a fixed graph param the mic gesture never touches.
 const DEFAULT_MAKEUP_GAIN = 2.5;
+// Pre-selection knife prompts share the Oracle voice bus, but their dry+echo
+// sum can read louder than lore, guide, and live Oracle speech. Keep the
+// effect audible while matching the clean voice target.
+const TAUNT_VOICE_TRIM = 0.78;
+const TAUNT_ECHO_GAIN = 0.08;
+const TAUNT_FEEDBACK_GAIN = 0.06;
 
 export class PCMPlayer {
   private context: AudioContext;
@@ -196,7 +202,7 @@ export class PCMPlayer {
       dry.gain.setValueAtTime(1, this.context.currentTime);
       delay.delayTime.setValueAtTime(0.17, this.context.currentTime);
       echo.gain.setValueAtTime(0, this.context.currentTime);
-      feedback.gain.setValueAtTime(0.18, this.context.currentTime);
+      feedback.gain.setValueAtTime(TAUNT_FEEDBACK_GAIN, this.context.currentTime);
       input.connect(dry);
       input.connect(delay);
       delay.connect(echo);
@@ -405,12 +411,12 @@ export class PCMPlayer {
     if (enabled) {
       // Attack is intentionally quiet, then the dry voice blooms; the echo
       // remains below the dry path so the words stay intelligible.
-      this.tauntInput.gain.setValueAtTime(0.5, now);
-      this.tauntInput.gain.linearRampToValueAtTime(1.0, now + 0.42);
-      this.tauntInput.gain.linearRampToValueAtTime(0.68, now + 1.35);
+      this.tauntInput.gain.setValueAtTime(0.5 * TAUNT_VOICE_TRIM, now);
+      this.tauntInput.gain.linearRampToValueAtTime(TAUNT_VOICE_TRIM, now + 0.42);
+      this.tauntInput.gain.linearRampToValueAtTime(0.68 * TAUNT_VOICE_TRIM, now + 1.35);
       this.tauntDryGain.gain.setValueAtTime(1.0, now);
-      this.tauntEchoGain.gain.setValueAtTime(0.22, now);
-      this.tauntFeedbackGain.gain.setValueAtTime(0.16, now);
+      this.tauntEchoGain.gain.setValueAtTime(TAUNT_ECHO_GAIN, now);
+      this.tauntFeedbackGain.gain.setValueAtTime(TAUNT_FEEDBACK_GAIN, now);
       this.tauntDelay.delayTime.setValueAtTime(0.17, now);
     } else {
       this.tauntInput.gain.setValueAtTime(Math.max(0.0001, this.tauntInput.gain.value), now);

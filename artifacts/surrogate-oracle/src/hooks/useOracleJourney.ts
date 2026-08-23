@@ -13,6 +13,8 @@ import {
   playExitTone 
 } from '../lib/oracleSfx';
 
+const ORACLE_WARMUP_FALLBACK_MS = 2400;
+
 export type ScenePhase = 'dormant' | 'terminal' | 'tour' | 'awakened' | 'oracle';
 
 interface UseOracleJourneyProps {
@@ -128,7 +130,8 @@ export function useOracleJourney({
     
     // Gemini readiness owns the transition. Keep a short visual floor so the
     // knife reveal is not cut off, plus a bounded fallback so a failed socket
-    // cannot strand the seeker in the knife layer forever.
+    // cannot strand the seeker in the knife layer forever. Do not make a cold
+    // or stalled handshake hold the seeker for the old six-second wait.
     if (knifeTransitionTimerRef.current !== null) {
       clearTimeout(knifeTransitionTimerRef.current);
     }
@@ -137,7 +140,7 @@ export function useOracleJourney({
       scenePhaseRef.current = 'oracle';
       setScenePhase('oracle');
       logStep('ORACLE PHASE FALLBACK — GEMINI NOT READY', 'warn');
-    }, 6000);
+    }, ORACLE_WARMUP_FALLBACK_MS);
   }, []);
 
   const markOracleReady = useCallback(() => {

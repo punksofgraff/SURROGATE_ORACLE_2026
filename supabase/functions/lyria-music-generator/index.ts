@@ -5,6 +5,8 @@
  * base64 because a generated clip is short and this keeps the client contract
  * independent of storage bucket/public URL configuration.
  */
+import { distillMusicStyles, styleBlendInstruction } from './music-style.ts';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -18,123 +20,6 @@ const INTERACTION_POLL_MS = 1_500;
 const DEFAULT_PROMPT =
   'A dark, cinematic instrumental cyberpunk beat for a neon alley oracle, 96 BPM, D minor, ' +
   'deep analog bass, fractured percussion, glassy synth pulses, no vocals, no lyrics.';
-
-type MusicStyleSlug = {
-  slug: string;
-  aliases: string[];
-  descriptor: string;
-};
-
-// This is intentionally a small, curated vocabulary rather than an imitation
-// engine. The slug is the stable distillation result; the descriptor is what is
-// actually sent to Lyria. Add aliases here as real seeker requests reveal them.
-const MUSIC_STYLE_CATALOG: MusicStyleSlug[] = [
-  {
-    slug: 'modern-jazz-piano',
-    aliases: ['brad mehldau', 'mehldau'],
-    descriptor: 'exploratory modern jazz piano',
-  },
-  {
-    slug: 'abstract-hip-hop-rhythm',
-    aliases: ['qwel'],
-    descriptor: 'abstract spoken-word hip-hop rhythmic energy',
-  },
-  {
-    slug: 'angular-jazz-guitar',
-    aliases: ['kurt rosenwinkel', 'rosenwinkel'],
-    descriptor: 'angular lyrical electric-guitar harmony',
-  },
-  {
-    slug: 'dynamic-acoustic-jazz-drums',
-    aliases: ['bryan blade', 'brian blade', 'blade'],
-    descriptor: 'dynamic acoustic jazz drumming',
-  },
-  {
-    slug: 'modal-jazz-trumpet',
-    aliases: ['miles davis', 'miles'],
-    descriptor: 'spacious modal-jazz trumpet phrasing',
-  },
-  {
-    slug: 'angular-piano-jazz',
-    aliases: ['thelonious monk', 'monk'],
-    descriptor: 'angular, percussive piano-jazz phrasing',
-  },
-  {
-    slug: 'electric-jazz-funk',
-    aliases: ['herbie hancock', 'hancock'],
-    descriptor: 'inventive electric-jazz funk keyboards',
-  },
-  {
-    slug: 'swung-sample-hip-hop',
-    aliases: ['j dilla', 'dilla'],
-    descriptor: 'loose, swung sample-based hip-hop rhythm',
-  },
-  {
-    slug: 'cosmic-beat-electronica',
-    aliases: ['flying lotus', 'flylo'],
-    descriptor: 'cosmic, fractured beat-driven electronica',
-  },
-  {
-    slug: 'intricate-breakbeat-electronica',
-    aliases: ['aphex twin', 'aphex'],
-    descriptor: 'intricate, textural breakbeat electronica',
-  },
-  {
-    slug: 'cinematic-trip-hop',
-    aliases: ['portishead'],
-    descriptor: 'cinematic, nocturnal trip-hop atmosphere',
-  },
-];
-
-function normalizeMusicText(value: string): string {
-  return value.toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
-}
-
-function editDistance(a: string, b: string): number {
-  const row = Array.from({ length: b.length + 1 }, (_, index) => index);
-  for (let i = 1; i <= a.length; i += 1) {
-    let diagonal = row[0];
-    row[0] = i;
-    for (let j = 1; j <= b.length; j += 1) {
-      const above = row[j];
-      row[j] = a[i - 1] === b[j - 1]
-        ? diagonal
-        : Math.min(diagonal, above, row[j - 1]) + 1;
-      diagonal = above;
-    }
-  }
-  return row[b.length];
-}
-
-function matchesAlias(normalizedPrompt: string, alias: string): boolean {
-  if (normalizedPrompt.includes(alias)) return true;
-  const promptWords = normalizedPrompt.split(' ');
-  const aliasWords = alias.split(' ');
-  if (aliasWords.length === 1 && alias.length >= 5) {
-    const maxDistance = alias.length >= 8 ? 2 : 1;
-    return promptWords.some((word) =>
-      word.length >= 5 &&
-      Math.abs(word.length - alias.length) <= maxDistance &&
-      editDistance(word, alias) <= maxDistance
-    );
-  }
-  return false;
-}
-
-function distillMusicStyles(prompt: string): { prompt: string; slugs: string[] } {
-  const normalizedPrompt = normalizeMusicText(prompt);
-  const matches = MUSIC_STYLE_CATALOG.filter((style) =>
-    style.aliases.some((alias) => matchesAlias(normalizedPrompt, normalizeMusicText(alias)))
-  );
-  let distilled = prompt;
-  for (const style of matches) {
-    for (const alias of style.aliases) {
-      const escaped = normalizeMusicText(alias).split(' ').map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[^a-zA-Z0-9]+');
-      distilled = distilled.replace(new RegExp(`\\b${escaped}(?:['’]s)?(?:-?style|\\s+style)?\\b`, 'gi'), style.descriptor);
-    }
-  }
-  return { prompt: distilled, slugs: matches.map((style) => style.slug) };
-}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -258,14 +143,13 @@ Deno.serve(async (req: Request) => {
   const durationInstruction =
     `Create a complete, dynamically arranged track with a natural ending. ` +
     `Do not exceed ${MAX_DURATION_SECONDS} seconds. Let the arrangement develop beyond the opening minute.`;
-  const jazzGuard = /\b(jazz|bebop|swing|straight[- ]ahead|hard[- ]bop|cool jazz|jazz trio)\b/i.test(prompt)
-    ? ` This is jazz: use acoustic jazz harmony, walking or conversational bass, ride-cymbal swing, ` +
-      `improvised piano/guitar interplay, and a real jazz ending. Do not use country, folk, bluegrass, ` +
-      `Nashville, pedal steel, banjo, twang, or four-on-the-floor pop production.`
+  const styleBlend = styleBlendInstruction(distilledStyles);
+  const jazzGuard = distilledStyles.genres.includes('jazz')
+    ? ` Jazz harmony and improvisational interplay should coexist with every other requested style; do not let jazz erase reggae or drum-and-bass rhythm.`
     : '';
   const safePrompt = asksForLyrics
-    ? `${prompt}. ${durationInstruction}${jazzGuard} Write and perform original lyrics that fit the requested story.`
-    : `${prompt}. ${durationInstruction}${jazzGuard} Instrumental only. No vocals. No lyrics.`;
+    ? `${prompt}.${styleBlend ? ` ${styleBlend}` : ''} ${durationInstruction}${jazzGuard} Write and perform original lyrics that fit the requested story.`
+    : `${prompt}.${styleBlend ? ` ${styleBlend}` : ''} ${durationInstruction}${jazzGuard} Instrumental only. No vocals. No lyrics.`;
   const model = 'lyria-3-pro-preview';
 
   let upstream: Response | null = null;
@@ -414,6 +298,7 @@ Deno.serve(async (req: Request) => {
       model,
       prompt: safePrompt,
       musicStyleSlugs: distilledStyles.slugs,
+      musicGenres: distilledStyles.genres,
       requestId,
       interactionId: interactionId || undefined,
       outputText: typeof result.output_text === 'string'

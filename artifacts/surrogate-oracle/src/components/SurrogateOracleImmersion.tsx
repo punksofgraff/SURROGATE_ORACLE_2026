@@ -2699,8 +2699,9 @@ export function SurrogateOracleImmersion() {
                 <LyriaPromptMarquee prompt={lyria.prompt} />
               </div>
             )}
-            {(lyria.model || lyria.requestId || lyria.durationSeconds) && (
+            {(lyria.musicGenres.length > 0 || lyria.model || lyria.requestId || lyria.durationSeconds) && (
               <div className="oracle-lyria-card__meta">
+                {lyria.musicGenres.length > 0 && `STYLE // ${lyria.musicGenres.join(' + ')}`}
                 {lyria.model && `MODEL // ${lyria.model}`}
                 {lyria.requestId && ` · REF // ${lyria.requestId.slice(0, 8)}`}
                 {lyria.durationSeconds && ` · DECODED // ${lyria.durationSeconds.toFixed(1)}s`}

@@ -1,0 +1,91 @@
+Yes—that is the right placement. Put a **brief “set the room” capability step immediately after the user commits to `Enter Alley`**, and immediately after the returning-user journey choice. Don’t put it before “What is here?”—that screen should remain curiosity-first, with no technical interruption.
+
+I couldn’t locate those exact strings through GitHub’s code index yet, so I’m treating your stated journey order as the source of truth rather than pretending I found the component. The current Oracle repo is indeed the active TypeScript project.[1][2]
+
+## Journey placement
+
+```text
+New visitor
+What is here?
+   ↓
+Enter Alley
+   ↓
+Set the room  ← capability moment
+   ↓
+Alley / Oracle encounter
+
+Returning visitor
+Choose return journey
+   ↓
+Set the room  ← only if not completed this browser session
+   ↓
+Resume encounter
+```
+
+This is the strongest moment because the visitor has made an affirmative, meaningful choice to cross into the experience. The system prompts, if any, feel connected to “entering the room,” not like an unexplained technical hurdle at the door.
+
+## Make it one fast screen
+
+Avoid a large consent checklist. Use a full-screen transition or compact interstitial with one sentence and three intentional choices:
+
+> **Set the room**  
+> Sound and touch make the alley feel present. You can change this any time.
+
+```text
+[ Enter with sound + touch ]     primary
+[ Enter quietly ]                secondary
+```
+
+If camera/mic or motion is actually required for a selected Oracle mode, reveal it as a third, explicit tier:
+
+```text
+[ Enter in full presence ]
+Camera, microphone, and motion may be requested next.
+```
+
+That way, the default path is not three permission dialogs. A user who only wants the Oracle can be inside in one tap.
+
+## What each choice does
+
+| Choice | App behavior | Browser prompt risk |
+|---|---|---|
+| Enter quietly | Marks the journey ready; keeps sound muted and haptics off | None |
+| Enter with sound + touch | Resume/create the `AudioContext`; attempt haptic feedback where the browser/device supports it | Usually none |
+| Enter in full presence | Do the above, then request only the genuinely needed camera/mic/motion features | Native browser prompts may appear |
+
+Do all activation inside the original button’s click handler. Sound playback normally needs that user gesture; motion permission on iOS likewise needs a gesture.[1][3]
+
+## Returning-user behavior
+
+Store **only the app preference**, not a claim that the browser has permanently granted device permission:
+
+```ts
+type PresencePreference = "quiet" | "sound-touch" | "full";
+
+localStorage.setItem(
+  "surrogate.oracle.presencePreference",
+  JSON.stringify({
+    mode: "sound-touch",
+    selectedAt: Date.now(),
+    version: 1
+  })
+);
+```
+
+Then, after the return-journey choice:
+
+- If there is no preference: show **Set the room**.
+- If they chose quiet or sound/touch this session: enter directly and honor that preference.
+- If they chose full presence: attempt the needed feature only when its feature begins; gracefully show the native prompt again if the browser has not retained access.
+- Include a small, persistent control inside the experience: `⋯ Presence` → Quiet / Sound + touch / Full presence.
+
+The browser, not `localStorage`, determines the current camera/mic authorization state and may grant access only for a session.[4][5]
+
+The basic principle: **one “set the room” decision, not a permission form**. Let only the people who deliberately elect full presence encounter additional native prompts.
+
+Sources
+[1] DeviceMotionEvent - Web APIs - MDN Web Docs https://developer.mozilla.org/en-US/docs/Web/API/DeviceMotionEvent
+[2] MediaDevices: getUserMedia() method - Web APIs | MDN https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia
+[3] Web Audio API best practices - Web APIs - MDN Web Docs - Mozilla https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices
+[4] Media Capture and Streams - W3C https://www.w3.org/TR/mediacapture-streams/
+[5] One-time permissions are here to stay! - Advancing WebRTC https://blog.mozilla.org/webrtc/one-time-permissions-are-here-to-stay/

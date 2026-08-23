@@ -17,6 +17,7 @@ export interface UseRadioAtmosphereParams {
   showStage00: boolean;
   isOracleSpeaking: boolean;
   isMicActive: boolean;
+  outputGain?: number;
   oracleHasSpokenRef: RefObject<boolean>;
 }
 
@@ -38,6 +39,7 @@ export function useRadioAtmosphere({
   showStage00,
   isOracleSpeaking,
   isMicActive,
+  outputGain = 1,
   oracleHasSpokenRef,
 }: UseRadioAtmosphereParams) {
   const audioRef      = useRef<HTMLAudioElement | null>(null);
@@ -124,6 +126,7 @@ export function useRadioAtmosphere({
   useEffect(() => {
     let nextTarget: number;
     let rampMs: number | undefined;
+    const gain = Math.min(1, Math.max(0, outputGain));
 
     // Track if Oracle has spoken during this session
     if (isOracleSpeaking) {
@@ -156,10 +159,11 @@ export function useRadioAtmosphere({
       nextTarget = MUSIC_OFF_VOLUME;
     }
 
+    nextTarget *= gain;
     if (Math.abs(nextTarget - targetVol) > 0.0001) {
       fadeToVolume(nextTarget, rampMs);
     }
-  }, [scenePhase, showStage00, isOracleSpeaking, isMicActive, isAudioPlaying, targetVol, fadeToVolume]);
+  }, [scenePhase, showStage00, isOracleSpeaking, isMicActive, isAudioPlaying, outputGain, targetVol, fadeToVolume]);
 
   useEffect(() => {
     if (!audioRef.current) return;

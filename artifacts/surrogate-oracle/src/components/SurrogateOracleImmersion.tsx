@@ -20,6 +20,7 @@ import { X, Camera, CameraOff } from 'lucide-react';
 import { BackendControlPanel } from './BackendControlPanel';
 import { GoogleSignInOverlay } from './GoogleSignInOverlay';
 import { GraffPunksRadio } from './GraffPunksRadio';
+import { OracleAudioControls } from './OracleAudioControls';
 import { EnculturateCrate } from './EnculturateCrate';
 import OracleConversation, { OracleConversationHandle, OracleScore } from './OracleConversation';
 
@@ -272,6 +273,11 @@ export function SurrogateOracleImmersion() {
   const [sacredPulse, setSacredPulse]   = useState(0);
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
   const [isOracleThinking, setIsOracleThinking] = useState(false);
+  const [audioOutputVolume, setAudioOutputVolume] = useState(() => {
+    const saved = Number(localStorage.getItem('oracle_output_volume'));
+    return Number.isFinite(saved) ? Math.min(1, Math.max(0, saved)) : 0.78;
+  });
+  const [audioOutputMuted, setAudioOutputMuted] = useState(() => localStorage.getItem('oracle_output_muted') === 'true');
   const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
   const [showWallet, setShowWallet]             = useState(false);
   const [visionPaused, setVisionPaused]         = useState(false);
@@ -555,9 +561,17 @@ export function SurrogateOracleImmersion() {
     showStage00,
     isOracleSpeaking,
     isMicActive,
+    outputGain: audioOutputMuted ? 0 : audioOutputVolume,
     oracleHasSpokenRef,
   });
   const lyria = useLyriaMusic();
+
+  useEffect(() => {
+    localStorage.setItem('oracle_output_volume', String(audioOutputVolume));
+    localStorage.setItem('oracle_output_muted', String(audioOutputMuted));
+    connection.setVolume(audioOutputMuted ? 0 : audioOutputVolume, 120);
+    lyria.setOutputGain(audioOutputMuted ? 0 : audioOutputVolume, 120);
+  }, [audioOutputMuted, audioOutputVolume, connection.setVolume, lyria.setOutputGain]);
   // React state is intentionally not the request lock: a voice transcript and
   // its committed user turn can arrive in the same tick, before isMusicMode or
   // lyria.status has re-rendered. Without this ref, two Lyria generations race
@@ -2562,6 +2576,20 @@ export function SurrogateOracleImmersion() {
             return lines.join('\n');
           })()}
           isGuidedTour={isGuidedTour}
+        />
+      )}
+
+      {isOracleMode && (isAudioPlaying || isOracleSpeaking || isMusicMode || lyria.isPlaying) && (
+        <OracleAudioControls
+          volume={audioOutputVolume}
+          muted={audioOutputMuted}
+          voiceActive={isOracleSpeaking}
+          musicActive={isMusicMode || lyria.isPlaying}
+          onToggleMute={() => setAudioOutputMuted(current => !current)}
+          onVolumeChange={(volume) => {
+            setAudioOutputVolume(volume);
+            if (volume > 0 && audioOutputMuted) setAudioOutputMuted(false);
+          }}
         />
       )}
 

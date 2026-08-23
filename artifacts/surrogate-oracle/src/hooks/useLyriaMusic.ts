@@ -39,6 +39,7 @@ export function useLyriaMusic() {
   const [model, setModel] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [durationSeconds, setDurationSeconds] = useState<number | null>(null);
+  const outputGainRef = useRef(1);
 
   const handleLoadedMetadata = useCallback(() => {
     const duration = audioRef.current?.duration;
@@ -76,11 +77,22 @@ export function useLyriaMusic() {
     if (fadeTimerRef.current !== null) window.clearInterval(fadeTimerRef.current);
     gain.gain.cancelScheduledValues(ctx.currentTime);
     gain.gain.setValueAtTime(Math.max(gain.gain.value, 0.001), ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.9, ctx.currentTime + 0.35);
+    gain.gain.linearRampToValueAtTime(0.9 * outputGainRef.current, ctx.currentTime + 0.35);
     await audio.play();
     setIsPlaying(true);
     setStatus('playing');
   }, [audioUrl, ensureGraph]);
+
+  const setOutputGain = useCallback((gainValue: number, rampMs = 120) => {
+    const nextGain = Math.min(1, Math.max(0, gainValue));
+    outputGainRef.current = nextGain;
+    const gain = gainRef.current;
+    if (!gain) return;
+    const ctx = getAudioContext();
+    gain.gain.cancelScheduledValues(ctx.currentTime);
+    gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.9 * nextGain, ctx.currentTime + rampMs / 1000);
+  }, []);
 
   const stop = useCallback((fadeMs = 500) => {
     const audio = audioRef.current;
@@ -238,5 +250,6 @@ export function useLyriaMusic() {
     play,
     stop,
     release,
+    setOutputGain,
   };
 }

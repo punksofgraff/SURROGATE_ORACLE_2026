@@ -525,6 +525,120 @@
   outline: 2px solid #fff;
   outline-offset: 3px;
 }
+
+/* Compact output-only audio rail. It deliberately sits above the bottom
+   navigation so it never competes with the mic or changes mic state. */
+.oracle-audio-controls {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(96px, calc(env(safe-area-inset-bottom) + 88px));
+  z-index: calc(var(--z-system) + 4);
+  width: min(232px, calc(100vw - 32px));
+  color: rgba(0, 255, 204, 0.9);
+  font: 10px 'Share Tech Mono', monospace;
+  letter-spacing: 0.1em;
+  pointer-events: auto;
+}
+.oracle-audio-controls summary {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  min-height: 38px;
+  padding: 8px 11px;
+  box-sizing: border-box;
+  border: 1px solid rgba(0, 255, 204, 0.38);
+  border-radius: 999px;
+  background: rgba(0, 8, 14, 0.82);
+  box-shadow: 0 0 15px rgba(0, 255, 204, 0.12), inset 0 0 10px rgba(0, 255, 204, 0.04);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  cursor: pointer;
+  list-style: none;
+  touch-action: manipulation;
+  transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+.oracle-audio-controls summary::-webkit-details-marker { display: none; }
+.oracle-audio-controls summary:hover,
+.oracle-audio-controls summary:focus-visible {
+  border-color: rgba(0, 255, 204, 0.9);
+  background: rgba(0, 24, 30, 0.92);
+  box-shadow: 0 0 22px rgba(0, 255, 204, 0.22);
+}
+.oracle-audio-controls summary:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+.oracle-audio-controls__summary-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oracle-audio-controls__close { display: none; }
+.oracle-audio-controls[open] .oracle-audio-controls__open { display: none; }
+.oracle-audio-controls[open] .oracle-audio-controls__close { display: block; }
+.oracle-audio-controls__body {
+  margin-top: 7px;
+  padding: 12px;
+  border: 1px solid rgba(0, 255, 204, 0.28);
+  border-radius: 10px;
+  background: rgba(0, 7, 13, 0.9);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.45), inset 0 0 12px rgba(0, 255, 204, 0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.oracle-audio-controls__heading,
+.oracle-audio-controls__modes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.oracle-audio-controls__heading { color: rgba(0, 255, 204, 0.72); }
+.oracle-audio-controls__row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 10px;
+}
+.oracle-audio-controls__mute {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid rgba(0, 255, 204, 0.38);
+  border-radius: 50%;
+  background: transparent;
+  color: #00ffcc;
+  cursor: pointer;
+}
+.oracle-audio-controls__mute:hover,
+.oracle-audio-controls__mute:focus-visible {
+  border-color: #00ffcc;
+  box-shadow: 0 0 12px rgba(0, 255, 204, 0.2);
+}
+.oracle-audio-controls__mute:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.oracle-audio-controls input[type="range"] {
+  width: 100%;
+  accent-color: #00ffcc;
+  cursor: pointer;
+}
+.oracle-audio-controls__modes {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 11px;
+  color: rgba(255, 255, 255, 0.34);
+  font-size: 9px;
+}
+.oracle-audio-controls__modes .is-active { color: #00ffcc; text-shadow: 0 0 8px rgba(0, 255, 204, 0.55); }
+.oracle-audio-controls__mic-note {
+  width: 100%;
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 8px;
+}
 .oracle-music-return__glyph {
   color: #b026ff;
   font-size: 15px;
@@ -550,6 +664,11 @@
     right: max(12px, env(safe-area-inset-right));
     font-size: 10px;
     letter-spacing: 0.08em;
+  }
+  .oracle-audio-controls {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(88px, calc(env(safe-area-inset-bottom) + 82px));
+    width: min(220px, calc(100vw - 24px));
   }
 }
 @keyframes ghost-cur-blink {

@@ -502,14 +502,75 @@
   text-align: center;
 }
 .oracle-lyria-card__brief {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 14px;
   color: rgba(255, 255, 255, 0.76);
   font: 0.92rem/1.5 'PhillySans', 'Share Tech Mono', monospace;
   letter-spacing: 0.03em;
   text-align: center;
-  max-height: 3.1em;
+}
+.oracle-lyria-card__brief-label {
+  flex: 0 0 auto;
+  color: rgba(0, 255, 204, 0.72);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+}
+.oracle-lyria-card__prompt-viewport {
+  position: relative;
+  min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
-  text-overflow: ellipsis;
+  text-align: left;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+.oracle-lyria-card__prompt-viewport.is-scrollable {
+  cursor: ew-resize;
+}
+.oracle-lyria-card__prompt-track {
+  width: max-content;
+  min-width: 100%;
+  display: flex;
+  align-items: center;
+  animation: none;
+}
+.oracle-lyria-card__prompt-viewport.is-scrollable .oracle-lyria-card__prompt-track {
+  animation: lyria-prompt-marquee var(--lyria-prompt-duration, 14s) ease-in-out infinite alternate;
+}
+.oracle-lyria-card__prompt-viewport:hover .oracle-lyria-card__prompt-track,
+.oracle-lyria-card__prompt-viewport:focus-within .oracle-lyria-card__prompt-track {
+  animation-play-state: paused;
+}
+.oracle-lyria-card__prompt-track .oracle-ghost-particle-question {
+  width: max-content !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  white-space: nowrap;
+  min-height: 2.2rem;
+}
+.oracle-lyria-card__prompt-track .oracle-ghost-particle-copy {
+  width: max-content !important;
+  max-width: none !important;
+  white-space: nowrap;
+  font-size: 0.92rem !important;
+  line-height: 1.35 !important;
+  text-align: left !important;
+  letter-spacing: 0.04em !important;
+  color: rgba(255, 255, 255, 0.82) !important;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9), 0 0 12px rgba(0, 255, 136, 0.22) !important;
+}
+.oracle-lyria-card__prompt-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .oracle-lyria-card__meta {
   margin-top: 7px;
@@ -546,6 +607,21 @@
 .oracle-lyria-card__actions .oc-send-btn:focus-visible {
   outline: 2px solid #fff;
   outline-offset: 3px;
+}
+@keyframes lyria-prompt-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-1 * var(--lyria-prompt-distance, 0px))); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .oracle-lyria-card__prompt-viewport {
+    overflow-x: auto;
+    -webkit-mask-image: none;
+    mask-image: none;
+    scrollbar-width: thin;
+  }
+  .oracle-lyria-card__prompt-viewport.is-scrollable .oracle-lyria-card__prompt-track {
+    animation: none;
+  }
 }
 
 /* Always-visible escape hatch for the music state. It lives outside the card

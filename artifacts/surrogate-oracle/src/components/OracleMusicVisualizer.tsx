@@ -42,7 +42,7 @@ const MUSIC_VERTEX_SHADER = /* glsl */ `
     gl_PointSize = clamp(
       aSize * (1.0 + uEnergy * 1.8 + uPulse * 0.9) * (150.0 / max(0.35, -mvPosition.z)),
       1.0,
-      34.0
+      24.0
     );
     vEnergy = uEnergy + uPulse * 0.7;
     vDepth = clamp(1.0 - (-mvPosition.z / 4.0), 0.25, 1.0);
@@ -58,11 +58,17 @@ const MUSIC_FRAGMENT_SHADER = /* glsl */ `
     vec2 point = gl_PointCoord - vec2(0.5);
     float distanceFromCenter = length(point);
     if (distanceFromCenter > 0.5) discard;
-    float core = exp(-distanceFromCenter * distanceFromCenter * 24.0);
-    float halo = exp(-distanceFromCenter * distanceFromCenter * 5.0) * 0.7;
-    vec3 color = mix(vec3(0.0, 1.0, 0.8), vec3(0.77, 0.18, 1.0), clamp(vEnergy * 0.65, 0.0, 1.0));
-    float alpha = (core + halo) * (0.14 + vEnergy * 0.34) * vDepth * uIntensity;
-    gl_FragColor = vec4(color * (core * 1.15 + 0.2) * uIntensity, alpha);
+    // Keep a crisp blue pixel core, then add only a restrained edge haze.
+    // The former broad Gaussian halo made nearby particles merge into a
+    // blurry cyan curtain on the transparent Lyria canvas.
+    float core = 1.0 - smoothstep(0.18, 0.34, distanceFromCenter);
+    float halo = (1.0 - smoothstep(0.28, 0.5, distanceFromCenter)) * 0.24;
+    float edge = 1.0 - smoothstep(0.44, 0.5, distanceFromCenter);
+    vec3 blue = vec3(0.02, 0.46, 1.0);
+    vec3 violet = vec3(0.68, 0.16, 1.0);
+    vec3 color = mix(blue, violet, clamp(vEnergy * 0.58, 0.0, 1.0));
+    float alpha = (core * 0.92 + halo * edge) * (0.16 + vEnergy * 0.34) * vDepth * uIntensity;
+    gl_FragColor = vec4(color * (core * 1.35 + halo * 0.22) * uIntensity, alpha);
   }
 `;
 

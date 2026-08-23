@@ -30,6 +30,7 @@ import { MatrixRain } from './MatrixRain';
 import { ArtifactCard } from './ArtifactCard';
 import { ScrambleFragment } from './ScrambleFragment';
 import { ParticleTypographyCard } from './ParticleTypographyCard';
+import { LyriaPromptMarquee } from './LyriaPromptMarquee';
 import { logStep } from './CodeAuditor';
 import { DormantHUD } from './ambient/DormantHUD';
 import { OracleHUD } from './ambient/OracleHUD';
@@ -2716,7 +2717,8 @@ export function SurrogateOracleImmersion() {
             </div>
             {lyria.prompt && (
               <div className="oracle-lyria-card__brief" title={lyria.prompt}>
-                BRIEF // {lyria.prompt}
+                <span className="oracle-lyria-card__brief-label">BRIEF //</span>
+                <LyriaPromptMarquee prompt={lyria.prompt} />
               </div>
             )}
             {(lyria.model || lyria.requestId || lyria.durationSeconds) && (

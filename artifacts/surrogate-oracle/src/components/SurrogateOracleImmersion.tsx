@@ -2264,7 +2264,11 @@ export function SurrogateOracleImmersion() {
                     <button
                       type="button"
                       className="oracle-portrait-fullscreen__film"
-                      onClick={() => void oracleFilm.createFilm(portraitViewerUrl)}
+                      onClick={() => void oracleFilm.createFilm(
+                        portraitViewerUrl,
+                        lyria.audioUrl,
+                        lyria.prompt ?? 'reggae drum and bass beach bar music video',
+                      )}
                     >
                       ◈ MATERIALIZE FILM
                     </button>
@@ -2301,7 +2305,11 @@ export function SurrogateOracleImmersion() {
                       {oracleFilm.job.error || 'FILM MATERIALIZATION FAILED'}
                       <button
                         type="button"
-                        onClick={() => void oracleFilm.createFilm(portraitViewerUrl)}
+                        onClick={() => void oracleFilm.createFilm(
+                          portraitViewerUrl,
+                          lyria.audioUrl,
+                          lyria.prompt ?? 'reggae drum and bass beach bar music video',
+                        )}
                       >
                         RETRY FREE
                       </button>

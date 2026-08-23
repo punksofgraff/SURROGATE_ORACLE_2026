@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 
 export type OracleFilmJob = {
   id: string;
-  provider?: 'browser' | 'runpod';
+  provider?: 'browser' | 'runpod' | 'comfy';
   status: 'queued' | 'generating' | 'stitching' | 'ready' | 'failed' | 'cancelled';
   progress: number;
   chunkCount: number;
@@ -48,7 +48,11 @@ export function useOracleFilm(sessionId: string | null | undefined) {
     }, 2200);
   }, [poll]);
 
-  const createFilm = useCallback(async (portraitUrl: string) => {
+  const createFilm = useCallback(async (
+    portraitUrl: string,
+    audioUrl?: string | null,
+    prompt?: string | null,
+  ) => {
     if (recorderRef.current || !portraitUrl) return null;
     localCancelRef.current = false;
     if (localObjectUrlRef.current) URL.revokeObjectURL(localObjectUrlRef.current);
@@ -75,6 +79,49 @@ export function useOracleFilm(sessionId: string | null | undefined) {
         image.onerror = () => reject(new Error('The portrait cannot be rendered locally. Use the GPU fallback instead.'));
         image.src = portraitUrl;
       });
+
+      // A blob URL only exists in the browser, so keep a compact copy for the
+      // server-owned Seedance path before starting the free local fallback.
+      let audioBase64: string | undefined;
+      if (audioUrl) {
+        try {
+          const response = await fetch(audioUrl);
+          if (response.ok) {
+            const bytes = new Uint8Array(await response.arrayBuffer());
+            if (bytes.byteLength <= 12 * 1024 * 1024) {
+              let binary = '';
+              for (let index = 0; index < bytes.length; index += 0x8000) {
+                binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+              }
+              audioBase64 = btoa(binary);
+            }
+          }
+        } catch {
+          // The browser renderer does not need the optional audio anchor.
+        }
+      }
+
+      if (audioBase64) {
+        try {
+          const { data: remoteJob, error: invokeError } = await supabase.functions.invoke('oracle-film-job', {
+            body: {
+              action: 'create',
+              sessionId,
+              portraitUrl,
+              audioBase64,
+              audioMimeType: 'audio/mpeg',
+              context: { prompt: prompt ?? 'reggae drum and bass beach bar music video' },
+            },
+          });
+          if (!invokeError && remoteJob?.id && remoteJob?.provider !== 'browser') {
+            setJob(remoteJob as OracleFilmJob);
+            schedulePoll(remoteJob.id);
+            return remoteJob as OracleFilmJob;
+          }
+        } catch {
+          // A missing/failed GPU provider should never remove the free path.
+        }
+      }
 
       const stream = canvas.captureStream(24);
       const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']

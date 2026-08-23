@@ -680,7 +680,9 @@ export function SurrogateOracleImmersion() {
     logStep('NARRATIVE SIGNAL ACTIVATED', 'ok');
 
     connection.initializePCMPlayer();
-    connection.setTransmissionQ(12, 0);
+    // Lore uses the transparent transmission filter. Q=12 is reserved for
+    // knife-card tunnel playback and can make the tuned archive voice vanish.
+    connection.setTransmissionQ(0.01, 0);
     connection.startLoreTracking();
 
     const LORE_AUDIO_URL = '/lore-narration.mp3';

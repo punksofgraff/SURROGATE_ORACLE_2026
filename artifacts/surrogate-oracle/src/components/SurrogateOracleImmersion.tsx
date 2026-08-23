@@ -278,13 +278,6 @@ export function SurrogateOracleImmersion() {
   const [sacredPulse, setSacredPulse]   = useState(0);
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
   const [isOracleThinking, setIsOracleThinking] = useState(false);
-  const [audioOutputVolume, setAudioOutputVolume] = useState(() => {
-    const raw = localStorage.getItem('oracle_output_volume');
-    if (raw === null) return 0.78;
-    const saved = Number(raw);
-    return Number.isFinite(saved) ? Math.min(1, Math.max(0, saved)) : 0.78;
-  });
-  const [audioOutputMuted, setAudioOutputMuted] = useState(() => localStorage.getItem('oracle_output_muted') === 'true');
   const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
   const [showWallet, setShowWallet]             = useState(false);
   const [visionPaused, setVisionPaused]         = useState(false);
@@ -416,7 +409,6 @@ export function SurrogateOracleImmersion() {
 
   const connection = useOracleConnection({
     playbackRate: ORACLE_PLAYBACK_RATE,
-    outputGain: audioOutputMuted ? 0 : audioOutputVolume,
     onViseme: handleViseme,
     onProcessingChange: handleProcessingChange,
   });
@@ -572,17 +564,9 @@ export function SurrogateOracleImmersion() {
     showStage00,
     isOracleSpeaking,
     isMicActive,
-    outputGain: audioOutputMuted ? 0 : audioOutputVolume,
     oracleHasSpokenRef,
   });
   const lyria = useLyriaMusic();
-
-  useEffect(() => {
-    localStorage.setItem('oracle_output_volume', String(audioOutputVolume));
-    localStorage.setItem('oracle_output_muted', String(audioOutputMuted));
-    connection.setVolume(audioOutputMuted ? 0 : audioOutputVolume, audioOutputMuted ? 35 : 120);
-    lyria.setOutputGain(audioOutputMuted ? 0 : audioOutputVolume, 120);
-  }, [audioOutputMuted, audioOutputVolume, connection.setVolume, lyria.setOutputGain]);
 
   useEffect(() => {
     if (isStage00Tucked) stage00RestoreRef.current?.focus();
@@ -613,8 +597,8 @@ export function SurrogateOracleImmersion() {
     setIsMusicReturning(true);
     fadeToVolume(0, 120);
     // requestMusic mutes the live PCM player while Lyria owns the speakers.
-    // Restore the user's actual output preference, including a hard mute.
-    connection.setVolume(audioOutputMuted ? 0 : audioOutputVolume, 700);
+    // Restore the clean unity playback path; iOS owns master volume.
+    connection.setVolume(1.0, 700);
     connection.reassertPlayback('lyria-exit');
     logStep('LYRIA EXIT — RESTORING ORACLE', 'ok');
     // Keep the existing Gemini socket and conversation alive. A short
@@ -624,7 +608,7 @@ export function SurrogateOracleImmersion() {
       musicReleaseTimerRef.current = null;
     }, 700);
     window.setTimeout(() => setIsMusicReturning(false), 1500);
-  }, [audioOutputMuted, audioOutputVolume, connection, fadeToVolume, isMusicMode, lyria]);
+  }, [connection, fadeToVolume, isMusicMode, lyria]);
 
   const requestMusic = useCallback(async (prompt: string) => {
     try {
@@ -2623,20 +2607,6 @@ export function SurrogateOracleImmersion() {
             return lines.join('\n');
           })()}
           isGuidedTour={isGuidedTour}
-        />
-      )}
-
-      {isOracleMode && (isAudioPlaying || isOracleSpeaking || isMusicMode || lyria.isPlaying) && (
-        <OracleAudioControls
-          volume={audioOutputVolume}
-          muted={audioOutputMuted}
-          voiceActive={isOracleSpeaking}
-          musicActive={isMusicMode || lyria.isPlaying}
-          onToggleMute={() => setAudioOutputMuted(current => !current)}
-          onVolumeChange={(volume) => {
-            setAudioOutputVolume(volume);
-            if (volume > 0 && audioOutputMuted) setAudioOutputMuted(false);
-          }}
         />
       )}
 

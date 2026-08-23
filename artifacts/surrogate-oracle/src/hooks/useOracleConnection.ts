@@ -13,14 +13,12 @@ import { playOraclePresence, getAudioContext } from '../lib/oracleSfx';
 
 interface UseOracleConnectionProps {
   playbackRate: number;
-  outputGain: number;
   onViseme: (state: VisemeState) => void;
   onProcessingChange: (isProcessing: boolean) => void;
 }
 
 export function useOracleConnection({
   playbackRate,
-  outputGain,
   onViseme,
   onProcessingChange,
 }: UseOracleConnectionProps) {
@@ -34,7 +32,6 @@ export function useOracleConnection({
   const initializePCMPlayer = useCallback(() => {
     if (pcmPlayerRef.current) return;
     const player = new PCMPlayer(24000, playbackRate, getAudioContext());
-    player.setVolume(outputGain, 0);
     player.setVisemeCallback(onViseme);
     player.setProcessingCallback(onProcessingChange);
     pcmPlayerRef.current = player;
@@ -56,7 +53,7 @@ export function useOracleConnection({
         };
       }
     } catch { /* SSR/storage guards — non-fatal */ }
-  }, [outputGain, playbackRate, onViseme, onProcessingChange]);
+  }, [playbackRate, onViseme, onProcessingChange]);
 
   const initializeOracle = useCallback(async () => {
     initializePCMPlayer();

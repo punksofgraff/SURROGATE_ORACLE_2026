@@ -20,6 +20,7 @@ import { X, Camera, CameraOff } from 'lucide-react';
 import { BackendControlPanel } from './BackendControlPanel';
 import { GoogleSignInOverlay } from './GoogleSignInOverlay';
 import { GraffPunksRadio } from './GraffPunksRadio';
+import { OracleAudioControls } from './OracleAudioControls';
 import { EnculturateCrate } from './EnculturateCrate';
 import OracleConversation, { OracleConversationHandle, OracleScore } from './OracleConversation';
 
@@ -278,7 +279,9 @@ export function SurrogateOracleImmersion() {
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
   const [isOracleThinking, setIsOracleThinking] = useState(false);
   const [audioOutputVolume, setAudioOutputVolume] = useState(() => {
-    const saved = Number(localStorage.getItem('oracle_output_volume'));
+    const raw = localStorage.getItem('oracle_output_volume');
+    if (raw === null) return 0.78;
+    const saved = Number(raw);
     return Number.isFinite(saved) ? Math.min(1, Math.max(0, saved)) : 0.78;
   });
   const [audioOutputMuted, setAudioOutputMuted] = useState(() => localStorage.getItem('oracle_output_muted') === 'true');
@@ -1852,24 +1855,8 @@ export function SurrogateOracleImmersion() {
 
       <div
         className="oracle-center"
-        onClick={(event) => {
-          if (isOracleMode) {
-            event.stopPropagation();
-            setAudioOutputMuted(current => !current);
-          } else {
-            void handleFirstTap();
-          }
-        }}
-        onKeyDown={(event) => {
-          if (isOracleMode && (event.key === 'Enter' || event.key === ' ')) {
-            event.preventDefault();
-            setAudioOutputMuted(current => !current);
-          }
-        }}
-        role={isOracleMode ? 'button' : undefined}
-        tabIndex={isOracleMode ? 0 : undefined}
-        aria-label={isOracleMode ? (audioOutputMuted ? 'Unmute Oracle voice' : 'Mute Oracle voice') : undefined}
-        style={{ cursor: scenePhase === 'dormant' ? 'pointer' : isOracleMode ? 'pointer' : 'default' }}
+        onClick={handleFirstTap}
+        style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}
       >
         <motion.div className="oracle-cabinet" style={{ position: 'relative' }}>
           {/* Halo now active in both awakened and oracle phases */}
@@ -2636,6 +2623,20 @@ export function SurrogateOracleImmersion() {
             return lines.join('\n');
           })()}
           isGuidedTour={isGuidedTour}
+        />
+      )}
+
+      {isOracleMode && (isAudioPlaying || isOracleSpeaking || isMusicMode || lyria.isPlaying) && (
+        <OracleAudioControls
+          volume={audioOutputVolume}
+          muted={audioOutputMuted}
+          voiceActive={isOracleSpeaking}
+          musicActive={isMusicMode || lyria.isPlaying}
+          onToggleMute={() => setAudioOutputMuted(current => !current)}
+          onVolumeChange={(volume) => {
+            setAudioOutputVolume(volume);
+            if (volume > 0 && audioOutputMuted) setAudioOutputMuted(false);
+          }}
         />
       )}
 

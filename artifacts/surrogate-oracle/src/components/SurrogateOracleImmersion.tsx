@@ -683,31 +683,13 @@ export function SurrogateOracleImmersion() {
     connection.setTransmissionQ(12, 0);
     connection.startLoreTracking();
 
-    const fullStory = LORE_SEQUENCE.join('\n');
     const LORE_AUDIO_URL = '/lore-narration.mp3';
-
-    try {
-      // Try to use pre-recorded MP3 if available
-      const check = await fetch(LORE_AUDIO_URL, { method: 'HEAD' });
-      if (check.ok && check.headers.get('content-type')?.includes('audio')) {
-        logStep('PLAYING ARCHIVE RECORDING', 'ok');
-        // Pass a flag to handleOracleResponse or just let it fetch
-        // Actually, handleOracleResponse is in useOracleConnection. We should abort if scenePhase changed.
-        // The safest way is to just let useOracleConnection handle it, but connection doesn't know about scenePhase.
-        // Let's implement an abort controller or check if lore is still active.
-        connection.handleOracleResponse(LORE_AUDIO_URL);
-        return;
-      }
-    } catch (err) {
-      console.warn('[Audio] Pre-recorded lore narration check failed, falling back to live TTS:', err);
-    }
-
-    // Primary path: real-time Gemini TTS (robust fallback)
-    logStep('GENERATING LIVE NARRATION', 'ok');
-    oracleConversationRef.current?.startSession(
-      `[Repeat the following text exactly word-for-word. Do not add, remove, or change any words. Start immediately with "THE YEAR IS 2030":\n\n${fullStory}]`,
-      true
-    );
+    // Lore is always the tuned, pre-recorded archive voice. Do not probe with
+    // HEAD or fall back to Gemini: a failed probe must never change the voice.
+    logStep('PLAYING ARCHIVE RECORDING', 'ok');
+    void connection.handleOracleResponse(LORE_AUDIO_URL).catch((error) => {
+      logStep(`ARCHIVE RECORDING FAILED — ${error instanceof Error ? error.message : 'audio unavailable'}`, 'warn');
+    });
   }, [loreStarted, connection]);
 
   const handleFirstTap = useCallback(async () => {

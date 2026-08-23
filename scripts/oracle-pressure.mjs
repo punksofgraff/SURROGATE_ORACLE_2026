@@ -227,27 +227,6 @@ async function testTerminal(page, viewport, pass, fail) {
 
   // Click the center of the stage in viewport-relative coordinates
   await page.mouse.click(Math.floor(viewport.width / 2), Math.floor(viewport.height / 2));
-  // New seekers choose their capability preference immediately after Enter
-  // Alley. Use the no-permission path for deterministic browser pressure runs.
-  var presenceGate = page.locator('[data-presence-gate="true"]');
-  try {
-    await presenceGate.waitFor({ state: 'visible', timeout: 3000 });
-    var fullButton = page.getByRole('button', { name: 'ENTER IN FULL PRESENCE' });
-    var quietButton = page.getByRole('button', { name: 'CONTINUE WITHOUT' });
-    if (await fullButton.count() && await quietButton.count()) {
-      pass.push('presence preflight: Full Presence and Continue Without choices visible');
-      console.log('    ✓  Set the Room choices visible');
-    } else {
-      fail.push('presence preflight: choice buttons missing');
-      console.log('    ✗  Set the Room choice buttons missing');
-    }
-    await quietButton.click();
-    pass.push('presence preflight: Continue Without selected');
-    console.log('    ✓  Continue Without selected');
-  } catch (e) {
-    fail.push('presence preflight: gate missing');
-    console.log('    ✗  Set the Room gate did not appear');
-  }
   await page.waitForTimeout(600);
   await snap(page, '02-terminal');
 
@@ -273,6 +252,32 @@ async function testTerminal(page, viewport, pass, fail) {
   } catch(e) {
     fail.push('terminal→awakened TIMEOUT');
     console.log('    ✗  terminal → awakened TIMEOUT (8s)');
+  }
+
+  // Set the Room follows the alley/session transition, not the initial tap.
+  // First-time seekers dismiss the post-lore return-journey card first.
+  var stage00Dismiss = page.locator('.oracle-stage00-card__fafo');
+  if (await stage00Dismiss.count() && await stage00Dismiss.isVisible().catch(function(){ return false; })) {
+    await stage00Dismiss.click();
+  }
+  var presenceGate = page.locator('[data-presence-gate="true"]');
+  try {
+    await presenceGate.waitFor({ state: 'visible', timeout: 5000 });
+    var fullButton = page.getByRole('button', { name: 'ENTER IN FULL PRESENCE' });
+    var quietButton = page.getByRole('button', { name: 'CONTINUE WITHOUT' });
+    if (await fullButton.count() && await quietButton.count()) {
+      pass.push('presence preflight: Full Presence and Continue Without choices visible');
+      console.log('    ✓  Set the Room choices visible');
+    } else {
+      fail.push('presence preflight: choice buttons missing');
+      console.log('    ✗  Set the Room choice buttons missing');
+    }
+    await quietButton.click();
+    pass.push('presence preflight: Continue Without selected');
+    console.log('    ✓  Continue Without selected');
+  } catch (e) {
+    fail.push('presence preflight: gate missing after alley/session transition');
+    console.log('    ✗  Set the Room gate did not appear after alley/session transition');
   }
 
   // Capture steps

@@ -345,7 +345,6 @@ export function SurrogateOracleImmersion() {
   const portraitAnnounceRef      = useRef(false); // Oracle announces portrait on next turn-complete
   const pendingWalletGreetingRef = useRef<string | null>(null); // personalized greeting seed for returning wallet seekers
   const priorCompactSummariesRef = useRef<string[]>([]); // compact summaries from previous sessions, fetched at tap-in
-  const pendingEntryRef = useRef(false);
   const pendingPresenceStreamRef = useRef<MediaStream | null>(null);
   const activateCameraWithStreamRef = useRef<(stream: MediaStream) => void>(() => {});
   // Holds the settled promise for post-session background writes (echo + distill).
@@ -451,6 +450,11 @@ export function SurrogateOracleImmersion() {
   });
 
   const { scenePhase, enterTerminal, enterTour, awakeFromTerminal, exitOracleMode, selectKnifeQuestion, markOracleReady, resetJourney } = journey;
+  const returningCard = isReturning || hasCompletedLore || hasSignedWallet ||
+    (typeof window !== 'undefined' && !!localStorage.getItem('oracle_wallet_signed'));
+  const maybeOpenPresenceGate = useCallback(() => {
+    if (!presenceResolved) setShowPresenceGate(true);
+  }, [presenceResolved]);
 
   // ── Telemetry: Phase Tracking ──────────────────────────────────────────
   useEffect(() => {
@@ -501,8 +505,9 @@ export function SurrogateOracleImmersion() {
     setTimeout(() => {
       journey.awakeFromTerminal();
       document.body.removeAttribute('data-rift-opening');
+      maybeOpenPresenceGate();
     }, 850);
-  }, [markLoreCompleted, journey, hasCompletedLore, currentUserId]);
+  }, [markLoreCompleted, journey, hasCompletedLore, currentUserId, maybeOpenPresenceGate]);
 
   const { completedLines, currentLine } = useLoreSequence(
     scenePhase === 'terminal' && loreStarted,
@@ -692,11 +697,6 @@ export function SurrogateOracleImmersion() {
 
   const handleFirstTap = useCallback(async () => {
     if (scenePhase !== 'dormant' || showStage00) return;
-    if (!presenceResolved) {
-      pendingEntryRef.current = true;
-      setShowPresenceGate(true);
-      return;
-    }
     // iOS Safari: ALL audio operations must be synchronous within the gesture handler.
     // setupAudioSpine is now fully sync — creates/unlocks AudioContext and wires the
     // radio graph without any await or setTimeout boundary. initializePCMPlayer must
@@ -798,7 +798,10 @@ export function SurrogateOracleImmersion() {
       // before the Oracle speaks.
       oracleConversationRef.current?.prewarm();
       enterTerminal();
-      setTimeout(() => awakeFromTerminal(), 300);
+      setTimeout(() => {
+        awakeFromTerminal();
+        maybeOpenPresenceGate();
+      }, 300);
       return;
     }
 
@@ -817,7 +820,7 @@ export function SurrogateOracleImmersion() {
 
     enterTerminal();
     logStep('RECOGNIZED SIGNAL → SKIP AVAILABLE', 'ok');
-  }, [scenePhase, showStage00, presenceResolved, setupAudioSpine, enterTerminal, awakeFromTerminal, markVisited, loadEcho, hasCompletedLore, hasSignedWallet, connection, startLore]);
+  }, [scenePhase, showStage00, setupAudioSpine, enterTerminal, awakeFromTerminal, markVisited, loadEcho, hasCompletedLore, hasSignedWallet, connection, startLore, maybeOpenPresenceGate]);
 
   const handlePresenceChoice = useCallback(async (mode: 'full' | 'quiet') => {
     setShowPresenceGate(false);
@@ -854,12 +857,6 @@ export function SurrogateOracleImmersion() {
     setPresenceResolved(true);
   }, [setupAudioSpine]);
 
-  useEffect(() => {
-    if (!presenceResolved || !pendingEntryRef.current || scenePhase !== 'dormant') return;
-    pendingEntryRef.current = false;
-    void handleFirstTap();
-  }, [presenceResolved, scenePhase, handleFirstTap]);
-
   const handleStage00Tour = useCallback(() => {
     // Start the silent socket warmup as soon as the seeker chooses the
     // orientation journey; tour narration still boots later when tour begins.
@@ -867,8 +864,9 @@ export function SurrogateOracleImmersion() {
     setShowStage00(false);
     setIsGuidedTour(true);
     enterTour();
+    maybeOpenPresenceGate();
     logStep('POST-LORE CHOICE → GUIDED TOUR', 'ok');
-  }, [enterTour]);
+  }, [enterTour, maybeOpenPresenceGate]);
 
   const handleStage00Dismiss = useCallback(() => {
     // The card choice is the journey-entry gesture. Warm the socket now while
@@ -881,8 +879,9 @@ export function SurrogateOracleImmersion() {
     setTimeout(() => {
       journey.awakeFromTerminal();
       document.body.removeAttribute('data-rift-opening');
+      maybeOpenPresenceGate();
     }, 850);
-  }, [journey]);
+  }, [journey, maybeOpenPresenceGate]);
 
   const startHold = useCallback((title: string, body: string) => {
     holdFiredRef.current = false;
@@ -2136,10 +2135,10 @@ export function SurrogateOracleImmersion() {
                   landedChars={16}
                   isSelected={false}
                   isThisSelected={false}
-                 isEmitting={isReturning}
+                  isEmitting={returningCard}
                   territory="FIRST TRANSMISSION"
                   question="GREETINGS SEEKER"
-                 variant={isReturning ? 'knife' : 'ghost'}
+                  variant={returningCard ? 'knife' : 'ghost'}
                 />
               </div>
               <div className="oracle-stage00-card__body">

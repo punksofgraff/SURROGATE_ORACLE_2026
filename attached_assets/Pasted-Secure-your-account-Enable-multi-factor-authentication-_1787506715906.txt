@@ -1,0 +1,304 @@
+Secure your account: Enable multi-factor authentication to add an extra layer of protection when you sign in.
+
+
+GPU
+
+CPU
+Select an instance
+
+Global Networking
+Additional filters
+Filter GPUs by VRAM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Configure deployment
+Pod name
+
+ideal_violet_locust
+Pod template
+
+pytorch logo
+Runpod Pytorch 2.4.0
+
+runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
+
+GPU count
+
+Instance pricing
+
+
+
+
+
+Encrypt volume
+
+SSH terminal access
+
+Start Jupyter notebook
+Storage configuration
+Container disk
+
+
+Temporary storage that will be erased when the Pod is stopped.
+
+41
+Volume disk
+Persistent storage mounted to /workspace tied to the Pod's lifecycle.
+
+- Will be deleted when Pod is terminated
+
+- Cannot be accessed by other Pods or Endpoints
+
+$0.10/GB/mo when running, $0.20/GB/mo when stopped
+
+Network volume
+
+Persistent storage mounted to /workspace that is independent from the Pod's lifecycle.
+
+- Will not be deleted when Pod is terminated
+
+- Can be mounted to multiple Pods & Endpoints
+
+$0.07/GB/mo (under 1TB) or $0.05/GB/mo (over 1TB)
+
+Volume disk
+
+
+Persistent storage mounted to /workspace that will be erased when the Pod is terminated.
+
+0
+Pricing summary
+GPU cost $0.24 / hr
+
+Running Pod disk cost $0.006 / hr
+
+Stopped Pod disk cost $0.00 / hr
+
+Pod summary
+No volume disk or network volume configured. ALL data will be lost on Pod restart!
+1x RTX 2000 Ada (16 GB VRAM)
+
+31 GB RAM • 6 vCPU
+
+Total disk
+
+41 GB
+
+Container disk charges
+
+$0.10/GB/Mo on running Pods
+
+Pod volume charges
+
+$0.10/GB/Mo for running Pods
+
+$0.20/GB/Mo for exited Pods
+
+
+Container disk, Volume disk
+Potential CUDA version mismatch
+This GPU will deploy with one of the following CUDA versions: 12.8, 13.0. Only 12.8 is compatible with this template. Use the additional filters to pick a specific CUDA version.

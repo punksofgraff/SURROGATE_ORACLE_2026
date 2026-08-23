@@ -300,13 +300,17 @@ export class PCMPlayer {
   public setVolume(target: number, rampMs: number = 200) {
     if (!this.masterGain) return;
     const now = this.context.currentTime;
-    const safeTarget = Math.max(0.0001, target);
+    const safeTarget = Math.max(0, Math.min(1, target));
     this.lastVolumeTarget = safeTarget;
     this.masterGain.gain.cancelScheduledValues(now);
     
-    const startVal = Math.max(0.0001, this.masterGain.gain.value);
+    const startVal = Math.max(0, this.masterGain.gain.value);
     this.masterGain.gain.setValueAtTime(startVal, now);
-    this.masterGain.gain.linearRampToValueAtTime(safeTarget, now + rampMs / 1000);
+    if (rampMs <= 0) {
+      this.masterGain.gain.setValueAtTime(safeTarget, now);
+    } else {
+      this.masterGain.gain.linearRampToValueAtTime(safeTarget, now + rampMs / 1000);
+    }
   }
 
   public boostVolume(multiplier: number, rampMs: number = 50) {
@@ -340,7 +344,7 @@ export class PCMPlayer {
     }
     if (!this.masterGain) return corrected;
     const now = this.context.currentTime;
-    const current = Math.max(0.0001, this.masterGain.gain.value);
+    const current = Math.max(0, this.masterGain.gain.value);
     // Only touch the ramp when the effective value has actually drifted —
     // avoids clicks from redundant cancel/ramp cycles on healthy sessions.
     if (Math.abs(current - this.lastVolumeTarget) < 0.001) return corrected;

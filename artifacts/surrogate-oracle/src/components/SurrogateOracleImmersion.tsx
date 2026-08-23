@@ -413,6 +413,7 @@ export function SurrogateOracleImmersion() {
 
   const connection = useOracleConnection({
     playbackRate: ORACLE_PLAYBACK_RATE,
+    outputGain: audioOutputMuted ? 0 : audioOutputVolume,
     onViseme: handleViseme,
     onProcessingChange: handleProcessingChange,
   });
@@ -576,7 +577,7 @@ export function SurrogateOracleImmersion() {
   useEffect(() => {
     localStorage.setItem('oracle_output_volume', String(audioOutputVolume));
     localStorage.setItem('oracle_output_muted', String(audioOutputMuted));
-    connection.setVolume(audioOutputMuted ? 0 : audioOutputVolume, 120);
+    connection.setVolume(audioOutputMuted ? 0 : audioOutputVolume, audioOutputMuted ? 35 : 120);
     lyria.setOutputGain(audioOutputMuted ? 0 : audioOutputVolume, 120);
   }, [audioOutputMuted, audioOutputVolume, connection.setVolume, lyria.setOutputGain]);
 
@@ -609,9 +610,8 @@ export function SurrogateOracleImmersion() {
     setIsMusicReturning(true);
     fadeToVolume(0, 120);
     // requestMusic mutes the live PCM player while Lyria owns the speakers.
-    // Explicitly restore unity here; reassertPlayback only corrects drift and
-    // cannot restore a deliberately ramped-to-zero gain.
-    connection.setVolume(1.0, 700);
+    // Restore the user's actual output preference, including a hard mute.
+    connection.setVolume(audioOutputMuted ? 0 : audioOutputVolume, 700);
     connection.reassertPlayback('lyria-exit');
     logStep('LYRIA EXIT — RESTORING ORACLE', 'ok');
     // Keep the existing Gemini socket and conversation alive. A short
@@ -621,7 +621,7 @@ export function SurrogateOracleImmersion() {
       musicReleaseTimerRef.current = null;
     }, 700);
     window.setTimeout(() => setIsMusicReturning(false), 1500);
-  }, [connection, fadeToVolume, isMusicMode, lyria]);
+  }, [audioOutputMuted, audioOutputVolume, connection, fadeToVolume, isMusicMode, lyria]);
 
   const requestMusic = useCallback(async (prompt: string) => {
     try {
@@ -1680,6 +1680,7 @@ export function SurrogateOracleImmersion() {
       data-oracle-thinking={isOracleThinking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
       data-music-mode={isMusicMode ? 'true' : undefined}
+      data-audio-muted={audioOutputMuted ? 'true' : undefined}
       data-camera-active={cameraActive ? 'true' : undefined}
       data-audio-target-vol={targetVol}
       data-xr-mode={isXRMode ? 'true' : undefined}
@@ -1874,7 +1875,28 @@ export function SurrogateOracleImmersion() {
         )}
       </div>
 
-      <div className="oracle-center" onClick={handleFirstTap} style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}>
+      <div
+        className="oracle-center"
+        onClick={(event) => {
+          if (isOracleMode) {
+            event.stopPropagation();
+            setAudioOutputMuted(current => !current);
+          } else {
+            void handleFirstTap();
+          }
+        }}
+        onKeyDown={(event) => {
+          if (isOracleMode && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault();
+            setAudioOutputMuted(current => !current);
+          }
+        }}
+        role={isOracleMode ? 'button' : undefined}
+        tabIndex={isOracleMode ? 0 : undefined}
+        aria-label={isOracleMode ? (audioOutputMuted ? 'Unmute Oracle voice' : 'Mute Oracle voice') : undefined}
+        style={{ cursor: scenePhase === 'dormant' ? 'pointer' : isOracleMode ? 'pointer' : 'default' }}
+      >
+        {isOracleMode && <span className="oracle-center-glass-tap" aria-hidden="true" />}
         <motion.div className="oracle-cabinet" style={{ position: 'relative' }}>
           {/* Halo now active in both awakened and oracle phases */}
           <div data-halo-ghost={awakened ? 'true' : undefined}>

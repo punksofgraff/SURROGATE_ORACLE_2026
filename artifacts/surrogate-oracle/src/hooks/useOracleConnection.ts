@@ -13,12 +13,14 @@ import { playOraclePresence, getAudioContext } from '../lib/oracleSfx';
 
 interface UseOracleConnectionProps {
   playbackRate: number;
+  outputGain: number;
   onViseme: (state: VisemeState) => void;
   onProcessingChange: (isProcessing: boolean) => void;
 }
 
 export function useOracleConnection({
   playbackRate,
+  outputGain,
   onViseme,
   onProcessingChange,
 }: UseOracleConnectionProps) {
@@ -32,6 +34,7 @@ export function useOracleConnection({
   const initializePCMPlayer = useCallback(() => {
     if (pcmPlayerRef.current) return;
     const player = new PCMPlayer(24000, playbackRate, getAudioContext());
+    player.setVolume(outputGain, 0);
     player.setVisemeCallback(onViseme);
     player.setProcessingCallback(onProcessingChange);
     pcmPlayerRef.current = player;
@@ -53,7 +56,7 @@ export function useOracleConnection({
         };
       }
     } catch { /* SSR/storage guards — non-fatal */ }
-  }, [playbackRate, onViseme, onProcessingChange]);
+  }, [outputGain, playbackRate, onViseme, onProcessingChange]);
 
   const initializeOracle = useCallback(async () => {
     initializePCMPlayer();
@@ -88,20 +91,10 @@ export function useOracleConnection({
       playOraclePresence();
       isFirstChunkRef.current = false;
       
-      // Always start audible — permissions consolidation is handled by the SIGNAL CONNECT
-      // UI tap (which requests mic/camera/gyro). The oracle_session_muted flag previously
-      // gated audio on that tap, but that path was decoupled in a13de3e; keeping the
-      // 0.0001 branch silences Oracle for type-mode users and anyone who misses the button.
-      //
-      // UNITY MASTER GAIN — the Oracle's loudness now lives in PCMPlayer's fixed
-      // mid-graph makeup gain (2.5x post-compression), NOT here. Master gain stays
-      // at 1.0 for the whole session, matching our other Vertex live-voice apps.
-      // The old `setVolume(2.50)` boost made the iOS voice-processing session flip
-      // audible: the OS changes effective loudness below Web Audio, so a boosted
-      // master gain read as one volume muted, another unmuted — and
-      // reassertPlayback() couldn't correct it because the app-side gain value
-      // never actually drifted. Assert unity so any stale ramp is cleared.
-      player.setVolume(1.0, 40);
+      // Keep the user's output preference. The player is initialized with the
+      // current output gain, and later state changes are applied by the parent
+      // audio-output effect. Never force unity here: doing so makes a muted
+      // phone speak again when the next streamed turn begins.
       localStorage.setItem('oracle_session_muted', 'false');
     }
 

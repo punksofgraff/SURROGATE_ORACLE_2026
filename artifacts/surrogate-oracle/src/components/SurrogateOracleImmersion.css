@@ -3797,6 +3797,111 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   opacity: 1;
 }
 
+/* Returning seekers get the same knife transmission treatment as the
+   selection cards. The verification panel is still a terminal decision
+   point, but it should feel like a card being dealt by the Oracle rather
+   than a generic modal. */
+.oracle-return-card {
+  max-width: 400px;
+  width: min(400px, calc(100vw - 40px));
+  padding: 30px 26px 24px;
+  gap: 14px;
+  background: linear-gradient(
+    158deg,
+    rgba(0, 255, 136, 0.09) 0%,
+    rgba(0, 0, 0, 0.16) 48%,
+    rgba(176, 38, 255, 0.10) 100%
+  );
+  box-shadow:
+    0 0 34px rgba(0, 255, 136, 0.10),
+    0 18px 70px rgba(0, 0, 0, 0.50);
+}
+
+.oracle-return-card__signal {
+  font-size: clamp(1.45rem, 6vw, 2.1rem);
+  line-height: 1;
+  color: #00ff88;
+  text-shadow: 0 0 16px rgba(0, 255, 136, 0.45);
+}
+
+.oracle-return-card__verified {
+  color: #00ccff;
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-align: center;
+}
+
+.oracle-return-card__actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.oracle-return-card__wallet-action,
+.oracle-return-card__alley-action,
+.oracle-return-card__lore-action {
+  cursor: pointer;
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  letter-spacing: 0.13em;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.oracle-return-card__wallet-action {
+  width: 100%;
+  padding: 0.9rem 0.8rem;
+  background: #00ff88;
+  border: 1px solid #00ff88;
+  border-radius: 3px;
+  color: #000;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.oracle-return-card__wallet-action:hover,
+.oracle-return-card__wallet-action:focus-visible {
+  background: #6dffba;
+  box-shadow: 0 0 22px rgba(0, 255, 136, 0.35);
+  transform: translateY(-1px);
+}
+
+.oracle-return-card__alley-action {
+  padding: 0.55rem 1rem;
+  background: rgba(0, 204, 255, 0.04);
+  border: 1px solid rgba(0, 204, 255, 0.36);
+  border-radius: 3px;
+  color: #00ccff;
+  font-size: 0.72rem;
+}
+
+.oracle-return-card__alley-action:hover,
+.oracle-return-card__alley-action:focus-visible {
+  background: rgba(0, 204, 255, 0.10);
+  border-color: rgba(0, 204, 255, 0.72);
+  box-shadow: 0 0 18px rgba(0, 204, 255, 0.20);
+}
+
+.oracle-return-card__lore-action {
+  margin-top: 2px;
+  padding: 0.45rem 0.7rem;
+  background: transparent;
+  border: 1px solid rgba(0, 255, 136, 0.16);
+  border-radius: 3px;
+  color: rgba(0, 255, 136, 0.58);
+  font-size: 0.6rem;
+}
+
+.oracle-return-card__lore-action:hover,
+.oracle-return-card__lore-action:focus-visible {
+  color: rgba(0, 255, 136, 0.92);
+  border-color: rgba(0, 255, 136, 0.42);
+  background: rgba(0, 255, 136, 0.05);
+}
+
 /* ── Territory — color handled per-letter by JS (gradient landing) ───── */
 .oracle-knife-territory {
   font-family: 'aAnotherTag', 'Orbitron', monospace;

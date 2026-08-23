@@ -2537,44 +2537,30 @@ export function SurrogateOracleImmersion() {
                   background: 'rgba(0,0,0,0.85)', zIndex: 110
                 }}
               >
-                <div style={{ textAlign: 'center', padding: '2rem', maxWidth: 400 }}>
-                  <div style={{ 
-                    fontFamily: "'aAnotherTag', 'Orbitron', monospace",
-                    fontSize: '1.2rem', color: '#00ff88', marginBottom: '1rem'
-                  }}>
+                <div className="oracle-return-card oracle-knife-card">
+                  <div className="oracle-return-card__signal oracle-knife-territory">
                     SIGNAL RECOGNIZED
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: '#00ccff', marginBottom: '2rem', fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em' }}>
+                  <div className="oracle-knife-divider" />
+                  <div className="oracle-return-card__verified">
                     › RETURN TRIP VERIFIED
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div className="oracle-return-card__actions">
                     <button
+                      className="oracle-return-card__wallet-action"
                       onClick={() => openWalletPopup(withWalletReturn('https://wallet.thesurrogate.me', 'signin'))}
-                      style={{
-                        background: '#00ff88', color: '#000', padding: '1rem', border: 'none',
-                        cursor: 'pointer', fontWeight: 900, borderRadius: 4,
-                        fontFamily: "'PhillySans', monospace", letterSpacing: '0.1em'
-                      }}
                     >
                       CONNECT SURROGATE WALLET
                     </button>
                     <button
+                      className="oracle-return-card__alley-action"
                       onClick={() => handleAwakeTransition()}
-                      style={{ 
-                        background: 'none', border: 'none', color: '#00ccff', 
-                        cursor: 'pointer', fontFamily: "'PhillySans', monospace",
-                        letterSpacing: '0.15em', fontSize: '0.75rem'
-                      }}
                     >
                       [ RETURN TO ALLEY ]
                     </button>
                     <button
+                      className="oracle-return-card__lore-action"
                       onClick={(e) => { e.stopPropagation(); startLore(); }}
-                      style={{ 
-                        background: 'none', border: 'none', color: 'rgba(0,255,136,0.5)', 
-                        cursor: 'pointer', fontFamily: "'PhillySans', monospace",
-                        letterSpacing: '0.15em', fontSize: '0.6rem', marginTop: '1rem'
-                      }}
                     >
                       [ RE-WATCH ARCHIVE LORE ]
                     </button>

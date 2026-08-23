@@ -63,6 +63,10 @@ export function useOracleConnection({
     pcmPlayerRef.current?.setVolume(vol, rampMs);
   }, []);
 
+  const setOracleVolume = useCallback((vol: number, rampMs = 120) => {
+    pcmPlayerRef.current?.setOracleVolume(vol, rampMs);
+  }, []);
+
   // Re-assert the Oracle playback path after an OS audio-session change
   // (mobile mic open/close). Logs only when a correction was actually needed,
   // so the step trace shows exactly which toggle caused drift.
@@ -218,13 +222,14 @@ export function useOracleConnection({
     getLorePlaybackMs,
     getLoreBufferedMs,
     setVolume,
+    setOracleVolume,
     reassertPlayback,
   }), [
     error,
     initializePCMPlayer, initializeOracle,
     handleOracleResponse, resetFirstChunk, cleanup, boostMicVolume, getAnalyser, setTransmissionQ, setTauntMode,
     flushPlayback, startQuestionTracking, getQuestionPlaybackMs, getQuestionBufferedMs,
-    startLoreTracking, getLorePlaybackMs, getLoreBufferedMs, setVolume, reassertPlayback,
+    startLoreTracking, getLorePlaybackMs, getLoreBufferedMs, setVolume, setOracleVolume, reassertPlayback,
   ]);
 
   return value;

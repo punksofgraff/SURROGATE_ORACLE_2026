@@ -29,7 +29,7 @@ export function OracleAudioControls({
       </summary>
       <div className="oracle-audio-controls__body">
         <div className="oracle-audio-controls__heading">
-          <span>OUTPUT</span>
+          <span>ORACLE VOICE</span>
           <span>{muted ? 'MUTED' : `${Math.round(volume * 100)}%`}</span>
         </div>
         <div className="oracle-audio-controls__row">
@@ -49,7 +49,7 @@ export function OracleAudioControls({
             step="0.01"
             value={muted ? 0 : volume}
             onChange={(event) => onVolumeChange(Number(event.target.value))}
-            aria-label="Oracle output volume"
+            aria-label="Oracle voice volume"
           />
         </div>
         <div className="oracle-audio-controls__modes" aria-live="polite">

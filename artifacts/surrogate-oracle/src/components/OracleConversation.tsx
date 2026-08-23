@@ -155,7 +155,7 @@ export interface OracleConversationHandle {
   };
   startSession: (bootMessage?: string, loreOnly?: boolean) => void;
   prewarm: () => void;
-  startMic: () => Promise<void>;
+  startMic: (stream?: MediaStream) => Promise<void>;
   toggleTypeMode: () => void;
   enableMicAutoRestart: () => void;
 }
@@ -533,7 +533,7 @@ const OracleConversation = forwardRef(
     // Fires once per session — the turn the Oracle first emits a [[SEEKER_IRL]] marker.
     const seekerIdentifiedRef = useRef(false);
 
-    const startMicRef = useRef<() => Promise<void>>(async () => {});
+    const startMicRef = useRef<(stream?: MediaStream) => Promise<void>>(async () => {});
     const releaseMicRef = useRef<(reason?: string) => void>(() => {});
     const isListeningRef = useRef(false);
     // Capture gate — false while muted. The mic graph and MediaStream stay ALIVE
@@ -1020,7 +1020,7 @@ const OracleConversation = forwardRef(
       setHasMicBeenStarted(true);
     };
 
-    const startMic = async () => {
+    const startMic = async (providedStream?: MediaStream) => {
       if (isListeningRef.current) return;
       // Acquisition already in flight (tap + auto-restart racing, or rapid
       // taps) — never fire a second getUserMedia. Record the latest intent;
@@ -1085,13 +1085,13 @@ const OracleConversation = forwardRef(
 
         // ONE getUserMedia per Oracle session — the stream is retained across
         // mute/unmute and only released on real teardown (exit/reset/unmount).
-        debugInfo.current.getUserMediaCalls++;
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { 
-            echoCancellation: true, 
-            noiseSuppression: true, 
-            autoGainControl: true, 
-            channelCount: 1 
+        if (!providedStream) debugInfo.current.getUserMediaCalls++;
+        const stream = providedStream ?? await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1
           }
         });
         // Resume again after getUserMedia — handles iOS audio session reconfigurations
@@ -1490,9 +1490,9 @@ const OracleConversation = forwardRef(
         startSession(bootMessage, loreOnly);
       },
 
-      startMic: async () => {
+      startMic: async (stream?: MediaStream) => {
         if (!isListeningRef.current) {
-            await startMicRef.current?.();
+            await startMicRef.current?.(stream);
         }
       },
       toggleTypeMode: () => {

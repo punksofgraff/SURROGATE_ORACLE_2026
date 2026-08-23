@@ -287,6 +287,11 @@ export function SurrogateOracleImmersion() {
   const [showStage00, setShowStage00]       = useState(false);
   const [isStage00Tucked, setIsStage00Tucked] = useState(false);
   const [isLyriaCardTucked, setIsLyriaCardTucked] = useState(false);
+  const [showPresenceGate, setShowPresenceGate] = useState(false);
+  const [presenceResolved, setPresenceResolved] = useState(() =>
+    typeof window !== 'undefined' && sessionStorage.getItem('oracle_presence_preference_v1') !== null
+  );
+  const [presenceStreamReady, setPresenceStreamReady] = useState(false);
   const stage00RestoreRef = useRef<HTMLButtonElement>(null);
   const lyriaRestoreRef = useRef<HTMLButtonElement>(null);
   const [loreStarted, setLoreStarted]       = useState(false);
@@ -340,6 +345,9 @@ export function SurrogateOracleImmersion() {
   const portraitAnnounceRef      = useRef(false); // Oracle announces portrait on next turn-complete
   const pendingWalletGreetingRef = useRef<string | null>(null); // personalized greeting seed for returning wallet seekers
   const priorCompactSummariesRef = useRef<string[]>([]); // compact summaries from previous sessions, fetched at tap-in
+  const pendingEntryRef = useRef(false);
+  const pendingPresenceStreamRef = useRef<MediaStream | null>(null);
+  const activateCameraWithStreamRef = useRef<(stream: MediaStream) => void>(() => {});
   // Holds the settled promise for post-session background writes (echo + distill).
   // exitOracleMode waits on this before calling onCleanup so writes land before
   // the session tears down. Reset to null at the start of each oracle phase.
@@ -684,6 +692,11 @@ export function SurrogateOracleImmersion() {
 
   const handleFirstTap = useCallback(async () => {
     if (scenePhase !== 'dormant' || showStage00) return;
+    if (!presenceResolved) {
+      pendingEntryRef.current = true;
+      setShowPresenceGate(true);
+      return;
+    }
     // iOS Safari: ALL audio operations must be synchronous within the gesture handler.
     // setupAudioSpine is now fully sync — creates/unlocks AudioContext and wires the
     // radio graph without any await or setTimeout boundary. initializePCMPlayer must
@@ -804,7 +817,48 @@ export function SurrogateOracleImmersion() {
 
     enterTerminal();
     logStep('RECOGNIZED SIGNAL → SKIP AVAILABLE', 'ok');
-  }, [scenePhase, showStage00, setupAudioSpine, enterTerminal, awakeFromTerminal, markVisited, loadEcho, hasCompletedLore, hasSignedWallet, connection, startLore]);
+  }, [scenePhase, showStage00, presenceResolved, setupAudioSpine, enterTerminal, awakeFromTerminal, markVisited, loadEcho, hasCompletedLore, hasSignedWallet, connection, startLore]);
+
+  const handlePresenceChoice = useCallback(async (mode: 'full' | 'quiet') => {
+    setShowPresenceGate(false);
+    if (mode === 'full') {
+      setupAudioSpine();
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 1280 },
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+          },
+        });
+        pendingPresenceStreamRef.current = stream;
+        activateCameraWithStreamRef.current(stream);
+        setPresenceStreamReady(true);
+        logStep('PRESENCE PREFLIGHT — CAMERA + MIC ACQUIRED', 'ok');
+      } catch (error) {
+        console.warn('[Presence] Camera/microphone preflight unavailable:', error);
+        logStep('PRESENCE PREFLIGHT — CONTINUING WITHOUT CAMERA/MIC', 'warn');
+      }
+      const motionGranted = await requestDeviceOrientationPermission('[Presence]');
+      logStep(`MOTION PERMISSION — ${motionGranted ? 'GRANTED' : 'DENIED'}`, motionGranted ? 'ok' : 'warn');
+    } else {
+      logStep('PRESENCE PREFLIGHT — CONTINUING WITHOUT CAMERA/MIC', 'ok');
+    }
+    sessionStorage.setItem('oracle_presence_preference_v1', mode);
+    setPresenceResolved(true);
+  }, [setupAudioSpine]);
+
+  useEffect(() => {
+    if (!presenceResolved || !pendingEntryRef.current || scenePhase !== 'dormant') return;
+    pendingEntryRef.current = false;
+    void handleFirstTap();
+  }, [presenceResolved, scenePhase, handleFirstTap]);
 
   const handleStage00Tour = useCallback(() => {
     // Start the silent socket warmup as soon as the seeker chooses the
@@ -1041,10 +1095,6 @@ export function SurrogateOracleImmersion() {
     // after selection returns to the clean voice path.
     connection.setTransmissionQ(0.01, 0);
     connection.flushPlayback();
-
-    // The knife is the engagement gesture: request optional sensors and open
-    // the retained mic track immediately, rather than waiting for a second tap.
-    void engageSensorsAndMic();
 
     // Fire startSession immediately — the existing queue path handles the case where the
     // WS is still CONNECTING (pendingBootRef + pendingMessagesRef flush on session.created).
@@ -1308,38 +1358,25 @@ export function SurrogateOracleImmersion() {
     };
   }, [connection, journey]);
 
-  const { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraError, seekerMotionRef } = useXRMode(() => enterTerminal());
+  const { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, activateCameraWithStream, deactivateCamera, cameraVideoRef, cameraError, seekerMotionRef } = useXRMode(() => enterTerminal());
+  activateCameraWithStreamRef.current = activateCameraWithStream;
   const faceFrameDivRef = useRef<HTMLDivElement>(null);
 
-  // All optional sensors join the same explicit seeker gesture as the mic.
-  // Do not use a throwaway audio+video getUserMedia stream here: the retained
-  // mic-track path must acquire the real mic once and keep that iOS audio
-  // session stable across later mute/unmute toggles.
-  const engageSensorsAndMic = useCallback(async () => {
-    setIsAudioPlaying(false);
-    localStorage.setItem('oracle_session_muted', 'false');
+  // The preflight owns capability acquisition. Knife selection must remain a
+  // clean interaction with no native permission interruption.
+  useEffect(() => {
+    if (!showConversation || !pendingPresenceStreamRef.current) return;
+    const stream = pendingPresenceStreamRef.current;
+    pendingPresenceStreamRef.current = null;
     oracleConversationRef.current?.enableMicAutoRestart();
-
-    const orientationRequest = requestDeviceOrientationPermission('[Engagement]')
-      .then((granted) => {
-        logStep(`MOTION PERMISSION — ${granted ? 'GRANTED' : 'DENIED'}`, granted ? 'ok' : 'warn');
+    void oracleConversationRef.current?.startMic(stream)
+      .then(() => logStep('MIC UNMUTED — PRESENCE PREFLIGHT READY', 'ok'))
+      .catch((err: unknown) => {
+        console.warn('[Mic] Presence preflight handoff failed:', err);
+        logStep('MIC UNMUTE — UNAVAILABLE (CONTINUE IN TYPE MODE)', 'warn');
+        stream.getAudioTracks().forEach((track) => track.stop());
       });
-
-    // Start both real acquisition paths from this same user gesture. Camera
-    // denial is optional and must never prevent the voice encounter.
-    activateCamera();
-    const micRequest = oracleConversationRef.current
-      ? oracleConversationRef.current.startMic()
-          .then(() => logStep('MIC UNMUTED — KNIFE ENGAGEMENT READY', 'ok'))
-          .catch((err: unknown) => {
-            console.warn('[Mic] Knife engagement could not open mic:', err);
-            logStep('MIC UNMUTE — UNAVAILABLE (CONTINUE IN TYPE MODE)', 'warn');
-          })
-      : Promise.resolve();
-
-    await Promise.allSettled([orientationRequest, micRequest]);
-    logStep('SENSOR ENGAGEMENT COMPLETE', 'ok');
-  }, [activateCamera]);
+  }, [showConversation, presenceStreamReady]);
 
   // Drive face frame overlay position directly from faceBoundsRef — no React state lag.
   useEffect(() => {
@@ -2324,6 +2361,76 @@ export function SurrogateOracleImmersion() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {showPresenceGate && (
+          <motion.div
+            key="presence-gate"
+            data-presence-gate="true"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 2200,
+              background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: '1.25rem', textAlign: 'center',
+            }}
+          >
+            <div style={{
+              maxWidth: 360, width: '100%', padding: '2rem 1.5rem',
+              border: '1px solid rgba(0,255,204,0.38)',
+              background: 'rgba(0,12,18,0.96)',
+              boxShadow: '0 0 40px rgba(0,204,255,0.12)',
+            }}>
+              <div style={{
+                fontFamily: "'aAnotherTag', 'Orbitron', monospace",
+                fontSize: '1.15rem', color: '#00ffcc',
+                letterSpacing: '0.16em', marginBottom: '1rem',
+              }}>
+                SET THE ROOM
+              </div>
+              <div style={{
+                fontFamily: "'PhillySans', monospace",
+                fontSize: '0.72rem', lineHeight: 1.65,
+                color: 'rgba(255,255,255,0.76)', marginBottom: '1.6rem',
+              }}>
+                Full presence lets the Oracle see, hear, and respond to you.
+                Your browser may ask for camera, microphone, and motion access next.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <button
+                  type="button"
+                  onClick={() => void handlePresenceChoice('full')}
+                  style={{
+                    background: '#00ffcc', color: '#001014',
+                    border: 'none', padding: '0.85rem 1rem',
+                    fontFamily: "'PhillySans', monospace",
+                    fontSize: '0.7rem', fontWeight: 900,
+                    letterSpacing: '0.1em', cursor: 'pointer',
+                  }}
+                >
+                  ENTER IN FULL PRESENCE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handlePresenceChoice('quiet')}
+                  style={{
+                    background: 'transparent', color: '#00ccff',
+                    border: '1px solid rgba(0,204,255,0.4)',
+                    padding: '0.8rem 1rem',
+                    fontFamily: "'PhillySans', monospace",
+                    fontSize: '0.68rem', letterSpacing: '0.1em',
+                    cursor: 'pointer',
+                  }}
+                >
+                  CONTINUE WITHOUT
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {showNamePrompt && (
           <motion.div
             key="name-prompt"
@@ -2598,7 +2705,7 @@ export function SurrogateOracleImmersion() {
           }}
           onTypeModeChange={setIsTypeMode}
            onMicClick={(willListen) => {
-             if (willListen) void engageSensorsAndMic();
+             if (willListen) void oracleConversationRef.current?.startMic();
            }}
           onUserSpeakingChange={(speaking) => setIsUserSpeaking(prev => prev !== speaking ? speaking : prev)}
           isVisible={isOracleMode}
@@ -2856,6 +2963,28 @@ export function SurrogateOracleImmersion() {
       </AnimatePresence>
 
       {/* ── Act 5 — Rift-Construct Initiation Overlay ────────────────────── */}
+      {presenceResolved && scenePhase === 'awakened' && !showPresenceGate && (
+        <button
+          type="button"
+          onClick={() => {
+            sessionStorage.removeItem('oracle_presence_preference_v1');
+            setPresenceResolved(false);
+            setShowPresenceGate(true);
+          }}
+          style={{
+            position: 'fixed', top: 16, right: 16, zIndex: 140,
+            background: 'rgba(0,8,12,0.78)',
+            color: '#00ffcc', border: '1px solid rgba(0,255,204,0.32)',
+            padding: '0.42rem 0.62rem', borderRadius: 4,
+            fontFamily: "'PhillySans', monospace",
+            fontSize: '0.58rem', letterSpacing: '0.1em',
+            cursor: 'pointer', opacity: 0.82,
+          }}
+          aria-label="Change presence preference"
+        >
+          PRESENCE
+        </button>
+      )}
       <AnimatePresence>
         {showRiftRitual && (
           <motion.div

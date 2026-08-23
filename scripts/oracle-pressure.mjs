@@ -63,7 +63,8 @@ async function injectCollector(page) {
     });
 
     // Spy on getUserMedia — tracks every call regardless of whether the step log fires.
-    // Records {ts, phase} so we can assert it never fires before oracle phase.
+    // Records {ts, phase} so we can assert the chosen Continue Without path
+    // never fires a permission request before oracle phase.
     window.__gumCalls = [];
     var _origGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = function(constraints) {
@@ -148,8 +149,8 @@ async function getGumCalls(page) {
   return page.evaluate(function() { return window.__gumCalls || []; });
 }
 
-// Assert mic (getUserMedia) was NOT called before oracle phase.
-// Called after each pre-oracle phase to catch early permission requests.
+// Assert mic (getUserMedia) was NOT called before oracle phase on the
+// Continue Without path. Full Presence intentionally requests during preflight.
 async function assertNoEarlyMic(page, phase, pass, fail, steps) {
   var gumCalls = await getGumCalls(page);
   var stepMic  = steps.find(function(s) { return s.label.includes('MIC STARTED'); });
@@ -226,6 +227,27 @@ async function testTerminal(page, viewport, pass, fail) {
 
   // Click the center of the stage in viewport-relative coordinates
   await page.mouse.click(Math.floor(viewport.width / 2), Math.floor(viewport.height / 2));
+  // New seekers choose their capability preference immediately after Enter
+  // Alley. Use the no-permission path for deterministic browser pressure runs.
+  var presenceGate = page.locator('[data-presence-gate="true"]');
+  try {
+    await presenceGate.waitFor({ state: 'visible', timeout: 3000 });
+    var fullButton = page.getByRole('button', { name: 'ENTER IN FULL PRESENCE' });
+    var quietButton = page.getByRole('button', { name: 'CONTINUE WITHOUT' });
+    if (await fullButton.count() && await quietButton.count()) {
+      pass.push('presence preflight: Full Presence and Continue Without choices visible');
+      console.log('    ✓  Set the Room choices visible');
+    } else {
+      fail.push('presence preflight: choice buttons missing');
+      console.log('    ✗  Set the Room choice buttons missing');
+    }
+    await quietButton.click();
+    pass.push('presence preflight: Continue Without selected');
+    console.log('    ✓  Continue Without selected');
+  } catch (e) {
+    fail.push('presence preflight: gate missing');
+    console.log('    ✗  Set the Room gate did not appear');
+  }
   await page.waitForTimeout(600);
   await snap(page, '02-terminal');
 

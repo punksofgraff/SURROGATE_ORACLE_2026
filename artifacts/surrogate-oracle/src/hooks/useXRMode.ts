@@ -64,6 +64,7 @@ export interface UseXRModeReturn {
   deactivateXRMode: () => void;
   /** User explicitly activates camera passthrough — opt-in, not automatic. */
   activateCamera: () => void;
+  activateCameraWithStream: (stream: MediaStream) => void;
   /** User deactivates camera — returns to alley background. */
   deactivateCamera: () => void;
   cameraVideoRef: React.RefObject<HTMLVideoElement | null>;
@@ -394,6 +395,16 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     startCamera();
   }, [startCamera]);
 
+  const activateCameraWithStream = useCallback((stream: MediaStream) => {
+    if (streamRef.current) return;
+    const videoTracks = stream.getVideoTracks();
+    if (videoTracks.length === 0) return;
+    streamRef.current = new MediaStream(videoTracks);
+    setCameraError(null);
+    setCameraReady(true);
+    setCameraActive(true);
+  }, []);
+
   const deactivateCamera = useCallback(() => {
     stopCamera();
   }, [stopCamera]);
@@ -497,5 +508,5 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     }
   }, [isXRMode, cameraReady]);
 
-  return { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, deactivateCamera, cameraVideoRef, cameraReady, cameraError, markerActive, autoStart, seekerMotionRef };
+  return { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, activateCameraWithStream, deactivateCamera, cameraVideoRef, cameraReady, cameraError, markerActive, autoStart, seekerMotionRef };
 }

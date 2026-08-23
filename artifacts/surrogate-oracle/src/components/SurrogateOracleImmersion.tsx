@@ -20,7 +20,6 @@ import { X, Camera, CameraOff } from 'lucide-react';
 import { BackendControlPanel } from './BackendControlPanel';
 import { GoogleSignInOverlay } from './GoogleSignInOverlay';
 import { GraffPunksRadio } from './GraffPunksRadio';
-import { OracleAudioControls } from './OracleAudioControls';
 import { EnculturateCrate } from './EnculturateCrate';
 import OracleConversation, { OracleConversationHandle, OracleScore } from './OracleConversation';
 
@@ -1642,7 +1641,6 @@ export function SurrogateOracleImmersion() {
       data-oracle-thinking={isOracleThinking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
       data-music-mode={isMusicMode ? 'true' : undefined}
-      data-audio-muted={audioOutputMuted ? 'true' : undefined}
       data-camera-active={cameraActive ? 'true' : undefined}
       data-audio-target-vol={targetVol}
       data-xr-mode={isXRMode ? 'true' : undefined}

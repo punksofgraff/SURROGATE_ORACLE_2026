@@ -13,14 +13,12 @@ import { playOraclePresence, getAudioContext } from '../lib/oracleSfx';
 
 interface UseOracleConnectionProps {
   playbackRate: number;
-  oracleVolume: number;
   onViseme: (state: VisemeState) => void;
   onProcessingChange: (isProcessing: boolean) => void;
 }
 
 export function useOracleConnection({
   playbackRate,
-  oracleVolume,
   onViseme,
   onProcessingChange,
 }: UseOracleConnectionProps) {
@@ -34,7 +32,6 @@ export function useOracleConnection({
   const initializePCMPlayer = useCallback(() => {
     if (pcmPlayerRef.current) return;
     const player = new PCMPlayer(24000, playbackRate, getAudioContext());
-    player.setOracleVolume(oracleVolume, 0);
     player.setVisemeCallback(onViseme);
     player.setProcessingCallback(onProcessingChange);
     pcmPlayerRef.current = player;
@@ -56,7 +53,7 @@ export function useOracleConnection({
         };
       }
     } catch { /* SSR/storage guards — non-fatal */ }
-  }, [oracleVolume, playbackRate, onViseme, onProcessingChange]);
+  }, [playbackRate, onViseme, onProcessingChange]);
 
   const initializeOracle = useCallback(async () => {
     initializePCMPlayer();
@@ -64,10 +61,6 @@ export function useOracleConnection({
 
   const setVolume = useCallback((vol: number, rampMs = 150) => {
     pcmPlayerRef.current?.setVolume(vol, rampMs);
-  }, []);
-
-  const setOracleVolume = useCallback((vol: number, rampMs = 120) => {
-    pcmPlayerRef.current?.setOracleVolume(vol, rampMs);
   }, []);
 
   // Re-assert the Oracle playback path after an OS audio-session change
@@ -225,14 +218,13 @@ export function useOracleConnection({
     getLorePlaybackMs,
     getLoreBufferedMs,
     setVolume,
-    setOracleVolume,
     reassertPlayback,
   }), [
     error,
     initializePCMPlayer, initializeOracle,
     handleOracleResponse, resetFirstChunk, cleanup, boostMicVolume, getAnalyser, setTransmissionQ, setTauntMode,
     flushPlayback, startQuestionTracking, getQuestionPlaybackMs, getQuestionBufferedMs,
-    startLoreTracking, getLorePlaybackMs, getLoreBufferedMs, setVolume, setOracleVolume, reassertPlayback,
+    startLoreTracking, getLorePlaybackMs, getLoreBufferedMs, setVolume, reassertPlayback,
   ]);
 
   return value;

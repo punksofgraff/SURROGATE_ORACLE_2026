@@ -46,9 +46,6 @@ export class PCMPlayer {
 
   private panner: PannerNode | null = null;
   private masterGain: GainNode | null = null;
-  // Oracle-only attenuation. This is an app-level reduction (0..1), never a
-  // replacement for the device/iOS master volume.
-  private oracleGain: GainNode | null = null;
   // Post-compression makeup gain — owns the Oracle's baseline loudness.
   // Mid-graph, fixed, never touched by mic open/close or reassertPlayback().
   private makeupGain: GainNode | null = null;
@@ -56,7 +53,6 @@ export class PCMPlayer {
   // after OS audio-session changes (mobile mic toggle) so playback loudness
   // never drifts from what the app last asked for.
   private lastVolumeTarget: number = 1.0;
-  private lastOracleVolumeTarget: number = 1.0;
   private analyser: AnalyserNode;
   private compressor: DynamicsCompressorNode | null = null;
   private transmissionFilter: BiquadFilterNode | null = null;
@@ -146,15 +142,6 @@ export class PCMPlayer {
       this.masterGain = null;
     }
 
-    try {
-      const gain = this.context.createGain();
-      gain.gain.setValueAtTime(1.0, this.context.currentTime);
-      this.oracleGain = gain;
-    } catch (err) {
-      console.warn('[PCMPlayer] Oracle attenuation gain unavailable, skipping:', err);
-      this.oracleGain = null;
-    }
-
     // ── Spatial panner — Oracle voice follows head-tracking movement
     // Phones/tablets stay fixed because their OS audio session can change
     // during mic activation. Quest is the deliberate exception: its browser
@@ -175,9 +162,7 @@ export class PCMPlayer {
       panner.positionY.setValueAtTime(0.3,  this.context.currentTime);
       panner.positionZ.setValueAtTime(-0.8, this.context.currentTime);
 
-      if (this.oracleGain) {
-        this.oracleGain.connect(panner);
-      } else if (this.masterGain) {
+      if (this.masterGain) {
         panner.connect(this.masterGain);
       } else {
         panner.connect(this.context.destination);
@@ -245,15 +230,7 @@ export class PCMPlayer {
     }
 
     // Connect Analyser to the output stage
-    if (this.oracleGain) {
-      if (this.panner) {
-        this.analyser.connect(this.oracleGain);
-      } else if (this.masterGain) {
-        this.oracleGain.connect(this.masterGain);
-      } else {
-        this.oracleGain.connect(this.context.destination);
-      }
-    } else if (this.panner) {
+    if (this.panner) {
       this.analyser.connect(this.panner);
     } else if (this.masterGain) {
       this.analyser.connect(this.masterGain);
@@ -336,22 +313,6 @@ export class PCMPlayer {
     }
   }
 
-  /** Reduce Oracle voice only; device/iOS volume remains the master level. */
-  public setOracleVolume(target: number, rampMs: number = 120) {
-    if (!this.oracleGain) return;
-    const now = this.context.currentTime;
-    const safeTarget = Math.max(0, Math.min(1, target));
-    this.lastOracleVolumeTarget = safeTarget;
-    this.oracleGain.gain.cancelScheduledValues(now);
-    const startVal = Math.max(0, this.oracleGain.gain.value);
-    this.oracleGain.gain.setValueAtTime(startVal, now);
-    if (rampMs <= 0) {
-      this.oracleGain.gain.setValueAtTime(safeTarget, now);
-    } else {
-      this.oracleGain.gain.linearRampToValueAtTime(safeTarget, now + rampMs / 1000);
-    }
-  }
-
   public boostVolume(multiplier: number, rampMs: number = 50) {
     if (!this.masterGain) return;
     const now = this.context.currentTime;
@@ -398,9 +359,6 @@ export class PCMPlayer {
     return this.masterGain ? this.masterGain.gain.value : -1;
   }
 
-  public getOracleVolume(): number {
-    return this.oracleGain ? this.oracleGain.gain.value : -1;
-  }
 
   /** Fixed mid-graph makeup gain (instrumentation only). -1 when unavailable. */
   public getMakeupGain(): number {

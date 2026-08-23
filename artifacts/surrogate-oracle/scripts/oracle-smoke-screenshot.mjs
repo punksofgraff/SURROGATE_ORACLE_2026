@@ -59,7 +59,9 @@ async function warn_(condition, msg, detail) {
 
   const browser = await puppeteer.launch({
     headless: true,
-    executablePath: puppeteer.executablePath(),
+    // Replit provides Chromium outside Puppeteer's download cache. Keep the
+    // cache path as a local fallback so this also runs on developer machines.
+    executablePath: process.env.CHROME_BIN || puppeteer.executablePath(),
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -76,7 +78,9 @@ async function warn_(condition, msg, detail) {
 
   // Suppress console noise but capture errors
   const pageErrors = [];
-  page.on('pageerror', e => pageErrors.push(e.message));
+  page.on('pageerror', e => pageErrors.push(`pageerror: ${e.stack || e.message}`));
+  page.on('error', e => pageErrors.push(`error: ${e.stack || e.message}`));
+  page.on('unhandledrejection', e => pageErrors.push(`unhandledrejection: ${e.reason?.stack || e.reason?.message || String(e.reason)}`));
   page.on('console', msg => {
     if (msg.type() === 'error') pageErrors.push(msg.text());
   });
@@ -84,14 +88,14 @@ async function warn_(condition, msg, detail) {
   // ── Phase 1: DORMANT ─────────────────────────────────────────────────────
   console.log('Phase 1 — DORMANT\n');
   try {
-    await page.goto(DEV_URL, { waitUntil: 'networkidle0', timeout: 20_000 });
+    await page.goto(DEV_URL, { waitUntil: 'domcontentloaded', timeout: 20_000 });
   } catch {
     console.error(`❌  Cannot reach ${DEV_URL} — is npm run dev running?\n`);
     await browser.close();
     process.exit(1);
   }
 
-  await page.waitForTimeout(2000);
+  await new Promise(resolve => setTimeout(resolve, 2000));
   await shot(page, 'smoke-01-dormant', 'Dormant state');
 
   const dormantPhase = await page.$eval('[data-oracle-state]', el => el.getAttribute('data-oracle-state')).catch(() => null);
@@ -107,7 +111,7 @@ async function warn_(condition, msg, detail) {
   // ── Phase 2: TERMINAL ────────────────────────────────────────────────────
   console.log('\nPhase 2 — TERMINAL\n');
   await page.click('.oracle-center');
-  await page.waitForTimeout(1800);
+  await new Promise(resolve => setTimeout(resolve, 1800));
   await shot(page, 'smoke-02-terminal', 'Terminal/lore state');
 
   const terminalPhase = await page.$eval('[data-oracle-state]', el => el.getAttribute('data-oracle-state')).catch(() => null);
@@ -121,7 +125,7 @@ async function warn_(condition, msg, detail) {
   await page.evaluate(() => {
     if (typeof window.__oracle_skipLore === 'function') window.__oracle_skipLore();
   });
-  await page.waitForTimeout(2500);
+  await new Promise(resolve => setTimeout(resolve, 2500));
   await shot(page, 'smoke-03-awakened', 'Awakened state (knife cards)');
 
   const awakenedPhase = await page.$eval('[data-oracle-state]', el => el.getAttribute('data-oracle-state')).catch(() => null);
@@ -145,12 +149,12 @@ async function warn_(condition, msg, detail) {
       btns[0]?.click();
     });
   }
-  await page.waitForTimeout(2000);
+  await new Promise(resolve => setTimeout(resolve, 2000));
   await shot(page, 'smoke-04-oracle-entry', 'Oracle entry transition');
 
   // ── Phase 5: ORACLE LIVE ──────────────────────────────────────────────────
   console.log('\nPhase 5 — ORACLE LIVE\n');
-  await page.waitForTimeout(3000);
+  await new Promise(resolve => setTimeout(resolve, 3000));
   await shot(page, 'smoke-05-oracle-live', 'Oracle live state');
 
   const oraclePhase = await page.$eval('[data-oracle-state]', el => el.getAttribute('data-oracle-state')).catch(() => null);

@@ -1140,8 +1140,22 @@ export function SurrogateOracleImmersion() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       const ctx = getAudioContext();
-      if (document.hidden) ctx.suspend().then(() => logStep('TAB BACKGROUNDED', 'warn'));
-      else if (scenePhase !== 'dormant') ctx.resume().then(() => logStep('TAB FOREGROUNDED', 'ok'));
+      if (document.hidden) {
+        void ctx.suspend()
+          .then(() => logStep('TAB BACKGROUNDED', 'warn'))
+          .catch((error: unknown) => {
+            // Browsers can reject a state transition while the audio device is
+            // being torn down (especially during iOS tab switches). This is
+            // recoverable and must not become an unhandled rejection.
+            console.warn('[Audio] Tab-background suspend failed (non-fatal):', error);
+          });
+      } else if (scenePhase !== 'dormant') {
+        void ctx.resume()
+          .then(() => logStep('TAB FOREGROUNDED', 'ok'))
+          .catch((error: unknown) => {
+            console.warn('[Audio] Tab-foreground resume failed (non-fatal):', error);
+          });
+      }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -1153,7 +1167,11 @@ export function SurrogateOracleImmersion() {
       connection.flushPlayback(); // Stop any leftover lore narration/ambient sounds before knife selection
       connection.initializePCMPlayer();
       import('../lib/supabase').then(({ supabase }) => {
-        supabase.auth.getUser().then(({ data }) => { if (data?.user?.email) setUserEmail(data.user.email); });
+        void supabase.auth.getUser()
+          .then(({ data }) => { if (data?.user?.email) setUserEmail(data.user.email); })
+          .catch((error: unknown) => {
+            console.warn('[Auth] Email lookup failed (non-fatal):', error);
+          });
       });
       // Wallet-signed returning seeker: fire personalized greeting immediately.
       // startSession() queues pending messages if the WS isn't connected yet, so no

@@ -9,9 +9,9 @@ import io
 import os
 import subprocess
 import tempfile
+import uuid
 from pathlib import Path
 
-import boto3
 import requests
 import runpod
 import torch
@@ -37,19 +37,36 @@ def pipeline():
 
 
 def upload_mp4(path: Path) -> str:
-    endpoint = os.environ["OUTPUT_S3_ENDPOINT"]
-    bucket = os.environ["OUTPUT_S3_BUCKET"]
-    key = f"oracle-films/{path.stem}.mp4"
-    client = boto3.client(
-        "s3", endpoint_url=endpoint,
-        aws_access_key_id=os.environ["OUTPUT_S3_ACCESS_KEY"],
-        aws_secret_access_key=os.environ["OUTPUT_S3_SECRET_KEY"],
-        region_name=os.getenv("OUTPUT_S3_REGION", "auto"),
-    )
-    client.upload_file(str(path), bucket, key, ExtraArgs={"ContentType": "video/mp4"})
+    """Upload the finished film to a public Supabase Storage bucket.
+
+    The service-role key is only present in the private RunPod worker. The
+    browser receives the public object URL, never this credential.
+    """
+    supabase_url = os.environ["SUPABASE_URL"].rstrip("/")
+    service_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    bucket = os.getenv("OUTPUT_STORAGE_BUCKET", "oracle-films").strip("/")
+    key = f"oracle-films/{uuid.uuid4().hex}.mp4"
+    upload_url = f"{supabase_url}/storage/v1/object/{bucket}/{key}"
+    with path.open("rb") as payload:
+        response = requests.post(
+            upload_url,
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {service_key}",
+                "apikey": service_key,
+                "Content-Type": "video/mp4",
+                "x-upsert": "false",
+            },
+            timeout=120,
+        )
+    if not response.ok:
+        raise RuntimeError(
+            f"Supabase Storage upload failed ({response.status_code}): "
+            f"{response.text[:240]}"
+        )
     public_base = os.getenv("OUTPUT_PUBLIC_BASE_URL", "").rstrip("/")
     if not public_base:
-        raise RuntimeError("OUTPUT_PUBLIC_BASE_URL is required so the browser can play the film")
+        public_base = f"{supabase_url}/storage/v1/object/public/{bucket}"
     return f"{public_base}/{key}"
 
 

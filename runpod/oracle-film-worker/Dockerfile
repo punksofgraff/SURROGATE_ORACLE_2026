@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip ffmpeg git ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN python3 -m pip install --upgrade pip && \
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124 && \
-    pip install runpod diffusers transformers accelerate safetensors pillow requests boto3
+    pip install runpod diffusers transformers accelerate safetensors pillow requests
 
 WORKDIR /app
 COPY handler.py /app/handler.py

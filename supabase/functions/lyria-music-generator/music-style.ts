@@ -1,38 +1,29 @@
 export type MusicStyleResolution = {
   prompt: string;
   slugs: string[];
-  genres: string[];
-  descriptors: string[];
 };
 
-export function styleBlendInstruction(resolution: MusicStyleResolution): string {
-  return resolution.descriptors.length
-    ? `Resolved style blend (keep every element): ${resolution.descriptors.join('; ')}.`
-    : '';
-}
-
-type StyleEntry = {
+type MusicStyleSlug = {
   slug: string;
   aliases: string[];
   descriptor: string;
-  kind: 'artist' | 'genre';
 };
 
-const STYLE_CATALOG: StyleEntry[] = [
-  { slug: 'reggae', aliases: ['reggae', 'roots reggae', 'dub'], descriptor: 'reggae offbeat guitar skank, one-drop pulse, warm bass', kind: 'genre' },
-  { slug: 'drum-and-bass', aliases: ['drum and bass', 'drum n bass', 'drum & bass', 'dnb', 'jungle'], descriptor: 'drum-and-bass breakbeats, rolling sub-bass, fast syncopated propulsion', kind: 'genre' },
-  { slug: 'jazz', aliases: ['jazz', 'bebop', 'swing', 'cool jazz', 'hard bop', 'hard-bop'], descriptor: 'jazz harmony, conversational improvisation, acoustic bass and ride cymbal', kind: 'genre' },
-  { slug: 'modern-jazz-piano', aliases: ['brad mehldau', 'mehldau'], descriptor: 'exploratory modern jazz piano', kind: 'artist' },
-  { slug: 'abstract-hip-hop-rhythm', aliases: ['qwel'], descriptor: 'abstract spoken-word hip-hop rhythmic energy', kind: 'artist' },
-  { slug: 'angular-jazz-guitar', aliases: ['kurt rosenwinkel', 'rosenwinkel'], descriptor: 'angular lyrical electric-guitar harmony', kind: 'artist' },
-  { slug: 'dynamic-acoustic-jazz-drums', aliases: ['bryan blade', 'brian blade', 'blade'], descriptor: 'dynamic acoustic jazz drumming', kind: 'artist' },
-  { slug: 'modal-jazz-trumpet', aliases: ['miles davis', 'miles'], descriptor: 'spacious modal-jazz trumpet phrasing', kind: 'artist' },
-  { slug: 'angular-piano-jazz', aliases: ['thelonious monk', 'monk'], descriptor: 'angular, percussive piano-jazz phrasing', kind: 'artist' },
-  { slug: 'electric-jazz-funk', aliases: ['herbie hancock', 'hancock'], descriptor: 'inventive electric-jazz funk keyboards', kind: 'artist' },
-  { slug: 'swung-sample-hip-hop', aliases: ['j dilla', 'dilla'], descriptor: 'loose, swung sample-based hip-hop rhythm', kind: 'artist' },
-  { slug: 'cosmic-beat-electronica', aliases: ['flying lotus', 'flylo'], descriptor: 'cosmic, fractured beat-driven electronica', kind: 'artist' },
-  { slug: 'intricate-breakbeat-electronica', aliases: ['aphex twin', 'aphex'], descriptor: 'intricate, textural breakbeat electronica', kind: 'artist' },
-  { slug: 'cinematic-trip-hop', aliases: ['portishead'], descriptor: 'cinematic, nocturnal trip-hop atmosphere', kind: 'artist' },
+// This is intentionally a small, curated vocabulary rather than an imitation
+// engine. The slug is the stable distillation result; the descriptor is what is
+// actually sent to Lyria. Genre text is never cataloged or constrained here.
+const MUSIC_STYLE_CATALOG: MusicStyleSlug[] = [
+  { slug: 'modern-jazz-piano', aliases: ['brad mehldau', 'mehldau'], descriptor: 'exploratory modern jazz piano' },
+  { slug: 'abstract-hip-hop-rhythm', aliases: ['qwel'], descriptor: 'abstract spoken-word hip-hop rhythmic energy' },
+  { slug: 'angular-jazz-guitar', aliases: ['kurt rosenwinkel', 'rosenwinkel'], descriptor: 'angular lyrical electric-guitar harmony' },
+  { slug: 'dynamic-acoustic-jazz-drums', aliases: ['bryan blade', 'brian blade', 'blade'], descriptor: 'dynamic acoustic jazz drumming' },
+  { slug: 'modal-jazz-trumpet', aliases: ['miles davis', 'miles'], descriptor: 'spacious modal-jazz trumpet phrasing' },
+  { slug: 'angular-piano-jazz', aliases: ['thelonious monk', 'monk'], descriptor: 'angular, percussive piano-jazz phrasing' },
+  { slug: 'electric-jazz-funk', aliases: ['herbie hancock', 'hancock'], descriptor: 'inventive electric-jazz funk keyboards' },
+  { slug: 'swung-sample-hip-hop', aliases: ['j dilla', 'dilla'], descriptor: 'loose, swung sample-based hip-hop rhythm' },
+  { slug: 'cosmic-beat-electronica', aliases: ['flying lotus', 'flylo'], descriptor: 'cosmic, fractured beat-driven electronica' },
+  { slug: 'intricate-breakbeat-electronica', aliases: ['aphex twin', 'aphex'], descriptor: 'intricate, textural breakbeat electronica' },
+  { slug: 'cinematic-trip-hop', aliases: ['portishead'], descriptor: 'cinematic, nocturnal trip-hop atmosphere' },
 ];
 
 function normalizeMusicText(value: string): string {
@@ -56,13 +47,16 @@ function editDistance(a: string, b: string): number {
 function matchesAlias(normalizedPrompt: string, alias: string): boolean {
   if (normalizedPrompt.includes(alias)) return true;
   const promptWords = normalizedPrompt.split(' ');
-  if (alias.includes(' ') || alias.length < 5) return false;
-  const maxDistance = alias.length >= 8 ? 2 : 1;
-  return promptWords.some((word) =>
-    word.length >= 5 &&
-    Math.abs(word.length - alias.length) <= maxDistance &&
-    editDistance(word, alias) <= maxDistance
-  );
+  const aliasWords = alias.split(' ');
+  if (aliasWords.length === 1 && alias.length >= 5) {
+    const maxDistance = alias.length >= 8 ? 2 : 1;
+    return promptWords.some((word) =>
+      word.length >= 5 &&
+      Math.abs(word.length - alias.length) <= maxDistance &&
+      editDistance(word, alias) <= maxDistance
+    );
+  }
+  return false;
 }
 
 function replaceAlias(prompt: string, alias: string, replacement: string): string {
@@ -75,21 +69,12 @@ function replaceAlias(prompt: string, alias: string, replacement: string): strin
 
 export function distillMusicStyles(prompt: string): MusicStyleResolution {
   const normalizedPrompt = normalizeMusicText(prompt);
-  const matches = STYLE_CATALOG.filter((style) =>
+  const matches = MUSIC_STYLE_CATALOG.filter((style) =>
     style.aliases.some((alias) => matchesAlias(normalizedPrompt, normalizeMusicText(alias)))
   );
   let distilled = prompt;
   for (const style of matches) {
-    // Artist names are replaced for provider safety; genre words remain in the
-    // seeker brief and are also summarized explicitly below.
-    if (style.kind === 'artist') {
-      for (const alias of style.aliases) distilled = replaceAlias(distilled, alias, style.descriptor);
-    }
+    for (const alias of style.aliases) distilled = replaceAlias(distilled, alias, style.descriptor);
   }
-  return {
-    prompt: distilled,
-    slugs: matches.map((style) => style.slug),
-    genres: matches.filter((style) => style.kind === 'genre').map((style) => style.slug),
-    descriptors: matches.map((style) => style.descriptor),
-  };
+  return { prompt: distilled, slugs: matches.map((style) => style.slug) };
 }

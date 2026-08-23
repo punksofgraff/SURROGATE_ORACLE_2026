@@ -2,7 +2,6 @@ import { strict as assert } from 'node:assert';
 import { distillMusicStyles } from './music-style.ts';
 
 const mixed = distillMusicStyles('Reggae drum n bass jazz song called The Fracture');
-assert.deepEqual(mixed.genres, ['reggae', 'drum-and-bass', 'jazz']);
 assert.match(mixed.prompt, /Reggae drum n bass jazz/i);
 assert.deepEqual(mixed.slugs, []);
 

@@ -30,7 +30,6 @@ import { ArtifactCard } from './ArtifactCard';
 import { ScrambleFragment } from './ScrambleFragment';
 import { ParticleTypographyCard } from './ParticleTypographyCard';
 import { LyriaPromptMarquee } from './LyriaPromptMarquee';
-import { OracleAudioControls } from './OracleAudioControls';
 import { logStep } from './CodeAuditor';
 import { DormantHUD } from './ambient/DormantHUD';
 import { OracleHUD } from './ambient/OracleHUD';
@@ -278,16 +277,7 @@ export function SurrogateOracleImmersion() {
   const [sacredPulse, setSacredPulse]   = useState(0);
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
   const [isOracleThinking, setIsOracleThinking] = useState(false);
-  // This is Oracle-only attenuation. It never replaces the iOS/mobile master
-  // volume and never scales music or the atmosphere bus.
-  const [oracleVoiceVolume, setOracleVoiceVolume] = useState(() => {
-    const raw = localStorage.getItem('oracle_voice_volume');
-    const saved = raw === null ? 1 : Number(raw);
-    return Number.isFinite(saved) ? Math.min(1, Math.max(0, saved)) : 1;
-  });
-  const [oracleVoiceMuted, setOracleVoiceMuted] = useState(() =>
-    localStorage.getItem('oracle_voice_muted') === 'true'
-  );
+  const [audioOutputMuted, setAudioOutputMuted] = useState(false);
   const [showAuthOverlay, setShowAuthOverlay]   = useState(false);
   const [showWallet, setShowWallet]             = useState(false);
   const [visionPaused, setVisionPaused]         = useState(false);
@@ -419,7 +409,6 @@ export function SurrogateOracleImmersion() {
 
   const connection = useOracleConnection({
     playbackRate: ORACLE_PLAYBACK_RATE,
-    oracleVolume: oracleVoiceMuted ? 0 : oracleVoiceVolume,
     onViseme: handleViseme,
     onProcessingChange: handleProcessingChange,
   });
@@ -578,13 +567,6 @@ export function SurrogateOracleImmersion() {
     oracleHasSpokenRef,
   });
   const lyria = useLyriaMusic();
-
-  useEffect(() => {
-    const voiceVolume = oracleVoiceMuted ? 0 : oracleVoiceVolume;
-    localStorage.setItem('oracle_voice_volume', String(oracleVoiceVolume));
-    localStorage.setItem('oracle_voice_muted', String(oracleVoiceMuted));
-    connection.setOracleVolume(voiceVolume, oracleVoiceMuted ? 35 : 120);
-  }, [connection.setOracleVolume, oracleVoiceMuted, oracleVoiceVolume]);
 
   useEffect(() => {
     if (isStage00Tucked) stage00RestoreRef.current?.focus();
@@ -1660,7 +1642,7 @@ export function SurrogateOracleImmersion() {
       data-oracle-thinking={isOracleThinking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
       data-music-mode={isMusicMode ? 'true' : undefined}
-      data-audio-muted={oracleVoiceMuted ? 'true' : undefined}
+      data-audio-muted={audioOutputMuted ? 'true' : undefined}
       data-camera-active={cameraActive ? 'true' : undefined}
       data-audio-target-vol={targetVol}
       data-xr-mode={isXRMode ? 'true' : undefined}
@@ -1857,7 +1839,18 @@ export function SurrogateOracleImmersion() {
 
       <div
         className="oracle-center"
-        onClick={handleFirstTap}
+        onClick={(event) => {
+          if (isOracleMode) {
+            event.stopPropagation();
+            setAudioOutputMuted(current => {
+              const next = !current;
+              connection.setVolume(next ? 0 : 1, 35);
+              return next;
+            });
+            return;
+          }
+          handleFirstTap();
+        }}
         style={{ cursor: scenePhase === 'dormant' ? 'pointer' : 'default' }}
       >
         <motion.div className="oracle-cabinet" style={{ position: 'relative' }}>
@@ -2625,20 +2618,6 @@ export function SurrogateOracleImmersion() {
             return lines.join('\n');
           })()}
           isGuidedTour={isGuidedTour}
-        />
-      )}
-
-      {isOracleMode && (isAudioPlaying || isOracleSpeaking || isMusicMode || lyria.isPlaying) && (
-        <OracleAudioControls
-          volume={oracleVoiceVolume}
-          muted={oracleVoiceMuted}
-          voiceActive={isOracleSpeaking}
-          musicActive={isMusicMode || lyria.isPlaying}
-          onToggleMute={() => setOracleVoiceMuted(current => !current)}
-          onVolumeChange={(volume) => {
-            setOracleVoiceVolume(volume);
-            if (volume > 0 && oracleVoiceMuted) setOracleVoiceMuted(false);
-          }}
         />
       )}
 

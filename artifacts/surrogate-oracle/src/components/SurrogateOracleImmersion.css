@@ -431,6 +431,7 @@
   isolation: isolate;
   pointer-events: auto;
   will-change: transform, opacity, filter;
+   transition: opacity 220ms ease, transform 220ms ease, filter 220ms ease;
 }
 .oracle-lyria-card::before {
   content: '';
@@ -5599,6 +5600,8 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   align-items: center;
   gap: 16px;
   text-align: center;
+  position: relative;
+  transition: opacity 220ms ease, transform 220ms ease, filter 220ms ease;
 }
 
 .oracle-stage00-card::before {
@@ -5686,6 +5689,122 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 }
 
 .oracle-stage00-card__fafo:hover { opacity: 1; }
+
+/* Shared tuck affordance. Tucked cards remain mounted; only their visual
+   surface is folded away so generation, playback, and scroll state continue. */
+.oracle-overlay-tuck {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 3;
+  min-width: 52px;
+  min-height: 32px;
+  padding: 6px 9px;
+  border: 1px solid rgba(0, 255, 204, 0.34);
+  border-radius: 5px;
+  background: rgba(0, 8, 14, 0.72);
+  color: rgba(0, 255, 204, 0.82);
+  font: 9px 'Share Tech Mono', monospace;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.oracle-overlay-tuck:hover,
+.oracle-overlay-tuck:focus-visible {
+  border-color: #00ffcc;
+  background: rgba(0, 30, 32, 0.92);
+  box-shadow: 0 0 14px rgba(0, 255, 204, 0.22);
+}
+.oracle-overlay-tuck:focus-visible,
+.oracle-overlay-tab:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+.oracle-overlay-tab {
+  display: none;
+  position: fixed;
+  z-index: 4;
+  pointer-events: auto;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid rgba(0, 255, 204, 0.48);
+  border-radius: 7px 0 0 7px;
+  background: rgba(0, 8, 14, 0.9);
+  color: #00ffcc;
+  box-shadow: 0 0 18px rgba(0, 255, 204, 0.16);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font: 9px 'Share Tech Mono', monospace;
+  letter-spacing: 0.11em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.oracle-stage00-shell[data-tucked] .oracle-stage00-card,
+.oracle-lyria-card[data-tucked],
+.oracle-portrait-fullscreen[data-tucked] .oracle-portrait-fullscreen__card {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: scale(0.88) translateY(12px) !important;
+  filter: blur(5px) !important;
+  transition: opacity 220ms ease, transform 220ms ease, filter 220ms ease;
+}
+.oracle-stage00-shell[data-tucked] .oracle-overlay-tab,
+.oracle-lyria-section[data-card-tucked] .oracle-lyria-tab,
+.oracle-portrait-fullscreen[data-tucked] .oracle-overlay-tab,
+.oracle-talisman-overlay[data-tucked] .oracle-overlay-tab {
+  display: block;
+}
+.oracle-stage00-shell[data-tucked] .oracle-overlay-tab {
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+}
+.oracle-lyria-tab {
+  right: 0;
+  bottom: max(112px, calc(env(safe-area-inset-bottom) + 104px));
+}
+.oracle-portrait-fullscreen[data-tucked] {
+  background: transparent;
+  backdrop-filter: none;
+  pointer-events: none;
+}
+.oracle-portrait-fullscreen[data-tucked] .oracle-overlay-tab {
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: auto;
+}
+.oracle-talisman-overlay[data-tucked] {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  pointer-events: auto;
+}
+.oracle-talisman-overlay[data-tucked] .oracle-talisman-content {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 220ms ease;
+}
+.oracle-talisman-tab {
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.oracle-stage00-shell[data-tucked] {
+  pointer-events: none;
+}
+.oracle-stage00-shell[data-tucked] .oracle-overlay-tab {
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oracle-overlay-tuck,
+  .oracle-overlay-tab,
+  .oracle-stage00-card,
+  .oracle-lyria-card,
+  .oracle-talisman-content {
+    transition: none !important;
+  }
+}
 
 @keyframes guidestone-pulse {
   0%, 100% { opacity: 0.7; transform: scale(1); }

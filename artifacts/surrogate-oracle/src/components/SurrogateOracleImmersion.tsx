@@ -257,6 +257,8 @@ export function SurrogateOracleImmersion() {
   const [isRiftOpening, setIsRiftOpening] = useState(false);
   const [portraitViewerUrl, setPortraitViewerUrl] = useState<string | null>(null);
   const [showPortraitCard, setShowPortraitCard] = useState(false);
+  const [isPortraitCardTucked, setIsPortraitCardTucked] = useState(false);
+  const portraitRestoreRef = useRef<HTMLButtonElement>(null);
   const [portraitRevealPhase, setPortraitRevealPhase] = useState<'hidden'|'scanIn'|'unfurl'|'phosphor'|'settled'>('hidden');
   const [showConversation, setShowConversation]   = useState(false);
   const [isMicActive, setIsMicActive]       = useState(false);
@@ -284,6 +286,10 @@ export function SurrogateOracleImmersion() {
   const [walletIframeUrl, setWalletIframeUrl]   = useState('https://wallet.thesurrogate.me');
   const [isGuidedTour, setIsGuidedTour]     = useState(false);
   const [showStage00, setShowStage00]       = useState(false);
+  const [isStage00Tucked, setIsStage00Tucked] = useState(false);
+  const [isLyriaCardTucked, setIsLyriaCardTucked] = useState(false);
+  const stage00RestoreRef = useRef<HTMLButtonElement>(null);
+  const lyriaRestoreRef = useRef<HTMLButtonElement>(null);
   const [loreStarted, setLoreStarted]       = useState(false);
   const [holdTooltip, setHoldTooltip]       = useState<{ title: string; body: string } | null>(null);
   const [hamburgerOpen, setHamburgerOpen]   = useState(false);
@@ -572,6 +578,18 @@ export function SurrogateOracleImmersion() {
     connection.setVolume(audioOutputMuted ? 0 : audioOutputVolume, 120);
     lyria.setOutputGain(audioOutputMuted ? 0 : audioOutputVolume, 120);
   }, [audioOutputMuted, audioOutputVolume, connection.setVolume, lyria.setOutputGain]);
+
+  useEffect(() => {
+    if (isStage00Tucked) stage00RestoreRef.current?.focus();
+  }, [isStage00Tucked]);
+
+  useEffect(() => {
+    if (isPortraitCardTucked) portraitRestoreRef.current?.focus();
+  }, [isPortraitCardTucked]);
+
+  useEffect(() => {
+    if (isLyriaCardTucked) lyriaRestoreRef.current?.focus();
+  }, [isLyriaCardTucked]);
   // React state is intentionally not the request lock: a voice transcript and
   // its committed user turn can arrive in the same tick, before isMusicMode or
   // lyria.status has re-rendered. Without this ref, two Lyria generations race
@@ -2049,7 +2067,17 @@ export function SurrogateOracleImmersion() {
 
       <AnimatePresence>
         {showStage00 && (
-          <div style={{ position: 'fixed', top: 'var(--cabinet-top)', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 200 }}>
+          <div
+            className="oracle-stage00-shell"
+            data-tucked={isStage00Tucked || undefined}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && isStage00Tucked) {
+                event.preventDefault();
+                setIsStage00Tucked(false);
+              }
+            }}
+            style={{ position: 'fixed', top: 'var(--cabinet-top)', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 200 }}
+          >
             <motion.div
               key="stage-00-card"
               className="oracle-stage00-card"
@@ -2058,6 +2086,14 @@ export function SurrogateOracleImmersion() {
               exit={{ opacity: 0, scale: 0.96, y: -12, filter: 'blur(6px)' }}
               transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
             >
+              <button
+                type="button"
+                className="oracle-overlay-tuck"
+                onClick={(event) => { event.stopPropagation(); setIsStage00Tucked(true); }}
+                aria-label="Tuck entry card"
+              >
+                TUCK
+              </button>
               <div className="oracle-stage00-card__sigil">◈</div>
               <div className="oracle-stage00-card__greeting">
                 <ParticleTypographyCard
@@ -2080,6 +2116,15 @@ export function SurrogateOracleImmersion() {
                 ◈ ENTER THE CASCADE
               </button>
             </motion.div>
+            <button
+              type="button"
+              className="oracle-overlay-tab"
+              ref={stage00RestoreRef}
+              onClick={() => setIsStage00Tucked(false)}
+              aria-label="Restore entry card"
+            >
+              ◈ ENTRY
+            </button>
           </div>
         )}
       </AnimatePresence>
@@ -2145,6 +2190,13 @@ export function SurrogateOracleImmersion() {
           <motion.div
             key="portrait-fullscreen"
             className="oracle-portrait-fullscreen"
+            data-tucked={isPortraitCardTucked || undefined}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && isPortraitCardTucked) {
+                event.preventDefault();
+                setIsPortraitCardTucked(false);
+              }
+            }}
             initial={{ opacity: 0, y: '100vh' }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: '-20vh', filter: 'blur(10px)' }}
@@ -2156,6 +2208,14 @@ export function SurrogateOracleImmersion() {
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.2, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
             >
+              <button
+                type="button"
+                className="oracle-overlay-tuck"
+                onClick={(event) => { event.stopPropagation(); setIsPortraitCardTucked(true); }}
+                aria-label="Tuck neural portrait card"
+              >
+                TUCK
+              </button>
               <div className="oracle-portrait-fullscreen__label">NEURAL PORTRAIT</div>
               <div className="oracle-portrait-fullscreen__sublabel">SIGNAL SYNTHESIZED</div>
               <img src={portraitViewerUrl} alt="Neural Portrait" className="oracle-portrait-fullscreen__img" />
@@ -2225,6 +2285,15 @@ export function SurrogateOracleImmersion() {
                 </button>
               </div>
             </motion.div>
+            <button
+              type="button"
+              className="oracle-overlay-tab"
+              ref={portraitRestoreRef}
+              onClick={() => setIsPortraitCardTucked(false)}
+              aria-label="Restore neural portrait card"
+            >
+              ◈ PORTRAIT
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -2594,7 +2663,17 @@ export function SurrogateOracleImmersion() {
       )}
 
       {isOracleMode && isMusicMode && (
-        <div className="oracle-lyria-section" aria-live="polite">
+        <div
+          className="oracle-lyria-section"
+          data-card-tucked={isLyriaCardTucked || undefined}
+          aria-live="polite"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && isLyriaCardTucked) {
+              event.preventDefault();
+              setIsLyriaCardTucked(false);
+            }
+          }}
+        >
           <button
             type="button"
             className="oracle-music-return"
@@ -2604,7 +2683,15 @@ export function SurrogateOracleImmersion() {
             <span className="oracle-music-return__glyph" aria-hidden="true">◈</span>
             <span>RETURN TO ORACLE</span>
           </button>
-          <div className="oracle-lyria-card">
+            <div className="oracle-lyria-card" data-tucked={isLyriaCardTucked || undefined}>
+              <button
+                type="button"
+                className="oracle-overlay-tuck"
+                onClick={(event) => { event.stopPropagation(); setIsLyriaCardTucked(true); }}
+                aria-label="Tuck Lyria signal card"
+              >
+                TUCK
+              </button>
             <div className="oracle-lyria-card__eyebrow">◈ LYRIA // FRACTURE BEAT</div>
             <div className="oracle-lyria-card__title">MANIFESTED SIGNAL</div>
             <div className="oracle-lyria-card__status">
@@ -2640,6 +2727,15 @@ export function SurrogateOracleImmersion() {
               <button className="oc-send-btn" onClick={exitMusicMode}>RETURN TO ORACLE</button>
             </div>
           </div>
+            <button
+              type="button"
+              className="oracle-overlay-tab oracle-lyria-tab"
+              ref={lyriaRestoreRef}
+              onClick={() => setIsLyriaCardTucked(false)}
+              aria-label="Restore Lyria signal card"
+            >
+              ◈ LYRIA
+            </button>
         </div>
       )}
 

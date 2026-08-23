@@ -7,7 +7,7 @@
  * visually present beneath the overlay — this fires before exitOracleMode.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ── Alignment glyphs ──────────────────────────────────────────────────────────
@@ -118,14 +118,24 @@ const TALISMAN_DURATION_MS = 8000;
 
 export function TalismanCard({ data, onDismiss }: TalismanCardProps) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restoreRef = useRef<HTMLButtonElement>(null);
+  const [isTucked, setIsTucked] = useState(false);
 
   useEffect(() => {
-    if (!data) return;
+    if (!data || isTucked) return;
     timerRef.current = setTimeout(onDismiss, TALISMAN_DURATION_MS);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [data, onDismiss]);
+  }, [data, isTucked, onDismiss]);
+
+  useEffect(() => {
+    if (!data) setIsTucked(false);
+  }, [data]);
+
+  useEffect(() => {
+    if (isTucked) restoreRef.current?.focus();
+  }, [isTucked]);
 
   const isSacred   = data?.alignment === 'sacred';
   const isProfane  = data?.alignment === 'profane';
@@ -154,6 +164,14 @@ export function TalismanCard({ data, onDismiss }: TalismanCardProps) {
       {data && (
         <motion.div
           key="talisman-card"
+          className="oracle-talisman-overlay"
+          data-tucked={isTucked || undefined}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && isTucked) {
+              event.preventDefault();
+              setIsTucked(false);
+            }
+          }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0, transition: { duration: 1.2 } }}
@@ -195,7 +213,15 @@ export function TalismanCard({ data, onDismiss }: TalismanCardProps) {
           ))}
 
           {/* ── Content stack ── */}
-          <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+          <div className="oracle-talisman-content" style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+            <button
+              type="button"
+              className="oracle-overlay-tuck"
+              onClick={(event) => { event.stopPropagation(); setIsTucked(true); }}
+              aria-label="Tuck talisman card"
+            >
+              TUCK
+            </button>
 
             {/* Header label */}
             <motion.div
@@ -303,6 +329,15 @@ export function TalismanCard({ data, onDismiss }: TalismanCardProps) {
             </motion.div>
 
           </div>
+          <button
+            type="button"
+            className="oracle-overlay-tab oracle-talisman-tab"
+            ref={restoreRef}
+            onClick={(event) => { event.stopPropagation(); setIsTucked(false); }}
+            aria-label="Restore talisman card"
+          >
+            ◈ TALISMAN
+          </button>
         </motion.div>
       )}
     </AnimatePresence>

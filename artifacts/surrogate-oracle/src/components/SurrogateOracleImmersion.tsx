@@ -826,20 +826,25 @@ export function SurrogateOracleImmersion() {
     setShowPresenceGate(false);
     if (mode === 'full') {
       setupAudioSpine();
+      // Start both permission requests before the first await. iOS Safari ties
+      // motion permission to the originating gesture; waiting for getUserMedia
+      // to resolve first can otherwise make the motion prompt silently fail.
+      const motionPermission = requestDeviceOrientationPermission('[Presence]');
+      const cameraMicPermission = navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 1280 },
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+      });
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 1280 },
-          },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 1,
-          },
-        });
+        const stream = await cameraMicPermission;
         pendingPresenceStreamRef.current = stream;
         activateCameraWithStreamRef.current(stream);
         setPresenceStreamReady(true);
@@ -848,7 +853,7 @@ export function SurrogateOracleImmersion() {
         console.warn('[Presence] Camera/microphone preflight unavailable:', error);
         logStep('PRESENCE PREFLIGHT — CONTINUING WITHOUT CAMERA/MIC', 'warn');
       }
-      const motionGranted = await requestDeviceOrientationPermission('[Presence]');
+      const motionGranted = await motionPermission;
       logStep(`MOTION PERMISSION — ${motionGranted ? 'GRANTED' : 'DENIED'}`, motionGranted ? 'ok' : 'warn');
     } else {
       logStep('PRESENCE PREFLIGHT — CONTINUING WITHOUT CAMERA/MIC', 'ok');

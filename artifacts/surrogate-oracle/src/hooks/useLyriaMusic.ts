@@ -38,7 +38,6 @@ export function useLyriaMusic() {
   const [prompt, setPrompt] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
-  const [musicGenres, setMusicGenres] = useState<string[]>([]);
   const [durationSeconds, setDurationSeconds] = useState<number | null>(null);
   const outputGainRef = useRef(1);
 
@@ -155,7 +154,6 @@ export function useLyriaMusic() {
     setPrompt(requestedPrompt || null);
     setModel(null);
     setRequestId(null);
-    setMusicGenres([]);
     setDurationSeconds(null);
     traceEvent('lyria_request', {
       prompt: requestedPrompt,
@@ -196,9 +194,6 @@ export function useLyriaMusic() {
       setPrompt(typeof data.prompt === 'string' ? data.prompt : requestedPrompt);
       setModel(typeof data.model === 'string' ? data.model : null);
       setRequestId(typeof data.requestId === 'string' ? data.requestId : null);
-      setMusicGenres(Array.isArray(data.musicGenres)
-        ? data.musicGenres.filter((genre: unknown): genre is string => typeof genre === 'string')
-        : []);
       traceEvent('lyria_response', {
         request_id: typeof data.requestId === 'string' ? data.requestId : null,
         interaction_id: typeof data.interactionId === 'string' ? data.interactionId : null,
@@ -249,7 +244,6 @@ export function useLyriaMusic() {
     prompt,
     model,
     requestId,
-    musicGenres,
     durationSeconds,
     handleLoadedMetadata,
     generate,

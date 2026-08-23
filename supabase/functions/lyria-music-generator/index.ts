@@ -5,7 +5,7 @@
  * base64 because a generated clip is short and this keeps the client contract
  * independent of storage bucket/public URL configuration.
  */
-import { distillMusicStyles, styleBlendInstruction } from './music-style.ts';
+import { distillMusicStyles } from './music-style.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -143,13 +143,9 @@ Deno.serve(async (req: Request) => {
   const durationInstruction =
     `Create a complete, dynamically arranged track with a natural ending. ` +
     `Do not exceed ${MAX_DURATION_SECONDS} seconds. Let the arrangement develop beyond the opening minute.`;
-  const styleBlend = styleBlendInstruction(distilledStyles);
-  const jazzGuard = distilledStyles.genres.includes('jazz')
-    ? ` Jazz harmony and improvisational interplay should coexist with every other requested style; do not let jazz erase reggae or drum-and-bass rhythm.`
-    : '';
   const safePrompt = asksForLyrics
-    ? `${prompt}.${styleBlend ? ` ${styleBlend}` : ''} ${durationInstruction}${jazzGuard} Write and perform original lyrics that fit the requested story.`
-    : `${prompt}.${styleBlend ? ` ${styleBlend}` : ''} ${durationInstruction}${jazzGuard} Instrumental only. No vocals. No lyrics.`;
+    ? `${prompt}. ${durationInstruction} Write and perform original lyrics that fit the requested story.`
+    : `${prompt}. ${durationInstruction} Instrumental only. No vocals. No lyrics.`;
   const model = 'lyria-3-pro-preview';
 
   let upstream: Response | null = null;
@@ -298,7 +294,6 @@ Deno.serve(async (req: Request) => {
       model,
       prompt: safePrompt,
       musicStyleSlugs: distilledStyles.slugs,
-      musicGenres: distilledStyles.genres,
       requestId,
       interactionId: interactionId || undefined,
       outputText: typeof result.output_text === 'string'

@@ -377,13 +377,10 @@ export class PCMPlayer {
   public setTransmissionQ(q: number, rampMs: number = 0): void {
     if (!this.transmissionFilter) return;
     const now = this.context.currentTime;
-    // During the taunt, occasionally make the existing tunnel filter catch
-    // and release the voice. The normal progress sweep remains the baseline;
-    // this only adds sparse, restrained interruptions.
-    const tauntQ = this.tauntActive && Math.random() < 0.22
-      ? (Math.random() < 0.5 ? 0.12 : 7.5)
-      : q;
-    const safeQ = Math.max(0.0001, tauntQ);
+    // The caller owns the deliberate knife-card sweep. Never mutate the
+    // shared Oracle filter here: a taunt's transient effect must not leak
+    // into the selected-knife response or live conversation.
+    const safeQ = Math.max(0.0001, q);
     this.transmissionFilter.Q.cancelScheduledValues(now);
     this.transmissionFilter.Q.setValueAtTime(Math.max(0.0001, this.transmissionFilter.Q.value), now);
     if (rampMs <= 0) {

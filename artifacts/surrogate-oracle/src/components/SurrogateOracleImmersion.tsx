@@ -1048,6 +1048,10 @@ export function SurrogateOracleImmersion() {
 
     // Stop any active card preview/voiceover immediately
     connection.setTauntMode(false);
+    // The preview may have left the shared transmission filter narrowed at
+    // Q=12. Reset it before the selected-knife response so all Oracle speech
+    // after selection returns to the clean voice path.
+    connection.setTransmissionQ(0.01, 0);
     connection.flushPlayback();
 
     // The knife is the engagement gesture: request optional sensors and open

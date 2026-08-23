@@ -50,3 +50,4 @@ channel = "stable-25_05"
 
 [userenv.shared]
 SUPABASE_URL = "https://velmmplevfrtrtrypoch.supabase.co"
+RUNPOD_COMFYUI_URL = "https://wiwnkr9x8x2zza-8188.proxy.runpod.net"

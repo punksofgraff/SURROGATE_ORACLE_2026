@@ -5,7 +5,7 @@
  * and FFmpeg. The browser only sees a job id and sanitized progress/result.
  *
  * Providers:
- * - Direct ComfyUI Pod: RUNPOD_COMFYUI_URL + RUNPOD_API_KEY
+ * - Direct ComfyUI Pod: RUNPOD_COMFYUI_URL
  * - Legacy RunPod Serverless: RUNPOD_ENDPOINT_ID + RUNPOD_API_KEY
  */
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -100,7 +100,7 @@ async function runpod(path: string, method: string, body?: unknown): Promise<Rec
 
 function comfyUrl(path: string): string {
   const base = Deno.env.get('RUNPOD_COMFYUI_URL')?.replace(/\/+$/, '');
-  if (!base) throw new Error('Seedance Pod is not configured. Add RUNPOD_COMFYUI_URL to enable the GPU film path.');
+  if (!base) throw new Error('ComfyUI Pod is not configured. Add RUNPOD_COMFYUI_URL to enable the GPU film path.');
   return `${base}${path}`;
 }
 
@@ -109,8 +109,6 @@ async function comfyFetch(path: string, init: RequestInit = {}, timeoutMs = COMF
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const headers = new Headers(init.headers);
-    const key = Deno.env.get('RUNPOD_API_KEY');
-    if (key) headers.set('Authorization', `Bearer ${key}`);
     return await fetch(comfyUrl(path), { ...init, headers, signal: controller.signal });
   } finally {
     clearTimeout(timer);

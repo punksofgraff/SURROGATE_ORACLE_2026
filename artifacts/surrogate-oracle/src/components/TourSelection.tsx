@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ParticleTypographyCard } from './ParticleTypographyCard';
 
 // ── Gradient colour per letter (Sacred Green → Brand Cyan) ───────────────────
 function gradientChar(i: number, total: number): string {
@@ -218,52 +219,19 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onCardProgress, o
 
                   <div className="oracle-knife-divider" />
 
-                  {/* Card text — letter-by-letter reveal */}
-                  <div className="oracle-knife-card-question" aria-label={tc.text}>
-                    {isThisActive ? (() => {
-                      const words = tc.text.split(' ');
-                      let globalCharIdx = 0;
-                      return words.map((word, wordIdx) => {
-                        const chars = word.split('');
-                        const wordStartIdx = globalCharIdx;
-                        globalCharIdx += chars.length + 1;
-                        return (
-                          <span key={wordIdx} style={{ display: 'inline-block', whiteSpace: 'nowrap' }}>
-                            {chars.map((char, charIdx) => {
-                              const j = wordStartIdx + charIdx;
-                              return (
-                                <span
-                                  key={charIdx}
-                                  className="oracle-knife-letter"
-                                  style={{
-                                    opacity: j < landedChars ? 1 : 0,
-                                    filter: j < landedChars ? 'blur(0px)' : 'blur(3px)',
-                                    transition: 'opacity 0.55s ease-out, filter 0.55s ease-out',
-                                    color: gradientChar(j, tc.text.length),
-                                    display: 'inline-block',
-                                  }}
-                                >
-                                  {char}
-                                </span>
-                              );
-                            })}
-                            {wordIdx < words.length - 1 && (
-                              <span
-                                className="oracle-knife-letter"
-                                style={{
-                                  opacity: (wordStartIdx + chars.length) < landedChars ? 1 : 0,
-                                  display: 'inline-block',
-                                  whiteSpace: 'pre',
-                                }}
-                              >
-                                {' '}
-                              </span>
-                            )}
-                          </span>
-                        );
-                      });
-                    })() : tc.text}
-                  </div>
+                  {/* Return-journey copy uses the same particle typography engine
+                      as knife cards; progress remains driven by the Oracle audio. */}
+                  <ParticleTypographyCard
+                    questionIndex={i}
+                    landedChars={isThisActive ? landedChars : 0}
+                    isEmitting={isEmitting}
+                    isSelected={false}
+                    isThisSelected={false}
+                    accentColor="#00ff88"
+                    territory={tc.territory}
+                    question={tc.text}
+                    variant="knife"
+                  />
 
                   {/* CTA */}
                   <div

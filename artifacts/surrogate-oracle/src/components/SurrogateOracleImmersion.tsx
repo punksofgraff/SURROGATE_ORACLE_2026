@@ -2683,7 +2683,11 @@ export function SurrogateOracleImmersion() {
             <span className="oracle-music-return__glyph" aria-hidden="true">◈</span>
             <span>RETURN TO ORACLE</span>
           </button>
-            <div className="oracle-lyria-card" data-tucked={isLyriaCardTucked || undefined}>
+            <div
+              className="oracle-lyria-card"
+              data-tucked={isLyriaCardTucked || undefined}
+              data-lyria-status={lyria.status}
+            >
               <button
                 type="button"
                 className="oracle-overlay-tuck"
@@ -2692,8 +2696,19 @@ export function SurrogateOracleImmersion() {
               >
                 TUCK
               </button>
-            <div className="oracle-lyria-card__eyebrow">◈ LYRIA // FRACTURE BEAT</div>
-            <div className="oracle-lyria-card__title">MANIFESTED SIGNAL</div>
+            <div className="oracle-lyria-card__eyebrow">LYRIA SIGNAL</div>
+            <div className="oracle-lyria-card__signal" aria-label="Manifested signal">
+              <ParticleTypographyCard
+                questionIndex={0}
+                landedChars={lyria.status === 'generating' ? 0 : 'MANIFESTED SIGNAL'.length}
+                isEmitting={lyria.status === 'generating'}
+                isSelected={false}
+                isThisSelected={false}
+                accentColor="#00ffcc"
+                territory="LYRIA SIGNAL"
+                question="MANIFESTED SIGNAL"
+              />
+            </div>
             <div className="oracle-lyria-card__status">
               {lyria.status === 'generating' ? 'GENERATING UP TO 3-MINUTE SIGNAL…' :
                 lyria.status === 'error' ? 'SIGNAL FAILED — ORACLE STILL LISTENING' :

@@ -408,8 +408,8 @@
   pointer-events: none;
 }
 
-/* Lyria is the same manifested object language as the knife card: glass,
-   gradient frame, scanlines, and a compact control rail. */
+/* Lyria is a knife-card transmission, not a terminal panel. Keep the
+   established glass frame and let ParticleTypographyCard own the signal. */
 .oracle-lyria-card {
   width: clamp(300px, 88vw, 500px);
   box-sizing: border-box;
@@ -419,14 +419,16 @@
   padding: 32px 28px 24px;
   border-radius: 16px;
   border: 0;
-  /* This card sits above a live transparent Canvas during the mode swap.
-     Keep its backing surface dark so an intermediate framebuffer cannot read
-     as a white sheet through the glass treatment. */
-   background: linear-gradient(158deg, rgba(0,18,20,.70), rgba(0,3,10,.62) 48%, rgba(34,4,42,.68));
-   backdrop-filter: blur(8px) saturate(1.35);
-   -webkit-backdrop-filter: blur(8px) saturate(1.35);
-  color: #f3d8ff;
-  box-shadow: 0 0 30px rgba(176,38,255,.2), inset 0 0 22px rgba(0,255,204,.04);
+  background: linear-gradient(
+    158deg,
+    rgba(0, 255, 136, 0.06) 0%,
+    rgba(0, 0, 0, 0.03) 48%,
+    rgba(176, 38, 255, 0.06) 100%
+  );
+  backdrop-filter: blur(4px) saturate(1.9);
+  -webkit-backdrop-filter: blur(4px) saturate(1.9);
+  color: rgba(255, 255, 255, 0.92);
+  box-shadow: none;
   overflow: hidden;
   isolation: isolate;
   pointer-events: auto;
@@ -439,54 +441,112 @@
   inset: 0;
   border-radius: 16px;
   padding: 1px;
-  background: linear-gradient(to bottom, #00ff88, rgba(0,255,136,.3) 38%, rgba(176,38,255,.35) 62%, #b026ff);
+  background: linear-gradient(
+    to bottom,
+    #00ff88 0%,
+    rgba(0, 255, 136, 0.35) 38%,
+    rgba(176, 38, 255, 0.35) 62%,
+    #b026ff 100%
+  );
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
-  opacity: .75;
+  opacity: 0.72;
 }
 .oracle-lyria-card::after {
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: repeating-linear-gradient(to bottom, transparent 0 3px, rgba(0,255,136,.035) 3px 4px);
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 3px,
+    rgba(0, 255, 136, 0.035) 3px 4px
+  );
+  opacity: 0;
+  transition: opacity 0.3s ease;
 }
-.oracle-lyria-card__eyebrow,
-.oracle-lyria-card__status {
-  font-family: 'Share Tech Mono', monospace;
-  letter-spacing: .14em;
+.oracle-lyria-card[data-lyria-status="generating"]::after {
+  opacity: 1;
+}
+.oracle-lyria-card__eyebrow {
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: clamp(0.82rem, 2.2vw, 1rem);
+  font-weight: 800;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
+  color: #00ff88;
+  text-shadow: 0 0 12px rgba(0, 255, 136, 0.48);
 }
-.oracle-lyria-card__eyebrow { color: #d16cff; font-size: 11px; }
-.oracle-lyria-card__title {
-  margin-top: 7px;
-  font-family: 'adrip1', 'Orbitron', monospace;
-  font-size: clamp(1.5rem, 5vw, 2.2rem);
-  letter-spacing: .08em;
-  color: #00ffcc;
-  text-shadow: 0 0 16px rgba(0,255,204,.4);
+.oracle-lyria-card__signal {
+  width: 100%;
+  min-height: 104px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: -2px 0 -4px;
 }
-.oracle-lyria-card__status { margin-top: 8px; font-size: 12px; color: rgba(243,216,255,.78); }
+.oracle-lyria-card__signal .oracle-knife-card-question {
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: clamp(1.44rem, 4.2vw, 1.75rem);
+  line-height: 1.45;
+}
+.oracle-lyria-card__status {
+  margin-top: 8px;
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.84);
+  text-align: center;
+}
 .oracle-lyria-card__brief {
   margin-top: 14px;
-  color: rgba(0,255,204,.86);
-  font: 11px/1.45 'Share Tech Mono', monospace;
-  letter-spacing: .04em;
+  color: rgba(255, 255, 255, 0.76);
+  font: 0.92rem/1.5 'PhillySans', 'Share Tech Mono', monospace;
+  letter-spacing: 0.03em;
+  text-align: center;
   max-height: 3.1em;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .oracle-lyria-card__meta {
   margin-top: 7px;
-  color: rgba(243,216,255,.54);
-  font: 9px/1.35 'Share Tech Mono', monospace;
-  letter-spacing: .06em;
+  color: rgba(255, 255, 255, 0.46);
+  font: 0.68rem/1.35 'PhillySans', 'Share Tech Mono', monospace;
+  letter-spacing: 0.08em;
+  text-align: center;
   overflow-wrap: anywhere;
 }
-.oracle-lyria-card__error { margin-top: 7px; color: #ff8bdb; font: 11px 'Share Tech Mono', monospace; }
+.oracle-lyria-card__error {
+  margin-top: 7px;
+  color: #ff8bdb;
+  font: 0.84rem/1.4 'PhillySans', 'Share Tech Mono', monospace;
+  text-align: center;
+}
 .oracle-lyria-card__actions { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; position: relative; z-index: 1; }
+.oracle-lyria-card__actions .oc-send-btn {
+  min-height: 40px;
+  padding: 9px 16px;
+  border: 1px solid rgba(0, 255, 136, 0.42);
+  border-radius: 6px;
+  background: rgba(0, 255, 136, 0.08);
+  color: rgba(0, 255, 136, 0.92);
+  font: 0.78rem 'PhillySans', 'Share Tech Mono', monospace;
+  letter-spacing: 0.12em;
+  transition: background 180ms ease, box-shadow 180ms ease, color 180ms ease;
+}
+.oracle-lyria-card__actions .oc-send-btn:hover,
+.oracle-lyria-card__actions .oc-send-btn:focus-visible {
+  background: rgba(0, 255, 136, 0.18);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(0, 255, 136, 0.18);
+}
+.oracle-lyria-card__actions .oc-send-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
 
 /* Always-visible escape hatch for the music state. It lives outside the card
    so a long brief, mobile wrapping, or a pending generation can never hide

@@ -1510,6 +1510,22 @@ export function SurrogateOracleImmersion() {
   const oracleFilm = useOracleFilm(currentSessionId);
 
   useEffect(() => {
+    const handleFilmReady = (event: Event) => {
+      const detail = (event as CustomEvent<{ finalMediaUrl?: string; job?: { id?: string } }>).detail;
+      if (!detail?.finalMediaUrl) return;
+      // Return the seeker to the live conversation while the long render runs.
+      // When it completes, let the Oracle know before resurfacing the result card.
+      oracleConversationRef.current?.sendTextMessage(
+        `[FILM READY — The Seedance Oracle film has finished materializing. Tell the Seeker their beach-bar transmission is ready to watch. Do not invent a URL or claim details you cannot see; simply acknowledge the completed visual artifact and invite them to open it.]`,
+        true,
+      );
+      setShowPortraitCard(true);
+    };
+    window.addEventListener('oracle:film-ready', handleFilmReady);
+    return () => window.removeEventListener('oracle:film-ready', handleFilmReady);
+  }, []);
+
+  useEffect(() => {
     if (portrait.portraitError) {
       const t = setTimeout(portrait.clearPortraitError, 4000);
       return () => clearTimeout(t);
@@ -2264,11 +2280,14 @@ export function SurrogateOracleImmersion() {
                     <button
                       type="button"
                       className="oracle-portrait-fullscreen__film"
-                      onClick={() => void oracleFilm.createFilm(
-                        portraitViewerUrl,
-                        lyria.audioUrl,
-                        lyria.prompt ?? 'reggae drum and bass beach bar music video',
-                      )}
+                      onClick={() => {
+                        setShowPortraitCard(false);
+                        void oracleFilm.createFilm(
+                          portraitViewerUrl,
+                          lyria.audioUrl,
+                          lyria.prompt ?? 'reggae drum and bass beach bar music video',
+                        );
+                      }}
                     >
                       ◈ MATERIALIZE FILM
                     </button>
@@ -2280,7 +2299,9 @@ export function SurrogateOracleImmersion() {
                           ? 'FREE BROWSER FILM RENDERING'
                           : oracleFilm.job.status === 'stitching'
                             ? 'STITCHING ORACLE FRAGMENTS'
-                            : 'RUNPOD GPU MATERIALIZING'}
+                            : oracleFilm.job.provider === 'comfy'
+                              ? 'SEEDANCE MATERIALIZING · YOU CAN KEEP TALKING'
+                              : 'RUNPOD GPU MATERIALIZING'}
                       </span>
                       <progress max="100" value={oracleFilm.job.progress} />
                       <button type="button" onClick={() => void oracleFilm.cancelFilm()}>CANCEL FILM</button>
@@ -2305,11 +2326,14 @@ export function SurrogateOracleImmersion() {
                       {oracleFilm.job.error || 'FILM MATERIALIZATION FAILED'}
                       <button
                         type="button"
-                        onClick={() => void oracleFilm.createFilm(
-                          portraitViewerUrl,
-                          lyria.audioUrl,
-                          lyria.prompt ?? 'reggae drum and bass beach bar music video',
-                        )}
+                        onClick={() => {
+                          setShowPortraitCard(false);
+                          void oracleFilm.createFilm(
+                            portraitViewerUrl,
+                            lyria.audioUrl,
+                            lyria.prompt ?? 'reggae drum and bass beach bar music video',
+                          );
+                        }}
                       >
                         RETRY FREE
                       </button>

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
+const REMOTE_POLL_INTERVAL_MS = 10_000;
+
 export type OracleFilmJob = {
   id: string;
   provider?: 'browser' | 'runpod' | 'comfy';
@@ -25,15 +27,35 @@ export function useOracleFilm(sessionId: string | null | undefined) {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const localObjectUrlRef = useRef<string | null>(null);
   const localCancelRef = useRef(false);
+  const announcedJobRef = useRef<string | null>(null);
+
+  const persistRemoteJob = useCallback((next: OracleFilmJob | null) => {
+    if (!sessionId || typeof window === 'undefined') return;
+    const key = `oracle_film_job_${sessionId}`;
+    if (next?.provider !== 'browser') localStorage.setItem(key, JSON.stringify(next));
+  }, [sessionId]);
+
+  const announceReady = useCallback((next: OracleFilmJob | null) => {
+    if (!next || next.status !== 'ready' || !next.finalMediaUrl || announcedJobRef.current === next.id) return;
+    announcedJobRef.current = next.id;
+    window.dispatchEvent(new CustomEvent('oracle:film-ready', {
+      detail: { job: next, finalMediaUrl: next.finalMediaUrl },
+    }));
+  }, []);
 
   const poll = useCallback(async (jobId: string) => {
     const { data, error } = await supabase.functions.invoke('oracle-film-job', {
       body: { action: 'status', jobId },
     });
     if (error) throw error;
-    if (data?.id) setJob(data as OracleFilmJob);
+    if (data?.id) {
+      const next = data as OracleFilmJob;
+      setJob(next);
+      persistRemoteJob(next);
+      announceReady(next);
+    }
     return data as OracleFilmJob;
-  }, []);
+  }, [announceReady, persistRemoteJob]);
 
   const schedulePoll = useCallback((jobId: string) => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
@@ -45,8 +67,28 @@ export function useOracleFilm(sessionId: string | null | undefined) {
         // A transient network error should not turn a running GPU job into a
         // false failure. The next user-visible action can poll again.
       }
-    }, 2200);
+    }, REMOTE_POLL_INTERVAL_MS);
   }, [poll]);
+
+  useEffect(() => {
+    if (!sessionId || typeof window === 'undefined') return;
+    try {
+      const saved = localStorage.getItem(`oracle_film_job_${sessionId}`);
+      if (!saved) return;
+      const restored = JSON.parse(saved) as OracleFilmJob;
+      if (!restored?.id || !restored.status) return;
+      setJob(restored);
+      announceReady(restored);
+      if (!['ready', 'failed', 'cancelled'].includes(restored.status) && restored.provider !== 'browser') {
+        schedulePoll(restored.id);
+      }
+    } catch {
+      localStorage.removeItem(`oracle_film_job_${sessionId}`);
+    }
+    return () => {
+      if (pollTimer.current) clearTimeout(pollTimer.current);
+    };
+  }, [announceReady, schedulePoll, sessionId]);
 
   const createFilm = useCallback(async (
     portraitUrl: string,
@@ -114,7 +156,9 @@ export function useOracleFilm(sessionId: string | null | undefined) {
             },
           });
           if (!invokeError && remoteJob?.id && remoteJob?.provider !== 'browser') {
-            setJob(remoteJob as OracleFilmJob);
+            const next = remoteJob as OracleFilmJob;
+            setJob(next);
+            persistRemoteJob(next);
             schedulePoll(remoteJob.id);
             return remoteJob as OracleFilmJob;
           }
@@ -195,7 +239,7 @@ export function useOracleFilm(sessionId: string | null | undefined) {
       setJob(failed);
       return failed;
     }
-  }, []);
+  }, [persistRemoteJob, schedulePoll, sessionId]);
 
   const cancelFilm = useCallback(async () => {
     if (!job?.id || job.id === 'pending') return;

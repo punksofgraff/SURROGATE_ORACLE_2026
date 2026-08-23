@@ -2081,9 +2081,10 @@ export function SurrogateOracleImmersion() {
                   landedChars={16}
                   isSelected={false}
                   isThisSelected={false}
+                 isEmitting={isReturning}
                   territory="FIRST TRANSMISSION"
                   question="GREETINGS SEEKER"
-                  variant="ghost"
+                 variant={isReturning ? 'knife' : 'ghost'}
                 />
               </div>
               <div className="oracle-stage00-card__body">

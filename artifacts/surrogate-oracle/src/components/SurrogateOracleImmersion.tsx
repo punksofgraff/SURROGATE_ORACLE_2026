@@ -2397,7 +2397,7 @@ export function SurrogateOracleImmersion() {
               {scenePhase === 'terminal' && !hasCompletedLore && !loreStarted && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '2rem' }}>
                   <div style={{ fontFamily: "'aAnotherTag', 'Orbitron', monospace", fontSize: '0.8rem', color: '#00ff88', letterSpacing: '0.2em' }}>UNIDENTIFIED SIGNAL DETECTED</div>
-                  <button onClick={(e) => { e.stopPropagation(); startLore(); }} style={{ background: 'none', border: '1px solid #00ff88', color: '#00ff88', padding: '1rem 2rem', fontFamily: "'PhillySans', 'Orbitron', monospace", cursor: 'pointer' }}>[ TAP TO ACTIVATE SIGNAL ]</button>
+                  <button onClick={(e) => { e.stopPropagation(); startLore(); }} style={{ background: 'none', border: '1px solid #00ff88', color: '#00ff88', padding: '1rem 2rem', fontFamily: "'PhillySans', 'Orbitron', monospace", cursor: 'pointer' }}>ENTER THE SIGNAL</button>
                 </div>
               )}
               {(loreStarted || (hasCompletedLore && loreStarted)) && completedLines.map((line, i) => (

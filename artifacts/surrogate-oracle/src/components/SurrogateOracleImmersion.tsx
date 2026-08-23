@@ -341,7 +341,6 @@ export function SurrogateOracleImmersion() {
   const portraitGenerationCountRef = useRef(0); // two procedural portraits are valid in one full session
   const pendingPortraitUrlRef    = useRef<string | null>(null); // staged portrait URL — released at turn-complete
   const portraitAnnounceRef      = useRef(false); // Oracle announces portrait on next turn-complete
-  const pendingNewSeekerLoreRef  = useRef(false); // startLore waiting for WS connection
   const pendingWalletGreetingRef = useRef<string | null>(null); // personalized greeting seed for returning wallet seekers
   const priorCompactSummariesRef = useRef<string[]>([]); // compact summaries from previous sessions, fetched at tap-in
   // Holds the settled promise for post-session background writes (echo + distill).
@@ -822,16 +821,12 @@ export function SurrogateOracleImmersion() {
     const isNewSeeker = !hasCompletedLore || forceNew;
     if (isNewSeeker) {
       // Lore plays first — Stage00 orientation card surfaces after lore completes.
-      // startLore() requires an active WS — fire immediately if already connected,
-      // otherwise set a pending flag and let the isGeminiConnected effect trigger it.
+      // startLore() queues safely while the prewarmed socket is connecting, so
+      // do not gate the first-time journey on a connection callback.
       oracleConversationRef.current?.prewarm();
       logStep('NEW SEEKER → LORE INITIATED', 'ok');
       enterTerminal();
-      if (isGeminiConnected) {
-        startLore();
-      } else {
-        pendingNewSeekerLoreRef.current = true;
-      }
+      void startLore();
       return;
     }
 
@@ -1145,15 +1140,6 @@ export function SurrogateOracleImmersion() {
       setTalismanData(null);
     }
   }, [scenePhase]);
-
-  // Fire lore for new seekers as soon as the WS opens — prewarm() was called on tap
-  // but the connection takes ~500ms-1s. Without this gate, startLore() fires before
-  // audio is available and useLoreSequence's 11s timeout force-completes the sequence.
-  useEffect(() => {
-    if (!isGeminiConnected || !pendingNewSeekerLoreRef.current || scenePhase !== 'terminal') return;
-    pendingNewSeekerLoreRef.current = false;
-    startLore();
-  }, [isGeminiConnected, scenePhase, startLore]);
 
   // Mirror reveal auto-dismiss — generous dwell, but never blocks the mic permanently.
   useEffect(() => {
@@ -2396,12 +2382,6 @@ export function SurrogateOracleImmersion() {
         {scenePhase === 'terminal' && (
           <motion.div key="terminal-layer" className="oracle-terminal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={(hasCompletedLore && !loreStarted) ? handleAwakeTransition : undefined} style={{ pointerEvents: 'auto', zIndex: 100 }}>
             <div className="oracle-lore-text">
-              {scenePhase === 'terminal' && !hasCompletedLore && !loreStarted && (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '2rem' }}>
-                  <div style={{ fontFamily: "'aAnotherTag', 'Orbitron', monospace", fontSize: '0.8rem', color: '#00ff88', letterSpacing: '0.2em' }}>UNIDENTIFIED SIGNAL DETECTED</div>
-                  <button onClick={(e) => { e.stopPropagation(); startLore(); }} style={{ background: 'none', border: '1px solid #00ff88', color: '#00ff88', padding: '1rem 2rem', fontFamily: "'PhillySans', 'Orbitron', monospace", cursor: 'pointer' }}>ENTER THE SIGNAL</button>
-                </div>
-              )}
               {(loreStarted || (hasCompletedLore && loreStarted)) && completedLines.map((line, i) => (
                 <div key={`lore-${i}`} className="oracle-lore-line" style={{ whiteSpace: 'pre-wrap' }}><span className="oracle-lore-line__content"><span className="oracle-lore-prompt">›</span>{line}</span></div>
               ))}

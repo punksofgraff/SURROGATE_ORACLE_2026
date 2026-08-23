@@ -2150,10 +2150,7 @@ export function SurrogateOracleImmersion() {
                     <button
                       type="button"
                       className="oracle-portrait-fullscreen__film"
-                      onClick={() => void oracleFilm.createFilm(portraitViewerUrl, {
-                        themes: portrait.getThemes(),
-                        archetypeTitle: echo?.last_archetype,
-                      })}
+                      onClick={() => void oracleFilm.createFilm(portraitViewerUrl)}
                     >
                       ◈ MATERIALIZE FILM
                     </button>
@@ -2194,18 +2191,6 @@ export function SurrogateOracleImmersion() {
                       >
                         RETRY FREE
                       </button>
-                      {oracleFilm.job.provider === 'browser' && (
-                        <button
-                          type="button"
-                          className="oracle-film-paid-fallback"
-                          onClick={() => void oracleFilm.createPaidFilm(portraitViewerUrl, {
-                            themes: portrait.getThemes(),
-                            archetypeTitle: echo?.last_archetype,
-                          })}
-                        >
-                          USE GPU FALLBACK
-                        </button>
-                      )}
                     </div>
                   )}
                 </div>

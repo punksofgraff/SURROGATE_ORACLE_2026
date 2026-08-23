@@ -24,6 +24,7 @@ export function useOracleFilm(sessionId: string | null | undefined) {
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const localObjectUrlRef = useRef<string | null>(null);
+  const localCancelRef = useRef(false);
 
   const poll = useCallback(async (jobId: string) => {
     const { data, error } = await supabase.functions.invoke('oracle-film-job', {
@@ -47,23 +48,9 @@ export function useOracleFilm(sessionId: string | null | undefined) {
     }, 2200);
   }, [poll]);
 
-  const createPaidFilm = useCallback(async (portraitUrl: string, context: FilmContext = {}) => {
-    if (!sessionId) return null;
-    setJob({ id: 'pending', provider: 'runpod', status: 'queued', progress: 0, chunkCount: 4, finalMediaUrl: null, error: null });
-    const { data, error } = await supabase.functions.invoke('oracle-film-job', {
-      body: { action: 'create', sessionId, portraitUrl, context },
-    });
-    if (error) {
-      setJob({ id: 'failed', provider: 'runpod', status: 'failed', progress: 0, chunkCount: 4, finalMediaUrl: null, error: error.message || 'Film request failed.' });
-      return null;
-    }
-    setJob({ ...(data as OracleFilmJob), provider: 'runpod' });
-    if (data?.id && !['ready', 'failed', 'cancelled'].includes(data.status)) schedulePoll(data.id);
-    return { ...(data as OracleFilmJob), provider: 'runpod' };
-  }, [schedulePoll, sessionId]);
-
   const createFilm = useCallback(async (portraitUrl: string) => {
     if (recorderRef.current || !portraitUrl) return null;
+    localCancelRef.current = false;
     if (localObjectUrlRef.current) URL.revokeObjectURL(localObjectUrlRef.current);
     localObjectUrlRef.current = null;
 
@@ -139,6 +126,11 @@ export function useOracleFilm(sessionId: string | null | undefined) {
       requestAnimationFrame(paint);
       const blob = await finished;
       recorderRef.current = null;
+      if (localCancelRef.current) {
+        const cancelled = { id: 'browser-cancelled', provider: 'browser' as const, status: 'cancelled' as const, progress: 0, chunkCount: 1, finalMediaUrl: null, mediaType: mimeType, error: null };
+        setJob(cancelled);
+        return cancelled;
+      }
       const url = URL.createObjectURL(blob);
       localObjectUrlRef.current = url;
       const ready = { id: 'browser-ready', provider: 'browser' as const, status: 'ready' as const, progress: 100, chunkCount: 1, finalMediaUrl: url, mediaType: mimeType, error: null };
@@ -147,6 +139,11 @@ export function useOracleFilm(sessionId: string | null | undefined) {
     } catch (error) {
       if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop();
       recorderRef.current = null;
+      if (localCancelRef.current) {
+        const cancelled = { id: 'browser-cancelled', provider: 'browser' as const, status: 'cancelled' as const, progress: 0, chunkCount: 1, finalMediaUrl: null, error: null };
+        setJob(cancelled);
+        return cancelled;
+      }
       const failed = { id: 'browser-failed', provider: 'browser' as const, status: 'failed' as const, progress: 0, chunkCount: 1, finalMediaUrl: null, error: error instanceof Error ? error.message : 'Free film rendering failed.' };
       setJob(failed);
       return failed;
@@ -156,8 +153,9 @@ export function useOracleFilm(sessionId: string | null | undefined) {
   const cancelFilm = useCallback(async () => {
     if (!job?.id || job.id === 'pending') return;
     if (pollTimer.current) clearTimeout(pollTimer.current);
-    if (job.provider === 'browser' && recorderRef.current) {
-      recorderRef.current.stop();
+    if (job.provider === 'browser') {
+      localCancelRef.current = true;
+      if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop();
       recorderRef.current = null;
       setJob(current => current ? { ...current, status: 'cancelled', error: null } : current);
       return;
@@ -177,5 +175,5 @@ export function useOracleFilm(sessionId: string | null | undefined) {
     if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop();
   }, []);
 
-  return { job, createFilm, createPaidFilm, cancelFilm };
+  return { job, createFilm, cancelFilm };
 }

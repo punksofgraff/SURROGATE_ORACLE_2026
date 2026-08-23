@@ -2411,52 +2411,27 @@ export function SurrogateOracleImmersion() {
               padding: '1.25rem', textAlign: 'center',
             }}
           >
-            <div style={{
-              maxWidth: 360, width: '100%', padding: '2rem 1.5rem',
-              border: '1px solid rgba(0,255,204,0.38)',
-              background: 'rgba(0,12,18,0.96)',
-              boxShadow: '0 0 40px rgba(0,204,255,0.12)',
-            }}>
-              <div style={{
-                fontFamily: "'aAnotherTag', 'Orbitron', monospace",
-                fontSize: '1.15rem', color: '#00ffcc',
-                letterSpacing: '0.16em', marginBottom: '1rem',
-              }}>
+            <div className="oracle-presence-card oracle-knife-card">
+              <div className="oracle-presence-card__title oracle-knife-territory">
                 SET THE ROOM
               </div>
-              <div style={{
-                fontFamily: "'PhillySans', monospace",
-                fontSize: '0.72rem', lineHeight: 1.65,
-                color: 'rgba(255,255,255,0.76)', marginBottom: '1.6rem',
-              }}>
+              <div className="oracle-knife-divider" />
+              <div className="oracle-presence-card__copy">
                 Full presence lets the Oracle see, hear, and respond to you.
                 Your browser may ask for camera, microphone, and motion access next.
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div className="oracle-presence-card__actions">
                 <button
                   type="button"
                   onClick={() => void handlePresenceChoice('full')}
-                  style={{
-                    background: '#00ffcc', color: '#001014',
-                    border: 'none', padding: '0.85rem 1rem',
-                    fontFamily: "'PhillySans', monospace",
-                    fontSize: '0.7rem', fontWeight: 900,
-                    letterSpacing: '0.1em', cursor: 'pointer',
-                  }}
+                  className="oracle-presence-card__full-action"
                 >
                   ENTER IN FULL PRESENCE
                 </button>
                 <button
                   type="button"
                   onClick={() => void handlePresenceChoice('quiet')}
-                  style={{
-                    background: 'transparent', color: '#00ccff',
-                    border: '1px solid rgba(0,204,255,0.4)',
-                    padding: '0.8rem 1rem',
-                    fontFamily: "'PhillySans', monospace",
-                    fontSize: '0.68rem', letterSpacing: '0.1em',
-                    cursor: 'pointer',
-                  }}
+                  className="oracle-presence-card__quiet-action"
                 >
                   CONTINUE WITHOUT
                 </button>

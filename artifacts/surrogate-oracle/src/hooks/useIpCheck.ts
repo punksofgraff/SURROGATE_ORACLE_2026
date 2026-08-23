@@ -2,6 +2,12 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { logStep } from '../components/CodeAuditor';
 
+// Bump this when the production IP journey ledger is intentionally reset.
+// Old browser markers then cannot turn the first post-reset visit into a
+// returning journey; the server remains the source of truth after that visit.
+const IP_LOGGING_EPOCH = '20260822';
+const ipMarker = (kind: string, ip: string) => `surrogate_${kind}_${IP_LOGGING_EPOCH}_${ip}`;
+
 // All user_wallets reads/writes go through the user-wallet-sync edge function
 // (service_role key) so the table can be RLS-locked against the anon key.
 //
@@ -47,13 +53,13 @@ export function useIpCheck() {
 
         // Local storage check keyed by the server-derived IP
         if (ip) {
-          if (localStorage.getItem(`surrogate_visited_${ip}`)) setIsReturning(true);
-          if (localStorage.getItem(`surrogate_lore_completed_${ip}`)) setHasCompletedLore(true);
-          const walletFlag = localStorage.getItem(`oracle_wallet_signed_${ip}`) || walletFlagEarly;
+          if (localStorage.getItem(ipMarker('visited', ip))) setIsReturning(true);
+          if (localStorage.getItem(ipMarker('lore_completed', ip))) setHasCompletedLore(true);
+          const walletFlag = localStorage.getItem(ipMarker('wallet_signed', ip)) || walletFlagEarly;
           if (walletFlag) {
             setHasSignedWallet(true);
             // Upgrade to IP-keyed storage so future loads skip the agnostic fallback.
-            localStorage.setItem(`oracle_wallet_signed_${ip}`, 'true');
+            localStorage.setItem(ipMarker('wallet_signed', ip), 'true');
           }
         }
 
@@ -61,7 +67,7 @@ export function useIpCheck() {
 
         if (walletData && !error) {
           setIsReturning(true);
-          if (ip) localStorage.setItem(`surrogate_visited_${ip}`, 'true');
+      if (ip) localStorage.setItem(ipMarker('visited', ip), 'true');
 
           if (walletData.onboarding_status === 'lore_completed' || walletData.onboarding_status === 'wallet_signed') {
             setHasCompletedLore(true);
@@ -105,7 +111,7 @@ export function useIpCheck() {
   };
 
   const markLoreCompleted = async () => {
-    if (ipAddress) localStorage.setItem(`surrogate_lore_completed_${ipAddress}`, 'true');
+    if (ipAddress) localStorage.setItem(ipMarker('lore_completed', ipAddress), 'true');
     setHasCompletedLore(true);
     setIsReturning(true); // Implied
 
@@ -132,8 +138,8 @@ export function useIpCheck() {
     setIsReturning(true);
 
     if (ipAddress) {
-      localStorage.setItem(`oracle_wallet_signed_${ipAddress}`, 'true');
-      localStorage.setItem(`surrogate_lore_completed_${ipAddress}`, 'true');
+      localStorage.setItem(ipMarker('wallet_signed', ipAddress), 'true');
+      localStorage.setItem(ipMarker('lore_completed', ipAddress), 'true');
     }
     try {
       // Server derives the caller IP itself — safe to call even before the

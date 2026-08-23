@@ -18,9 +18,10 @@ export default function WalletGateCard({ onRegister }: WalletGateCardProps) {
         display:        'flex',
         alignItems:     'center',
         justifyContent: 'center',
-        background:     'rgba(0,0,0,0.72)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
+        padding:        '24px',
+        background:     'rgba(0,4,5,0.58)',
+        backdropFilter: 'blur(5px)',
+        WebkitBackdropFilter: 'blur(5px)',
       }}
     >
       <motion.div
@@ -28,14 +29,14 @@ export default function WalletGateCard({ onRegister }: WalletGateCardProps) {
         animate={{ scale: 1,    opacity: 1, y: 0  }}
         transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
         style={{
-          background:    'linear-gradient(145deg, rgba(0,255,136,0.07) 0%, rgba(0,180,255,0.05) 100%)',
-          border:        '1px solid rgba(0,255,136,0.28)',
-          borderRadius:  '2px',
-          padding:       '44px 40px 36px',
-          maxWidth:      '420px',
-          width:         'calc(100% - 48px)',
+          background:    'rgba(2,18,16,0.88)',
+          border:        '1px solid rgba(0,255,136,0.42)',
+          borderRadius:  '18px 4px 18px 4px',
+          padding:       '30px 24px 24px',
+          maxWidth:      '350px',
+          width:         '100%',
           textAlign:     'center',
-          boxShadow:     '0 0 48px rgba(0,255,136,0.10), inset 0 0 24px rgba(0,0,0,0.4)',
+          boxShadow:     '0 0 42px rgba(0,255,136,0.12), inset 0 0 30px rgba(0,0,0,0.35)',
           position:      'relative',
           overflow:      'hidden',
         }}
@@ -57,31 +58,31 @@ export default function WalletGateCard({ onRegister }: WalletGateCardProps) {
           marginBottom:  '16px',
           textTransform: 'uppercase',
         }}>
-          SURROGATE:ORACLE // SESSION LIMIT
+          ◈ THE ORACLE IS STILL HUNGRY
         </div>
 
         <div style={{
           fontFamily:    '"PhillySans", "Courier New", monospace',
-          fontSize:      '1.35rem',
+          fontSize:      'clamp(1.45rem, 7vw, 1.8rem)',
           fontWeight:    700,
           color:         '#e8f4ef',
           lineHeight:    1.25,
           marginBottom:  '14px',
-          letterSpacing: '0.02em',
+          letterSpacing: '0.01em',
         }}>
-          Your free session<br />has ended.
+          That was fun.<br />Let’s keep going.
         </div>
 
         <div style={{
           fontFamily:    '"aAnotherTag", "Courier New", monospace',
           fontSize:      '0.8rem',
-          color:         'rgba(200,230,215,0.65)',
+          color:         'rgba(200,230,215,0.72)',
           lineHeight:    1.6,
-          marginBottom:  '32px',
+          marginBottom:  '24px',
           letterSpacing: '0.04em',
         }}>
-          Register your SURROGATE wallet to<br />
-          keep engaging with the Oracle.
+          The free signal is spent.<br />
+          Bring a wallet to stay in the room.
         </div>
 
         <button
@@ -89,14 +90,14 @@ export default function WalletGateCard({ onRegister }: WalletGateCardProps) {
           style={{
             display:       'block',
             width:         '100%',
-            padding:       '13px 20px',
-            background:    'transparent',
-            border:        '1px solid rgba(0,255,136,0.55)',
-            borderRadius:  '1px',
-            color:         '#00ff88',
+            padding:       '14px 20px',
+            background:    'rgba(0,255,136,0.08)',
+            border:        '1px solid rgba(0,255,136,0.62)',
+            borderRadius:  '10px 2px 10px 2px',
+            color:         '#aaffdd',
             fontFamily:    '"aAnotherTag", "Courier New", monospace',
-            fontSize:      '0.75rem',
-            letterSpacing: '0.18em',
+            fontSize:      '0.72rem',
+            letterSpacing: '0.14em',
             textTransform: 'uppercase',
             cursor:        'pointer',
             transition:    'background 0.2s, box-shadow 0.2s',
@@ -110,7 +111,7 @@ export default function WalletGateCard({ onRegister }: WalletGateCardProps) {
             (e.currentTarget as HTMLButtonElement).style.boxShadow   = 'none';
           }}
         >
-          ◈ Register Wallet
+          ◈ LET ME BACK IN
         </button>
 
         <div style={{

@@ -9,3 +9,13 @@ CREATE POLICY "oracle films public read"
   ON storage.objects FOR SELECT
   TO anon, authenticated
   USING (bucket_id = 'oracle-films');
+
+-- Keep the audio-anchor decision auditable. A film is only promoted to ready
+-- after the worker has populated this verification record.
+ALTER TABLE public.oracle_film_jobs
+  ADD COLUMN IF NOT EXISTS anchor_audio_duration_seconds double precision,
+  ADD COLUMN IF NOT EXISTS anchor_audio_url text,
+  ADD COLUMN IF NOT EXISTS output_duration_seconds double precision,
+  ADD COLUMN IF NOT EXISTS audio_stream_present boolean,
+  ADD COLUMN IF NOT EXISTS audio_waveform_match boolean,
+  ADD COLUMN IF NOT EXISTS audio_verification jsonb;

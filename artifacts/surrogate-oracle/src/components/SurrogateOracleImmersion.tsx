@@ -2160,7 +2160,13 @@ export function SurrogateOracleImmersion() {
                   )}
                   {oracleFilm.job && !['ready', 'failed', 'cancelled'].includes(oracleFilm.job.status) && (
                     <div className="oracle-film-status">
-                      <span>{oracleFilm.job.status === 'stitching' ? 'STITCHING ORACLE FRAGMENTS' : 'RUNPOD GPU MATERIALIZING'}</span>
+                      <span>
+                        {oracleFilm.job.provider === 'browser'
+                          ? 'FREE BROWSER FILM RENDERING'
+                          : oracleFilm.job.status === 'stitching'
+                            ? 'STITCHING ORACLE FRAGMENTS'
+                            : 'RUNPOD GPU MATERIALIZING'}
+                      </span>
                       <progress max="100" value={oracleFilm.job.progress} />
                       <button type="button" onClick={() => void oracleFilm.cancelFilm()}>CANCEL FILM</button>
                     </div>
@@ -2168,13 +2174,38 @@ export function SurrogateOracleImmersion() {
                   {oracleFilm.job?.status === 'ready' && oracleFilm.job.finalMediaUrl && (
                     <div className="oracle-film-ready">
                       <video controls playsInline src={oracleFilm.job.finalMediaUrl} />
-                      <a href={oracleFilm.job.finalMediaUrl} download="surrogate-oracle-film.mp4">DOWNLOAD FILM</a>
+                      <span className="oracle-film-provider">
+                        {oracleFilm.job.provider === 'browser' ? 'FREE LOCAL RENDER · WEBM' : 'GPU RENDER · MP4'}
+                      </span>
+                      <a
+                        href={oracleFilm.job.finalMediaUrl}
+                        download={oracleFilm.job.provider === 'browser' ? 'surrogate-oracle-film.webm' : 'surrogate-oracle-film.mp4'}
+                      >
+                        DOWNLOAD FILM
+                      </a>
                     </div>
                   )}
                   {oracleFilm.job?.status === 'failed' && (
                     <div className="oracle-film-error">
                       {oracleFilm.job.error || 'FILM MATERIALIZATION FAILED'}
-                      <button type="button" onClick={() => void oracleFilm.createFilm(portraitViewerUrl, { themes: portrait.getThemes(), archetypeTitle: echo?.last_archetype })}>RETRY</button>
+                      <button
+                        type="button"
+                        onClick={() => void oracleFilm.createFilm(portraitViewerUrl)}
+                      >
+                        RETRY FREE
+                      </button>
+                      {oracleFilm.job.provider === 'browser' && (
+                        <button
+                          type="button"
+                          className="oracle-film-paid-fallback"
+                          onClick={() => void oracleFilm.createPaidFilm(portraitViewerUrl, {
+                            themes: portrait.getThemes(),
+                            archetypeTitle: echo?.last_archetype,
+                          })}
+                        >
+                          USE GPU FALLBACK
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

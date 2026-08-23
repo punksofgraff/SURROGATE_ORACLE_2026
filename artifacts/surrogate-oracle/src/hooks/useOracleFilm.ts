@@ -3,10 +3,12 @@ import { supabase } from '../lib/supabase';
 
 export type OracleFilmJob = {
   id: string;
+  provider?: 'browser' | 'runpod';
   status: 'queued' | 'generating' | 'stitching' | 'ready' | 'failed' | 'cancelled';
   progress: number;
   chunkCount: number;
   finalMediaUrl: string | null;
+  mediaType?: string;
   error: string | null;
 };
 
@@ -20,6 +22,8 @@ type FilmContext = {
 export function useOracleFilm(sessionId: string | null | undefined) {
   const [job, setJob] = useState<OracleFilmJob | null>(null);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const localObjectUrlRef = useRef<string | null>(null);
 
   const poll = useCallback(async (jobId: string) => {
     const { data, error } = await supabase.functions.invoke('oracle-film-job', {
@@ -43,33 +47,135 @@ export function useOracleFilm(sessionId: string | null | undefined) {
     }, 2200);
   }, [poll]);
 
-  const createFilm = useCallback(async (portraitUrl: string, context: FilmContext = {}) => {
+  const createPaidFilm = useCallback(async (portraitUrl: string, context: FilmContext = {}) => {
     if (!sessionId) return null;
-    setJob({ id: 'pending', status: 'queued', progress: 0, chunkCount: 4, finalMediaUrl: null, error: null });
+    setJob({ id: 'pending', provider: 'runpod', status: 'queued', progress: 0, chunkCount: 4, finalMediaUrl: null, error: null });
     const { data, error } = await supabase.functions.invoke('oracle-film-job', {
       body: { action: 'create', sessionId, portraitUrl, context },
     });
     if (error) {
-      setJob({ id: 'failed', status: 'failed', progress: 0, chunkCount: 4, finalMediaUrl: null, error: error.message || 'Film request failed.' });
+      setJob({ id: 'failed', provider: 'runpod', status: 'failed', progress: 0, chunkCount: 4, finalMediaUrl: null, error: error.message || 'Film request failed.' });
       return null;
     }
-    setJob(data as OracleFilmJob);
+    setJob({ ...(data as OracleFilmJob), provider: 'runpod' });
     if (data?.id && !['ready', 'failed', 'cancelled'].includes(data.status)) schedulePoll(data.id);
-    return data as OracleFilmJob;
+    return { ...(data as OracleFilmJob), provider: 'runpod' };
   }, [schedulePoll, sessionId]);
+
+  const createFilm = useCallback(async (portraitUrl: string) => {
+    if (recorderRef.current || !portraitUrl) return null;
+    if (localObjectUrlRef.current) URL.revokeObjectURL(localObjectUrlRef.current);
+    localObjectUrlRef.current = null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 720;
+    canvas.height = 720;
+    const ctx = canvas.getContext('2d');
+    if (!ctx || !('MediaRecorder' in window) || !canvas.captureStream) {
+      setJob({
+        id: 'browser-unsupported', provider: 'browser', status: 'failed', progress: 0,
+        chunkCount: 1, finalMediaUrl: null, error: 'This browser cannot render a free film locally.',
+      });
+      return null;
+    }
+
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    setJob({ id: 'browser-pending', provider: 'browser', status: 'queued', progress: 0, chunkCount: 1, finalMediaUrl: null, error: null });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error('The portrait cannot be rendered locally. Use the GPU fallback instead.'));
+        image.src = portraitUrl;
+      });
+
+      const stream = canvas.captureStream(24);
+      const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+        .find(type => MediaRecorder.isTypeSupported(type));
+      if (!mimeType) throw new Error('This browser does not support free WebM video export.');
+      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 3_500_000 });
+      recorderRef.current = recorder;
+      const parts: Blob[] = [];
+      recorder.ondataavailable = event => { if (event.data.size) parts.push(event.data); };
+      const finished = new Promise<Blob>((resolve, reject) => {
+        recorder.onerror = () => reject(new Error('Local film recording failed.'));
+        recorder.onstop = () => resolve(new Blob(parts, { type: mimeType }));
+      });
+      recorder.start(250);
+      setJob({ id: 'browser-rendering', provider: 'browser', status: 'generating', progress: 2, chunkCount: 1, finalMediaUrl: null, mediaType: mimeType, error: null });
+
+      const startedAt = performance.now();
+      const durationMs = 8000;
+      const paint = (now: number) => {
+        const elapsed = now - startedAt;
+        const progress = Math.min(96, Math.round((elapsed / durationMs) * 96));
+        const phase = elapsed / durationMs;
+        ctx.fillStyle = '#02040b';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const glow = ctx.createRadialGradient(360, 340, 60, 360, 340, 520);
+        glow.addColorStop(0, 'rgba(0,255,170,.18)');
+        glow.addColorStop(1, 'rgba(0,20,45,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        const scale = 1.03 + Math.sin(phase * Math.PI * 2) * 0.035;
+        const size = Math.max(image.width, image.height) * scale;
+        const x = 360 - size / 2 + Math.sin(phase * Math.PI * 2) * 8;
+        const y = 360 - size / 2 - Math.cos(phase * Math.PI * 2) * 6;
+        ctx.globalAlpha = 0.96;
+        ctx.drawImage(image, x, y, size, size);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(0,255,180,.12)';
+        for (let i = 0; i < 18; i++) {
+          const px = (i * 97 + elapsed * (8 + i % 3)) % 760 - 20;
+          const py = (i * 53 + Math.sin(phase * 8 + i) * 18) % 720;
+          ctx.fillRect(px, py, 2, 2);
+        }
+        ctx.fillStyle = 'rgba(0,0,0,.2)';
+        for (let y = 0; y < 720; y += 6) ctx.fillRect(0, y, 720, 1);
+        setJob(current => current?.provider === 'browser' ? { ...current, progress } : current);
+        if (elapsed < durationMs && recorderRef.current === recorder) requestAnimationFrame(paint);
+        else if (recorder.state !== 'inactive') recorder.stop();
+      };
+      requestAnimationFrame(paint);
+      const blob = await finished;
+      recorderRef.current = null;
+      const url = URL.createObjectURL(blob);
+      localObjectUrlRef.current = url;
+      const ready = { id: 'browser-ready', provider: 'browser' as const, status: 'ready' as const, progress: 100, chunkCount: 1, finalMediaUrl: url, mediaType: mimeType, error: null };
+      setJob(ready);
+      return ready;
+    } catch (error) {
+      if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop();
+      recorderRef.current = null;
+      const failed = { id: 'browser-failed', provider: 'browser' as const, status: 'failed' as const, progress: 0, chunkCount: 1, finalMediaUrl: null, error: error instanceof Error ? error.message : 'Free film rendering failed.' };
+      setJob(failed);
+      return failed;
+    }
+  }, []);
 
   const cancelFilm = useCallback(async () => {
     if (!job?.id || job.id === 'pending') return;
     if (pollTimer.current) clearTimeout(pollTimer.current);
+    if (job.provider === 'browser' && recorderRef.current) {
+      recorderRef.current.stop();
+      recorderRef.current = null;
+      setJob(current => current ? { ...current, status: 'cancelled', error: null } : current);
+      return;
+    }
     const { data } = await supabase.functions.invoke('oracle-film-job', {
       body: { action: 'cancel', jobId: job.id },
     });
     if (data?.id) setJob(data as OracleFilmJob);
-  }, [job?.id]);
+  }, [job?.id, job?.provider]);
 
   useEffect(() => () => {
     if (pollTimer.current) clearTimeout(pollTimer.current);
   }, []);
 
-  return { job, createFilm, cancelFilm };
+  useEffect(() => () => {
+    if (localObjectUrlRef.current) URL.revokeObjectURL(localObjectUrlRef.current);
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop();
+  }, []);
+
+  return { job, createFilm, createPaidFilm, cancelFilm };
 }

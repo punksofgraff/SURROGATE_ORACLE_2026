@@ -1,0 +1,63 @@
+You’re right. I was over-weighting the narrative symbolism of knife selection and under-weighting **interaction quality**. Get the permissions and capability activation out of the way *before* the knife becomes playable engagement.
+
+The right flow is:
+
+```text
+What is here?
+  ↓
+Enter Alley
+  ↓
+Set the room — concise capability preparation
+  ↓
+Native camera / mic / motion prompts, if full presence is selected
+  ↓
+Alley
+  ↓
+Choose a knife — uninterrupted engagement
+```
+
+For a returning user, place the same step immediately after their return-journey choice only when they have not already completed or declined it for the relevant session.
+
+## Make the moment painless
+
+The key is not “ask everything by default.” It is **one intentional preflight choice**, then resolve every eligible capability before the alley interaction begins.
+
+> **Set the room**  
+> Full presence lets the Oracle see, hear, and respond to you.  
+> Your browser may ask for camera, microphone, and motion access next.
+>
+> **[ Enter in full presence ]**  
+> **[ Continue without ]**
+
+On **Enter in full presence**, immediately, inside that button’s click handler:
+
+1. Start/resume the audio context.
+2. Request camera and microphone together via `getUserMedia({ video: true, audio: true })`.
+3. Request motion/orientation if the browser requires it.
+4. Record the actual result for each capability.
+5. Enter the alley regardless, with fallbacks where something was denied.
+
+The browser can request audio and video together in a single `getUserMedia` call, but its own native UI chooses whether to show one or multiple confirmation steps; the app cannot control or suppress that presentation.[1]
+
+## Correct language
+
+Avoid “sound + touch.” Say:
+
+- **Sound** — starts with the interaction and can be muted later.
+- **Motion** — allows the experience to respond to device movement, if supported.
+- **Camera and microphone** — enable the Oracle’s full-presence interaction.
+
+Use “haptics” only as an effect label, not a permission label. Browser haptic behavior is device/browser-dependent and generally doesn’t give you a dependable, permission-gated web capability to promise.
+
+## Implementation principle
+
+Have the `Set the room` primary action call the permission APIs without an intervening async transition, animation callback, route change, or modal close. Browsers require a user gesture for audio startup, and `DeviceMotionEvent.requestPermission()` resolves to `granted` or `denied` on browsers that gate it.[2][3]
+
+Afterwards, show a brief non-blocking capability result—e.g., “The room is set” or “Entered without camera”—and land them in the alley. Keep a small `Room` / `Presence` control later so they can change or retry components without replaying onboarding.
+
+That protects the knife interaction from becoming a technical interruption.
+
+Sources
+[1] MediaDevices: getUserMedia() method - Web APIs | MDN https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia
+[2] Web Audio API best practices - Web APIs - MDN Web Docs - Mozilla https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices
+[3] DeviceMotionEvent - Web APIs - MDN Web Docs https://developer.mozilla.org/en-US/docs/Web/API/DeviceMotionEvent

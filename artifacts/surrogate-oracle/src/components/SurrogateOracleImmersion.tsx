@@ -91,7 +91,8 @@ const DEFAULT_STATION    = 0; // Graff Punks — sole station
 const FREE_EXCHANGES     = 20; // two rounds of ten completed Seeker + Oracle exchanges, not exits
 // Fresh journey ledger after the production IP reset. Versioning this key is
 // required because browser localStorage survives clearing the server ledger.
-const COMPLETION_LEDGER_PREFIX = 'surrogate_completed_exchanges_v2_20260822_';
+// Never reuse a prior epoch after a production reset.
+const COMPLETION_LEDGER_PREFIX = 'surrogate_completed_exchanges_v3_20260823_';
 // Development previews must remain usable for repeated testing. This is compiled
 // out of production behavior: published builds still enforce the free-session cap.
 const DEV_BYPASS_EXCHANGE_GATE = import.meta.env.DEV;

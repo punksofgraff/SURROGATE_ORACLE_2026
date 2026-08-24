@@ -5,6 +5,7 @@ finished normalized MP4 to an S3-compatible bucket. Configure OUTPUT_* and
 MODEL_ID in the RunPod endpoint environment. The default model is the
 Apache-2.0 Wan2.2 TI2V-5B proof-of-concept route.
 """
+import base64
 import io
 import os
 import subprocess
@@ -90,11 +91,21 @@ def handler(job):
     chunks = inp.get("chunks", [])
     if not chunks:
         raise ValueError("chunks are required")
+    audio_base64 = inp.get("audio_base64")
+    if not audio_base64:
+        raise ValueError("audio_base64 is required; premium films must retain the Oracle soundtrack")
     portrait = requests.get(inp["portrait_url"], timeout=30)
     portrait.raise_for_status()
     image = Image.open(io.BytesIO(portrait.content))
     with tempfile.TemporaryDirectory(prefix="oracle-film-") as tmp:
         root = Path(tmp)
+        anchor = root / "anchor.mp3"
+        try:
+            anchor.write_bytes(base64.b64decode(audio_base64, validate=True))
+        except (ValueError, TypeError):
+            raise ValueError("audio_base64 is not valid base64")
+        if not anchor.stat().st_size:
+            raise ValueError("audio_base64 is empty")
         chunk_paths = []
         for index, chunk in enumerate(chunks):
             path = root / f"chunk-{index:03d}.mp4"
@@ -109,14 +120,17 @@ def handler(job):
         final = root / "oracle-film.mp4"
         subprocess.run([
             "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat),
+            "-r", str(FRAME_RATE), "-c:v", "libx264",
+            "-i", str(anchor), "-map", "0:v:0", "-map", "1:a:0",
             "-vf", "scale=720:720:force_original_aspect_ratio=decrease,"
                    "pad=720:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
-            "-r", str(FRAME_RATE), "-c:v", "libx264", "-movflags", "+faststart",
+            "-c:a", "aac", "-shortest", "-movflags", "+faststart",
             str(final),
         ], check=True, capture_output=True)
         yield {"progress": 92, "status": "stitching"}
         url = upload_mp4(final)
         return {"final_media_url": url, "duration_seconds": len(chunks) * 5,
+                "audio_stream_present": True,
                 "codec": "h264", "pixel_format": "yuv420p", "frame_rate": FRAME_RATE}
 
 

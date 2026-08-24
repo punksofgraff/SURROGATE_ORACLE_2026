@@ -9,6 +9,12 @@
  * - Legacy RunPod Serverless: RUNPOD_ENDPOINT_ID + RUNPOD_API_KEY
  */
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+  isAudioVerificationAcceptable,
+  mp3Duration as checkedMp3Duration,
+  type AudioVerification,
+  verifyOutputAudio as checkedVerifyOutputAudio,
+} from './audio-verification.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,22 +30,11 @@ type JobRow = {
   id: string; session_id: string; portrait_url: string; status: string;
   progress: number; chunk_count: number; chunks: unknown; visual_slugs: unknown;
   runpod_job_id: string | null; final_media_url: string | null;
-  anchor_audio_url: string | null;
+  anchor_audio_url: string | null; anchor_audio_duration_seconds: number | null;
   error_message: string | null; created_at: string; updated_at: string;
 };
 
 type ComfyOutput = { filename?: unknown; subfolder?: unknown; type?: unknown };
-type AudioVerification = {
-  playable: boolean;
-  anchorDurationSeconds: number | null;
-  outputDurationSeconds: number | null;
-  durationDeltaSeconds: number | null;
-  audioStreamPresent: boolean;
-  waveformCompared: boolean;
-  waveformMatch: boolean | null;
-  method: string;
-};
-
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -355,6 +350,9 @@ Deno.serve(async (req) => {
      const context = (payload.context && typeof payload.context === 'object') ? payload.context as Record<string, unknown> : {};
     const audioBase64 = typeof payload.audioBase64 === 'string' ? payload.audioBase64 : '';
     const audioMimeType = safeText(payload.audioMimeType || 'audio/mpeg', 80);
+     if (!audioBase64) {
+       return json({ error: 'Premium films require the existing Lyria soundtrack as audioBase64.' }, 400);
+     }
     const slugs = safeSlugs(context.themes ?? context.weightedThemes);
     const archetype = safeText(context.archetypeTitle, 80);
     const emotional = safeText(context.emotionalWeight, 40);
@@ -379,7 +377,7 @@ Deno.serve(async (req) => {
          anchorAudioUrl = await persistAnchorAudio(supabase, row.id, anchorBytes, audioMimeType);
          await supabase.from('oracle_film_jobs').update({
            anchor_audio_url: anchorAudioUrl,
-           anchor_audio_duration_seconds: mp3Duration(anchorBytes),
+            anchor_audio_duration_seconds: checkedMp3Duration(anchorBytes),
          }).eq('id', row.id);
        }
         // Premium generation uses the on-demand Serverless/model-template API
@@ -439,13 +437,20 @@ Deno.serve(async (req) => {
            fetch(current.anchor_audio_url),
          ]);
          if (!videoResponse.ok || !anchorResponse.ok) throw new Error('Could not fetch media for audio verification.');
-         verified = await verifyOutputAudio(
+          verified = await checkedVerifyOutputAudio(
            new Uint8Array(await videoResponse.arrayBuffer()),
            new Uint8Array(await anchorResponse.arrayBuffer()),
          );
-         if (!verified.playable || !verified.audioStreamPresent || verified.durationDeltaSeconds === null ||
-             verified.durationDeltaSeconds > Math.max(0.75, (verified.anchorDurationSeconds ?? 0) * 0.05)) {
-           throw new Error(`Seedance output failed audio-anchor verification (audio=${verified.audioStreamPresent}, duration delta=${verified.durationDeltaSeconds ?? 'unknown'}s).`);
+          if (!isAudioVerificationAcceptable(verified)) {
+            const message = `Seedance output failed audio-anchor verification (audio=${verified.audioStreamPresent}, duration delta=${verified.durationDeltaSeconds ?? 'unknown'}s).`;
+            const { data: failed } = await supabase.from('oracle_film_jobs').update({
+              status: 'failed', progress: current.progress, final_media_url: null,
+              error_message: message, audio_stream_present: verified.audioStreamPresent,
+              audio_waveform_match: verified.waveformMatch,
+              output_duration_seconds: verified.outputDurationSeconds,
+              audio_verification: verified, updated_at: new Date().toISOString(),
+            }).eq('id', jobId).select().single();
+            return json(publicJob((failed ?? current) as JobRow));
          }
          finalUrl = await persistComfyOutput(supabase, jobId, remote.output);
        }
@@ -485,16 +490,23 @@ Deno.serve(async (req) => {
        if (remoteStatus === 'completed' && finalUrl && current.anchor_audio_url) {
          const [videoResponse, anchorResponse] = await Promise.all([fetch(finalUrl), fetch(current.anchor_audio_url)]);
          if (!videoResponse.ok || !anchorResponse.ok) throw new Error('Could not fetch media for audio verification.');
-         verified = await verifyOutputAudio(
+          verified = await checkedVerifyOutputAudio(
            new Uint8Array(await videoResponse.arrayBuffer()),
            new Uint8Array(await anchorResponse.arrayBuffer()),
          );
-         if (!verified.playable || verified.durationDeltaSeconds === null ||
-             verified.durationDeltaSeconds > Math.max(0.75, (verified.anchorDurationSeconds ?? 0) * 0.05)) {
-           throw new Error(`RunPod output failed audio-anchor verification (audio=${verified.audioStreamPresent}, duration delta=${verified.durationDeltaSeconds ?? 'unknown'}s).`);
+          if (!isAudioVerificationAcceptable(verified)) {
+            const message = `RunPod output failed audio-anchor verification (audio=${verified.audioStreamPresent}, duration delta=${verified.durationDeltaSeconds ?? 'unknown'}s).`;
+            const { data: failed } = await supabase.from('oracle_film_jobs').update({
+              status: 'failed', progress: current.progress, final_media_url: null,
+              error_message: message, audio_stream_present: verified.audioStreamPresent,
+              audio_waveform_match: verified.waveformMatch,
+              output_duration_seconds: verified.outputDurationSeconds,
+              audio_verification: verified, updated_at: new Date().toISOString(),
+            }).eq('id', jobId).select().single();
+            return json(publicJob((failed ?? current) as JobRow));
          }
        }
-       const isReady = remoteStatus === 'completed' && Boolean(finalUrl) && (!current.anchor_audio_url || Boolean(verified));
+        const isReady = remoteStatus === 'completed' && Boolean(finalUrl) && Boolean(verified);
        const status = isReady ? 'ready' : remoteStatus === 'failed' ? 'failed' : remoteStatus === 'processing' ? 'generating' : 'queued';
        const progress = status === 'ready' ? 100 : status === 'failed' ? current.progress : Math.max(current.progress, Number(remote.progress) || 10);
       const { data: updated } = await supabase.from('oracle_film_jobs').update({

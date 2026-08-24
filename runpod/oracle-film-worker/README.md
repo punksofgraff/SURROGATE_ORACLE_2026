@@ -17,6 +17,15 @@ returns only the stable final MP4 URL. It never returns intermediate video bytes
 The Edge Function passes continuity-aware prompts and maps RunPod progress into
 the seeker-facing job record.
 
+For FAL-produced visuals, the worker also accepts
+`task: mux_oracle_film` with `video_url` and `audio_url`. It downloads the
+visual MP4 and the existing Lyria anchor, muxes them with FFmpeg without
+re-encoding the H.264 video, uploads the completed MP4 to the configured
+Supabase Storage bucket, and returns the stable `final_media_url`. The response
+includes `audio_stream_present: true`, `codec: h264`, and
+`pixel_format: yuv420p` so the Edge Function can apply its normal readiness
+verification.
+
 The model is intentionally capped at five seconds per chunk for the first
 benchmark. Increase the cap only after measuring VRAM and wall-clock behavior on
 the selected GPU.

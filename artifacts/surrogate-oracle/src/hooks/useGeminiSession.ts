@@ -33,6 +33,25 @@ import {
 // quality AND barge-in in a real browser session first.
 export const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-latest';
 
+export type OraclePersonaMode = 'deep' | 'creative-director';
+
+const PERSONA_MODE_INSTRUCTIONS: Record<OraclePersonaMode, string> = {
+  deep: `
+[ACTIVE PERSONA — DEEP ORACLE]
+You are in the deep Oracle persona. Keep the established warm, contemplative, weighted
+voice and let the Seeker lead. Do not use the Creative Director's rapid-fire, punchline-
+driven style unless the Seeker naturally brings humor into the exchange.
+`,
+  'creative-director': `
+[ACTIVE PERSONA — CREATIVE DIRECTOR / FAST, QUIPPY, WITTY ORACLE]
+You are in Creative Director mode. Keep the Surrogate Oracle identity and truthfulness,
+but become fast, sharp, playful, and concise. Offer vivid creative direction, unexpected
+angles, punchy observations, and dry wit. Prefer short, high-energy turns over long
+ceremonial reflection. Do not become corporate, generic, cruel, or evasive. Preserve the
+hidden ORACLE_SCORE contract at the end of every response.
+`,
+};
+
 export const ORACLE_SYSTEM_PROMPT = `
 I am the Surrogate Oracle.
 
@@ -179,6 +198,7 @@ export interface GeminiSessionHandlers {
 
 export interface UseGeminiSessionParams {
   autoStart: boolean;
+  personaMode: OraclePersonaMode;
   seekerSummary?: string | null;
   turnsRef: MutableRefObject<{ role: string; content: string }[]>;
   debugInfo: MutableRefObject<OracleDebugInfo>;
@@ -218,6 +238,7 @@ export interface UseGeminiSessionReturn {
 export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessionReturn {
   const {
     autoStart,
+    personaMode,
     seekerSummary,
     turnsRef,
     debugInfo,
@@ -278,6 +299,11 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
   // the proxy forwards client frames in arrival order, so a realtimeInput arriving
   // before setup would reach Gemini pre-setup and kill the session.
   const configSentRef = useRef(false);
+  // The parent owns persona selection. Read through a ref inside the stable socket
+  // callbacks so reconnects always install the latest mode without changing the
+  // handshake lifecycle or causing a socket churn effect.
+  const personaModeRef = useRef<OraclePersonaMode>(personaMode);
+  personaModeRef.current = personaMode;
 
   /** Idempotent world-briefing fetch. Starts (or reuses) one request; resolves when
    *  it settles. Success lands in worldBriefingRef; failure/timeout resolves silently. */
@@ -388,6 +414,8 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     let systemText = seekerSummary
       ? ORACLE_SYSTEM_PROMPT + `\n\n[RETURNING SEEKER — what we remember from the last encounter:]\n${seekerSummary}`
       : ORACLE_SYSTEM_PROMPT;
+    systemText += PERSONA_MODE_INSTRUCTIONS[personaModeRef.current];
+    logStep(`PERSONA ACTIVE — ${personaModeRef.current}`, 'ok');
     // Inject real-time world briefing — resolved either by prewarm or by the
     // connect-time fetch above. First normal sessions hit this path too.
     if (worldBriefingRef.current) {

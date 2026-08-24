@@ -22,7 +22,7 @@ import { trackOracleEvent } from '../lib/analytics';
 import { Mic, MicOff, Send, Terminal, X, Zap } from 'lucide-react';
 import { getAudioContext, playSignalLockedSfx } from '../lib/oracleSfx';
 import { createAudioContext } from '../lib/browserCapabilities';
-import { useGeminiSession, GEMINI_MODEL, type GeminiSessionHandlers } from '../hooks/useGeminiSession';
+import { useGeminiSession, GEMINI_MODEL, type GeminiSessionHandlers, type OraclePersonaMode } from '../hooks/useGeminiSession';
 import { setTraceSession, traceEvent } from '../lib/sessionTrace';
 import { tracedFetch } from '../lib/tracedFetch';
 import { useVisionFrames } from '../hooks/useVisionFrames';
@@ -135,6 +135,8 @@ interface OracleConversationProps {
   /** Explicit return cue while Lyria is active. */
   onMusicReturn?: () => void;
   musicMode?: boolean;
+  /** Parent-owned persona selection, reapplied in every Gemini session config. */
+  personaMode?: OraclePersonaMode;
 }
 
 export interface OracleConversationHandle {
@@ -220,6 +222,7 @@ const OracleConversation = forwardRef(
        onMusicRequest,
        onMusicReturn,
        musicMode = false,
+      personaMode = 'deep',
     } = props;
 
     const [isListening, setIsListening] = useState(false);
@@ -950,6 +953,7 @@ const OracleConversation = forwardRef(
 
     const geminiSession = useGeminiSession({
       autoStart,
+      personaMode,
       seekerSummary,
       turnsRef,
       debugInfo,

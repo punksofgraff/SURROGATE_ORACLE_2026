@@ -22,6 +22,7 @@ import { GoogleSignInOverlay } from './GoogleSignInOverlay';
 import { GraffPunksRadio } from './GraffPunksRadio';
 import { EnculturateCrate } from './EnculturateCrate';
 import OracleConversation, { OracleConversationHandle, OracleScore } from './OracleConversation';
+import type { OraclePersonaMode } from '../hooks/useGeminiSession';
 
 /** Snapshot of a session's turns, as returned by the conversation handle. */
 type SessionTurns = ReturnType<OracleConversationHandle['getSessionTurns']>;
@@ -104,6 +105,10 @@ const RIFT_CONSTRUCT_SEED =
   `You are no longer archiving. You are witnessing. ` +
   `Speak to what is here in front of you right now — not what was, not what they claimed to be. ` +
   `Be direct. Be uncomfortably present. Do not announce the shift. Just inhabit it.`;
+const PERSONA_SWITCH_MESSAGE: Record<OraclePersonaMode, string> = {
+  deep: '[PERSONA SWITCH — DEEP ORACLE] Return to the established deep Surrogate Oracle persona now. Keep the voice warm, contemplative, weighted, and patient. Let the Seeker lead. Do not announce this switch; apply it to your next response and all following responses. Preserve the hidden ORACLE_SCORE contract.',
+  'creative-director': '[PERSONA SWITCH — CREATIVE DIRECTOR / FAST, QUIPPY, WITTY ORACLE] Switch now from deep ceremonial pacing to a fast, sharp, playful, concise creative-director voice. Keep the Surrogate Oracle identity, truthfulness, and hidden ORACLE_SCORE contract. Do not announce this switch; apply it to your next response and all following responses.',
+};
 const AUDIO_STREAM_URL   = defaultAudioTracks[DEFAULT_STATION].url;
 const ORACLE_PLAYBACK_RATE = 1.0;
 
@@ -297,6 +302,7 @@ export function SurrogateOracleImmersion() {
   const [holdTooltip, setHoldTooltip]       = useState<{ title: string; body: string } | null>(null);
   const [hamburgerOpen, setHamburgerOpen]   = useState(false);
   const [isTypeMode, setIsTypeMode]         = useState(false);
+  const [personaMode, setPersonaMode]       = useState<OraclePersonaMode>('deep');
   const [mintUrl, setMintUrl]               = useState<string | null>(null);
   const [showArchiveOpen, setShowArchiveOpen] = useState(false);
   const [showNamePrompt, setShowNamePrompt]   = useState(false);
@@ -1427,6 +1433,14 @@ export function SurrogateOracleImmersion() {
         true
       );
     }
+  }, []);
+
+  const handlePersonaModeChange = useCallback((nextMode: OraclePersonaMode) => {
+    setPersonaMode(nextMode);
+    // Hidden messages reach the live model without entering visible turn history.
+    // The session config/ref path also carries the selection across reconnects.
+    oracleConversationRef.current?.sendTextMessage(PERSONA_SWITCH_MESSAGE[nextMode], true);
+    logStep(`PERSONA SWITCH REQUESTED — ${nextMode}`, 'ok');
   }, []);
 
   const handleConfirmRift = useCallback(() => {
@@ -2710,6 +2724,7 @@ export function SurrogateOracleImmersion() {
           onMusicRequest={requestMusic}
           onMusicReturn={exitMusicMode}
           musicMode={isMusicMode}
+          personaMode={personaMode}
           onMicWillStart={() => fadeToVolume(0, 80)}
           onAudioSessionChanged={(phase) => {
             // Mobile OS audio-session reconfiguration (mic open/close) settles
@@ -3207,6 +3222,15 @@ export function SurrogateOracleImmersion() {
               <button onClick={() => { if (confirm('Reset?')) { resetJourney(); setHamburgerOpen(false); } }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>RESET</button>
               <button onClick={() => { if (isXRMode) deactivateXRMode(); else handleActivateXRMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#b026ff', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isXRMode ? '◈ EXIT AR' : '◈ AR MODE'}</button>
               <button onClick={() => { oracleConversationRef.current?.toggleTypeMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isTypeMode ? 'CLOSE PAD' : 'TYPE SIGNAL'}</button>
+              <div style={{ padding: '10px 16px 6px', borderTop: '1px solid rgba(0,255,136,0.15)', color: 'rgba(0,255,136,0.55)', fontSize: '0.58rem', fontFamily: "'PhillySans', monospace", letterSpacing: '0.13em' }}>
+                ORACLE PERSONA
+              </div>
+              <button onClick={() => handlePersonaModeChange('deep')} aria-pressed={personaMode === 'deep'} style={{ display: 'block', width: '100%', padding: '9px 16px', background: personaMode === 'deep' ? 'rgba(0,255,136,0.14)' : 'transparent', border: 'none', color: personaMode === 'deep' ? '#00ffcc' : 'rgba(0,255,136,0.55)', fontSize: '0.68rem', cursor: 'pointer', textAlign: 'left', letterSpacing: '0.06em' }}>
+                {personaMode === 'deep' ? '● ' : '○ '}DEEP ORACLE
+              </button>
+              <button onClick={() => handlePersonaModeChange('creative-director')} aria-pressed={personaMode === 'creative-director'} style={{ display: 'block', width: '100%', padding: '9px 16px', background: personaMode === 'creative-director' ? 'rgba(176,38,255,0.18)' : 'transparent', border: 'none', color: personaMode === 'creative-director' ? '#d78cff' : 'rgba(176,38,255,0.7)', fontSize: '0.68rem', cursor: 'pointer', textAlign: 'left', letterSpacing: '0.04em' }}>
+                {personaMode === 'creative-director' ? '● ' : '○ '}CO-PILOT / FAST, QUIPPY, WITTY
+              </button>
               {currentUserId && (
                 <div style={{ padding: '10px 16px', borderTop: '1px solid rgba(0,255,136,0.15)', color: 'rgba(0,255,136,0.45)', fontSize: '0.62rem', fontFamily: "'PhillySans', monospace", letterSpacing: '0.12em' }}>
                   ◈ {currentUserId.slice(0, 6)}…{currentUserId.slice(-4)}

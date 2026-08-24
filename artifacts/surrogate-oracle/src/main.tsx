@@ -3,6 +3,9 @@ import { Component, type ReactNode } from "react";
 import App from "./App";
 import "./index.css";
 import type { OracleRuntimeError } from "./types/oracle-window";
+// The smoke runner and the browser must normalize the same malformed values.
+// @ts-ignore -- the shared JS helper is intentionally executable by Node too.
+import { normalizeRuntimeError } from "../scripts/oracle-runtime-evidence.mjs";
 
 const runtimeErrors: OracleRuntimeError[] = [];
 window.__oracle_runtimeErrors = runtimeErrors;
@@ -22,14 +25,7 @@ class RootBoundary extends Component<{ children: ReactNode }, { error: Error | n
     window.removeEventListener('unhandledrejection', this.handleUnhandledRejection);
   }
   private handleWindowError = (event: ErrorEvent) => {
-    runtimeErrors.push({
-      type: 'pageerror',
-      message: event.message || 'Unknown window error',
-      source: event.filename || undefined,
-      line: event.lineno || undefined,
-      column: event.colno || undefined,
-      stack: event.error?.stack || undefined,
-    });
+    runtimeErrors.push(normalizeRuntimeError(event, 'pageerror') as OracleRuntimeError);
     console.error('[ROOT RUNTIME ERROR]', {
       message: event.message || 'Unknown window error',
       source: event.filename || undefined,
@@ -40,12 +36,7 @@ class RootBoundary extends Component<{ children: ReactNode }, { error: Error | n
   };
   private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
     const reason = event.reason;
-    runtimeErrors.push({
-      type: 'unhandledrejection',
-      message: reason instanceof Error ? reason.message : String(reason),
-      stack: reason instanceof Error ? reason.stack : undefined,
-      reason: reason instanceof Error ? reason.message : String(reason),
-    });
+    runtimeErrors.push(normalizeRuntimeError(event, 'unhandledrejection') as OracleRuntimeError);
     console.error('[ROOT UNHANDLED REJECTION]', {
       message: reason instanceof Error ? reason.message : String(reason),
       stack: reason instanceof Error ? reason.stack : undefined,

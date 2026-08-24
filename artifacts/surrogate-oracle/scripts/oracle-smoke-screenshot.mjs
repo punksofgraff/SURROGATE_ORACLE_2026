@@ -20,6 +20,7 @@ import puppeteer from 'puppeteer';
 import { writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { normalizeRuntimeError } from './oracle-runtime-evidence.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR   = join(__dirname, '../screenshots');
@@ -80,21 +81,10 @@ async function warn_(condition, msg, detail) {
   // window.__oracle_runtimeErrors so source locations and stacks survive
   // console serialization and can be inspected after the run.
   const browserEvents = [];
-  page.on('pageerror', e => browserEvents.push({
-    type: 'pageerror',
-    message: e.message || String(e),
-    stack: e.stack || undefined,
-  }));
-  page.on('error', e => browserEvents.push({
-    type: 'pageerror',
-    message: e.message || String(e),
-    stack: e.stack || undefined,
-  }));
+  page.on('pageerror', e => browserEvents.push(normalizeRuntimeError(e, 'pageerror')));
+  page.on('error', e => browserEvents.push(normalizeRuntimeError(e, 'pageerror')));
   page.on('console', msg => {
-    if (msg.type() === 'error') browserEvents.push({
-      type: 'console',
-      message: msg.text(),
-    });
+    if (msg.type() === 'error') browserEvents.push(normalizeRuntimeError(msg.text(), 'console'));
   });
 
   // ── Phase 1: DORMANT ─────────────────────────────────────────────────────

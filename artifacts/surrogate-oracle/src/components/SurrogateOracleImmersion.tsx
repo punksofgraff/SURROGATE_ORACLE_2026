@@ -1737,6 +1737,7 @@ export function SurrogateOracleImmersion() {
       data-xr-mode={isXRMode ? 'true' : undefined}
       data-guided-tour={isGuidedTour ? 'true' : undefined}
       data-oracle-persona={personaMode}
+      data-oracle-palette={personaMode === 'creative-director' ? 'electric-blue' : 'deep-green'}
     >
       {/* Profane feedback remains an intentional verdict response. Sacred
           alignment only changes restrained atmosphere/state; it never mounts

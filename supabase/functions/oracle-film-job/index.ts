@@ -182,6 +182,8 @@ async function comfyFetch(path: string, init: RequestInit = {}, timeoutMs = COMF
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const headers = new Headers(init.headers);
+    const apiKey = Deno.env.get('COMFY_UI_API_KEY');
+    if (apiKey) headers.set('Authorization', `Bearer ${apiKey}`);
     return await fetch(comfyUrl(path), { ...init, headers, signal: controller.signal });
   } finally {
     clearTimeout(timer);

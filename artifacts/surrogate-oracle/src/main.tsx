@@ -2,6 +2,10 @@ import { createRoot } from "react-dom/client";
 import { Component, type ReactNode } from "react";
 import App from "./App";
 import "./index.css";
+import type { OracleRuntimeError } from "./types/oracle-window";
+
+const runtimeErrors: OracleRuntimeError[] = [];
+window.__oracle_runtimeErrors = runtimeErrors;
 
 class RootBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   constructor(props: { children: ReactNode }) {
@@ -18,6 +22,14 @@ class RootBoundary extends Component<{ children: ReactNode }, { error: Error | n
     window.removeEventListener('unhandledrejection', this.handleUnhandledRejection);
   }
   private handleWindowError = (event: ErrorEvent) => {
+    runtimeErrors.push({
+      type: 'pageerror',
+      message: event.message || 'Unknown window error',
+      source: event.filename || undefined,
+      line: event.lineno || undefined,
+      column: event.colno || undefined,
+      stack: event.error?.stack || undefined,
+    });
     console.error('[ROOT RUNTIME ERROR]', {
       message: event.message || 'Unknown window error',
       source: event.filename || undefined,
@@ -28,6 +40,12 @@ class RootBoundary extends Component<{ children: ReactNode }, { error: Error | n
   };
   private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
     const reason = event.reason;
+    runtimeErrors.push({
+      type: 'unhandledrejection',
+      message: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+      reason: reason instanceof Error ? reason.message : String(reason),
+    });
     console.error('[ROOT UNHANDLED REJECTION]', {
       message: reason instanceof Error ? reason.message : String(reason),
       stack: reason instanceof Error ? reason.stack : undefined,
@@ -35,6 +53,13 @@ class RootBoundary extends Component<{ children: ReactNode }, { error: Error | n
     });
   };
   componentDidCatch(error: Error) {
+    runtimeErrors.push({
+      type: 'root-crash',
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      reason: error.cause instanceof Error ? error.cause.message : String(error.cause ?? ''),
+    });
     console.error('[ROOT CRASH]', {
       name: error.name,
       message: error.message,

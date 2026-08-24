@@ -33,6 +33,17 @@ export interface OracleMorphDict {
   resolved: Record<string, number>;
 }
 
+export interface OracleRuntimeError {
+  type: 'pageerror' | 'unhandledrejection' | 'root-crash';
+  message: string;
+  source?: string;
+  line?: number;
+  column?: number;
+  stack?: string;
+  name?: string;
+  reason?: string;
+}
+
 declare global {
   interface Window {
     /** Legacy Safari/old-WebKit AudioContext constructor. */
@@ -57,6 +68,9 @@ declare global {
     __oracle_test?: () => void;
     __oracle_skipLore?: () => void;
     oracleConversationRef?: RefObject<OracleConversationHandle | null>;
+
+    /** Structured runtime evidence collected for smoke tests and preview diagnostics. */
+    __oracle_runtimeErrors?: OracleRuntimeError[];
 
     /** Shared singleton AudioContext for one-shot SFX playback. */
     __audioContext?: AudioContext;

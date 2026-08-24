@@ -76,13 +76,25 @@ async function warn_(condition, msg, detail) {
   const page = await browser.newPage();
   await page.setViewport({ width: 390, height: 844 }); // iPhone 14 Pro portrait
 
-  // Suppress console noise but capture errors
-  const pageErrors = [];
-  page.on('pageerror', e => pageErrors.push(`pageerror: ${e.stack || e.message}`));
-  page.on('error', e => pageErrors.push(`error: ${e.stack || e.message}`));
-  page.on('unhandledrejection', e => pageErrors.push(`unhandledrejection: ${e.reason?.stack || e.reason?.message || String(e.reason)}`));
+  // Capture structured browser errors. The app also retains these in
+  // window.__oracle_runtimeErrors so source locations and stacks survive
+  // console serialization and can be inspected after the run.
+  const browserEvents = [];
+  page.on('pageerror', e => browserEvents.push({
+    type: 'pageerror',
+    message: e.message || String(e),
+    stack: e.stack || undefined,
+  }));
+  page.on('error', e => browserEvents.push({
+    type: 'pageerror',
+    message: e.message || String(e),
+    stack: e.stack || undefined,
+  }));
   page.on('console', msg => {
-    if (msg.type() === 'error') pageErrors.push(msg.text());
+    if (msg.type() === 'error') browserEvents.push({
+      type: 'console',
+      message: msg.text(),
+    });
   });
 
   // ── Phase 1: DORMANT ─────────────────────────────────────────────────────
@@ -220,14 +232,51 @@ async function warn_(condition, msg, detail) {
 
   // ── JavaScript errors check ───────────────────────────────────────────────
   console.log('\nJS Error Check\n');
-  const criticalErrors = pageErrors.filter(e =>
-    !e.includes('mic') && !e.includes('Audio') && !e.includes('getUserMedia') &&
-    !e.includes('WebSocket') && !e.includes('supabase') && !e.includes('net::ERR')
+  const appRuntimeErrors = await page.evaluate(() => window.__oracle_runtimeErrors ?? []);
+  const runtimeErrors = [...appRuntimeErrors, ...browserEvents];
+  const isExpectedHeadlessError = (error) => {
+    const text = [
+      error.type,
+      error.message,
+      error.stack,
+      error.reason,
+    ].filter(Boolean).join(' ');
+    return /mic|Audio|getUserMedia|WebSocket|supabase|net::ERR/i.test(text);
+  };
+  const unexpectedRuntimeErrors = runtimeErrors.filter(error => !isExpectedHeadlessError(error));
+  check(
+    unexpectedRuntimeErrors.length === 0,
+    'No unexpected runtime errors (0)',
+    `${unexpectedRuntimeErrors.length} unexpected runtime error(s): ${unexpectedRuntimeErrors
+      .slice(0, 3).map(error => `${error.type}: ${error.message}`).join(' | ')}`
   );
-  check(criticalErrors.length === 0, 'No critical JS errors', criticalErrors.slice(0,3).join(' | ') || '');
-  if (pageErrors.length > 0) {
-    log('ℹ', `${pageErrors.length} non-critical error(s) suppressed (audio/network/WS expected in headless)`);
+  if (runtimeErrors.length > 0) {
+    log('ℹ', `${runtimeErrors.length} runtime error event(s) captured`,
+      `${unexpectedRuntimeErrors.length} unexpected; expected headless events are retained in evidence`);
   }
+
+  const evidencePath = join(OUT_DIR, 'oracle-smoke-evidence.json');
+  writeFileSync(evidencePath, JSON.stringify({
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    devUrl: DEV_URL,
+    screenshots: SHOTS.filter(shot => shot.icon === '📸'),
+    summary: {
+      passed: pass,
+      failed: fail,
+      warnings: warn,
+      unexpectedRuntimeErrorCount: unexpectedRuntimeErrors.length,
+      runtimeErrorCount: runtimeErrors.length,
+    },
+    runtime: {
+      pageErrors: runtimeErrors.filter(error => error.type === 'pageerror'),
+      unhandledRejections: runtimeErrors.filter(error => error.type === 'unhandledrejection'),
+      rootCrashes: runtimeErrors.filter(error => error.type === 'root-crash'),
+      consoleErrors: runtimeErrors.filter(error => error.type === 'console'),
+      unexpected: unexpectedRuntimeErrors,
+    },
+  }, null, 2) + '\n');
+  console.log(`  Runtime evidence → ${evidencePath.split('/').slice(-2).join('/')}/`);
 
   await browser.close();
 

@@ -24,16 +24,42 @@
  */
 
 import puppeteer from 'puppeteer';
-import { writeFileSync, mkdirSync } from 'fs';
+import { writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { normalizeRuntimeError } from './oracle-runtime-evidence.mjs';
+import {
+  prepareSmokeEvidence,
+  smokeEvidencePath,
+  writeSmokeRunManifest,
+} from './oracle-smoke-evidence.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUT_DIR   = join(__dirname, '../screenshots');
+const SCREENSHOTS_DIR = join(__dirname, '../screenshots');
 const DEV_URL   = process.env.DEV_URL ?? 'http://localhost:5173';
+const { runId, runDir: OUT_DIR } = prepareSmokeEvidence(SCREENSHOTS_DIR);
+const runStartedAt = new Date().toISOString();
+let runFinished = false;
 
-mkdirSync(OUT_DIR, { recursive: true });
+function markInterrupted(status, reason) {
+  if (runFinished) return;
+  writeSmokeRunManifest(OUT_DIR, {
+    runId,
+    status,
+    startedAt: runStartedAt,
+    finishedAt: new Date().toISOString(),
+    reason,
+  });
+}
+
+process.once('SIGINT', () => {
+  markInterrupted('interrupted', 'received SIGINT');
+  process.exit(130);
+});
+process.once('SIGTERM', () => {
+  markInterrupted('interrupted', 'received SIGTERM');
+  process.exit(143);
+});
 
 const SHOTS = [];
 let pass = 0, warn = 0, fail = 0;
@@ -252,9 +278,11 @@ async function warn_(condition, msg, detail) {
       `${unexpectedRuntimeErrors.length} unexpected; expected headless events are retained in evidence`);
   }
 
-  const evidencePath = join(OUT_DIR, 'oracle-smoke-evidence.json');
+  const evidencePath = smokeEvidencePath(OUT_DIR);
   writeFileSync(evidencePath, JSON.stringify({
     schemaVersion: 1,
+    runId,
+    runStatus: 'complete',
     generatedAt: new Date().toISOString(),
     devUrl: DEV_URL,
     screenshots: SHOTS.filter(shot => shot.icon === '📸'),
@@ -273,6 +301,15 @@ async function warn_(condition, msg, detail) {
       unexpected: unexpectedRuntimeErrors,
     },
   }, null, 2) + '\n');
+  runFinished = true;
+  writeSmokeRunManifest(OUT_DIR, {
+    runId,
+    status: 'complete',
+    startedAt: runStartedAt,
+    finishedAt: new Date().toISOString(),
+    screenshotCount: SHOTS.filter(shot => shot.icon === '📸').length,
+    evidence: 'oracle-smoke-evidence.json',
+  });
   console.log(`  Runtime evidence → ${evidencePath.split('/').slice(-2).join('/')}/`);
 
   await browser.close();

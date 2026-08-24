@@ -5,6 +5,8 @@
  * and FFmpeg. The browser only sees a job id and sanitized progress/result.
  *
  * Providers:
+ * - fal Seedance 2.5 image-to-video: FAL_API_KEY
+ * - RunPod mux worker: RUNPOD_ENDPOINT_ID + RUNPOD_API_KEY
  * - Direct ComfyUI Pod: RUNPOD_COMFYUI_URL
  * - Legacy RunPod Serverless: RUNPOD_ENDPOINT_ID + RUNPOD_API_KEY
  */
@@ -25,6 +27,9 @@ const MAX_CHUNK_SECONDS = 5;
 const CHUNK_COUNT = 4;
 const RUNPOD_TIMEOUT_MS = 12_000;
 const COMFY_TIMEOUT_MS = 20_000;
+const FAL_TIMEOUT_MS = 20_000;
+const FAL_MODEL = 'bytedance/seedance-2.5/image-to-video';
+const FAL_DURATION = '5';
 
 type JobRow = {
   id: string; session_id: string; portrait_url: string; status: string;
@@ -62,12 +67,79 @@ function safeSlugs(input: unknown): string[] {
 function publicJob(row: JobRow) {
   return {
     id: row.id,
-    provider: row.runpod_job_id?.startsWith('comfy:') ? 'comfy' : 'runpod',
+    provider: row.runpod_job_id?.startsWith('comfy:')
+      ? 'comfy'
+      : row.runpod_job_id?.startsWith('fal:')
+        ? 'fal'
+        : row.runpod_job_id?.startsWith('mux:')
+          ? 'fal'
+          : 'runpod',
     status: row.status, progress: row.progress,
     chunkCount: row.chunk_count, chunks: row.chunks,
     finalMediaUrl: row.final_media_url, error: row.error_message,
     createdAt: row.created_at, updatedAt: row.updated_at,
   };
+}
+
+async function falFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const key = Deno.env.get('FAL_API_KEY');
+  if (!key) throw new Error('FAL is not configured. Add FAL_API_KEY before requesting a premium film.');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FAL_TIMEOUT_MS);
+  try {
+    const headers = new Headers(init.headers);
+    headers.set('Authorization', `Key ${key}`);
+    headers.set('Content-Type', 'application/json');
+    return await fetch(`https://queue.fal.run${path}`, { ...init, headers, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function falJson(path: string, init: RequestInit = {}): Promise<Record<string, unknown>> {
+  const response = await falFetch(path, init);
+  const raw = await response.text();
+  let data: Record<string, unknown> = {};
+  try { data = JSON.parse(raw); } catch { /* handled below */ }
+  if (!response.ok) throw new Error(`FAL ${response.status}: ${safeText(data.error ?? raw, 240)}`);
+  return data;
+}
+
+async function createFalJob(portraitUrl: string, prompt: string, endUserId: string): Promise<string> {
+  const data = await falJson(`/${FAL_MODEL}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      prompt,
+      image_url: portraitUrl,
+      resolution: '480p',
+      duration: FAL_DURATION,
+      // Lyria is muxed after the visual completes. Never substitute FAL audio.
+      generate_audio: false,
+      bitrate_mode: 'standard',
+      end_user_id: endUserId,
+    }),
+  });
+  const requestId = safeText(data.request_id, 180);
+  if (!requestId) throw new Error('FAL did not return a request id.');
+  return `fal:${requestId}`;
+}
+
+async function falJob(requestId: string): Promise<{ status: string; progress?: number; output?: string; error?: string }> {
+  const status = await falJson(`/bytedance/seedance-2.5/image-to-video/requests/${encodeURIComponent(requestId)}/status`);
+  const state = safeText(status.status, 24).toUpperCase();
+  if (state === 'COMPLETED') {
+    const result = await falJson(`/bytedance/seedance-2.5/image-to-video/requests/${encodeURIComponent(requestId)}`);
+    const video = result.video && typeof result.video === 'object' ? result.video as Record<string, unknown> : {};
+    const output = safeText(video.url, 2000);
+    return { status: output ? 'completed' : 'failed', progress: 68, output, error: output ? undefined : 'FAL completed without a video URL.' };
+  }
+  if (['FAILED', 'ERROR'].includes(state)) return { status: 'failed', progress: 10, error: safeText(status.error, 300) || 'FAL video generation failed.' };
+  if (['CANCELED', 'CANCELLED'].includes(state)) return { status: 'cancelled', progress: 10, error: 'FAL video generation was cancelled.' };
+  return { status: 'processing', progress: state === 'IN_QUEUE' ? 8 : 32 };
+}
+
+async function cancelFalJob(requestId: string): Promise<void> {
+  await falJson(`/bytedance/seedance-2.5/image-to-video/requests/${encodeURIComponent(requestId)}/cancel`, { method: 'PUT' });
 }
 
 async function runpod(path: string, method: string, body?: unknown): Promise<Record<string, unknown>> {
@@ -359,14 +431,18 @@ Deno.serve(async (req) => {
     const continuity = `Oracle materialized film. High-level visual bible: tropical beach bar, palm trees, reggae band, DJ, ocean dusk, ` +
       `surface texture, restrained camera drift, coherent subject silhouette. ${slugs.join(', ')}. ` +
       `${archetype ? `Archetype mood: ${archetype}. ` : ''}${emotional ? `Emotional register: ${emotional}.` : ''}`;
-    const chunks = Array.from({ length: CHUNK_COUNT }, (_, index) => ({
+     const requestedProvider = safeText(payload.provider || 'fal', 16).toLowerCase();
+     if (!['fal', 'runpod'].includes(requestedProvider)) {
+       return json({ error: 'Unsupported premium provider.' }, 400);
+     }
+     const chunks = Array.from({ length: requestedProvider === 'fal' ? 1 : CHUNK_COUNT }, (_, index) => ({
       index, durationSeconds: MAX_CHUNK_SECONDS,
-      prompt: `${continuity} Shot ${index + 1} of ${CHUNK_COUNT}; preserve the portrait identity and palette. ` +
-        (index === 0 ? 'Begin with a still reveal.' : index === CHUNK_COUNT - 1 ? 'Resolve into a quiet held frame.' : 'Continue motion from the previous shot.'),
+       prompt: `${continuity} Shot ${index + 1} of ${requestedProvider === 'fal' ? 1 : CHUNK_COUNT}; preserve the portrait identity and palette. ` +
+         (index === 0 ? 'Begin with a still reveal.' : index === CHUNK_COUNT - 1 ? 'Resolve into a quiet held frame.' : 'Continue motion from the previous shot.'),
     }));
     const { data: row, error: insertError } = await supabase.from('oracle_film_jobs').insert({
       session_id: sessionId, portrait_url: portraitUrl, chunks,
-      chunk_count: CHUNK_COUNT, visual_slugs: slugs,
+       chunk_count: chunks.length, visual_slugs: slugs,
     }).select().single();
     if (insertError || !row) return json({ error: 'Could not create film job.', detail: insertError?.message }, 500);
      try {
@@ -380,7 +456,14 @@ Deno.serve(async (req) => {
             anchor_audio_duration_seconds: checkedMp3Duration(anchorBytes),
          }).eq('id', row.id);
        }
-        // Premium generation uses the on-demand Serverless/model-template API
+         if (requestedProvider === 'fal') {
+           runpodJobId = await createFalJob(
+             portraitUrl,
+             `${continuity} ${chunks[0].prompt} ${typeof context.prompt === 'string' ? safeText(context.prompt, 500) : ''}`,
+             sessionId,
+           );
+         } else {
+         // Premium generation uses the on-demand Serverless/model-template API
         // by default. Direct ComfyUI is retained only as an explicit legacy
         // route, so an idle Pod is never required by the browser experience.
         const route = safeText(Deno.env.get('RUNPOD_FILM_ROUTE') || 'template', 24).toLowerCase();
@@ -405,14 +488,15 @@ Deno.serve(async (req) => {
            },
          });
          runpodJobId = typeof run.id === 'string' ? run.id : '';
+         }
        }
-      if (!runpodJobId) throw new Error('RunPod did not return a job id.');
+       if (!runpodJobId) throw new Error(`${requestedProvider === 'fal' ? 'FAL' : 'RunPod'} did not return a job id.`);
       const { data: updated } = await supabase.from('oracle_film_jobs').update({
         status: 'generating', progress: 4, runpod_job_id: runpodJobId, updated_at: new Date().toISOString(),
       }).eq('id', row.id).select().single();
       return json(publicJob((updated ?? row) as JobRow), 202);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'RunPod request failed.';
+       const message = error instanceof Error ? error.message : `${requestedProvider === 'fal' ? 'FAL' : 'RunPod'} request failed.`;
       const { data: failed } = await supabase.from('oracle_film_jobs').update({
         status: 'failed', error_message: message.slice(0, 300), updated_at: new Date().toISOString(),
       }).eq('id', row.id).select().single();

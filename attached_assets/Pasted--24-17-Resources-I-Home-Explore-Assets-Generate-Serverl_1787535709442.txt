@@ -1,0 +1,231 @@
+$24.17
+Resources
+
+
+I
+Home
+Explore
+Assets
+
+Generate
+Serverless
+
+Settings
+Dashboard
+Start exploring fal's capabilities
+·
+Hide getting started guide
+I'm here
+
+To create with AI
+Getting started
+Start exploring fal's capabilities
+
+Don't show this
+Create something with AI
+Explore powerful models — no coding required.
+
+fal Sandbox
+fal Workflows
+fal Agent
+Early Access
+Featured Models
+Explore all models
+Explore the latest models
+Top tools for image, video, and audio generation.
+
+background texture
+blackforestlabs/flux-3/image-to-video
+FLUX 3 is Black Forest Labs' frontier video model. This endpoint animates a single still image into video, extending one frame into coherent, natural motion.
+
+background texture
+bytedance/seedance-2.5/image-to-video
+Dreamina Seedance 2.5 animates a single still into a native 30-second clip at up to 720p, extending one frame into continuous, coherent motion without the drift or stitching of shorter multi-clip workflows.
+
+background texture
+minimax/h3/image-to-video
+MiniMax H3 is a frontier video model. This endpoint animates a supplied image into 2K video, using it as the opening frame or pairs a first and last frame to control a transition between two images with the aspect ratio following the input.
+
+Explore all models
+Latest models
+Favorite models
+Recently used
+Latest models
+Favorite models
+Recently used
+See all latest
+Upscale videos to 1080p, 2K, or 4K via API. FLUX 3 powered super-resolution with a precise mode and a creative detail-enhancement mode.
+Black Forest Labs logo
+blackforestlabs/flux-video-upscale
+
+video-to-video
+4 days ago
+Generate 3D models from multiple view images using Hi3D V3.0.
+hitem3d/hi3d/v3.0/multi-view-to-3d
+
+image-to-3d
+4 days ago
+Generate 3D models from a single image with Hi3D V3.0.
+hitem3d/hi3d/v3.0/image-to-3d
+
+image-to-3d
+4 days ago
+Professional color and lighting correction powered by Topaz Labs. Adjust V2 fixes exposure, White Balance corrects color casts, Colorize adds color to black-and-white photos. Best for one-click photo correction.
+Topaz Labs logo
+topaz/adjust/image
+
+image-to-image
+12 days ago
+Professional photo sharpening powered by Topaz Labs. Models tuned per blur type (lens, motion, portrait, wildlife), plus Super Focus for generative recovery of severely blurred shots. Best for out-of-focus and motion-blurred photos.
+Topaz Labs logo
+topaz/sharpen/image
+
+image-to-image
+12 days ago
+Professional photo denoising powered by Topaz Labs. Normal, Strong and Extreme presets clean noise at source resolution; Denoise Max adds generative detail recovery. Best for high-ISO and night photography.
+Topaz Labs logo
+topaz/denoise/image
+
+image-to-image
+12 days ago
+Professional image restoration powered by Topaz Labs. Recover 3 generatively rebuilds natural detail; Dust-Scratch V2 cleans film dust and scratches. Best for old, damaged or degraded photos.
+Topaz Labs logo
+topaz/restore/image
+
+image-to-image
+12 days ago
+Professional transparent-image upscaling powered by Topaz Labs. Preserves the alpha channel end to end with PNG output. Best for logos, stickers and assets with transparency.
+Topaz Labs logo
+topaz/upscale/image/transparent
+
+image-to-image
+12 days ago
+Latest generations
+Show preview
+
+
+Source
+2
+See all
+Failed
+Path /v4 not found
+fal-ai/recraft/v4
+Failed
+Field required
+fal-ai/flux-pro/v1.1
+Failed
+Field required
+fal-ai/flux/schnell
+Failed
+Field required
+fal-ai/flux-pro/v1.1
+Failed
+Path /v4 not found
+fal-ai/recraft/v4
+Failed
+Field required
+fal-ai/flux-pro/v1.1
+Failed
+Field required
+fal-ai/flux/schnell
+Failed
+Field required
+fal-ai/flux-pro/v1.1
+Failed
+Path /v4 not found
+fal-ai/recraft/v4
+Failed
+Field required
+fal-ai/flux-pro/v1.1
+Failed
+Field required
+fal-ai/flux/schnell
+Failed
+Field required
+fal-ai/flux-pro/v1.1
+Failed
+Path /v4 not found
+fal-ai/recraft/v4
+Failed
+Field required
+fal-ai/flux-pro/v1.1
+Failed
+Field required
+fal-ai/flux/schnell
+Failed
+Field required
+fal-ai/flux-pro/v1.1
+Ready to transform your enterprise with AI?
+Contact Sales
+Learn more
+Status
+About Us
+Documentation
+Trust & Safety
+Verify fal-Generated Content
+Careers
+Pricing
+Blog
+Enterprise
+Get in touch
+Report Content
+Grants
+Events
+Legal
+Your Privacy ChoicesCalifornia Consumer Privacy Act (CCPA) Opt-Out Icon
+Learn
+Gen Media Report 2026
+Image Models
+Seedream 5.0
+GPT Image 2
+Flux 2
+Nano Banana 2
+Ideogram 4
+Krea 2
+Nano Banana Pro
+Qwen Image 2.0
+Explore More
+Video Models
+AI Video Generator
+Text to Video
+Seedance 2.5
+Seedance 2.0
+Gemini Omni
+MiniMax H3
+Kling 3.0
+Veo 3.1
+Grok Imagine 1.5
+HappyHorse 1.0
+Happy Oyster
+Wan 2.7
+LTX 2.3
+PixVerse V6
+Labs
+Black Forest Labs
+Google
+OpenAI
+xAI
+Alibaba
+Kling
+ByteDance
+ElevenLabs
+Playgrounds
+fal Agent
+Sandbox
+Workflows
+Training
+Free Tools
+Background Remover
+Image Upscaler
+Image Extender
+Image Resizer
+Socials
+Discord
+GitHub
+Reddit
+Twitter
+LinkedIn
+YouTube
+Instagram
+TikTok
+Features and Labels, 2026. All Rights Reserved. Terms of Service and Privacy Policy.

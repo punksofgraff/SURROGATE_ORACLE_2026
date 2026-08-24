@@ -6229,6 +6229,12 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   color: rgba(0, 255, 136, 0.82);
 }
 
+.oracle-film-actions {
+  width: min(100%, 340px);
+  display: grid;
+  gap: 7px;
+}
+
 .oracle-portrait-fullscreen__film,
 .oracle-film-status button,
 .oracle-film-error button,
@@ -6244,12 +6250,23 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   text-decoration: none;
 }
 
+.oracle-portrait-fullscreen__film--premium {
+  border-color: rgba(176, 38, 255, 0.52);
+  background: rgba(176, 38, 255, 0.1);
+  color: rgba(238, 213, 255, 0.96);
+}
+
 .oracle-portrait-fullscreen__film:hover,
 .oracle-film-status button:hover,
 .oracle-film-error button:hover,
 .oracle-film-ready a:hover {
   background: rgba(0, 255, 136, 0.18);
   box-shadow: 0 0 16px rgba(0, 255, 136, 0.18);
+}
+
+.oracle-portrait-fullscreen__film--premium:hover {
+  background: rgba(176, 38, 255, 0.2);
+  box-shadow: 0 0 16px rgba(176, 38, 255, 0.2);
 }
 
 .oracle-film-status {

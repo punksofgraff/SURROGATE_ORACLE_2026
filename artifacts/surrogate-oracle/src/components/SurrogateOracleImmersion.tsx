@@ -3019,29 +3019,6 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
-      {/* ── Act 5 — Rift-Construct Initiation Overlay ────────────────────── */}
-      {presenceResolved && scenePhase === 'awakened' && !showPresenceGate && (
-        <button
-          type="button"
-          onClick={() => {
-            sessionStorage.removeItem('oracle_presence_preference_v1');
-            setPresenceResolved(false);
-            setShowPresenceGate(true);
-          }}
-          style={{
-            position: 'fixed', top: 16, right: 16, zIndex: 140,
-            background: 'rgba(0,8,12,0.78)',
-            color: '#00ffcc', border: '1px solid rgba(0,255,204,0.32)',
-            padding: '0.42rem 0.62rem', borderRadius: 4,
-            fontFamily: "'PhillySans', monospace",
-            fontSize: '0.58rem', letterSpacing: '0.1em',
-            cursor: 'pointer', opacity: 0.82,
-          }}
-          aria-label="Change presence preference"
-        >
-          PRESENCE
-        </button>
-      )}
       <AnimatePresence>
         {showRiftRitual && (
           <motion.div

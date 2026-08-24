@@ -46,6 +46,7 @@ export function useParallax(
   phase: Phase,
   onUpdate?: (x: number, y: number) => void,
   onZoom?:   (zoom: number) => void,
+  zoomResetToken?: string,
 ) {
   useEffect(() => {
     const intensity = PHASE_INTENSITY[phase] ?? 1.0;
@@ -179,7 +180,9 @@ export function useParallax(
       const iy = currentY * intensity * gate;
 
       if (onUpdate) onUpdate(ix, iy);
-      if (onZoom && Math.abs(currentZoom - 1) > 0.001) onZoom(currentZoom);
+      // Always publish the settled value, including unity. Otherwise a phase
+      // reset can leave the avatar's camera ref at an old close-up forever.
+      if (onZoom) onZoom(currentZoom);
 
       const vw = window.innerWidth;
       const vh = window.innerHeight;
@@ -285,5 +288,5 @@ export function useParallax(
         if (node) node.style.transform = '';
       });
     };
-  }, [phase]);
+  }, [phase, zoomResetToken]);
 }

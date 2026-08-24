@@ -32,6 +32,8 @@ interface OracleQuarksProps {
   preview?: boolean;
   /** Preserve the field but slow its continuous stream for accessibility. */
   reducedMotion?: boolean;
+  /** Creative Director palette: electric blue channel. */
+  isCoPilot?: boolean;
 }
 
 const QUARKS_VERTEX_SHADER = /* glsl */ `
@@ -206,6 +208,7 @@ export function OracleQuarks({
   listening = false,
   preview = false,
   reducedMotion = false,
+  isCoPilot = false,
 }: OracleQuarksProps) {
   const pointsRef = useRef<THREE.Points>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
@@ -221,9 +224,9 @@ export function OracleQuarks({
   }, [tier, count]);
 
   // Palette colors
-  const sacredGreen = useMemo(() => new THREE.Color('#00ff88'), []);
-  const brandCyan   = useMemo(() => new THREE.Color('#00ffcc'), []);
-  const profanePurp = useMemo(() => new THREE.Color('#b026ff'), []);
+  const sacredGreen = useMemo(() => new THREE.Color(isCoPilot ? '#00ccff' : '#00ff88'), [isCoPilot]);
+  const brandCyan   = useMemo(() => new THREE.Color(isCoPilot ? '#66e6ff' : '#00ffcc'), [isCoPilot]);
+  const profanePurp = useMemo(() => new THREE.Color(isCoPilot ? '#b8f3ff' : '#b026ff'), [isCoPilot]);
 
   const { geometry, uniforms } = useMemo(() => {
     const geo = new THREE.BufferGeometry();
@@ -286,7 +289,7 @@ export function OracleQuarks({
     };
 
     return { geometry: geo, uniforms: unis };
-  }, [count, sacredGreen, brandCyan, profanePurp, reducedMotion]);
+  }, [count, sacredGreen, brandCyan, profanePurp, reducedMotion, isCoPilot]);
 
   useFrame((state, delta) => {
     const mat = materialRef.current;

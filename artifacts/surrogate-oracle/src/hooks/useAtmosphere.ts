@@ -51,6 +51,8 @@ function alignmentColor(alignment: Alignment): [number, number, number] {
   return [0, 255, 136];                                // emerald — brand kit: #00ff88
 }
 
+const ELECTRIC_BLUE: [number, number, number] = [0, 204, 255];
+
 function createParticle(
   kind: ParticleKind,
   w: number, h: number,
@@ -122,6 +124,7 @@ export function useAtmosphere(
   phase: Phase,
   alignment: Alignment,
   isDegraded = false,
+  isCoPilot = false,
 ) {
   const particlesRef        = useRef<Particle[]>([]);
   const rafRef              = useRef<number>(0);
@@ -144,7 +147,7 @@ export function useAtmosphere(
     const w = () => canvas.width;
     const h = () => canvas.height;
 
-    const [r, g, b] = alignmentColor(alignment);
+    const [r, g, b] = isCoPilot ? ELECTRIC_BLUE : alignmentColor(alignment);
     const rawConfig = PHASE_CONFIGS[phase] ?? PHASE_CONFIGS.dormant;
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     
@@ -177,6 +180,15 @@ export function useAtmosphere(
     } else if (current.length > desired + 20) {
       particlesRef.current = current.slice(0, desired);
     }
+    // Persona changes keep the pool alive, but recolor the existing particles
+    // immediately instead of waiting for every particle to recycle.
+    particlesRef.current.forEach(p => {
+      if (p.kind !== 'steam') {
+        p.r = r;
+        p.g = g;
+        p.b = b;
+      }
+    });
 
     const render = () => {
       const cfg = configRef.current;
@@ -241,5 +253,5 @@ export function useAtmosphere(
       window.removeEventListener('resize', resize);
       cancelAnimationFrame(rafRef.current);
     };
-  }, [canvasRef, phase, alignment]);
+  }, [canvasRef, phase, alignment, isCoPilot]);
 }

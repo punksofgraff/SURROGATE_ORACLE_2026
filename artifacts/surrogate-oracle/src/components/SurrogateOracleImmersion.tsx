@@ -1672,7 +1672,7 @@ export function SurrogateOracleImmersion() {
     };
   }, []);
 
-  useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment, isDegraded);
+  useAtmosphere(atmosphereCanvasRef, scenePhase, oracleAlignment, isDegraded, personaMode === 'creative-director');
 
   const oracleStageRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1695,7 +1695,9 @@ export function SurrogateOracleImmersion() {
 
   const handleZoom = useCallback((zoom: number) => { cameraStateRef.current = { ...cameraStateRef.current, zoom }; }, []);
 
-  useParallax(scenePhase, handleParallaxUpdate, handleZoom);
+  // Persona changes start a fresh parallax controller so a stale pinch/wheel
+  // close-up cannot leak into Co-pilot or back into Deep Oracle.
+  useParallax(scenePhase, handleParallaxUpdate, handleZoom, personaMode);
 
   const isOracleMode = scenePhase === 'oracle';
   const awakened = scenePhase === 'awakened' || scenePhase === 'tour' || isOracleMode;
@@ -1734,6 +1736,7 @@ export function SurrogateOracleImmersion() {
       data-audio-target-vol={targetVol}
       data-xr-mode={isXRMode ? 'true' : undefined}
       data-guided-tour={isGuidedTour ? 'true' : undefined}
+      data-oracle-persona={personaMode}
     >
       {/* Profane feedback remains an intentional verdict response. Sacred
           alignment only changes restrained atmosphere/state; it never mounts
@@ -2030,7 +2033,7 @@ export function SurrogateOracleImmersion() {
                           <OracleMusicVisualizer
                             getAnalyser={() => lyria.analyserRef.current}
                             getAudioTime={() => lyria.audioRef.current?.currentTime ?? 0}
-                            reducedMotion={prefersReducedMotion}
+                             reducedMotion={prefersReducedMotion}
                             intensity={lyria.status === 'generating' ? 0.12 : lyria.status === 'ready' ? 0.34 : 1}
                           />
                         )}
@@ -2046,6 +2049,7 @@ export function SurrogateOracleImmersion() {
                             listening={isMicActive}
                             preview={oraclePreviewVisible && !isOracleMode}
                             reducedMotion={prefersReducedMotion}
+                             isCoPilot={personaMode === 'creative-director'}
                           />
                         )}
                         {/* The GLB transporter owns the particle surface until
@@ -2056,6 +2060,7 @@ export function SurrogateOracleImmersion() {
                             tier={renderTier as 1 | 2 | 3}
                             speakingRef={isOracleSpeakingRef}
                             reducedMotion={prefersReducedMotion}
+                            isCoPilot={personaMode === 'creative-director'}
                           />
                         )}
                         {/* Rapier glyph-shard debris field (tier 2+) — fixed 60Hz step,

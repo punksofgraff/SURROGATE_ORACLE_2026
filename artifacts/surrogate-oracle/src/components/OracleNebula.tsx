@@ -44,6 +44,8 @@ interface OracleNebulaProps {
   speakingRef: React.RefObject<boolean>;
   /** Keep the composition but slow the streams for reduced-motion users. */
   reducedMotion?: boolean;
+  /** Creative Director palette: electric blue instead of Oracle green. */
+  isCoPilot?: boolean;
 }
 
 /** Soft radial glow sprite, built once per page. */
@@ -57,9 +59,10 @@ function getGlowTexture(): THREE.Texture {
   const ctx = canvas.getContext('2d')!;
   const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
   grad.addColorStop(0.0, 'rgba(255,255,255,1.0)');
-  grad.addColorStop(0.2, 'rgba(230,255,245,0.92)');
-  grad.addColorStop(0.5, 'rgba(0,255,136,0.45)');
-  grad.addColorStop(0.75, 'rgba(0,255,204,0.15)');
+  // Keep the texture neutral so the material color can own the persona palette.
+  grad.addColorStop(0.2, 'rgba(255,255,255,0.92)');
+  grad.addColorStop(0.5, 'rgba(255,255,255,0.45)');
+  grad.addColorStop(0.75, 'rgba(255,255,255,0.15)');
   grad.addColorStop(1.0, 'rgba(0,0,0,0)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, size, size);
@@ -93,7 +96,7 @@ function silentRate() {
   return new Rate(new Span(0, 0), new Span(10, 10));
 }
 
-export function OracleNebula({ tier, speakingRef, reducedMotion = false }: OracleNebulaProps) {
+export function OracleNebula({ tier, speakingRef, reducedMotion = false, isCoPilot = false }: OracleNebulaProps) {
   const { scene } = useThree();
   const systemRef = useRef<System | null>(null);
   const energyEmitterRef = useRef<Emitter | null>(null);
@@ -128,7 +131,7 @@ export function OracleNebula({ tier, speakingRef, reducedMotion = false }: Oracl
         new Mass(1),
         new Radius(0.032, 0.072),
         new Life(4.5, 8.0),
-        new Body(makeSprite(0x00ff88, 0.75)),
+        new Body(makeSprite(isCoPilot ? 0x00ccff : 0x00ff88, 0.75)),
         // Enough lift to cross a meaningful part of the avatar in 2–3 seconds.
         // The old 0.015–0.05 range took over a minute to cross the cabinet and
         // read as a static glow field on mobile.
@@ -137,7 +140,7 @@ export function OracleNebula({ tier, speakingRef, reducedMotion = false }: Oracl
       .addBehaviours([
         new Alpha(0.15, 0.85, undefined),
         new Scale(0.6, 1.35),
-        new Color('#00ff88', '#00ffcc'),
+        new Color(isCoPilot ? '#00ccff' : '#00ff88', isCoPilot ? '#66e6ff' : '#00ffcc'),
         new RandomDrift(0.12 * driftScale, 0.045 * driftScale, 0.04 * driftScale, 0.65),
       ])
       .setPosition({ x: 0, y: -0.1, z: -0.35 })
@@ -151,13 +154,13 @@ export function OracleNebula({ tier, speakingRef, reducedMotion = false }: Oracl
         new Mass(1),
         new Radius(0.022, 0.052),
         new Life(1.4, 2.6),
-        new Body(makeSprite(0xb026ff, 0.9)),
+        new Body(makeSprite(isCoPilot ? 0x00ccff : 0xb026ff, 0.9)),
         new RadialVelocity(new Span(0.52 * energyVelScale, 0.88 * energyVelScale), new Vector3D(0, 1, 0), 28),
       ])
       .addBehaviours([
         new Alpha(0.95, 0.05),
         new Scale(1.2, 0.3),
-        new Color('#b026ff', '#00ffcc'),
+        new Color(isCoPilot ? '#00ccff' : '#b026ff', isCoPilot ? '#b8f3ff' : '#00ffcc'),
         new RandomDrift(0.13 * driftScale, 0.05 * driftScale, 0.055 * driftScale, 0.35),
         new Gravity(-0.07 * energyVelScale), // negative gravity: speaking gives a clear extra lift
       ])
@@ -179,7 +182,7 @@ export function OracleNebula({ tier, speakingRef, reducedMotion = false }: Oracl
       system.destroy(); // kills particles, removes sprites from scene
     };
     // cfg identity changes only when tier changes — rebuild is intended.
-  }, [scene, cfg, motionScale]);
+  }, [scene, cfg, motionScale, isCoPilot]);
 
   useFrame((_, delta) => {
     const system = systemRef.current;

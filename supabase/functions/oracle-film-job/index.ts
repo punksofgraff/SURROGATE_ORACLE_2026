@@ -41,6 +41,13 @@ type JobRow = {
 };
 
 type ComfyOutput = { filename?: unknown; subfolder?: unknown; type?: unknown };
+type ComfyInputSpec = Record<string, unknown>;
+type ComfyNodeInfo = {
+  input?: {
+    required?: Record<string, ComfyInputSpec | unknown[]>;
+    optional?: Record<string, ComfyInputSpec | unknown[]>;
+  };
+};
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -205,25 +212,82 @@ async function uploadComfyFile(bytes: Uint8Array, filename: string, mimeType: st
   return [data.subfolder, data.name].filter(Boolean).join('/');
 }
 
-function seedancePrompt(image1: string, image2: string, audio: string, shotPrompt: string): Record<string, Record<string, unknown>> {
+function inputNames(node: ComfyNodeInfo): Set<string> {
+  return new Set([
+    ...Object.keys(node.input?.required ?? {}),
+    ...Object.keys(node.input?.optional ?? {}),
+  ]);
+}
+
+function inputChoices(node: ComfyNodeInfo, name: string): unknown[] {
+  const spec = node.input?.required?.[name] ?? node.input?.optional?.[name];
+  return Array.isArray(spec) && Array.isArray(spec[0]) ? spec[0] as unknown[] : [];
+}
+
+function preferredChoice(node: ComfyNodeInfo, name: string, preferred: string, fallback: string): string {
+  const choices = inputChoices(node, name).filter((choice): choice is string => typeof choice === 'string');
+  return choices.find(choice => choice === preferred)
+    ?? choices.find(choice => choice.toLowerCase().includes(preferred.toLowerCase()))
+    ?? choices.find(choice => choice === fallback)
+    ?? choices[0]
+    ?? preferred;
+}
+
+/**
+ * API nodes expose reference sockets as separate, dotted input names. Older
+ * Comfy templates used aggregate reference_images/reference_audios arrays.
+ * Read the installed node's contract so a healthy Pod cannot receive the
+ * wrong encoding after an API-node update.
+ */
+export function seedanceInputs(
+  node: ComfyNodeInfo,
+  image1: string,
+  image2: string,
+  audio: string,
+  shotPrompt: string,
+): Record<string, unknown> {
+  const names = inputNames(node);
+  const inputs: Record<string, unknown> = {};
+  const set = (name: string, value: unknown) => {
+    if (names.has(name)) inputs[name] = value;
+  };
+
+  set('model', preferredChoice(node, 'model', 'Seedance 2.0 Mini', 'Seedance 2.0'));
+  set('model.prompt', shotPrompt);
+  set('model.resolution', preferredChoice(node, 'model.resolution', '720p', '720p'));
+  set('model.ratio', preferredChoice(node, 'model.ratio', 'adaptive', '1:1'));
+  set('model.duration', 5);
+  set('model.generate_audio', true);
+  set('model.watermark', false);
+  set('seed', 580673600);
+  set('randomize', false);
+
+  if (names.has('model.reference_images.image_1')) {
+    inputs['model.reference_images.image_1'] = ['18', 0];
+    if (names.has('model.reference_images.image_2')) inputs['model.reference_images.image_2'] = ['27', 0];
+  } else if (names.has('reference_images')) {
+    inputs.reference_images = [['18', 0], ['27', 0]];
+  } else {
+    throw new Error('ByteDance2ReferenceNode has no supported portrait reference inputs.');
+  }
+  if (names.has('model.reference_audios.audio_1')) {
+    inputs['model.reference_audios.audio_1'] = ['28', 0];
+  } else if (names.has('reference_audios')) {
+    inputs.reference_audios = [['28', 0]];
+  } else {
+    throw new Error('ByteDance2ReferenceNode has no supported soundtrack reference input.');
+  }
+  return inputs;
+}
+
+function seedancePrompt(node: ComfyNodeInfo, image1: string, image2: string, audio: string, shotPrompt: string): Record<string, Record<string, unknown>> {
   return {
     '18': { class_type: 'LoadImage', inputs: { image: image1 } },
     '27': { class_type: 'LoadImage', inputs: { image: image2 } },
     '28': { class_type: 'LoadAudio', inputs: { audio } },
     '19': {
       class_type: 'ByteDance2ReferenceNode',
-      inputs: {
-        model: 'Seedance 2.0',
-        'model.prompt': shotPrompt,
-        'model.resolution': '720p',
-        'model.ratio': '1:1',
-        'model.duration': 5,
-        'model.generate_audio': false,
-        reference_images: [['18', 0], ['27', 0]],
-        reference_audios: [['28', 0]],
-        seed: 580673600,
-        watermark: false,
-      },
+      inputs: seedanceInputs(node, image1, image2, audio, shotPrompt),
     },
     '20': {
       class_type: 'SaveVideo',
@@ -246,6 +310,12 @@ async function createComfyJob(
   const image1 = await uploadComfyFile(portraitBytes, `oracle-${jobId}.png`, 'image/png');
   const image2 = image1;
   const audio = await uploadComfyFile(audioBytes, `oracle-${jobId}.mp3`, audioMimeType, '/upload/audio');
+  const nodeResponse = await comfyFetch('/object_info/ByteDance2ReferenceNode');
+  const nodeRaw = await nodeResponse.text();
+  if (!nodeResponse.ok) throw new Error(`Could not read ByteDance2ReferenceNode contract (${nodeResponse.status}).`);
+  const nodeData = JSON.parse(nodeRaw) as Record<string, ComfyNodeInfo>;
+  const node = nodeData.ByteDance2ReferenceNode;
+  if (!node) throw new Error('ComfyUI does not expose ByteDance2ReferenceNode.');
   const comfyOrgApiKey = Deno.env.get('COMFY_ORG_API_KEY');
   if (!comfyOrgApiKey) throw new Error('Comfy.org Partner API access is not configured. Add COMFY_ORG_API_KEY.');
   const response = await comfyFetch('/prompt', {
@@ -253,7 +323,7 @@ async function createComfyJob(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       client_id: `oracle-${jobId}`,
-      prompt: seedancePrompt(image1, image2, audio, shotPrompt),
+      prompt: seedancePrompt(node, image1, image2, audio, shotPrompt),
       extra_data: { api_key_comfy_org: comfyOrgApiKey },
     }),
   });
@@ -294,7 +364,8 @@ async function comfyJob(promptId: string): Promise<{ status: string; progress?: 
 }
 
 async function persistComfyOutput(supabase: ReturnType<typeof createClient>, jobId: string, outputUrl: string): Promise<string> {
-  const response = await fetch(outputUrl);
+  const output = new URL(outputUrl);
+  const response = await comfyFetch(`${output.pathname}${output.search}`);
   if (!response.ok) throw new Error(`ComfyUI media fetch failed (${response.status}).`);
   const bytes = new Uint8Array(await response.arrayBuffer());
   const path = `films/${jobId}.mp4`;

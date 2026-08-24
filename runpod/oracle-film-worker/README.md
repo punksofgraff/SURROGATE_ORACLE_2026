@@ -29,3 +29,11 @@ verification.
 The model is intentionally capped at five seconds per chunk for the first
 benchmark. Increase the cap only after measuring VRAM and wall-clock behavior on
 the selected GPU.
+
+The direct ComfyUI route is schema-driven: before queueing a premium shot, the
+Edge Function reads `/object_info/ByteDance2ReferenceNode` from the active Pod.
+The portrait and Lyria soundtrack are connected through the node's current
+individual sockets (`model.reference_images.image_1`/`image_2` and
+`model.reference_audios.audio_1`), with an aggregate-array fallback for older
+templates. The resulting Pod video is authenticated while fetched and then
+copied to the public `oracle-films` bucket, so the returned URL is stable.

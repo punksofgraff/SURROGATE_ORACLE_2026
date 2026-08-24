@@ -88,6 +88,36 @@ def make_chunk(image: Image.Image, prompt: str, seconds: int, seed: int, out: Pa
 
 def handler(job):
     inp = job["input"]
+    if inp.get("task") == "mux_oracle_film":
+        video_url = inp.get("video_url")
+        audio_url = inp.get("audio_url")
+        if not video_url or not audio_url:
+            raise ValueError("video_url and audio_url are required for audio mux")
+        with tempfile.TemporaryDirectory(prefix="oracle-mux-") as tmp:
+            root = Path(tmp)
+            video = root / "visual.mp4"
+            audio = root / "anchor.mp3"
+            final = root / "oracle-film.mp4"
+            video.write_bytes(requests.get(video_url, timeout=60).content)
+            audio_response = requests.get(audio_url, timeout=60)
+            audio_response.raise_for_status()
+            audio.write_bytes(audio_response.content)
+            if not video.stat().st_size or not audio.stat().st_size:
+                raise ValueError("FAL visual or Lyria anchor was empty")
+            yield {"progress": 84, "status": "stitching"}
+            subprocess.run([
+                "ffmpeg", "-y", "-i", str(video), "-i", str(audio),
+                "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+                "-c:a", "aac", "-shortest", "-movflags", "+faststart",
+                str(final),
+            ], check=True, capture_output=True)
+            return {
+                "final_media_url": upload_mp4(final),
+                "audio_stream_present": True,
+                "codec": "h264",
+                "pixel_format": "yuv420p",
+            }
+
     chunks = inp.get("chunks", [])
     if not chunks:
         raise ValueError("chunks are required")

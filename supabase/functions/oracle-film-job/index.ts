@@ -510,6 +510,14 @@ Deno.serve(async (req) => {
   const current = row as JobRow;
 
   if (action === 'cancel') {
+    if (current.runpod_job_id?.startsWith('fal:') && !['ready', 'failed', 'cancelled'].includes(current.status)) {
+      try { await cancelFalJob(current.runpod_job_id.slice('fal:'.length)); } catch { /* close local state even if remote cancel races */ }
+      const { data: cancelled } = await supabase.from('oracle_film_jobs').update({
+        status: 'cancelled', updated_at: new Date().toISOString(),
+      }).eq('id', jobId).select().single();
+      return json(publicJob((cancelled ?? current) as JobRow));
+    }
+
    if (current.runpod_job_id && current.runpod_job_id.startsWith('comfy:') && !['ready', 'failed', 'cancelled'].includes(current.status)) {
      try {
        const remote = await comfyJob(current.runpod_job_id.slice('comfy:'.length));
@@ -554,8 +562,11 @@ Deno.serve(async (req) => {
      }
    }
 
-   if (current.runpod_job_id && !current.runpod_job_id.startsWith('comfy:') && !['ready', 'failed', 'cancelled'].includes(current.status)) {
-      try { await runpod(`cancel/${encodeURIComponent(current.runpod_job_id)}`, 'POST'); } catch { /* state still must close */ }
+    if (current.runpod_job_id && !current.runpod_job_id.startsWith('comfy:') && !current.runpod_job_id.startsWith('fal:') && !['ready', 'failed', 'cancelled'].includes(current.status)) {
+       const remoteId = current.runpod_job_id.startsWith('mux:')
+         ? current.runpod_job_id.slice('mux:'.length)
+         : current.runpod_job_id;
+       try { await runpod(`cancel/${encodeURIComponent(remoteId)}`, 'POST'); } catch { /* state still must close */ }
     }
     const { data: cancelled } = await supabase.from('oracle_film_jobs').update({
       status: 'cancelled', updated_at: new Date().toISOString(),
@@ -563,9 +574,54 @@ Deno.serve(async (req) => {
     return json(publicJob((cancelled ?? current) as JobRow));
   }
 
-  if (current.runpod_job_id && !['ready', 'failed', 'cancelled'].includes(current.status)) {
+  if (current.runpod_job_id?.startsWith('fal:') && !['ready', 'failed', 'cancelled'].includes(current.status)) {
+    const falRequestId = current.runpod_job_id.slice('fal:'.length);
+    if (Date.now() - Date.parse(current.created_at) > 10 * 60 * 1000) {
+      try { await cancelFalJob(falRequestId); } catch { /* timeout is already terminal locally */ }
+      const { data: timedOut } = await supabase.from('oracle_film_jobs').update({
+        status: 'failed', error_message: 'FAL film generation timed out after 10 minutes.',
+        updated_at: new Date().toISOString(),
+      }).eq('id', jobId).select().single();
+      return json(publicJob((timedOut ?? current) as JobRow));
+    }
     try {
-      const remote = await runpod(`status/${encodeURIComponent(current.runpod_job_id)}`, 'GET');
+      const remote = await falJob(falRequestId);
+      if (remote.status === 'completed' && remote.output && current.anchor_audio_url) {
+        // FAL is visual-only by design. The existing RunPod endpoint performs
+        // the small, deterministic FFmpeg mux with the Lyria anchor.
+        const mux = await runpod('run', 'POST', {
+          input: {
+            task: 'mux_oracle_film',
+            video_url: remote.output,
+            audio_url: current.anchor_audio_url,
+          },
+        });
+        const muxId = typeof mux.id === 'string' ? mux.id : '';
+        if (!muxId) throw new Error('RunPod did not return the audio-mux job id.');
+        const { data: queuedMux } = await supabase.from('oracle_film_jobs').update({
+          status: 'generating', progress: 72, runpod_job_id: `mux:${muxId}`,
+          updated_at: new Date().toISOString(),
+        }).eq('id', jobId).select().single();
+        return json(publicJob((queuedMux ?? current) as JobRow));
+      }
+      const { data: updated } = await supabase.from('oracle_film_jobs').update({
+        status: remote.status === 'failed' ? 'failed' : remote.status === 'cancelled' ? 'cancelled' : 'generating',
+        progress: Math.max(current.progress, remote.progress ?? 8),
+        error_message: remote.error ?? null,
+        updated_at: new Date().toISOString(),
+      }).eq('id', jobId).select().single();
+      return json(publicJob((updated ?? current) as JobRow));
+    } catch (pollError) {
+      return json({ ...publicJob(current), warning: pollError instanceof Error ? pollError.message : 'FAL polling failed; retry shortly.' });
+    }
+  }
+
+  if (current.runpod_job_id && !['ready', 'failed', 'cancelled'].includes(current.status)) {
+     try {
+       const remoteId = current.runpod_job_id.startsWith('mux:')
+         ? current.runpod_job_id.slice('mux:'.length)
+         : current.runpod_job_id;
+       const remote = await runpod(`status/${encodeURIComponent(remoteId)}`, 'GET');
       const remoteStatus = safeText(remote.status, 24).toLowerCase();
       const output = remote.output && typeof remote.output === 'object' ? remote.output as Record<string, unknown> : {};
        let finalUrl = safeText(output.final_media_url ?? output.finalMediaUrl ?? output.video_url, 2000);

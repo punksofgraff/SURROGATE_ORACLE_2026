@@ -5,7 +5,7 @@ const REMOTE_POLL_INTERVAL_MS = 10_000;
 
 export type OracleFilmJob = {
   id: string;
-  provider?: 'browser' | 'runpod' | 'comfy';
+  provider?: 'browser' | 'runpod' | 'comfy' | 'fal';
   status: 'queued' | 'generating' | 'stitching' | 'ready' | 'failed' | 'cancelled';
   progress: number;
   chunkCount: number;
@@ -145,6 +145,7 @@ export function useOracleFilm(sessionId: string | null | undefined) {
             body: {
               action: 'create',
               renderMode,
+              provider: 'fal',
               sessionId,
               portraitUrl,
               audioBase64,
@@ -162,19 +163,19 @@ export function useOracleFilm(sessionId: string | null | undefined) {
           throw new Error(
             remoteJob?.error ||
             invokeError?.message ||
-            'Premium RunPod model-template rendering is unavailable.',
+            'Premium FAL rendering is unavailable.',
           );
         } catch (error) {
           const failed = {
             id: 'premium-failed',
-            provider: 'runpod' as const,
+            provider: 'fal' as const,
             status: 'failed' as const,
             progress: 0,
-            chunkCount: 4,
+            chunkCount: 1,
             finalMediaUrl: null,
             error: error instanceof Error
               ? error.message
-              : 'Premium RunPod model-template rendering failed.',
+              : 'Premium FAL rendering failed.',
           };
           setJob(failed);
           return failed;

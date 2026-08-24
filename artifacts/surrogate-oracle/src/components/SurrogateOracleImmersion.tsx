@@ -2306,7 +2306,7 @@ export function SurrogateOracleImmersion() {
                           );
                         }}
                       >
-                        ◇ PREMIUM RUNPOD TEMPLATE
+                        ◇ PREMIUM FAL · SEEDANCE 2.5
                       </button>
                     </div>
                   )}
@@ -2319,7 +2319,9 @@ export function SurrogateOracleImmersion() {
                             ? 'STITCHING ORACLE FRAGMENTS'
                             : oracleFilm.job.provider === 'comfy'
                               ? 'SEEDANCE MATERIALIZING · YOU CAN KEEP TALKING'
-                              : 'RUNPOD GPU MATERIALIZING'}
+                               : oracleFilm.job.provider === 'fal'
+                                 ? 'FAL SEEDANCE VISUAL · LYRIA MUX PENDING'
+                                 : 'RUNPOD GPU MATERIALIZING'}
                       </span>
                       <progress max="100" value={oracleFilm.job.progress} />
                       <button type="button" onClick={() => void oracleFilm.cancelFilm()}>CANCEL FILM</button>
@@ -2329,7 +2331,11 @@ export function SurrogateOracleImmersion() {
                     <div className="oracle-film-ready">
                       <video controls playsInline src={oracleFilm.job.finalMediaUrl} />
                       <span className="oracle-film-provider">
-                        {oracleFilm.job.provider === 'browser' ? 'FREE LOCAL RENDER · WEBM' : 'GPU RENDER · MP4'}
+                         {oracleFilm.job.provider === 'browser'
+                           ? 'FREE LOCAL RENDER · WEBM'
+                           : oracleFilm.job.provider === 'fal'
+                             ? 'FAL SEEDANCE 2.5 + LYRIA · MP4'
+                             : 'GPU RENDER · MP4'}
                       </span>
                       <a
                         href={oracleFilm.job.finalMediaUrl}

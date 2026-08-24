@@ -348,7 +348,11 @@ Deno.serve(async (req) => {
     if (!sessionId || !portraitUrl || !/^https?:\/\//i.test(portraitUrl)) {
       return json({ error: 'sessionId and a hosted portraitUrl are required.' }, 400);
     }
-    const context = (payload.context && typeof payload.context === 'object') ? payload.context as Record<string, unknown> : {};
+     const renderMode = safeText(payload.renderMode || 'premium', 16).toLowerCase();
+     if (renderMode !== 'premium') {
+       return json({ error: 'Local films are rendered in the browser. Use renderMode=premium for RunPod generation.' }, 400);
+     }
+     const context = (payload.context && typeof payload.context === 'object') ? payload.context as Record<string, unknown> : {};
     const audioBase64 = typeof payload.audioBase64 === 'string' ? payload.audioBase64 : '';
     const audioMimeType = safeText(payload.audioMimeType || 'audio/mpeg', 80);
     const slugs = safeSlugs(context.themes ?? context.weightedThemes);
@@ -378,7 +382,11 @@ Deno.serve(async (req) => {
            anchor_audio_duration_seconds: mp3Duration(anchorBytes),
          }).eq('id', row.id);
        }
-       if (Deno.env.get('RUNPOD_COMFYUI_URL') && audioBase64) {
+        // Premium generation uses the on-demand Serverless/model-template API
+        // by default. Direct ComfyUI is retained only as an explicit legacy
+        // route, so an idle Pod is never required by the browser experience.
+        const route = safeText(Deno.env.get('RUNPOD_FILM_ROUTE') || 'template', 24).toLowerCase();
+        if (route === 'comfy' && Deno.env.get('RUNPOD_COMFYUI_URL') && audioBase64) {
          runpodJobId = await createComfyJob(
            row.id,
            portraitUrl,

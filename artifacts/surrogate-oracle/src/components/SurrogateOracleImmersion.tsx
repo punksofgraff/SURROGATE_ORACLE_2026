@@ -2277,20 +2277,38 @@ export function SurrogateOracleImmersion() {
               <img src={portraitViewerUrl} alt="Neural Portrait" className="oracle-portrait-fullscreen__img" />
                 <div className="oracle-film-panel" aria-live="polite">
                   {!oracleFilm.job && (
-                    <button
-                      type="button"
-                      className="oracle-portrait-fullscreen__film"
-                      onClick={() => {
-                        setShowPortraitCard(false);
-                        void oracleFilm.createFilm(
-                          portraitViewerUrl,
-                          lyria.audioUrl,
-                          lyria.prompt ?? 'reggae drum and bass beach bar music video',
-                        );
-                      }}
-                    >
-                      ◈ MATERIALIZE FILM
-                    </button>
+                    <div className="oracle-film-actions">
+                      <button
+                        type="button"
+                        className="oracle-portrait-fullscreen__film"
+                        onClick={() => {
+                          setShowPortraitCard(false);
+                          void oracleFilm.createFilm(
+                            portraitViewerUrl,
+                            lyria.audioUrl,
+                            lyria.prompt ?? 'reggae drum and bass beach bar music video',
+                            'local',
+                          );
+                        }}
+                      >
+                        ◈ MATERIALIZE FREE FILM
+                      </button>
+                      <button
+                        type="button"
+                        className="oracle-portrait-fullscreen__film oracle-portrait-fullscreen__film--premium"
+                        onClick={() => {
+                          setShowPortraitCard(false);
+                          void oracleFilm.createFilm(
+                            portraitViewerUrl,
+                            lyria.audioUrl,
+                            lyria.prompt ?? 'reggae drum and bass beach bar music video',
+                            'premium',
+                          );
+                        }}
+                      >
+                        ◇ PREMIUM RUNPOD TEMPLATE
+                      </button>
+                    </div>
                   )}
                   {oracleFilm.job && !['ready', 'failed', 'cancelled'].includes(oracleFilm.job.status) && (
                     <div className="oracle-film-status">
@@ -2332,6 +2350,7 @@ export function SurrogateOracleImmersion() {
                             portraitViewerUrl,
                             lyria.audioUrl,
                             lyria.prompt ?? 'reggae drum and bass beach bar music video',
+                            'local',
                           );
                         }}
                       >

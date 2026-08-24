@@ -14,12 +14,7 @@ export type OracleFilmJob = {
   error: string | null;
 };
 
-type FilmContext = {
-  themes?: string[];
-  archetypeTitle?: string | null;
-  emotionalWeight?: string | null;
-  alignment?: string | null;
-};
+export type FilmRenderMode = 'local' | 'premium';
 
 export function useOracleFilm(sessionId: string | null | undefined) {
   const [job, setJob] = useState<OracleFilmJob | null>(null);
@@ -94,6 +89,7 @@ export function useOracleFilm(sessionId: string | null | undefined) {
     portraitUrl: string,
     audioUrl?: string | null,
     prompt?: string | null,
+    renderMode: FilmRenderMode = 'local',
   ) => {
     if (recorderRef.current || !portraitUrl) return null;
     localCancelRef.current = false;
@@ -122,10 +118,10 @@ export function useOracleFilm(sessionId: string | null | undefined) {
         image.src = portraitUrl;
       });
 
-      // A blob URL only exists in the browser, so keep a compact copy for the
-      // server-owned Seedance path before starting the free local fallback.
+      // Only premium renders upload the audio anchor. The local renderer must
+      // remain a genuinely free path and should not make a remote media request.
       let audioBase64: string | undefined;
-      if (audioUrl) {
+      if (renderMode === 'premium' && audioUrl) {
         try {
           const response = await fetch(audioUrl);
           if (response.ok) {
@@ -143,11 +139,12 @@ export function useOracleFilm(sessionId: string | null | undefined) {
         }
       }
 
-      if (audioBase64) {
+      if (renderMode === 'premium') {
         try {
           const { data: remoteJob, error: invokeError } = await supabase.functions.invoke('oracle-film-job', {
             body: {
               action: 'create',
+              renderMode,
               sessionId,
               portraitUrl,
               audioBase64,
@@ -162,8 +159,25 @@ export function useOracleFilm(sessionId: string | null | undefined) {
             schedulePoll(remoteJob.id);
             return remoteJob as OracleFilmJob;
           }
-        } catch {
-          // A missing/failed GPU provider should never remove the free path.
+          throw new Error(
+            remoteJob?.error ||
+            invokeError?.message ||
+            'Premium RunPod model-template rendering is unavailable.',
+          );
+        } catch (error) {
+          const failed = {
+            id: 'premium-failed',
+            provider: 'runpod' as const,
+            status: 'failed' as const,
+            progress: 0,
+            chunkCount: 4,
+            finalMediaUrl: null,
+            error: error instanceof Error
+              ? error.message
+              : 'Premium RunPod model-template rendering failed.',
+          };
+          setJob(failed);
+          return failed;
         }
       }
 

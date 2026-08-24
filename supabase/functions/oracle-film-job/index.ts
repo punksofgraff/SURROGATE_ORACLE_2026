@@ -52,6 +52,12 @@ function safeText(value: unknown, max = 120): string {
     : '';
 }
 
+function safeUrl(value: unknown, max = 2000): string {
+  return typeof value === 'string'
+    ? value.replace(/["'`{}<>]/g, '').trim().slice(0, max)
+    : '';
+}
+
 function safeSlugs(input: unknown): string[] {
   const values = Array.isArray(input) ? input : [];
   return values.map(value => {
@@ -125,12 +131,12 @@ async function createFalJob(portraitUrl: string, prompt: string, endUserId: stri
 }
 
 async function falJob(requestId: string): Promise<{ status: string; progress?: number; output?: string; error?: string }> {
-  const status = await falJson(`/bytedance/seedance-2.5/image-to-video/requests/${encodeURIComponent(requestId)}/status`);
+  const status = await falJson(`/bytedance/seedance-2.5/requests/${encodeURIComponent(requestId)}/status`);
   const state = safeText(status.status, 24).toUpperCase();
   if (state === 'COMPLETED') {
-    const result = await falJson(`/bytedance/seedance-2.5/image-to-video/requests/${encodeURIComponent(requestId)}`);
+    const result = await falJson(`/bytedance/seedance-2.5/requests/${encodeURIComponent(requestId)}`);
     const video = result.video && typeof result.video === 'object' ? result.video as Record<string, unknown> : {};
-    const output = safeText(video.url, 2000);
+    const output = safeUrl(video.url, 2000);
     return { status: output ? 'completed' : 'failed', progress: 68, output, error: output ? undefined : 'FAL completed without a video URL.' };
   }
   if (['FAILED', 'ERROR'].includes(state)) return { status: 'failed', progress: 10, error: safeText(status.error, 300) || 'FAL video generation failed.' };
@@ -139,7 +145,7 @@ async function falJob(requestId: string): Promise<{ status: string; progress?: n
 }
 
 async function cancelFalJob(requestId: string): Promise<void> {
-  await falJson(`/bytedance/seedance-2.5/image-to-video/requests/${encodeURIComponent(requestId)}/cancel`, { method: 'PUT' });
+  await falJson(`/bytedance/seedance-2.5/requests/${encodeURIComponent(requestId)}/cancel`, { method: 'PUT' });
 }
 
 async function runpod(path: string, method: string, body?: unknown): Promise<Record<string, unknown>> {
@@ -411,7 +417,7 @@ Deno.serve(async (req) => {
 
   if (action === 'create') {
     const sessionId = safeText(payload.sessionId, 100);
-    const portraitUrl = safeText(payload.portraitUrl, 2000);
+    const portraitUrl = safeUrl(payload.portraitUrl, 2000);
     if (!sessionId || !portraitUrl || !/^https?:\/\//i.test(portraitUrl)) {
       return json({ error: 'sessionId and a hosted portraitUrl are required.' }, 400);
     }

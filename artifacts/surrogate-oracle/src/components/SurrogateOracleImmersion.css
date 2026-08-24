@@ -3833,6 +3833,26 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   text-align: center;
 }
 
+/* These decision cards are deliberate still points: keep the signal crisp
+   and atmospheric, but do not mount the particle typography canvas here. */
+.oracle-static-card-signal {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  text-align: center;
+}
+
+.oracle-presence-card__eyebrow {
+  color: #00ccff;
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-shadow: 0 0 12px rgba(0, 204, 255, 0.32);
+}
+
 .oracle-return-card__actions {
   width: 100%;
   display: flex;

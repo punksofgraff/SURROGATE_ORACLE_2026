@@ -7,7 +7,8 @@
  * Providers:
  * - fal Seedance 2.5 image-to-video: FAL_API_KEY
  * - RunPod mux worker: RUNPOD_ENDPOINT_ID + RUNPOD_API_KEY
- * - Direct ComfyUI Pod: RUNPOD_COMFYUI_URL
+ * - Direct ComfyUI Pod: RUNPOD_COMFYUI_API_URL (legacy RUNPOD_COMFYUI_URL fallback)
+ * - Comfy.org Partner API Nodes: COMFY_ORG_API_KEY
  * - Legacy RunPod Serverless: RUNPOD_ENDPOINT_ID + RUNPOD_API_KEY
  */
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -172,8 +173,8 @@ async function runpod(path: string, method: string, body?: unknown): Promise<Rec
 }
 
 function comfyUrl(path: string): string {
-  const base = Deno.env.get('RUNPOD_COMFYUI_URL')?.replace(/\/+$/, '');
-  if (!base) throw new Error('ComfyUI Pod is not configured. Add RUNPOD_COMFYUI_URL to enable the GPU film path.');
+  const base = (Deno.env.get('RUNPOD_COMFYUI_API_URL') || Deno.env.get('RUNPOD_COMFYUI_URL'))?.replace(/\/+$/, '');
+  if (!base) throw new Error('ComfyUI Pod is not configured. Add RUNPOD_COMFYUI_API_URL to enable the GPU film path.');
   return `${base}${path}`;
 }
 
@@ -212,15 +213,16 @@ function seedancePrompt(image1: string, image2: string, audio: string, shotPromp
     '19': {
       class_type: 'ByteDance2ReferenceNode',
       inputs: {
-        model: 'Seedance 2.0 Mini',
-        prompt: shotPrompt,
-        resolution: '720p',
-        duration: 5,
-        camera_fixed: true,
+        model: 'Seedance 2.0',
+        'model.prompt': shotPrompt,
+        'model.resolution': '720p',
+        'model.ratio': '1:1',
+        'model.duration': 5,
+        'model.generate_audio': false,
+        reference_images: [['18', 0], ['27', 0]],
+        reference_audios: [['28', 0]],
         seed: 580673600,
-        image_1: ['18', 0],
-        image_2: ['27', 0],
-        audio_1: ['28', 0],
+        watermark: false,
       },
     },
     '20': {
@@ -244,10 +246,16 @@ async function createComfyJob(
   const image1 = await uploadComfyFile(portraitBytes, `oracle-${jobId}.png`, 'image/png');
   const image2 = image1;
   const audio = await uploadComfyFile(audioBytes, `oracle-${jobId}.mp3`, audioMimeType, '/upload/audio');
+  const comfyOrgApiKey = Deno.env.get('COMFY_ORG_API_KEY');
+  if (!comfyOrgApiKey) throw new Error('Comfy.org Partner API access is not configured. Add COMFY_ORG_API_KEY.');
   const response = await comfyFetch('/prompt', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ client_id: `oracle-${jobId}`, prompt: seedancePrompt(image1, image2, audio, shotPrompt) }),
+    body: JSON.stringify({
+      client_id: `oracle-${jobId}`,
+      prompt: seedancePrompt(image1, image2, audio, shotPrompt),
+      extra_data: { api_key_comfy_org: comfyOrgApiKey },
+    }),
   });
   const raw = await response.text();
   if (!response.ok) throw new Error(`ComfyUI prompt failed (${response.status}): ${safeText(raw, 240)}`);
@@ -264,6 +272,11 @@ async function comfyJob(promptId: string): Promise<{ status: string; progress?: 
   const item = history[promptId];
   if (!item) return { status: 'processing', progress: 12 };
   const status = item.status?.status_str ?? (item.status?.completed ? 'success' : 'processing');
+  const errorMessage = (item.status?.messages ?? []).reverse().map(message => {
+    if (!Array.isArray(message) || message.length < 2 || !message[1] || typeof message[1] !== 'object') return '';
+    const detail = message[1] as Record<string, unknown>;
+    return safeText(detail.exception_message ?? detail.error ?? detail.message, 300);
+  }).find(Boolean);
   const output = Object.values(item.outputs ?? {}).flatMap(value => [...(value.videos ?? []), ...(value.gifs ?? [])])[0];
   if (output?.filename) {
     const params = new URLSearchParams({
@@ -273,7 +286,11 @@ async function comfyJob(promptId: string): Promise<{ status: string; progress?: 
     });
     return { status: 'completed', progress: 92, output: comfyUrl(`/view?${params.toString()}`) };
   }
-  return { status: status === 'error' ? 'failed' : 'processing', progress: 55 };
+  return {
+    status: status === 'error' ? 'failed' : 'processing',
+    progress: 55,
+    error: status === 'error' ? errorMessage || 'ComfyUI execution failed.' : undefined,
+  };
 }
 
 async function persistComfyOutput(supabase: ReturnType<typeof createClient>, jobId: string, outputUrl: string): Promise<string> {
@@ -475,7 +492,7 @@ Deno.serve(async (req) => {
         // by default. Direct ComfyUI is retained only as an explicit legacy
         // route, so an idle Pod is never required by the browser experience.
         const route = safeText(Deno.env.get('RUNPOD_FILM_ROUTE') || 'template', 24).toLowerCase();
-        if (route === 'comfy' && Deno.env.get('RUNPOD_COMFYUI_URL') && audioBase64) {
+         if (route === 'comfy' && (Deno.env.get('RUNPOD_COMFYUI_API_URL') || Deno.env.get('RUNPOD_COMFYUI_URL')) && audioBase64) {
          runpodJobId = await createComfyJob(
            row.id,
            portraitUrl,
@@ -526,50 +543,6 @@ Deno.serve(async (req) => {
       return json(publicJob((cancelled ?? current) as JobRow));
     }
 
-   if (current.runpod_job_id && current.runpod_job_id.startsWith('comfy:') && !['ready', 'failed', 'cancelled'].includes(current.status)) {
-     try {
-       const remote = await comfyJob(current.runpod_job_id.slice('comfy:'.length));
-       let finalUrl = current.final_media_url;
-       let verified: AudioVerification | null = null;
-       if (remote.status === 'completed' && remote.output && current.anchor_audio_url) {
-         const [videoResponse, anchorResponse] = await Promise.all([
-           fetch(remote.output),
-           fetch(current.anchor_audio_url),
-         ]);
-         if (!videoResponse.ok || !anchorResponse.ok) throw new Error('Could not fetch media for audio verification.');
-          verified = await checkedVerifyOutputAudio(
-           new Uint8Array(await videoResponse.arrayBuffer()),
-           new Uint8Array(await anchorResponse.arrayBuffer()),
-         );
-          if (!isAudioVerificationAcceptable(verified)) {
-            const message = `Seedance output failed audio-anchor verification (audio=${verified.audioStreamPresent}, duration delta=${verified.durationDeltaSeconds ?? 'unknown'}s).`;
-            const { data: failed } = await supabase.from('oracle_film_jobs').update({
-              status: 'failed', progress: current.progress, final_media_url: null,
-              error_message: message, audio_stream_present: verified.audioStreamPresent,
-              audio_waveform_match: verified.waveformMatch,
-              output_duration_seconds: verified.outputDurationSeconds,
-              audio_verification: verified, updated_at: new Date().toISOString(),
-            }).eq('id', jobId).select().single();
-            return json(publicJob((failed ?? current) as JobRow));
-         }
-         finalUrl = await persistComfyOutput(supabase, jobId, remote.output);
-       }
-       const { data: updated } = await supabase.from('oracle_film_jobs').update({
-         status: remote.status === 'completed' && finalUrl && verified ? 'ready' : remote.status === 'failed' ? 'failed' : 'generating',
-         progress: remote.status === 'completed' && finalUrl && verified ? 100 : Math.max(current.progress, remote.progress ?? 10),
-         final_media_url: finalUrl || null, error_message: remote.error ?? null,
-         audio_stream_present: verified?.audioStreamPresent ?? null,
-         audio_waveform_match: verified?.waveformMatch ?? null,
-         output_duration_seconds: verified?.outputDurationSeconds ?? null,
-         audio_verification: verified,
-         updated_at: new Date().toISOString(),
-       }).eq('id', jobId).select().single();
-       return json(publicJob((updated ?? current) as JobRow));
-     } catch (pollError) {
-       return json({ ...publicJob(current), warning: pollError instanceof Error ? pollError.message : 'ComfyUI polling failed; retry shortly.' });
-     }
-   }
-
     if (current.runpod_job_id && !current.runpod_job_id.startsWith('comfy:') && !current.runpod_job_id.startsWith('fal:') && !['ready', 'failed', 'cancelled'].includes(current.status)) {
        const remoteId = current.runpod_job_id.startsWith('mux:')
          ? current.runpod_job_id.slice('mux:'.length)
@@ -580,6 +553,50 @@ Deno.serve(async (req) => {
       status: 'cancelled', updated_at: new Date().toISOString(),
     }).eq('id', jobId).select().single();
     return json(publicJob((cancelled ?? current) as JobRow));
+  }
+
+  if (current.runpod_job_id?.startsWith('comfy:') && !['ready', 'failed', 'cancelled'].includes(current.status)) {
+    try {
+      const remote = await comfyJob(current.runpod_job_id.slice('comfy:'.length));
+      let finalUrl = current.final_media_url;
+      let verified: AudioVerification | null = null;
+      if (remote.status === 'completed' && remote.output && current.anchor_audio_url) {
+        const [videoResponse, anchorResponse] = await Promise.all([
+          fetch(remote.output),
+          fetch(current.anchor_audio_url),
+        ]);
+        if (!videoResponse.ok || !anchorResponse.ok) throw new Error('Could not fetch media for audio verification.');
+        verified = await checkedVerifyOutputAudio(
+          new Uint8Array(await videoResponse.arrayBuffer()),
+          new Uint8Array(await anchorResponse.arrayBuffer()),
+        );
+        if (!isAudioVerificationAcceptable(verified)) {
+          const message = `Seedance output failed audio-anchor verification (audio=${verified.audioStreamPresent}, duration delta=${verified.durationDeltaSeconds ?? 'unknown'}s).`;
+          const { data: failed } = await supabase.from('oracle_film_jobs').update({
+            status: 'failed', progress: current.progress, final_media_url: null,
+            error_message: message, audio_stream_present: verified.audioStreamPresent,
+            audio_waveform_match: verified.waveformMatch,
+            output_duration_seconds: verified.outputDurationSeconds,
+            audio_verification: verified, updated_at: new Date().toISOString(),
+          }).eq('id', jobId).select().single();
+          return json(publicJob((failed ?? current) as JobRow));
+        }
+        finalUrl = await persistComfyOutput(supabase, jobId, remote.output);
+      }
+      const { data: updated } = await supabase.from('oracle_film_jobs').update({
+        status: remote.status === 'completed' && finalUrl && verified ? 'ready' : remote.status === 'failed' ? 'failed' : 'generating',
+        progress: remote.status === 'completed' && finalUrl && verified ? 100 : Math.max(current.progress, remote.progress ?? 10),
+        final_media_url: finalUrl || null, error_message: remote.error ?? null,
+        audio_stream_present: verified?.audioStreamPresent ?? null,
+        audio_waveform_match: verified?.waveformMatch ?? null,
+        output_duration_seconds: verified?.outputDurationSeconds ?? null,
+        audio_verification: verified,
+        updated_at: new Date().toISOString(),
+      }).eq('id', jobId).select().single();
+      return json(publicJob((updated ?? current) as JobRow));
+    } catch (pollError) {
+      return json({ ...publicJob(current), warning: pollError instanceof Error ? pollError.message : 'ComfyUI polling failed; retry shortly.' });
+    }
   }
 
   if (current.runpod_job_id?.startsWith('fal:') && !['ready', 'failed', 'cancelled'].includes(current.status)) {

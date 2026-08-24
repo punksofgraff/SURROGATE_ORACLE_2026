@@ -2437,17 +2437,10 @@ export function SurrogateOracleImmersion() {
             }}
           >
             <div className="oracle-presence-card oracle-knife-card">
-               <ParticleTypographyCard
-                 questionIndex={90}
-                 landedChars={"SET THE ROOM".length}
-                 isEmitting
-                 isSelected={false}
-                 isThisSelected={false}
-                 accentColor="#00ffcc"
-                 territory="NEW SIGNAL"
-                 question="SET THE ROOM"
-                 variant="knife"
-               />
+              <div className="oracle-static-card-signal" aria-label="Set the room">
+                <div className="oracle-presence-card__title">SET THE ROOM</div>
+                <div className="oracle-presence-card__eyebrow">NEW SIGNAL</div>
+              </div>
               <div className="oracle-knife-divider" />
               <div className="oracle-presence-card__copy">
                 Full presence lets the Oracle see, hear, and respond to you.
@@ -2546,18 +2539,11 @@ export function SurrogateOracleImmersion() {
                 }}
               >
                 <div className="oracle-return-card oracle-knife-card">
-                   <ParticleTypographyCard
-                     questionIndex={91}
-                     landedChars={"RETURN TRIP VERIFIED".length}
-                     isEmitting
-                     isSelected={false}
-                     isThisSelected={false}
-                     accentColor="#00ccff"
-                     territory="SIGNAL RECOGNIZED"
-                     question="RETURN TRIP VERIFIED"
-                     variant="knife"
-                   />
-                   <div className="oracle-knife-divider" />
+                  <div className="oracle-static-card-signal" aria-label="Return trip verified">
+                    <div className="oracle-return-card__signal">RETURN TRIP VERIFIED</div>
+                    <div className="oracle-return-card__verified">SIGNAL RECOGNIZED</div>
+                  </div>
+                  <div className="oracle-knife-divider" />
                   <div className="oracle-return-card__actions">
                     <button
                       className="oracle-return-card__wallet-action"

@@ -9,7 +9,39 @@ class RootBoundary extends Component<{ children: ReactNode }, { error: Error | n
     this.state = { error: null };
   }
   static getDerivedStateFromError(error: Error) { return { error }; }
-  componentDidCatch(error: Error) { console.error('[ROOT CRASH]', error); }
+  componentDidMount() {
+    window.addEventListener('error', this.handleWindowError);
+    window.addEventListener('unhandledrejection', this.handleUnhandledRejection);
+  }
+  componentWillUnmount() {
+    window.removeEventListener('error', this.handleWindowError);
+    window.removeEventListener('unhandledrejection', this.handleUnhandledRejection);
+  }
+  private handleWindowError = (event: ErrorEvent) => {
+    console.error('[ROOT RUNTIME ERROR]', {
+      message: event.message || 'Unknown window error',
+      source: event.filename || undefined,
+      line: event.lineno || undefined,
+      column: event.colno || undefined,
+      stack: event.error?.stack || undefined,
+    });
+  };
+  private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+    const reason = event.reason;
+    console.error('[ROOT UNHANDLED REJECTION]', {
+      message: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+      reason,
+    });
+  };
+  componentDidCatch(error: Error) {
+    console.error('[ROOT CRASH]', {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      cause: error.cause,
+    });
+  }
   render() {
     if (this.state.error) {
       return (

@@ -275,7 +275,6 @@ export function SurrogateOracleImmersion() {
   const [debugMode, setDebugMode]           = useState(false);
   const [oracleAlignment, setOracleAlignment] = useState<'sacred' | 'profane' | 'neutral' | null>(null);
   const [profanePulse, setProfanePulse] = useState(0);
-  const [sacredPulse, setSacredPulse]   = useState(0);
   const [isOracleSpeaking, setIsOracleSpeaking] = useState(false);
   const [isOracleThinking, setIsOracleThinking] = useState(false);
   const [audioOutputMuted, setAudioOutputMuted] = useState(false);
@@ -1646,8 +1645,6 @@ export function SurrogateOracleImmersion() {
             el.classList.add('profane-shaking');
             setTimeout(() => el.classList.remove('profane-shaking'), 700);
           }
-        } else {
-          setSacredPulse(n => n + 1);
         }
       }
     };
@@ -1724,12 +1721,11 @@ export function SurrogateOracleImmersion() {
       data-xr-mode={isXRMode ? 'true' : undefined}
       data-guided-tour={isGuidedTour ? 'true' : undefined}
     >
-      {/* Alignment flash overlays — keyed by pulse count to re-trigger CSS animation */}
+      {/* Profane feedback remains an intentional verdict response. Sacred
+          alignment only changes restrained atmosphere/state; it never mounts
+          a full-screen luminance overlay during live speech. */}
       {profanePulse > 0 && (
         <div key={`profane-${profanePulse}`} className="oracle-alignment-flash oracle-alignment-flash--profane" />
-      )}
-      {sacredPulse > 0 && (
-        <div key={`sacred-${sacredPulse}`} className="oracle-alignment-flash oracle-alignment-flash--sacred" />
       )}
 
       <audio

@@ -6382,13 +6382,6 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   100% { opacity: 0; }
 }
 
-@keyframes sacred-flux {
-  0%   { opacity: 0; transform: scale(1); }
-  15%  { opacity: 0.38; transform: scale(1.009); }
-  55%  { opacity: 0.22; transform: scale(1.016); }
-  100% { opacity: 0; transform: scale(1); }
-}
-
 .oracle-alignment-flash {
   position: fixed;
   inset: 0;
@@ -6407,17 +6400,6 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   );
   animation-name: profane-flash;
   animation-duration: 1.4s;
-}
-
-.oracle-alignment-flash--sacred {
-  background: radial-gradient(
-    ellipse 90% 70% at 50% 38%,
-    rgba(0, 255, 110, 0.24) 0%,
-    rgba(170, 0, 255, 0.2) 50%,
-    transparent 80%
-  );
-  animation-name: sacred-flux;
-  animation-duration: 2.2s;
 }
 
 /* Ambient alley bleed while alignment is held */

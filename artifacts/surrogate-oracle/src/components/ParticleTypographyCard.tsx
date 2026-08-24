@@ -8,7 +8,7 @@
  * a high-velocity radial kinetic shatter on Seeker selection.
  */
 
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 
 interface ParticleTypographyCardProps {
   questionIndex: number;
@@ -21,6 +21,9 @@ interface ParticleTypographyCardProps {
   question: string;
   /** Ghost transmissions reuse the particle engine without knife selection chrome. */
   variant?: 'knife' | 'ghost';
+  /** Let non-interactive gates use the same letter-by-letter landing as knife cards. */
+  autoType?: boolean;
+  typingSpeedMs?: number;
 }
 
 interface Spark {
@@ -50,12 +53,36 @@ export function ParticleTypographyCard({
   territory,
   question,
   variant = 'knife',
+  autoType = false,
+  typingSpeedMs = 38,
 }: ParticleTypographyCardProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sparksRef = useRef<Spark[]>([]);
   const prevLandedRef = useRef(0);
   const shatteredRef = useRef(false);
+  const [autoLandedChars, setAutoLandedChars] = useState(autoType ? 0 : landedChars);
+  const effectiveLandedChars = autoType ? autoLandedChars : landedChars;
+
+  useEffect(() => {
+    if (!autoType) {
+      setAutoLandedChars(landedChars);
+      return;
+    }
+
+    setAutoLandedChars(0);
+    const timer = window.setInterval(() => {
+      setAutoLandedChars(current => {
+        if (current >= question.length) {
+          window.clearInterval(timer);
+          return current;
+        }
+        return current + 1;
+      });
+    }, typingSpeedMs);
+
+    return () => window.clearInterval(timer);
+  }, [autoType, landedChars, question, typingSpeedMs]);
 
   // Break question into words and characters
   const wordsData = useMemo(() => {
@@ -84,11 +111,9 @@ export function ParticleTypographyCard({
   // Spawn particle sparks when new letters land
   useEffect(() => {
     if (shatteredRef.current) return;
-    if (landedChars > prevLandedRef.current && containerRef.current) {
+    if (effectiveLandedChars > prevLandedRef.current && containerRef.current) {
       const containerRect = containerRef.current.getBoundingClientRect();
-      const newlyLandedEls = containerRef.current.querySelectorAll(`[data-char-idx]`);
-
-      for (let i = prevLandedRef.current; i < landedChars; i++) {
+      for (let i = prevLandedRef.current; i < effectiveLandedChars; i++) {
         const el = containerRef.current.querySelector(`[data-char-idx="${i}"]`) as HTMLElement | null;
         if (el) {
           const rect = el.getBoundingClientRect();
@@ -124,8 +149,8 @@ export function ParticleTypographyCard({
         }
       }
     }
-    prevLandedRef.current = landedChars;
-  }, [landedChars]);
+    prevLandedRef.current = effectiveLandedChars;
+  }, [effectiveLandedChars]);
 
   // Selection shatter explosion
   useEffect(() => {
@@ -288,7 +313,7 @@ export function ParticleTypographyCard({
             style={{ display: 'inline-block', whiteSpace: 'nowrap', margin: '0 3px' }}
           >
             {chars.map(({ char, charIdx, color }) => {
-              const isLanded = charIdx < landedChars;
+              const isLanded = charIdx < effectiveLandedChars;
               return (
                 <span
                   key={charIdx}

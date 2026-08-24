@@ -3833,9 +3833,9 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   text-align: center;
 }
 
-/* These decision cards are deliberate still points: keep the signal crisp
-   and atmospheric, but do not mount the particle typography canvas here. */
-.oracle-static-card-signal {
+/* Shared signal frame for decision cards. ParticleTypographyCard owns the
+   letter landing and particle canvas inside this layout wrapper. */
+.oracle-particle-card-signal {
   width: 100%;
   display: flex;
   flex-direction: column;

@@ -2447,9 +2447,18 @@ export function SurrogateOracleImmersion() {
             }}
           >
             <div className="oracle-presence-card oracle-knife-card">
-              <div className="oracle-static-card-signal" aria-label="Set the room">
-                <div className="oracle-presence-card__title">SET THE ROOM</div>
-                <div className="oracle-presence-card__eyebrow">NEW SIGNAL</div>
+              <div className="oracle-particle-card-signal" aria-label="Set the room">
+              <ParticleTypographyCard
+                questionIndex={-2}
+                landedChars={0}
+                isSelected={false}
+                isThisSelected={false}
+                isEmitting
+                territory="NEW SIGNAL // PERMISSION REQUEST"
+                question="LET THE ORACLE CATCH YOUR SHADOW?"
+                autoType
+                typingSpeedMs={34}
+              />
               </div>
               <div className="oracle-knife-divider" />
               <div className="oracle-presence-card__copy">
@@ -2549,9 +2558,19 @@ export function SurrogateOracleImmersion() {
                 }}
               >
                 <div className="oracle-return-card oracle-knife-card">
-                  <div className="oracle-static-card-signal" aria-label="Return trip verified">
-                    <div className="oracle-return-card__signal">RETURN TRIP VERIFIED</div>
-                    <div className="oracle-return-card__verified">SIGNAL RECOGNIZED</div>
+                  <div className="oracle-particle-card-signal" aria-label="Return trip verified">
+                <ParticleTypographyCard
+                  questionIndex={-1}
+                  landedChars={0}
+                  isSelected={false}
+                  isThisSelected={false}
+                  isEmitting
+                  territory="RETURN SIGNAL // VERIFIED"
+                  question="THE ALLEY REMEMBERS YOU"
+                  autoType
+                  typingSpeedMs={34}
+                />
+                <div className="oracle-return-card__verified">SIGNAL RECOGNIZED // THE DOOR IS STILL OPEN</div>
                   </div>
                   <div className="oracle-knife-divider" />
                   <div className="oracle-return-card__actions">

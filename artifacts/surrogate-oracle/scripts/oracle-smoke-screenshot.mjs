@@ -12,8 +12,15 @@
  *   04-oracle-entry   — after knife selection (1.6s transition)
  *   05-oracle-live    — oracle mode settled (avatar visible, panel open)
  *
- * Usage: npm run smoke
- *        DEV_URL=http://localhost:5173 npm run smoke
+ * Release/CI usage:
+ *   pnpm run smoke
+ *   DEV_URL=http://localhost:5173 pnpm run smoke
+ *
+ * The package command runs oracle-runtime-evidence.test.mjs first. This is
+ * intentionally fail-fast: a fixture failure stops this process before the
+ * browser launches, so no smoke screenshots or evidence are published.
+ * To run this file directly during local debugging, run the fixture first:
+ *   pnpm run runtime-evidence-test && node scripts/oracle-smoke-screenshot.mjs
  */
 
 import puppeteer from 'puppeteer';

@@ -14,7 +14,7 @@
     "gaze-verify": "node scripts/oracle-gaze-verify.mjs",
     "persona-verify": "node scripts/oracle-persona-contract-verify.mjs",
     "copilot-verify": "node scripts/oracle-copilot-framing-verify.mjs",
-    "smoke": "node scripts/oracle-smoke-screenshot.mjs",
+    "smoke": "pnpm run runtime-evidence-test && node scripts/oracle-smoke-screenshot.mjs",
     "runtime-evidence-test": "node scripts/oracle-runtime-evidence.test.mjs",
     "deploy:functions": "npx supabase functions deploy gemini-live-proxy --project-ref $SUPABASE_PROJECT_REF --use-api",
     "set:gemini-secret": "npx supabase secrets set GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY --project-ref $SUPABASE_PROJECT_REF",

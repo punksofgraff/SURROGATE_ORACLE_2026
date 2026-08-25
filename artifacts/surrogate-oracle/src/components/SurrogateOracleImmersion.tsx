@@ -1361,13 +1361,23 @@ export function SurrogateOracleImmersion() {
       });
       journey.awakeFromTerminal();
     };
+    // Keep the release harness deterministic without waiting for the live
+    // narration stream. Unlike skipLore, this follows the real completion
+    // path and presents Stage 00 so its radio restore is covered too.
+    window.__oracle_completeLore = () => {
+      if (journey.scenePhase !== 'terminal' || !loreStarted) return;
+      handleAwakeTransition();
+    };
+    window.__oracle_toggleRadio = () => setIsAudioPlaying((playing) => !playing);
     return () => {
       delete window.__oracle_handleAudio;
       delete window.__oracle_test;
       delete window.oracleConversationRef;
       delete window.__oracle_skipLore;
+      delete window.__oracle_completeLore;
+      delete window.__oracle_toggleRadio;
     };
-  }, [connection, journey]);
+  }, [connection, journey, handleAwakeTransition, loreStarted]);
 
   const { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, activateCameraWithStream, deactivateCamera, cameraVideoRef, cameraError, seekerMotionRef } = useXRMode(() => enterTerminal());
   activateCameraWithStreamRef.current = activateCameraWithStream;

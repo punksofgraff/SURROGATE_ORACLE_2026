@@ -67,6 +67,10 @@ declare global {
     __oracle_handleAudio?: (url: string) => void;
     __oracle_test?: () => void;
     __oracle_skipLore?: () => void;
+    /** Dev-only deterministic completion hook for browser regression checks. */
+    __oracle_completeLore?: () => void;
+    /** Dev-only radio toggle for deterministic handoff regression checks. */
+    __oracle_toggleRadio?: () => void;
     oracleConversationRef?: RefObject<OracleConversationHandle | null>;
 
     /** Structured runtime evidence collected for smoke tests and preview diagnostics. */

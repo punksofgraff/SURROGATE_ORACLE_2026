@@ -19,6 +19,7 @@
     "smoke-clean": "node scripts/oracle-smoke-clean.mjs",
     "smoke": "pnpm run smoke-clean && pnpm run runtime-evidence-test && pnpm run smoke-evidence-test && node scripts/oracle-smoke-screenshot.mjs",
     "runtime-evidence-test": "node scripts/oracle-runtime-evidence.test.mjs",
+    "radio-handoff-test": "node scripts/radio-handoff-verify.mjs",
     "deploy:functions": "npx supabase functions deploy gemini-live-proxy --project-ref $SUPABASE_PROJECT_REF --use-api",
     "set:gemini-secret": "npx supabase secrets set GOOGLE_AI_API_KEY=$GOOGLE_AI_API_KEY --project-ref $SUPABASE_PROJECT_REF",
     "api-log": "node --experimental-vm-modules api-logger.mjs"

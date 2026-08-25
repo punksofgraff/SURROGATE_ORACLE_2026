@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ParticleTypographyCard } from './ParticleTypographyCard';
 import { logStep } from './CodeAuditor';
+import { traceEvent, type TourCheckpoint } from '../lib/sessionTrace';
 
 // ── Gradient colour per letter (Sacred Green → Brand Cyan) ───────────────────
 function gradientChar(i: number, total: number): string {
@@ -62,6 +63,15 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onStartTracking, 
   const onActiveCardChangeRef = useRef(onActiveCardChange);
   useEffect(() => { onActiveCardChangeRef.current = onActiveCardChange; }, [onActiveCardChange]);
 
+  const traceTour = (checkpoint: TourCheckpoint, extra: Record<string, unknown> = {}) => {
+    traceEvent('tour_checkpoint', {
+      checkpoint,
+      card_index: activeIdx + 1,
+      territory: card.territory,
+      ...extra,
+    });
+  };
+
   // Emission glow on card cycle
   useEffect(() => {
     setIsEmitting(true);
@@ -85,6 +95,7 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onStartTracking, 
     if (hasRenderedCardRef.current) cardSwitchPendingRef.current = true;
     hasRenderedCardRef.current = true;
     logStep(`TOUR CARD FLUSH REQUESTED [${activeIdx + 1}]`, 'ok');
+    traceTour('card_flush');
     onActiveCardChangeRef.current?.();
 
     return () => {
@@ -109,12 +120,14 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onStartTracking, 
     cardSwitchPendingRef.current = false;
     onStartTracking?.();
     logStep(`TOUR CARD PREVIEW REQUESTED [${activeIdx + 1}]`, 'pending');
+    traceTour('preview_request');
     onSpeakCard?.(card.text);
 
     const beginReveal = (source: 'PCM_CLOCK' | 'TIMEOUT_FALLBACK') => {
       rafRef.current = null;
       spokenCardRef.current = card.text;
       logStep(`TOUR FIRST LETTER LANDING [${activeIdx + 1}] (${source})`, source === 'PCM_CLOCK' ? 'ok' : 'warn');
+      traceTour('first_letter_landing', { source });
       intervalRef.current = setInterval(() => {
         count++;
         setLandedChars(count);
@@ -136,6 +149,7 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onStartTracking, 
         // removes the fixed 650ms guess while still keeping text behind audio.
         if (playbackMs > 0 && bufferedMs > 0) {
           logStep(`TOUR FIRST PLAYABLE AUDIO [${activeIdx + 1}] (${Math.round(playbackMs)}ms/${Math.round(bufferedMs)}ms)`, 'ok');
+          traceTour('first_playable_audio', { playback_ms: Math.round(playbackMs), buffered_ms: Math.round(bufferedMs) });
           beginReveal('PCM_CLOCK');
           return;
         }
@@ -143,6 +157,8 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onStartTracking, 
         // and its visible recovery path remain authoritative.
         if (now - revealStartedAt >= 2500) {
           logStep(`TOUR FIRST PLAYABLE AUDIO TIMEOUT [${activeIdx + 1}]`, 'warn');
+          traceTour('preview_timeout');
+          traceTour('first_playable_audio', { source: 'TIMEOUT_FALLBACK' });
           beginReveal('TIMEOUT_FALLBACK');
           return;
         }
@@ -170,7 +186,14 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onStartTracking, 
 
   const isLastCard = activeIdx === TOUR_CARDS.length - 1;
 
-  const handleNext = () => {
+  const advanceCard = (manual: boolean) => {
+    if (manual) {
+      traceTour('manual_advance', {
+        interrupted: spokenCardRef.current !== card.text,
+      });
+      if (spokenCardRef.current !== card.text) traceTour('preview_interrupted');
+      logStep(`TOUR MANUAL ADVANCE [${activeIdx + 1}]`, 'ok');
+    }
     spokenCardRef.current = null;
     previewRequestedRef.current = null;
     if (isLastCard) {
@@ -179,6 +202,8 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onStartTracking, 
       setActiveIdx(i => i + 1);
     }
   };
+
+  const handleNext = () => advanceCard(true);
 
   return (
     <motion.div
@@ -292,7 +317,15 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onStartTracking, 
           <button
             key={i}
             className={`oracle-knife-dot${i === activeIdx ? ' oracle-knife-dot--active' : ''}`}
-              onClick={() => { spokenCardRef.current = null; previewRequestedRef.current = null; setActiveIdx(i); }}
+               onClick={() => {
+                 if (i === activeIdx) return;
+                 traceTour('manual_advance', { to_card_index: i + 1, interrupted: spokenCardRef.current !== card.text });
+                 if (spokenCardRef.current !== card.text) traceTour('preview_interrupted');
+                 logStep(`TOUR MANUAL ADVANCE [${activeIdx + 1}]`, 'ok');
+                 spokenCardRef.current = null;
+                 previewRequestedRef.current = null;
+                 setActiveIdx(i);
+               }}
             aria-label={`Tour card ${i + 1}: ${TOUR_CARDS[i].territory}`}
           />
         ))}

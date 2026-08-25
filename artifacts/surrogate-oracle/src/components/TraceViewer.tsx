@@ -39,6 +39,69 @@ type TraceRow = {
   created_at: string;
 };
 
+type TourEvidence = {
+  cardIndex: number;
+  territory: string;
+  checkpoints: Partial<Record<string, TraceRow[]>>;
+  duplicatePreview: boolean;
+  timedOut: boolean;
+  interrupted: boolean;
+};
+
+function tourEvidence(rows: TraceRow[]): TourEvidence[] {
+  const grouped = new Map<number, TourEvidence>();
+  for (const row of rows) {
+    const payload = row.payload;
+    const checkpoint = payload.checkpoint;
+    let index = Number(payload.card_index);
+    // Accept older traces that only have the checkpoint in a step label.
+    if (!Number.isFinite(index)) {
+      const match = String(payload.label ?? '').match(/\[(\d+)\]/);
+      index = match ? Number(match[1]) : NaN;
+    }
+    if (!Number.isFinite(index) || (checkpoint !== undefined && row.event_type !== 'tour_checkpoint')) continue;
+    const existing = grouped.get(index) ?? {
+      cardIndex: index,
+      territory: String(payload.territory ?? `CARD ${index}`),
+      checkpoints: {},
+      duplicatePreview: false,
+      timedOut: false,
+      interrupted: false,
+    };
+    if (payload.territory) existing.territory = String(payload.territory);
+    const normalized = String(checkpoint ?? '').toLowerCase();
+    if (normalized) {
+      existing.checkpoints[normalized] = [...(existing.checkpoints[normalized] ?? []), row];
+      if (normalized === 'preview_request' && (existing.checkpoints[normalized]?.length ?? 0) > 1) {
+        existing.duplicatePreview = true;
+      }
+      if (normalized === 'preview_timeout') existing.timedOut = true;
+      if (normalized === 'preview_interrupted') existing.interrupted = true;
+    }
+    grouped.set(index, existing);
+  }
+  return [...grouped.values()].sort((a, b) => a.cardIndex - b.cardIndex);
+}
+
+function runProfile(rows: TraceRow[], cards: TourEvidence[]): string[] {
+  const tags: string[] = [];
+  const phase = rows.find((r) => r.event_type === 'oracle_phase_entered');
+  if (phase?.payload.is_returning === true) tags.push('RETURNING');
+  else tags.push('FRESH');
+  if (cards.some((c) => c.checkpoints.manual_advance?.length)) tags.push('MANUAL ADVANCE');
+  if (cards.some((c) => c.interrupted)) tags.push('INTERRUPTED PREVIEW');
+  return tags;
+}
+
+function checkpointLabel(name: string): string {
+  return ({
+    card_flush: 'FLUSH',
+    preview_request: 'PREVIEW',
+    first_playable_audio: 'AUDIO',
+    first_letter_landing: 'LETTER',
+  } as Record<string, string>)[name] ?? name.replaceAll('_', ' ').toUpperCase();
+}
+
 const fnUrl = () => {
   const base = SUPA_URL!.startsWith('http') ? SUPA_URL! : `https://${SUPA_URL}`;
   return `${base}/functions/v1/oracle-trace`;
@@ -118,6 +181,8 @@ export function TraceViewer() {
 
   const hasToken = !!getTraceToken();
   const enabled = DEBUG_ENABLED && !!SUPA_URL;
+  const cards = tourEvidence(trace);
+  const profile = runProfile(trace, cards);
 
   useEffect(() => {
     if (!open || !enabled || !hasToken) return;
@@ -261,6 +326,53 @@ export function TraceViewer() {
                   );
                 })}
               </div>
+               {cards.length > 0 && (
+                 <section data-testid="tour-evidence" style={{ padding: '8px', borderBottom: '1px solid rgba(201,167,255,0.16)' }}>
+                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                     <strong style={{ color: '#00ffcc', letterSpacing: '0.08em', fontSize: 10 }}>TOUR SYNC REVIEW</strong>
+                     <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 9 }}>{profile.join(' · ')}</span>
+                   </div>
+                   <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 9, marginBottom: 7 }}>
+                     CONFIG {trace.some((r) => r.event_type === 'step' && String(r.payload.label).includes('SESSION CONFIG')) ? '✓' : '—'}
+                     {' · '} {cards.length} card{cards.length === 1 ? '' : 's'}
+                   </div>
+                   {cards.map((card) => {
+                     const warning = card.duplicatePreview || card.timedOut || card.interrupted;
+                     return (
+                       <div key={card.cardIndex} style={{
+                         padding: '7px 8px', marginBottom: 5, borderRadius: 4,
+                         border: `1px solid ${warning ? 'rgba(255,204,0,0.55)' : 'rgba(0,255,136,0.2)'}`,
+                         background: warning ? 'rgba(255,180,0,0.07)' : 'rgba(0,255,136,0.035)',
+                       }}>
+                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 5 }}>
+                           <span style={{ color: '#e0e8ff' }}><b style={{ color: '#c9a7ff' }}>{String(card.cardIndex).padStart(2, '0')}</b> {card.territory}</span>
+                           {warning && <span style={{ color: '#ffcc00', fontSize: 9, whiteSpace: 'nowrap' }}>⚠ REVIEW</span>}
+                         </div>
+                         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                           {(['card_flush', 'preview_request', 'first_playable_audio', 'first_letter_landing'] as const).map((name) => {
+                             const entries = card.checkpoints[name] ?? [];
+                             const present = entries.length > 0;
+                             return <span key={name} style={{
+                               color: present ? '#00ff88' : 'rgba(255,255,255,0.28)',
+                               border: `1px solid ${present ? 'rgba(0,255,136,0.35)' : 'rgba(255,255,255,0.1)'}`,
+                               borderRadius: 3, padding: '2px 4px', fontSize: 8,
+                             }}>
+                               {present ? '✓' : '—'} {checkpointLabel(name)}{entries.length > 1 ? ` ×${entries.length}` : ''}
+                             </span>;
+                           })}
+                         </div>
+                         {(card.duplicatePreview || card.timedOut || card.interrupted) && (
+                           <div style={{ color: '#ffcc00', fontSize: 9, marginTop: 5 }}>
+                             {card.duplicatePreview && <span style={{ marginRight: 8 }}>DUPLICATE PREVIEW ×{card.checkpoints.preview_request?.length}</span>}
+                             {card.timedOut && <span style={{ marginRight: 8 }}>AUDIO TIMEOUT FALLBACK</span>}
+                             {card.interrupted && <span>PREVIEW INTERRUPTED</span>}
+                           </div>
+                         )}
+                       </div>
+                     );
+                   })}
+                 </section>
+               )}
               {trace.filter((row) => matchesFilter(row, filter)).map((row, i, filtered) => {
                 const prev = i > 0 ? filtered[i - 1] : null;
                 const t = row.client_ts ?? new Date(row.created_at).getTime();

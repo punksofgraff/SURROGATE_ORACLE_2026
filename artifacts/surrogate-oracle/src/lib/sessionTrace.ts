@@ -35,6 +35,17 @@ type TraceRow = {
   client_ts: number;
 };
 
+/** Stable vocabulary used by the dev tour reviewer. Keep this small and
+ * semantic so the viewer does not need to parse presentation labels. */
+export type TourCheckpoint =
+  | 'card_flush'
+  | 'preview_request'
+  | 'first_playable_audio'
+  | 'first_letter_landing'
+  | 'preview_timeout'
+  | 'preview_interrupted'
+  | 'manual_advance';
+
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 
 const FLUSH_INTERVAL_MS = 2500;

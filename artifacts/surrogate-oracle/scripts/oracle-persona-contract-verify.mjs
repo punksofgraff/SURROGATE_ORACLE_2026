@@ -19,11 +19,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEV_URL = process.env.DEV_URL ?? 'http://localhost:5173';
 const PERSONA_MARKERS = {
   deep: '[ACTIVE PERSONA — DEEP ORACLE]',
-  copilot: '[ACTIVE PERSONA — CREATIVE DIRECTOR / FAST, QUIPPY, WITTY ORACLE]',
+  copilot: '[ACTIVE PERSONA — MONEY MITE CREATIVE DIRECTOR / FAST, QUIPPY, WITTY ORACLE]',
 };
 const SWITCH_MARKERS = {
   deep: '[PERSONA SWITCH — DEEP ORACLE]',
-  copilot: '[PERSONA SWITCH — CREATIVE DIRECTOR / FAST, QUIPPY, WITTY ORACLE]',
+  copilot: '[PERSONA SWITCH — MONEY MITE CREATIVE DIRECTOR / FAST, QUIPPY, WITTY ORACLE]',
 };
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

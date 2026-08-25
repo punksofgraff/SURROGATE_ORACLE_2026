@@ -32,6 +32,11 @@ const TOUR_CARDS: TourCard[] = [
     territory: 'THE KNIFE',
     text: 'You will choose a question. Your answer shapes your Archetype and opens the channel for your neural portrait.',
   },
+  {
+    sigil: '✦',
+    territory: 'ORACLE COPILOT',
+    text: 'When you say Oracle Copilot, my persona instantly changes to Creative Director mode — inspiring you to create content, music, videos, and assets with the Surrogate Oracle as your copilot.',
+  },
 ];
 
 interface TourSelectionProps {

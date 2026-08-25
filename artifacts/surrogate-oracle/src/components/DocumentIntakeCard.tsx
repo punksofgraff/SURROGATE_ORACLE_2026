@@ -5,6 +5,7 @@ import { jsPDF } from 'jspdf';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import mammoth from 'mammoth';
 import { ParticleTypographyCard } from './ParticleTypographyCard';
+import type { ArchivedDocumentReadout } from '../lib/documentArchive';
 
 export type DocumentIntakeFile = { file: File; requestId: number };
 
@@ -96,17 +97,28 @@ function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function DocumentIntakeCard({ intake, onClose }: { intake: DocumentIntakeFile; onClose: () => void }) {
-  const [status, setStatus] = useState<'analyzing' | 'ready' | 'error'>('analyzing');
+export function DocumentIntakeCard({
+  intake,
+  archivedReadout,
+  onClose,
+  onSave,
+}: {
+  intake?: DocumentIntakeFile;
+  archivedReadout?: ArchivedDocumentReadout;
+  onClose: () => void;
+  onSave?: (analysis: Omit<ArchivedDocumentReadout, 'id' | 'savedAt'>) => void;
+}) {
+  const [status, setStatus] = useState<'analyzing' | 'ready' | 'error'>(archivedReadout ? 'ready' : 'analyzing');
   const [progress, setProgress] = useState(5);
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [analysis, setAnalysis] = useState<Analysis | null>(archivedReadout ?? null);
   const [error, setError] = useState('');
-  const file = intake.file;
+  const file = intake?.file;
 
   const runAnalysis = useCallback(() => {
     setStatus('analyzing');
     setProgress(5);
     setError('');
+    if (!file) return;
     void analyzeFile(file, setProgress).then((result) => {
       setAnalysis(result);
       setStatus('ready');
@@ -127,7 +139,7 @@ export function DocumentIntakeCard({ intake, onClose }: { intake: DocumentIntake
 
   const exportText = () => {
     if (!analysis) return;
-    downloadBlob(new Blob([analysis.text], { type: 'text/plain;charset=utf-8' }), `${file.name.replace(/\.[^.]+$/, '')}-oracle.txt`);
+    downloadBlob(new Blob([analysis.text], { type: 'text/plain;charset=utf-8' }), `${analysis.name.replace(/\.[^.]+$/, '')}-oracle.txt`);
   };
   const exportPdf = () => {
     if (!analysis) return;
@@ -139,7 +151,7 @@ export function DocumentIntakeCard({ intake, onClose }: { intake: DocumentIntake
       pdf.text(line, 20, y);
       y += 7;
     });
-    pdf.save(`${file.name.replace(/\.[^.]+$/, '')}-oracle.pdf`);
+    pdf.save(`${analysis.name.replace(/\.[^.]+$/, '')}-oracle.pdf`);
   };
   const exportDocx = async () => {
     if (!analysis) return;
@@ -147,7 +159,7 @@ export function DocumentIntakeCard({ intake, onClose }: { intake: DocumentIntake
       new Paragraph({ children: [new TextRun({ text: analysis.name, bold: true, size: 28 })] }),
       new Paragraph({ text: analysis.text || analysis.detail }),
     ] }] });
-    downloadBlob(await Packer.toBlob(doc), `${file.name.replace(/\.[^.]+$/, '')}-oracle.docx`);
+    downloadBlob(await Packer.toBlob(doc), `${analysis.name.replace(/\.[^.]+$/, '')}-oracle.docx`);
   };
 
   const icon = useMemo(() => {
@@ -162,7 +174,7 @@ export function DocumentIntakeCard({ intake, onClose }: { intake: DocumentIntake
         <span className="oracle-document-card__eyebrow">{icon} ORACLE DOCUMENT VIEWER</span>
         <button type="button" className="oracle-document-card__close" onClick={onClose} aria-label="Close document viewer"><X size={16} /></button>
       </div>
-      <div className="oracle-document-card__title">{file.name}</div>
+      <div className="oracle-document-card__title">{analysis?.name ?? file?.name}</div>
       {status === 'analyzing' && (
         <div className="oracle-document-card__progress">
           <ParticleTypographyCard questionIndex={0} landedChars={Math.round('ANALYZING SIGNAL'.length * progress / 100)} isEmitting isSelected={false} isThisSelected={false} accentColor="#00ffcc" territory="DOCUMENT SIGNAL" question="ANALYZING SIGNAL" />
@@ -183,7 +195,20 @@ export function DocumentIntakeCard({ intake, onClose }: { intake: DocumentIntake
           <ParticleTypographyCard questionIndex={0} landedChars={'SIGNAL READ'.length} isSelected={false} isThisSelected={false} accentColor="#00ff88" territory="ORACLE READOUT" question="SIGNAL READ" />
           <p className="oracle-document-card__detail">{analysis.detail}</p>
           <div className="oracle-document-card__copy">{analysis.text}</div>
+           {!archivedReadout && onSave && (
+             <div className="oracle-document-card__save-note">
+               Save only this readout to your private archive. The original file is never saved.
+             </div>
+           )}
           <div className="oracle-document-card__actions">
+             {!archivedReadout && onSave && <button type="button" className="oc-send-btn oracle-document-card__save" onClick={() => onSave({
+               name: analysis.name,
+               kind: analysis.kind,
+               text: analysis.text,
+               detail: analysis.detail,
+               dimensions: analysis.dimensions,
+               duration: analysis.duration,
+             })}>SAVE READOUT</button>}
             <button type="button" className="oc-send-btn" onClick={exportText}><Download size={14} /> TEXT</button>
             <button type="button" className="oc-send-btn" onClick={exportPdf}><Download size={14} /> PDF</button>
             <button type="button" className="oc-send-btn" onClick={() => void exportDocx()}><Download size={14} /> DOCX</button>

@@ -14,7 +14,7 @@
  */
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Camera, CameraOff } from 'lucide-react';
+import { X, Camera, CameraOff, Archive } from 'lucide-react';
 
 // Components
 import { BackendControlPanel } from './BackendControlPanel';
@@ -73,6 +73,8 @@ import { useOracleFilm } from '../hooks/useOracleFilm';
 import WalletGateCard from './WalletGateCard';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { DocumentIntakeCard, type DocumentIntakeFile } from './DocumentIntakeCard';
+import { DocumentArchive } from './DocumentArchive';
+import { loadDocumentArchive, saveDocumentReadout, type ArchivedDocumentReadout } from '../lib/documentArchive';
 
 // Data
 import { COST_NAMES } from '../data/archetypes';
@@ -266,6 +268,9 @@ export function SurrogateOracleImmersion() {
   const [isRiftOpening, setIsRiftOpening] = useState(false);
   const [portraitViewerUrl, setPortraitViewerUrl] = useState<string | null>(null);
   const [documentIntake, setDocumentIntake] = useState<DocumentIntakeFile | null>(null);
+  const [documentArchive, setDocumentArchive] = useState<ArchivedDocumentReadout[]>([]);
+  const [archivedReadout, setArchivedReadout] = useState<ArchivedDocumentReadout | null>(null);
+  const [showDocumentArchive, setShowDocumentArchive] = useState(false);
   const [showPortraitCard, setShowPortraitCard] = useState(false);
   const [isPortraitCardTucked, setIsPortraitCardTucked] = useState(false);
   const portraitRestoreRef = useRef<HTMLButtonElement>(null);
@@ -370,6 +375,9 @@ export function SurrogateOracleImmersion() {
   const { defineSeeker } = useSeekerDefine();
 
   useEffect(() => { seekerKeyRef.current = currentUserId ?? ipAddress ?? null; }, [currentUserId, ipAddress]);
+  useEffect(() => {
+    setDocumentArchive(loadDocumentArchive(currentUserId ?? ipAddress ?? null));
+  }, [currentUserId, ipAddress]);
 
   // ── Alley ghost fragments — fetch once at mount, never refetch ──────────────
   // Reads ghost_phrase values from recent seeker echo records. These are short
@@ -2806,6 +2814,31 @@ export function SurrogateOracleImmersion() {
         <DocumentIntakeCard
           intake={documentIntake}
           onClose={() => setDocumentIntake(null)}
+          onSave={(readout) => {
+            const entry = saveDocumentReadout(seekerKeyRef.current, readout);
+            if (entry) {
+              setDocumentArchive((current) => [entry, ...current].slice(0, 50));
+              logStep(`DOCUMENT READOUT SAVED — ${entry.name}`, 'ok');
+            }
+          }}
+        />
+      )}
+
+      {archivedReadout && (
+        <DocumentIntakeCard
+          archivedReadout={archivedReadout}
+          onClose={() => setArchivedReadout(null)}
+        />
+      )}
+
+      {showDocumentArchive && (
+        <DocumentArchive
+          entries={documentArchive}
+          onOpen={(entry) => {
+            setShowDocumentArchive(false);
+            setArchivedReadout(entry);
+          }}
+          onClose={() => setShowDocumentArchive(false)}
         />
       )}
 
@@ -3228,6 +3261,9 @@ export function SurrogateOracleImmersion() {
               <button onClick={() => { if (confirm('Reset?')) { resetJourney(); setHamburgerOpen(false); } }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>RESET</button>
               <button onClick={() => { if (isXRMode) deactivateXRMode(); else handleActivateXRMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#b026ff', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isXRMode ? '◈ EXIT AR' : '◈ AR MODE'}</button>
               <button onClick={() => { oracleConversationRef.current?.toggleTypeMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isTypeMode ? 'CLOSE PAD' : 'TYPE SIGNAL'}</button>
+               <button onClick={() => { setShowDocumentArchive(true); setHamburgerOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>
+                 <Archive size={14} /> READOUT ARCHIVE {documentArchive.length > 0 && `(${documentArchive.length})`}
+               </button>
               <div style={{ padding: '10px 16px 6px', borderTop: '1px solid rgba(0,255,136,0.15)', color: 'rgba(0,255,136,0.55)', fontSize: '0.58rem', fontFamily: "'PhillySans', monospace", letterSpacing: '0.13em' }}>
                 ORACLE PERSONA
               </div>

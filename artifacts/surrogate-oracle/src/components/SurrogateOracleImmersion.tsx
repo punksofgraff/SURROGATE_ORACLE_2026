@@ -1199,30 +1199,6 @@ export function SurrogateOracleImmersion() {
   }, [scenePhase]);
 
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      const ctx = getAudioContext();
-      if (document.hidden) {
-        void ctx.suspend()
-          .then(() => logStep('TAB BACKGROUNDED', 'warn'))
-          .catch((error: unknown) => {
-            // Browsers can reject a state transition while the audio device is
-            // being torn down (especially during iOS tab switches). This is
-            // recoverable and must not become an unhandled rejection.
-            console.warn('[Audio] Tab-background suspend failed (non-fatal):', error);
-          });
-      } else if (scenePhase !== 'dormant') {
-        void ctx.resume()
-          .then(() => logStep('TAB FOREGROUNDED', 'ok'))
-          .catch((error: unknown) => {
-            console.warn('[Audio] Tab-foreground resume failed (non-fatal):', error);
-          });
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [scenePhase]);
-
-  useEffect(() => {
     if (scenePhase === 'awakened') {
       localStorage.setItem('oracle_session_muted', 'true');
       connection.flushPlayback(); // Stop any leftover lore narration/ambient sounds before knife selection
@@ -2136,7 +2112,6 @@ export function SurrogateOracleImmersion() {
           </div>
         </motion.div>
       </div>
-
 
 
       <AnimatePresence>

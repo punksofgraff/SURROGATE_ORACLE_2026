@@ -208,6 +208,52 @@ export function useRadioAtmosphere({
     else audioRef.current.pause();
   }, [isAudioPlaying]);
 
+  // iOS Safari may pause the media element as well as suspending the audio
+  // context when Safari backgrounds or locks the device. React state does not
+  // change in that case, so the normal playback-sync effect above will not run
+  // again on foreground. Resume both sides of the graph without changing the
+  // element's src (or seeking it), and never revive an intentional hard mute.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const ctx = getAudioContext();
+      if (document.hidden) {
+        void ctx.suspend()
+          .then(() => logStep('TAB BACKGROUNDED', 'warn'))
+          .catch((error: unknown) => {
+            console.warn('[Radio] Tab-background suspend failed (non-fatal):', error);
+          });
+        return;
+      }
+      if (!isAudioPlaying) return;
+
+      const audio = audioRef.current;
+      // Start the continuation immediately. Waiting for resume() first can
+      // lose the short iOS foreground activation window, and a suspended
+      // AudioContext can leave that promise pending during device wake.
+      if (
+        audio
+        && requestedTargetRef.current > MUSIC_OFF_VOLUME
+        && audio.paused
+      ) {
+        audio.play().catch((err) => console.warn('[Radio] Foreground resume failed:', err));
+      }
+      void ctx.resume()
+        .then(() => logStep('TAB FOREGROUNDED', 'ok'))
+        .catch((error: unknown) => {
+          // iOS can reject resume while the media device is still returning.
+          // A later user gesture or visibility event can retry safely.
+          console.warn('[Radio] Tab-foreground resume failed (non-fatal):', error);
+        });
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pageshow', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pageshow', handleVisibilityChange);
+    };
+  }, [isAudioPlaying]);
+
   return {
     audioRef,
     targetVol,

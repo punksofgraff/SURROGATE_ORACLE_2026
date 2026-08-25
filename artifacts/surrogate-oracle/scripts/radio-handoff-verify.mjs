@@ -141,6 +141,28 @@ try {
   assert.equal(ducked.src, started.src, 'lore duck changed the radio track');
   assert.equal(ducked.paused, false, 'lore duck paused the radio element');
 
+  // Model the Safari/iOS lifecycle boundary. Safari can pause the media
+  // element while the page is hidden, even though React still believes the
+  // radio is playing. The foreground handler must resume the same element,
+  // rather than replacing the station or waiting for another React render.
+  await page.evaluate(() => {
+    const audio = document.querySelector('audio:not([src*="lyria"])');
+    if (!audio) throw new Error('radio audio element was not rendered');
+    audio.pause();
+  });
+  const backgroundStart = await audioSnapshot();
+  assert.equal(backgroundStart.paused, true, 'background setup did not pause the radio element');
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    // pageshow is part of the iOS return path.
+    window.dispatchEvent(new Event('pageshow'));
+  });
+  await waitFor(async () => !(await audioSnapshot()).paused, 'radio resume after foreground');
+  await sleep(500);
+  assertAdvanced(backgroundStart, await audioSnapshot(), 'foreground resume');
+
   // Complete through the real Stage 00 path, then tuck and restore the card.
   await page.evaluate(() => window.__oracle_completeLore?.());
   await page.waitForSelector('.oracle-stage00-shell', { timeout: 5_000 });
@@ -183,7 +205,7 @@ try {
   assert.deepEqual(runtimeErrors, [], `unexpected runtime errors: ${JSON.stringify(runtimeErrors)}`);
   assert.deepEqual(errors, [], `unexpected page errors: ${JSON.stringify(errors)}`);
   assert.deepEqual(consoleErrors, [], `unexpected console errors: ${JSON.stringify(consoleErrors)}`);
-  console.log('radio handoff regression passed: lore start → 15% duck → Stage 00 restore → mute/unmute → rapid reversal');
+  console.log('radio handoff regression passed: lore start → background/foreground → Stage 00 restore → mute/unmute → rapid reversal');
 } finally {
   await browser.close();
 }

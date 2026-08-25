@@ -306,6 +306,7 @@ const OracleConversation = forwardRef(
     const onMusicRequestRef = useRef(onMusicRequest);
     const onMusicReturnRef = useRef(onMusicReturn);
     const onPersonaCommandRef = useRef(onPersonaCommand);
+    const interruptResponseRef = useRef<() => void>(() => {});
     const personaModeRef = useRef(personaMode);
     const musicModeRef = useRef(musicMode);
     onMusicRequestRef.current = onMusicRequest;
@@ -733,10 +734,17 @@ const OracleConversation = forwardRef(
 
     const wasInterruptedRef = useRef(false); // tracks barge-in to suppress score-parse warn
     const personaCommandHandledRef = useRef(false);
+    // Native-audio input transcription can arrive after the server has already
+    // started (or even completed) the interrupted response. Keep late PCM and
+    // late output transcription from resurrecting the Deep Oracle after the
+    // control phrase has been accepted.
+    const personaOverridePendingRef = useRef(false);
 
     const activateCopilotFromCommand = useCallback(() => {
       if (personaCommandHandledRef.current) return;
       personaCommandHandledRef.current = true;
+      personaOverridePendingRef.current = true;
+      interruptResponseRef.current();
       // Cut both streamed PCM and any thinking filler before the hidden switch
       // instruction can produce the first Money Mite response.
       onBargeInRef.current?.();
@@ -773,6 +781,7 @@ const OracleConversation = forwardRef(
         setSeekerCount(0);
         currentUserTranscriptRef.current = '';
         personaCommandHandledRef.current = false;
+        personaOverridePendingRef.current = false;
         pendingMusicPromptRef.current = null;
         micAutoRestartEnabledRef.current = false; // Don't carry over armed mic from prior session
       },
@@ -813,6 +822,11 @@ const OracleConversation = forwardRef(
         // via the {...msg} spread). Capture token telemetry when present.
         if (msg.usageMetadata?.totalTokenCount) debugInfo.current.lastTokenCount = msg.usageMetadata.totalTokenCount;
         if (msg.serverContent?.interrupted) {
+          // This is the native Live API's authoritative response boundary. The
+          // next model output belongs to the newly selected persona.
+          if (personaOverridePendingRef.current) {
+            personaOverridePendingRef.current = false;
+          }
           if (fillerTimerRef.current !== null) { clearTimeout(fillerTimerRef.current); fillerTimerRef.current = null; }
           fillerAbortRef.current?.abort(); fillerAbortRef.current = null;
           if (fillerBlobUrlRef.current) { URL.revokeObjectURL(fillerBlobUrlRef.current); fillerBlobUrlRef.current = null; }
@@ -830,11 +844,24 @@ const OracleConversation = forwardRef(
           onBargeInRef.current?.();
         }
 
+        // If transcription for the control phrase arrived after Gemini's
+        // interruption frame, the old response can still have queued frames on
+        // the proxy. Drop those frames until its turn boundary; otherwise the
+        // late Deep Oracle PCM starts speaking again over Money Mite.
+        if (personaOverridePendingRef.current && msg.serverContent?.turnComplete) {
+          personaOverridePendingRef.current = false;
+          currentResponseText.current = '';
+          currentUserTranscriptRef.current = '';
+          setOracleSpeaking(false);
+          setIsOracleThinking(false);
+          return;
+        }
+
         // Native-audio models: spoken text (and the hidden ORACLE_SCORE /
         // SEEKER_IRL blocks) arrives via outputTranscription, NOT modelTurn text
         // parts — those are now thought summaries (part.thought === true) and
         // must never pollute the displayed turn or the score parser.
-        if (msg.serverContent?.outputTranscription?.text) {
+        if (!personaOverridePendingRef.current && msg.serverContent?.outputTranscription?.text) {
           currentResponseText.current += msg.serverContent.outputTranscription.text;
         }
         // Seeker's spoken words — the only text record of voice input. Buffered
@@ -849,8 +876,9 @@ const OracleConversation = forwardRef(
 
         const parts = msg.serverContent?.modelTurn?.parts || [];
         for (const part of parts) {
-          if (part.text && part.thought !== true) currentResponseText.current += part.text;
+          if (!personaOverridePendingRef.current && part.text && part.thought !== true) currentResponseText.current += part.text;
           if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
+            if (personaOverridePendingRef.current) continue;
             // Lyria owns the speakers once playback starts. Gemini can still
             // finish an already-issued turn, but never let late PCM escape
             // into the music bed.
@@ -1081,12 +1109,14 @@ const OracleConversation = forwardRef(
       reconnecting,
       reconnectExhausted,
       sendText,
+      interruptResponse,
       manualReconnect,
       disconnect,
       prewarm,
       startSession,
       sessionBootedRef,
     } = geminiSession;
+    interruptResponseRef.current = interruptResponse;
 
     // Additive vision feed — streams periodic camera snapshots into the same
     // Gemini Live session over `wsRef`, gated on `sessionBootedRef` (not

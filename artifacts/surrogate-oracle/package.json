@@ -13,6 +13,7 @@
     "verify": "node scripts/oracle-morph-verify.mjs",
     "gaze-verify": "node scripts/oracle-gaze-verify.mjs",
     "persona-verify": "node scripts/oracle-persona-contract-verify.mjs",
+    "first-turn-copilot-verify": "node scripts/oracle-first-turn-copilot-verify.mjs",
     "fresh-dormant-verify": "node scripts/oracle-fresh-dormant-verify.mjs",
     "presence-entry-verify": "node scripts/oracle-presence-entry-verify.mjs",
     "tour-checkpoint-test": "tsx scripts/tour-checkpoint-contract.test.mjs",

@@ -222,6 +222,8 @@ export interface UseGeminiSessionReturn {
   reconnecting: boolean;
   reconnectExhausted: boolean;
   sendText: (text: string, isHidden?: boolean) => void;
+  /** Interrupts an active native-audio generation without adding a user turn. */
+  interruptResponse: () => void;
   connectToGemini: () => void;
   manualReconnect: () => void;
   disconnect: () => void;
@@ -302,6 +304,7 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
   // the proxy forwards client frames in arrival order, so a realtimeInput arriving
   // before setup would reach Gemini pre-setup and kill the session.
   const configSentRef = useRef(false);
+  const pendingInterruptRef = useRef(false);
   // The parent owns persona selection. Read through a ref inside the stable socket
   // callbacks so reconnects always install the latest mode without changing the
   // handshake lifecycle or causing a socket churn effect.
@@ -360,6 +363,24 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     if (!isBoot) {
       handlersRef.current.onUserEntry(text);
     }
+  }, []);
+
+  const interruptResponse = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !configSentRef.current) {
+      // First-turn commands can arrive during the setup handshake. Preserve
+      // the cancellation intent and emit it immediately after session.config.
+      pendingInterruptRef.current = true;
+      return;
+    }
+    // Live API activityStart is the protocol-level barge-in signal. Unlike
+    // sending the spoken command as text, it cancels the current generation
+    // without creating another seeker turn.
+    ws.send(JSON.stringify({
+      type: 'client.realtimeInput',
+      realtimeInput: { activityStart: {} },
+    }));
+    pendingInterruptRef.current = false;
   }, []);
 
   const connectToGemini = useCallback(() => {
@@ -451,6 +472,14 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     // Setup frame is on the wire — sendText may now send directly on this socket.
     configSentRef.current = true;
     logStep('SESSION CONFIG SENT', 'ok');
+    if (pendingInterruptRef.current) {
+      ws.send(JSON.stringify({
+        type: 'client.realtimeInput',
+        realtimeInput: { activityStart: {} },
+      }));
+      pendingInterruptRef.current = false;
+      logStep('PENDING PERSONA INTERRUPT SENT', 'ok');
+    }
     // Step 3 — context-window compression is forced on proxy-side; surface it for the audit log.
     logStep('CONTEXT COMPRESSION ACTIVE', 'ok');
     setIsConnected(true);
@@ -751,6 +780,7 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     reconnecting,
     reconnectExhausted,
     sendText,
+    interruptResponse,
     connectToGemini,
     manualReconnect,
     disconnect,

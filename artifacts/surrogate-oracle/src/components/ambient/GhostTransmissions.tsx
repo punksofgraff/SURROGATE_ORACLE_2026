@@ -147,11 +147,13 @@ export function DormantTransmissions({
   extraPhrases?: string[];
 }) {
   const [instances, setInstances] = useState<GhostInstance[]>([]);
+  const instancesRef = useRef<GhostInstance[]>([]);
   const [isUsingSpeakers, setIsUsingSpeakers] = useState(false);
   const activeZones   = useRef(new Set<number>());
   const textHistory   = useRef<number[]>([]);   // indices into GHOST_TEXTS
   const liveHistory   = useRef<number[]>([]);   // indices into extraPhrases
   const spawnTimers   = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => { instancesRef.current = instances; }, [instances]);
   // Keep latest extraPhrases accessible inside callbacks without stale closure.
   const extraPhrasesRef = useRef<string[]>(extraPhrases);
   useEffect(() => { extraPhrasesRef.current = extraPhrases; }, [extraPhrases]);
@@ -198,7 +200,7 @@ export function DormantTransmissions({
   };
 
   const spawn = useCallback(() => {
-    if (instances.length >= 1) return;
+    if (instancesRef.current.length >= 1) return;
     const zoneIdx = pickZone();
     const zone    = GHOST_ZONES[zoneIdx];
     const x       = zone.x[0] + Math.random() * (zone.x[1] - zone.x[0]);
@@ -206,12 +208,16 @@ export function DormantTransmissions({
     const id      = ++_gtId;
     activeZones.current.add(zoneIdx);
     const text = pickText();
-    setInstances(prev => [...prev, {
-      id, text, x, y, zoneIdx,
-      rightAlign: zone.rightAlign ?? false,
-    }]);
+    setInstances(prev => {
+      const next = [...prev, {
+        id, text, x, y, zoneIdx,
+        rightAlign: zone.rightAlign ?? false,
+      }];
+      instancesRef.current = next;
+      return next;
+    });
     trackOracleEvent({ event: 'oracle_ghost_text_shown', phrase_id: text, duration_ms: 0 });
-  }, [instances.length, isUsingSpeakers]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDone = useCallback((id: number, zoneIdx: number) => {
     const inst = instances.find(i => i.id === id);
@@ -227,6 +233,7 @@ export function DormantTransmissions({
 
   useEffect(() => {
     if (!active) {
+      instancesRef.current = [];
       setInstances([]);
       clearAll();
       activeZones.current.clear();

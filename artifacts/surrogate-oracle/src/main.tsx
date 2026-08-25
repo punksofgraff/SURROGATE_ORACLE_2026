@@ -89,6 +89,11 @@ if (_sp.has('reset')) {
       localStorage.removeItem(k);
     }
   }
+  // Keep auth and seeker identity, but discard every tab-scoped journey marker.
+  // Without this, a recycled tab can restore terminal/oracle from sessionStorage
+  // even though the localStorage lore flag was cleared, so dormant ghosts and
+  // their particle typography never mount.
+  ['oracle_scene_phase','oracle_selected_knife_question','oracle_selected_knife_index','oracle_canvas_warmed'].forEach(k => sessionStorage.removeItem(k));
   window.location.replace('/?newuser');
 }
 

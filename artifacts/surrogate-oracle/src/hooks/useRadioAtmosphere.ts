@@ -155,8 +155,14 @@ export function useRadioAtmosphere({
       }
     } else {
       const ms = rampMs ?? 1500;
-      gain.gain.setValueAtTime(gain.gain.value, now);
-      gain.gain.exponentialRampToValueAtTime(safeTarget, now + ms / 1000);
+      // Exponential ramps are undefined when their starting value is zero.
+      // The radio is intentionally hard-muted during terminal/mic transitions,
+      // so a later lore duck can otherwise fail to ramp on Safari/iOS while
+      // the React target still reports the correct value.
+      const startValue = Math.max(gain.gain.value, 0.0001);
+      gain.gain.setValueAtTime(startValue, now);
+      gain.gain.linearRampToValueAtTime(safeTarget, now + ms / 1000);
+      gain.gain.setValueAtTime(safeTarget, now + ms / 1000);
 
       // Resume element if it was paused
       if (audioRef.current && audioRef.current.paused) {

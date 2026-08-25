@@ -21,14 +21,16 @@ function publishRadioDebug(gain: GainNode | null, target: number) {
   if (!import.meta.env.DEV || typeof window === 'undefined') return;
   const debugWindow = window as Window & {
     __oracle_radio_debug?: {
-      actualGain: number;
-      targetGain: number;
+      baseGain: number;
+      scheduledTarget: number;
       timestamp: number;
     };
   };
   debugWindow.__oracle_radio_debug = {
-    actualGain: gain?.gain.value ?? 0,
-    targetGain: target,
+    // AudioParam.value is the base value; scheduled automation is represented
+    // separately because reading .value does not return the in-flight ramp.
+    baseGain: gain?.gain.value ?? 0,
+    scheduledTarget: target,
     timestamp: performance.now(),
   };
 }

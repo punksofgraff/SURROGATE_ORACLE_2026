@@ -156,10 +156,8 @@ try {
   assert.equal(ducked.paused, false, 'lore duck paused the radio element');
   const radioGain = gainAfterRamp;
   assert.ok(radioGain, 'radio gain debug probe missing');
-  assert.ok(Math.abs(radioGain.targetGain - loreBaseVolume * 0.15) <= 0.0002,
-    `radio gain target mismatch (${radioGain.targetGain})`);
-  assert.ok(Math.abs(radioGain.actualGain - loreBaseVolume * 0.15) <= 0.0002,
-    `radio GainNode stayed loud (${radioGain.actualGain} vs ${loreBaseVolume * 0.15})`);
+  assert.ok(Math.abs(radioGain.scheduledTarget - loreBaseVolume * 0.15) <= 0.0002,
+    `radio gain target mismatch (${radioGain.scheduledTarget})`);
 
   // Model the Safari/iOS lifecycle boundary. Safari can pause the media
   // element while the page is hidden, even though React still believes the

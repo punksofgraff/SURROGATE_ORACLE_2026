@@ -581,6 +581,8 @@ export function SurrogateOracleImmersion() {
   } = useRadioAtmosphere({
     scenePhase,
     showStage00,
+    isLoreActive: scenePhase === 'terminal' && loreStarted && !showStage00,
+    isLoreComplete: loreStarted && showStage00,
     isOracleSpeaking,
     isMicActive,
     oracleHasSpokenRef,

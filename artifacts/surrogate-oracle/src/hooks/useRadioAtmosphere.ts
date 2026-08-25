@@ -7,14 +7,18 @@ import { logStep } from '../components/CodeAuditor';
 const DEFAULT_STATION = 0; // Graff Punks — sole station
 
 const MUSIC_LANDING_VOLUME  = 0.039375; // Another 25% reduction from 0.0525
-const MUSIC_LORE_VOLUME     = 0;      // ABSOLUTE SILENCE (Proof Test)
+const MUSIC_LORE_VOLUME_RATIO = 0.15;
 const MUSIC_KNIFE_VOLUME    = 0.01575;  // Another 25% reduction from 0.021
 const MUSIC_SESSION_AMBIENT = 0.006;  // Another 25% reduction from 0.008
 const MUSIC_OFF_VOLUME      = 0;
+const LORE_DUCK_RAMP_MS     = 450;
+const LORE_RESTORE_RAMP_MS  = 1800;
 
 export interface UseRadioAtmosphereParams {
   scenePhase: string;
   showStage00: boolean;
+  isLoreActive: boolean;
+  isLoreComplete: boolean;
   isOracleSpeaking: boolean;
   isMicActive: boolean;
   oracleHasSpokenRef: RefObject<boolean>;
@@ -36,12 +40,19 @@ export interface UseRadioAtmosphereParams {
 export function useRadioAtmosphere({
   scenePhase,
   showStage00,
+  isLoreActive,
+  isLoreComplete,
   isOracleSpeaking,
   isMicActive,
   oracleHasSpokenRef,
 }: UseRadioAtmosphereParams) {
   const audioRef      = useRef<HTMLAudioElement | null>(null);
   const radioGainRef  = useRef<GainNode | null>(null);
+  const fadeGenerationRef = useRef(0);
+  const requestedTargetRef = useRef(0);
+  const lastAudibleTargetRef = useRef(MUSIC_LANDING_VOLUME);
+  const loreBaseVolumeRef = useRef(MUSIC_LANDING_VOLUME);
+  const wasLoreActiveRef = useRef(false);
 
   const [targetVol, setTargetVol]           = useState(0.021);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
@@ -76,6 +87,9 @@ export function useRadioAtmosphere({
   }, [targetVol]);
 
   const fadeToVolume = useCallback((target: number, rampMs?: number) => {
+    fadeGenerationRef.current += 1;
+    const fadeGeneration = fadeGenerationRef.current;
+    requestedTargetRef.current = target;
     setTargetVol(target);
     const safeTarget = Math.max(0, target);
     if (!radioGainRef.current) return;
@@ -96,7 +110,13 @@ export function useRadioAtmosphere({
       // Secondary defense: Pause the source element
       if (audioRef.current) {
         setTimeout(() => {
-          if (audioRef.current && target === 0) audioRef.current.pause();
+          if (
+            audioRef.current
+            && fadeGenerationRef.current === fadeGeneration
+            && requestedTargetRef.current === 0
+          ) {
+            audioRef.current.pause();
+          }
         }, ms);
       }
       logStep(`AUDIO HARD MUTE INITIATED (${ms}ms)`, 'ok');
@@ -129,14 +149,35 @@ export function useRadioAtmosphere({
       oracleHasSpokenRef.current = true;
     }
 
+    // Preserve the level the seeker was hearing before terminal/lore can
+    // request a mute. The lore duck is relative to this active mix, rather
+    // than to a hard-coded replacement volume.
+    if (!isLoreActive && !isLoreComplete && targetVol > MUSIC_OFF_VOLUME) {
+      lastAudibleTargetRef.current = targetVol;
+    }
+    if (isLoreActive && !wasLoreActiveRef.current) {
+      loreBaseVolumeRef.current = lastAudibleTargetRef.current;
+      logStep(`LORE RADIO DUCK — ${Math.round(MUSIC_LORE_VOLUME_RATIO * 100)}%`, 'ok');
+    }
+
     if (!isAudioPlaying) {
-      nextTarget = MUSIC_OFF_VOLUME;
-    } else if (isOracleSpeaking) {
       nextTarget = MUSIC_OFF_VOLUME;
     } else if (isMicActive) {
       // Duck completely when mic is active to avoid acoustic VAD battle
       nextTarget = MUSIC_OFF_VOLUME;
       rampMs = 80;
+    } else if (isOracleSpeaking && !isLoreActive) {
+      nextTarget = MUSIC_OFF_VOLUME;
+    } else if (isLoreActive) {
+      // Keep a quiet rhythmic bed under the archive voice. This is the app
+      // mix, not the browser/iOS master volume.
+      nextTarget = loreBaseVolumeRef.current * MUSIC_LORE_VOLUME_RATIO;
+      rampMs = LORE_DUCK_RAMP_MS;
+    } else if (isLoreComplete) {
+      // Stage 00 is the post-lore release beat. Restore the pre-lore level
+      // gradually before later phase-specific targets take over.
+      nextTarget = loreBaseVolumeRef.current;
+      rampMs = LORE_RESTORE_RAMP_MS;
     } else if (scenePhase === 'dormant') {
       nextTarget = MUSIC_LANDING_VOLUME;
     } else if (scenePhase === 'terminal' || scenePhase === 'tour') {
@@ -158,7 +199,8 @@ export function useRadioAtmosphere({
     if (Math.abs(nextTarget - targetVol) > 0.0001) {
       fadeToVolume(nextTarget, rampMs);
     }
-  }, [scenePhase, showStage00, isOracleSpeaking, isMicActive, isAudioPlaying, targetVol, fadeToVolume]);
+    wasLoreActiveRef.current = isLoreActive;
+  }, [scenePhase, showStage00, isLoreActive, isLoreComplete, isOracleSpeaking, isMicActive, isAudioPlaying, targetVol, fadeToVolume]);
 
   useEffect(() => {
     if (!audioRef.current) return;

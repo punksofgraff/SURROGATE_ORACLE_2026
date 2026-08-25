@@ -5,8 +5,9 @@ import { logStep } from '../components/CodeAuditor';
 // Bump this when the production IP journey ledger is intentionally reset.
 // Old browser markers then cannot turn the first post-reset visit into a
 // returning journey; the server remains the source of truth after that visit.
-const IP_LOGGING_EPOCH = '20260822';
+const IP_LOGGING_EPOCH = '20260824';
 const ipMarker = (kind: string, ip: string) => `surrogate_${kind}_${IP_LOGGING_EPOCH}_${ip}`;
+const journeyResetMarker = `surrogate_journey_reset_${IP_LOGGING_EPOCH}`;
 
 // All user_wallets reads/writes go through the user-wallet-sync edge function
 // (service_role key) so the table can be RLS-locked against the anon key.
@@ -32,10 +33,17 @@ export function useIpCheck() {
 
     async function checkIp() {
       try {
-        // Wallet sign flags are IP-agnostic-first: a stored wallet seeker key or the
-        // agnostic signed flag counts immediately, before any network round-trip.
-        const walletFlagEarly = localStorage.getItem('oracle_wallet_signed')
+        // The global journey reset invalidated the old unscoped markers. Remove
+        // them once per reset epoch so a returning browser cannot bypass it,
+        // while preserving markers created by a new wallet sign afterward.
+        let walletFlagEarly = localStorage.getItem('oracle_wallet_signed')
           || localStorage.getItem('oracle_seeker_key');
+        if (!localStorage.getItem(journeyResetMarker)) {
+          localStorage.removeItem('oracle_wallet_signed');
+          localStorage.removeItem('oracle_seeker_key');
+          localStorage.setItem(journeyResetMarker, 'true');
+          walletFlagEarly = null;
+        }
         if (walletFlagEarly) {
           setHasSignedWallet(true);
           setHasCompletedLore(true);

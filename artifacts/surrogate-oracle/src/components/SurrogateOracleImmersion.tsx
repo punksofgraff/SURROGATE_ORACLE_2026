@@ -2726,7 +2726,14 @@ export function SurrogateOracleImmersion() {
           personaMode={personaMode}
            onPersonaCommand={handlePersonaModeChange}
            onPersonaTakeover={handlePersonaTakeover}
-          onMicWillStart={() => fadeToVolume(0, 80)}
+           onMicWillStart={() => {
+             // Mic permission/opening can take longer than the state update
+             // that marks the mic active. Stop the radio state immediately so
+             // the volume matrix cannot restore music during that gap.
+             setIsAudioPlaying(false);
+             fadeToVolume(0, 80);
+             logStep('RADIO STOPPED FOR MIC SESSION', 'ok');
+           }}
           onAudioSessionChanged={(phase) => {
             // Mobile OS audio-session reconfiguration (mic open/close) settles
             // asynchronously — re-assert Oracle playback state now and again

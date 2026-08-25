@@ -298,10 +298,6 @@ export function SurrogateOracleImmersion() {
   const [showStage00, setShowStage00]       = useState(false);
   const [isStage00Tucked, setIsStage00Tucked] = useState(false);
   const [isLyriaCardTucked, setIsLyriaCardTucked] = useState(false);
-  const [showPresenceGate, setShowPresenceGate] = useState(false);
-  const [presenceResolved, setPresenceResolved] = useState(() =>
-    typeof window !== 'undefined' && sessionStorage.getItem('oracle_presence_preference_v1') !== null
-  );
   const [presenceStreamReady, setPresenceStreamReady] = useState(false);
   const stage00RestoreRef = useRef<HTMLButtonElement>(null);
   const lyriaRestoreRef = useRef<HTMLButtonElement>(null);
@@ -467,10 +463,6 @@ export function SurrogateOracleImmersion() {
   const { scenePhase, enterTerminal, enterTour, awakeFromTerminal, exitOracleMode, selectKnifeQuestion, markOracleReady, resetJourney } = journey;
   const returningCard = isReturning || hasCompletedLore || hasSignedWallet ||
     (typeof window !== 'undefined' && !!localStorage.getItem('oracle_wallet_signed'));
-  const maybeOpenPresenceGate = useCallback(() => {
-    if (!presenceResolved) setShowPresenceGate(true);
-  }, [presenceResolved]);
-
   // ── Telemetry: Phase Tracking ──────────────────────────────────────────
   useEffect(() => {
     trackOracleEvent({
@@ -522,7 +514,7 @@ export function SurrogateOracleImmersion() {
       document.body.removeAttribute('data-rift-opening');
       maybeOpenPresenceGate();
     }, 850);
-  }, [markLoreCompleted, journey, hasCompletedLore, currentUserId, maybeOpenPresenceGate]);
+  }, [markLoreCompleted, journey, hasCompletedLore, currentUserId]);
 
   const { completedLines, currentLine } = useLoreSequence(
     scenePhase === 'terminal' && loreStarted,
@@ -817,7 +809,6 @@ export function SurrogateOracleImmersion() {
       enterTerminal();
       setTimeout(() => {
         awakeFromTerminal();
-        maybeOpenPresenceGate();
       }, 300);
       return;
     }
@@ -837,46 +828,56 @@ export function SurrogateOracleImmersion() {
 
     enterTerminal();
     logStep('RECOGNIZED SIGNAL → SKIP AVAILABLE', 'ok');
-  }, [scenePhase, showStage00, setupAudioSpine, enterTerminal, awakeFromTerminal, markVisited, loadEcho, hasCompletedLore, hasSignedWallet, connection, startLore, maybeOpenPresenceGate]);
+  }, [scenePhase, showStage00, setupAudioSpine, enterTerminal, awakeFromTerminal, markVisited, loadEcho, hasCompletedLore, hasSignedWallet, connection, startLore]);
 
-  const handlePresenceChoice = useCallback(async (mode: 'full' | 'quiet') => {
-    setShowPresenceGate(false);
-    if (mode === 'full') {
-      setupAudioSpine();
-      // Start both permission requests before the first await. iOS Safari ties
-      // motion permission to the originating gesture; waiting for getUserMedia
-      // to resolve first can otherwise make the motion prompt silently fail.
-      const motionPermission = requestDeviceOrientationPermission('[Presence]');
-      const cameraMicPermission = navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 1280 },
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 1,
-        },
-      });
-      try {
-        const stream = await cameraMicPermission;
-        pendingPresenceStreamRef.current = stream;
-        activateCameraWithStreamRef.current(stream);
-        setPresenceStreamReady(true);
-        logStep('PRESENCE PREFLIGHT — CAMERA + MIC ACQUIRED', 'ok');
-      } catch (error) {
-        console.warn('[Presence] Camera/microphone preflight unavailable:', error);
-        logStep('PRESENCE PREFLIGHT — CONTINUING WITHOUT CAMERA/MIC', 'warn');
-      }
-      const motionGranted = await motionPermission;
-      logStep(`MOTION PERMISSION — ${motionGranted ? 'GRANTED' : 'DENIED'}`, motionGranted ? 'ok' : 'warn');
-    } else {
-      logStep('PRESENCE PREFLIGHT — CONTINUING WITHOUT CAMERA/MIC', 'ok');
+  const startPresencePreflight = useCallback((continueJourney: () => void) => {
+    // The entry click is the permission gesture. Resolve the session preference
+    // immediately so later knife taps never reopen a native prompt.
+    if (sessionStorage.getItem('oracle_presence_preference_v1') !== null) {
+      continueJourney();
+      return;
     }
-    sessionStorage.setItem('oracle_presence_preference_v1', mode);
-    setPresenceResolved(true);
+
+    sessionStorage.setItem('oracle_presence_preference_v1', 'full');
+    setupAudioSpine();
+
+    // Start both permission requests before the first await. iOS Safari ties
+    // motion permission to the originating gesture; waiting for getUserMedia
+    // to resolve first can otherwise make the motion prompt silently fail.
+    const motionPermission = requestDeviceOrientationPermission('[Presence]');
+    const cameraMicPermission = navigator.mediaDevices?.getUserMedia
+      ? navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 1280 },
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+          },
+        })
+      : Promise.reject(new Error('Camera and microphone APIs are unavailable'));
+
+    void cameraMicPermission.then((stream) => {
+      pendingPresenceStreamRef.current = stream;
+      activateCameraWithStreamRef.current(stream);
+      setPresenceStreamReady(true);
+      logStep('PRESENCE PREFLIGHT — CAMERA + MIC ACQUIRED', 'ok');
+    }).catch((error: unknown) => {
+      console.warn('[Presence] Camera/microphone preflight unavailable:', error);
+      logStep('PRESENCE PREFLIGHT — CONTINUING WITHOUT CAMERA/MIC', 'warn');
+    });
+
+    void motionPermission.then((motionGranted) => {
+      logStep(`MOTION PERMISSION — ${motionGranted ? 'GRANTED' : 'DENIED'}`, motionGranted ? 'ok' : 'warn');
+    });
+
+    // Do not make the seeker wait behind a permission prompt. The alley or
+    // guided route is the visual response to the same commitment gesture.
+    continueJourney();
   }, [setupAudioSpine]);
 
   const handleStage00Tour = useCallback(() => {
@@ -885,25 +886,25 @@ export function SurrogateOracleImmersion() {
     oracleConversationRef.current?.prewarm();
     setShowStage00(false);
     setIsGuidedTour(true);
-    enterTour();
-    maybeOpenPresenceGate();
+    startPresencePreflight(enterTour);
     logStep('POST-LORE CHOICE → GUIDED TOUR', 'ok');
-  }, [enterTour, maybeOpenPresenceGate]);
+  }, [enterTour, startPresencePreflight]);
 
   const handleStage00Dismiss = useCallback(() => {
     // The card choice is the journey-entry gesture. Warm the socket now while
-    // the rift animation and knife-card reading happen; the actual knife tap
-    // still owns session boot, sensors, and microphone engagement.
+    // the rift animation and knife-card reading happen. Presence begins from
+    // this same click rather than from a second permission card.
     oracleConversationRef.current?.prewarm();
     setShowStage00(false);
     logStep('POST-LORE CHOICE → KNIFE QUESTIONS', 'ok');
-    document.body.setAttribute('data-rift-opening', 'true');
-    setTimeout(() => {
-      journey.awakeFromTerminal();
-      document.body.removeAttribute('data-rift-opening');
-      maybeOpenPresenceGate();
-    }, 850);
-  }, [journey, maybeOpenPresenceGate]);
+    startPresencePreflight(() => {
+      document.body.setAttribute('data-rift-opening', 'true');
+      setTimeout(() => {
+        journey.awakeFromTerminal();
+        document.body.removeAttribute('data-rift-opening');
+      }, 850);
+    });
+  }, [journey, startPresencePreflight]);
 
   const startHold = useCallback((title: string, body: string) => {
     holdFiredRef.current = false;

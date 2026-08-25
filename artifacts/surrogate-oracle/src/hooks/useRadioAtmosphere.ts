@@ -174,6 +174,23 @@ export function useRadioAtmosphere({
     }
   }, []);
 
+  const stopRadioImmediately = useCallback(() => {
+    fadeGenerationRef.current += 1;
+    requestedTargetRef.current = MUSIC_OFF_VOLUME;
+    setTargetVol(MUSIC_OFF_VOLUME);
+
+    const audio = audioRef.current;
+    if (audio) audio.pause();
+
+    const gain = radioGainRef.current;
+    if (!gain) return;
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setValueAtTime(MUSIC_OFF_VOLUME, now);
+    publishRadioDebug(gain, MUSIC_OFF_VOLUME);
+  }, []);
+
   const switchStation = useCallback((idx: number) => {
     if (!audioRef.current || idx === currentStation) return;
     const wasPlaying = !audioRef.current.paused;
@@ -314,6 +331,7 @@ export function useRadioAtmosphere({
     currentStation,
     setupAudioSpine,
     fadeToVolume,
+    stopRadioImmediately,
     switchStation,
   };
 }

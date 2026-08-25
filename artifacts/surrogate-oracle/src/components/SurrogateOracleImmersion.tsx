@@ -635,6 +635,7 @@ export function SurrogateOracleImmersion() {
     currentStation,
     setupAudioSpine,
     fadeToVolume,
+    stopRadioImmediately,
     switchStation,
   } = useRadioAtmosphere({
     scenePhase,
@@ -2731,7 +2732,7 @@ export function SurrogateOracleImmersion() {
              // that marks the mic active. Stop the radio state immediately so
              // the volume matrix cannot restore music during that gap.
              setIsAudioPlaying(false);
-             fadeToVolume(0, 80);
+             stopRadioImmediately();
              logStep('RADIO STOPPED FOR MIC SESSION', 'ok');
            }}
           onAudioSessionChanged={(phase) => {

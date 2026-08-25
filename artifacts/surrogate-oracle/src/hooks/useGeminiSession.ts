@@ -396,18 +396,6 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     reconnectAttemptsRef.current = 0;
     logStep('GEMINI WS OPENED', 'ok');
     debugInfo.current.connectedAt = Date.now();
-    // Await the in-flight world-briefing fetch (started in connectToGemini before
-    // the WS dial) with a hard cap so a cold edge function can never stall session
-    // start. The fetch itself has a 1800ms abort; this await only covers whatever
-    // remains after the WS handshake already consumed part of that window.
-    // The proxy buffers client frames until Gemini's socket opens, so this brief
-    // deferral of session.config costs nothing on the wire in the common case.
-    if (!worldBriefingRef.current && worldBriefingPromiseRef.current) {
-      await Promise.race([
-        worldBriefingPromiseRef.current,
-        new Promise<void>(res => setTimeout(res, 1900)),
-      ]);
-    }
     // Socket may have died or been replaced while awaiting — bail, onclose owns recovery.
     if (wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) return;
     // Base prompt + optional returning-seeker memory

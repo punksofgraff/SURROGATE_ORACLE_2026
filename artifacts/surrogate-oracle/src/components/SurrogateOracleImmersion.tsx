@@ -2610,8 +2610,10 @@ export function SurrogateOracleImmersion() {
             <TourSelection
               isOracleSpeaking={isOracleSpeaking}
               onActiveCardChange={() => connection.flushPlayback()}
+              onStartTracking={connection.startQuestionTracking}
+              getPlaybackMs={connection.getQuestionPlaybackMs}
+              getBufferedMs={connection.getQuestionBufferedMs}
               onSpeakCard={(text) => {
-                if (isOracleSpeaking) return;
                 connection.setTransmissionQ(12, 0);
                 oracleConversationRef.current?.sendTextMessage(
                   `[TOUR CARD — speak verbatim:] "${text}"`,

@@ -35,22 +35,25 @@ const TOUR_CARDS: TourCard[] = [
 interface TourSelectionProps {
   isOracleSpeaking: boolean;
   onSpeakCard?: (text: string) => void;
+  onStartTracking?: () => void;
+  getPlaybackMs?: () => number;
+  getBufferedMs?: () => number;
   onCardProgress?: (charCount: number, total: number) => void;
   onActiveCardChange?: () => void;
   onTourComplete: () => void;
 }
 
-const CARD_AUDIO_BREATH_MS = 650;
-
-export function TourSelection({ isOracleSpeaking, onSpeakCard, onCardProgress, onActiveCardChange, onTourComplete }: TourSelectionProps) {
+export function TourSelection({ isOracleSpeaking, onSpeakCard, onStartTracking, getPlaybackMs, getBufferedMs, onCardProgress, onActiveCardChange, onTourComplete }: TourSelectionProps) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [isEmitting, setIsEmitting] = useState(false);
   const [landedChars, setLandedChars] = useState(0);
+  const rafRef             = useRef<number | null>(null);
   const intervalRef         = useRef<ReturnType<typeof setInterval> | null>(null);
-  const startDelayRef       = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spokenCardRef       = useRef<string | null>(null);
   const previewRequestedRef = useRef<string | null>(null);
   const prevSpeakingRef     = useRef(false);
+  const hasRenderedCardRef  = useRef(false);
+  const cardSwitchPendingRef = useRef(false);
   // Stable ref to the latest onActiveCardChange callback. Reading from a ref
   // inside the card-change effect means the effect dep array never includes the
   // callback itself, so a new inline function from the parent (e.g. on an
@@ -77,31 +80,36 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onCardProgress, o
     spokenCardRef.current = null;
     setLandedChars(0);
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-    if (startDelayRef.current) { clearTimeout(startDelayRef.current); startDelayRef.current = null; }
+    if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    if (hasRenderedCardRef.current) cardSwitchPendingRef.current = true;
+    hasRenderedCardRef.current = true;
     onActiveCardChangeRef.current?.();
 
     return () => {
       if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-      if (startDelayRef.current) { clearTimeout(startDelayRef.current); startDelayRef.current = null; }
+      if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
   }, [card.text]); // ← no callback in deps; ref read is always current
 
-  // Letter-by-letter reveal — same pattern as KnifeSelection. The request is
-  // latched before the breath timer so an isOracleSpeaking state transition
-  // cannot resend the same card or interrupt its opening audio.
+  // Letter-by-letter reveal follows the PCM playback clock. The request is
+  // latched before waiting for the first playable chunk, and a card switch is
+  // allowed to replace the flushed preview even while the old speaking flag is
+  // still settling.
   useEffect(() => {
     if (spokenCardRef.current === card.text || previewRequestedRef.current === card.text) return;
 
-    if (isOracleSpeaking) return;
+    if (isOracleSpeaking && !cardSwitchPendingRef.current) return;
 
     const total = card.text.length;
     let count = 0;
 
     previewRequestedRef.current = card.text;
+    cardSwitchPendingRef.current = false;
+    onStartTracking?.();
     onSpeakCard?.(card.text);
 
-    startDelayRef.current = setTimeout(() => {
-      startDelayRef.current = null;
+    const beginReveal = () => {
+      rafRef.current = null;
       spokenCardRef.current = card.text;
       intervalRef.current = setInterval(() => {
         count++;
@@ -112,7 +120,31 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onCardProgress, o
           intervalRef.current = null;
         }
       }, 54);
-    }, CARD_AUDIO_BREATH_MS);
+    };
+
+    if (!getPlaybackMs || !getBufferedMs) {
+      beginReveal();
+    } else {
+      const waitForPlayback = (now: number) => {
+        const playbackMs = getPlaybackMs();
+        const bufferedMs = getBufferedMs();
+        // PCMPlayer starts both clocks when the first chunk is scheduled. This
+        // removes the fixed 650ms guess while still keeping text behind audio.
+        if (playbackMs > 0 && bufferedMs > 0) {
+          beginReveal();
+          return;
+        }
+        // Never strand the guide if audio is unavailable; the session timeout
+        // and its visible recovery path remain authoritative.
+        if (now - revealStartedAt >= 2500) {
+          beginReveal();
+          return;
+        }
+        rafRef.current = requestAnimationFrame(waitForPlayback);
+      };
+      const revealStartedAt = performance.now();
+      rafRef.current = requestAnimationFrame(waitForPlayback);
+    }
 
   }, [activeIdx, card.text, isOracleSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps
 

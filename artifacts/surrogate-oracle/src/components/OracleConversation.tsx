@@ -728,6 +728,10 @@ const OracleConversation = forwardRef(
       onPersonaCommandRef.current?.('creative-director');
     }, []);
 
+    useEffect(() => {
+      if (personaMode === 'deep') personaCommandHandledRef.current = false;
+    }, [personaMode]);
+
     // Domain/UI handlers for the Gemini session hook. Each function only ever
     // touches refs and stable setState setters, so this object is safe to build
     // once and hand to useGeminiSession — see GeminiSessionHandlers for contract.

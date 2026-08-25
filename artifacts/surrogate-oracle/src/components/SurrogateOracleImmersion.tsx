@@ -1720,13 +1720,14 @@ export function SurrogateOracleImmersion() {
   // Do not wait for the knife→oracle timer to reveal the already-mounted 3D
   // surface; only the interactive Oracle controls remain oracle-phase gated.
   const oracleManifestReady = awakened && (hasManifested || isGeminiConnected || forceOracleManifest);
-  const oracleWarmupActive = isOracleMode && !isGeminiSessionLive && !isMusicMode && !isMusicReturning;
+  const oracleEntranceActive = awakened && !!journey.selectedKnifeQuestion && !isMusicMode && !isMusicReturning;
+  const oracleWarmupActive = oracleEntranceActive && !isGeminiSessionLive;
   // True when the 6s fallback fired but we still have no live session — shows "FRACTURE MANIFESTING"
   // instead of a silently frozen face so the seeker knows the system is trying to reconnect.
   const isFractureManifesting = isOracleMode && forceOracleManifest && !isGeminiConnected;
   // Keep the transporter beam active through the fallback state. Only the
   // real Live session resolves particles into the settled Oracle silhouette.
-  const oracleManifestProgress = isOracleMode && isGeminiSessionLive ? 1 : 0;
+  const oracleManifestProgress = oracleEntranceActive && isGeminiSessionLive ? 1 : 0;
   const isAlive      = scenePhase !== 'dormant';
   // The dormant landing gets the first restrained glimpse of the same field;
   // awakened/knife selection keeps it alive until the full Oracle manifests.
@@ -1742,6 +1743,11 @@ export function SurrogateOracleImmersion() {
       data-oracle-alignment={oracleAlignment || undefined}
       data-exiting={journey.isExiting ? 'true' : undefined}
       data-oracle-manifesting={(isOracleMode && !oracleManifestReady) ? 'true' : undefined}
+      data-oracle-entrance={
+        oracleEntranceActive
+          ? (isGeminiSessionLive ? 'live' : 'warming')
+          : undefined
+      }
       data-oracle-speaking={isOracleSpeaking ? 'true' : undefined}
       data-oracle-thinking={isOracleThinking ? 'true' : undefined}
       data-user-speaking={isUserSpeaking ? 'true' : undefined}
@@ -1987,8 +1993,10 @@ export function SurrogateOracleImmersion() {
                    // During knife selection show only a restrained preview of
                    // the same quark field that will surround the live Oracle.
                    // The full avatar stays hidden until Oracle phase.
-                   opacity: isOracleMode
+                    opacity: isOracleMode
                      ? (isGeminiSessionLive ? 1 : forceOracleManifest ? 0.44 : 0.36)
+                      : oracleEntranceActive
+                        ? (isGeminiSessionLive ? 1 : 0.78)
                      : oraclePreviewVisible
                        ? (scenePhase === 'dormant' ? 0.12 : 0.24)
                        : 0,
@@ -2027,7 +2035,8 @@ export function SurrogateOracleImmersion() {
                       >
                         <OrbitZoomCompensator enabled={isOracleMode && !isXRMode} />
                         {import.meta.env.DEV && <OracleSceneDiagnostics />}
-                        {isOracleMode && (
+                        {oracleEntranceActive && (
+                          <>
                           <OracleAvatar3D
                             visemeStateRef={visemeStateRef}
                             cameraStateRef={cameraStateRef}
@@ -2044,6 +2053,8 @@ export function SurrogateOracleImmersion() {
                             transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
                             reducedMotion={prefersReducedMotion}
                           />
+                          <div className="oracle-manifest-glitch" aria-hidden="true" />
+                          </>
                         )}
                         {isMusicMode && (
                           <OracleMusicVisualizer

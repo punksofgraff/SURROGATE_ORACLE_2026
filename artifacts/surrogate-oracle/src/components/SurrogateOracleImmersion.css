@@ -6123,6 +6123,99 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 
 
 
+/* ── Arcade-origin entrance: particles emerge from the cabinet ─────────────
+   The transporter mounts during knife selection and remains on the same
+   surface through the Live-session handoff. Scale belongs to this wrapper,
+   keeping the WebGL canvas free of expensive CSS filter compositing. */
+.oracle-stage[data-oracle-entrance="warming"] .oracle-avatar-wrapper,
+.oracle-stage[data-oracle-entrance="live"] .oracle-avatar-wrapper {
+  width: clamp(200px, 82vmin, 420px) !important;
+  aspect-ratio: 0.82 / 1 !important;
+  transform-origin: 50% 74%;
+  animation: oracle-arcade-rise 4.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform;
+}
+
+.oracle-stage[data-oracle-entrance="warming"] .oracle-avatar-static {
+  opacity: 0.10 !important;
+  animation: none !important;
+  filter: brightness(0.55) grayscale(0.65) !important;
+}
+
+.oracle-stage[data-oracle-entrance="live"] .oracle-avatar-static {
+  opacity: 0 !important;
+}
+
+@keyframes oracle-arcade-rise {
+  0% { transform: translateY(13%) scale(0.14); opacity: 0.18; }
+  8% { transform: translateY(10%) scale(0.20) skewX(9deg); opacity: 0.82; }
+  14% { transform: translateY(8%) scale(0.17) skewX(-7deg); opacity: 0.38; }
+  27% { transform: translateY(5%) scale(0.34) skewX(4deg); opacity: 0.95; }
+  42% { transform: translateY(2%) scale(0.58); opacity: 0.76; }
+  63% { transform: translateY(0) scale(0.86) skewX(-1deg); opacity: 0.94; }
+  78% { transform: translateY(0) scale(1.035) skewX(0.5deg); opacity: 0.88; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.oracle-manifest-glitch {
+  position: absolute;
+  inset: 13% 8%;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0.22;
+  mix-blend-mode: screen;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0 7px,
+    rgba(0, 255, 190, 0.24) 7px 8px,
+    transparent 8px 15px
+  );
+  animation: oracle-signal-tear 1.15s steps(5, end) infinite;
+}
+
+.oracle-manifest-glitch::before,
+.oracle-manifest-glitch::after {
+  content: '';
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  height: 1px;
+  background: rgba(255, 35, 116, 0.78);
+  box-shadow: 0 0 10px rgba(0, 255, 204, 0.7);
+}
+
+.oracle-manifest-glitch::before { top: 32%; }
+.oracle-manifest-glitch::after {
+  top: 68%;
+  background: rgba(0, 255, 204, 0.78);
+}
+
+@keyframes oracle-signal-tear {
+  0%, 100% { opacity: 0.08; transform: translateX(0); }
+  18% { opacity: 0.34; transform: translateX(-3px) scaleY(0.96); }
+  22% { opacity: 0.12; transform: translateX(4px) scaleY(1.04); }
+  52% { opacity: 0.28; transform: translateX(1px); }
+  56% { opacity: 0.06; transform: translateX(-2px); }
+}
+
+.oracle-stage[data-oracle-entrance="live"] .oracle-manifest-glitch {
+  opacity: 0.08;
+  animation-duration: 1.8s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oracle-stage[data-oracle-entrance="warming"] .oracle-avatar-wrapper,
+  .oracle-stage[data-oracle-entrance="live"] .oracle-avatar-wrapper {
+    animation: none !important;
+    transform: none;
+    opacity: 1;
+  }
+  .oracle-manifest-glitch {
+    animation: none !important;
+    opacity: 0.10;
+  }
+}
+
 /* ── Accessibility: Reduced Motion ── */
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after {

@@ -11,7 +11,10 @@ const MUSIC_LORE_VOLUME_RATIO = 0.15;
 const MUSIC_KNIFE_VOLUME    = 0.01575;  // Another 25% reduction from 0.021
 const MUSIC_SESSION_AMBIENT = 0.006;  // Another 25% reduction from 0.008
 const MUSIC_OFF_VOLUME      = 0;
-const LORE_DUCK_RAMP_MS     = 450;
+// The Law story starts on a hard narrative boundary. Duck quickly enough that
+// the radio never competes with its first sentence, while leaving a faint
+// spatial bed audible underneath it.
+const LORE_DUCK_RAMP_MS     = 140;
 const LORE_RESTORE_RAMP_MS  = 1800;
 
 export interface UseRadioAtmosphereParams {
@@ -156,8 +159,18 @@ export function useRadioAtmosphere({
       lastAudibleTargetRef.current = targetVol;
     }
     if (isLoreActive && !wasLoreActiveRef.current) {
-      loreBaseVolumeRef.current = lastAudibleTargetRef.current;
-      logStep(`LORE RADIO DUCK — ${Math.round(MUSIC_LORE_VOLUME_RATIO * 100)}%`, 'ok');
+      // Capture the radio's last intentional audible target before the terminal
+      // phase's mute can overwrite it. The story level is always relative to
+      // that captured radio level, never to the Oracle voice or iOS master.
+      loreBaseVolumeRef.current = Math.max(
+        MUSIC_OFF_VOLUME,
+        lastAudibleTargetRef.current || targetVol || MUSIC_LANDING_VOLUME,
+      );
+      logStep(
+        `LORE RADIO DUCK — ${Math.round(MUSIC_LORE_VOLUME_RATIO * 100)}% ` +
+        `(${loreBaseVolumeRef.current.toFixed(5)} → ${(loreBaseVolumeRef.current * MUSIC_LORE_VOLUME_RATIO).toFixed(5)})`,
+        'ok',
+      );
     }
 
     if (!isAudioPlaying) {

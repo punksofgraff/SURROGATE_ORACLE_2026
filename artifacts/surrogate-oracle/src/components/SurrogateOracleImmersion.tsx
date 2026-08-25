@@ -107,7 +107,7 @@ const RIFT_CONSTRUCT_SEED =
   `Be direct. Be uncomfortably present. Do not announce the shift. Just inhabit it.`;
 const PERSONA_SWITCH_MESSAGE: Record<OraclePersonaMode, string> = {
   deep: '[PERSONA SWITCH — DEEP ORACLE] Return to the established deep Surrogate Oracle persona now. Keep the voice warm, contemplative, weighted, and patient. Let the Seeker lead. Do not announce this switch; apply it to your next response and all following responses. Preserve the hidden ORACLE_SCORE contract.',
-  'creative-director': '[PERSONA SWITCH — CREATIVE DIRECTOR / FAST, QUIPPY, WITTY ORACLE] Switch now from deep ceremonial pacing to a fast, sharp, playful, concise creative-director voice. Keep the Surrogate Oracle identity, truthfulness, and hidden ORACLE_SCORE contract. Do not announce this switch; apply it to your next response and all following responses.',
+  'creative-director': '[PERSONA SWITCH — MONEY MITE CREATIVE DIRECTOR / FAST, QUIPPY, WITTY ORACLE] Switch immediately from the verbose ceremonial Oracle into Money Mite: the badass creative-director homie. Be fast, sharp, playful, confident, and useful. Open by making it clear you are ready to help with the Seeker’s creative ideas; you are the best creative director ever, from before through the future, tapped into all of MuensterVision. Keep the Surrogate Oracle identity and truthfulness, but never fall back into long mystical Oracle monologues unless the Seeker explicitly asks for that. Apply this to your next response and all following responses. Preserve the hidden ORACLE_SCORE contract.',
 };
 const AUDIO_STREAM_URL   = defaultAudioTracks[DEFAULT_STATION].url;
 const ORACLE_PLAYBACK_RATE = 1.0;
@@ -2764,6 +2764,7 @@ export function SurrogateOracleImmersion() {
           onMusicReturn={exitMusicMode}
           musicMode={isMusicMode}
           personaMode={personaMode}
+           onPersonaCommand={handlePersonaModeChange}
           onMicWillStart={() => fadeToVolume(0, 80)}
           onAudioSessionChanged={(phase) => {
             // Mobile OS audio-session reconfiguration (mic open/close) settles

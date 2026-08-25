@@ -74,6 +74,14 @@ const MUSIC_INTENT =
 const MUSIC_RETURN =
   /\b(?:stop\s+(?:the\s+)?(?:beat|music|track)|back\s+to\s+(?:the\s+)?oracle|return\s+(?:to\s+the\s+)?(?:session|oracle)|thank\s+you,?\s+oracle)\b/i;
 
+const normalizePersonaCommand = (text: string): string =>
+  text.normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+const isCopilotPersonaCommand = (text: string): boolean => {
+  const normalized = normalizePersonaCommand(text);
+  return normalized === 'oracle copilot' || normalized === 'copilot oracle';
+};
+
 type Turn = {
   role: 'user' | 'oracle';
   content: string;
@@ -137,6 +145,8 @@ interface OracleConversationProps {
   musicMode?: boolean;
   /** Parent-owned persona selection, reapplied in every Gemini session config. */
   personaMode?: OraclePersonaMode;
+  /** Fires when the Seeker invokes a persona control phrase from voice or typing. */
+  onPersonaCommand?: (mode: OraclePersonaMode) => void;
 }
 
 export interface OracleConversationHandle {
@@ -223,6 +233,7 @@ const OracleConversation = forwardRef(
        onMusicReturn,
        musicMode = false,
       personaMode = 'deep',
+       onPersonaCommand,
     } = props;
 
     const [isListening, setIsListening] = useState(false);
@@ -284,9 +295,11 @@ const OracleConversation = forwardRef(
     const [inputText, setInputText] = useState('');
     const onMusicRequestRef = useRef(onMusicRequest);
     const onMusicReturnRef = useRef(onMusicReturn);
+    const onPersonaCommandRef = useRef(onPersonaCommand);
     const musicModeRef = useRef(musicMode);
     onMusicRequestRef.current = onMusicRequest;
     onMusicReturnRef.current = onMusicReturn;
+    onPersonaCommandRef.current = onPersonaCommand;
     musicModeRef.current = musicMode;
 
     const inspectMusicSignal = (text: string): boolean => {
@@ -298,6 +311,19 @@ const OracleConversation = forwardRef(
         onMusicRequestRef.current?.(text);
       }
       return false;
+    };
+
+    const submitSignalText = (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      if (isCopilotPersonaCommand(trimmed)) {
+        activateCopilotFromCommand();
+        setShowSignalPad(false);
+        onTypeModeChange?.(false);
+        return;
+      }
+      sendText(trimmed);
+      setInputText('');
     };
     
     // ... rest of the component state ...
@@ -674,6 +700,33 @@ const OracleConversation = forwardRef(
     const bargeInFramesRef = useRef(0);
 
     const wasInterruptedRef = useRef(false); // tracks barge-in to suppress score-parse warn
+    const personaCommandHandledRef = useRef(false);
+
+    const activateCopilotFromCommand = useCallback(() => {
+      if (personaCommandHandledRef.current) return;
+      personaCommandHandledRef.current = true;
+      // Cut both streamed PCM and any thinking filler before the hidden switch
+      // instruction can produce the first Money Mite response.
+      onBargeInRef.current?.();
+      if (fillerTimerRef.current !== null) {
+        clearTimeout(fillerTimerRef.current);
+        fillerTimerRef.current = null;
+      }
+      fillerAbortRef.current?.abort();
+      fillerAbortRef.current = null;
+      if (fillerBlobUrlRef.current) {
+        URL.revokeObjectURL(fillerBlobUrlRef.current);
+        fillerBlobUrlRef.current = null;
+      }
+      isFillerPlayingRef.current = false;
+      currentResponseText.current = '';
+      currentUserTranscriptRef.current = '';
+      setOracleSpeaking(false);
+      setIsOracleThinking(false);
+      setInputText('');
+      logStep('VOICE PERSONA OVERRIDE — CREATIVE DIRECTOR', 'ok');
+      onPersonaCommandRef.current?.('creative-director');
+    }, []);
 
     // Domain/UI handlers for the Gemini session hook. Each function only ever
     // touches refs and stable setState setters, so this object is safe to build
@@ -683,6 +736,7 @@ const OracleConversation = forwardRef(
         seekerEntryCountRef.current = 0;
         setSeekerCount(0);
         currentUserTranscriptRef.current = '';
+        personaCommandHandledRef.current = false;
         pendingMusicPromptRef.current = null;
         micAutoRestartEnabledRef.current = false; // Don't carry over armed mic from prior session
       },
@@ -746,6 +800,9 @@ const OracleConversation = forwardRef(
         // portrait-intent detection work for voice, not just the type pad.
         if (msg.serverContent?.inputTranscription?.text) {
           currentUserTranscriptRef.current += msg.serverContent.inputTranscription.text;
+          if (isCopilotPersonaCommand(currentUserTranscriptRef.current)) {
+            activateCopilotFromCommand();
+          }
         }
 
         const parts = msg.serverContent?.modelTurn?.parts || [];
@@ -927,6 +984,10 @@ const OracleConversation = forwardRef(
         }
       },
       onUserEntry: (text) => {
+          if (isCopilotPersonaCommand(text)) {
+            activateCopilotFromCommand();
+            return;
+          }
           const userTurn = { role: 'user' as const, content: text, timestamp: Date.now() };
           turnsRef.current = [...turnsRef.current, userTurn];
           setTurns(prev => [...prev, userTurn]);
@@ -1796,12 +1857,12 @@ const OracleConversation = forwardRef(
                     type="text"
                     value={inputText}
                     onChange={e => setInputText(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && inputText.trim() && sendText(inputText)}
+                    onKeyDown={e => e.key === 'Enter' && submitSignalText(inputText)}
                     placeholder="TYPE SIGNAL..."
                     className="oc-input"
                   />
                   <button
-                    onClick={() => inputText.trim() && sendText(inputText)}
+                    onClick={() => submitSignalText(inputText)}
                     className="oc-send-btn"
                   >
                     <Send size={16} />

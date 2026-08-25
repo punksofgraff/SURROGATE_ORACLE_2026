@@ -6147,13 +6147,14 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 }
 
 @keyframes oracle-arcade-rise {
-  0% { transform: translateY(13%) scale(0.14); opacity: 0.18; }
-  8% { transform: translateY(10%) scale(0.20) skewX(9deg); opacity: 0.82; }
-  14% { transform: translateY(8%) scale(0.17) skewX(-7deg); opacity: 0.38; }
-  27% { transform: translateY(5%) scale(0.34) skewX(4deg); opacity: 0.95; }
-  42% { transform: translateY(2%) scale(0.58); opacity: 0.76; }
-  63% { transform: translateY(0) scale(0.86) skewX(-1deg); opacity: 0.94; }
-  78% { transform: translateY(0) scale(1.035) skewX(0.5deg); opacity: 0.88; }
+  /* Hold at the arcade for the expected 1–2s Gemini session handshake. */
+  0% { transform: translateY(13%) scale(0.08); opacity: 0.08; }
+  30% { transform: translateY(12%) scale(0.09); opacity: 0.16; }
+  36% { transform: translateY(10%) scale(0.16) skewX(9deg); opacity: 0.58; }
+  43% { transform: translateY(8%) scale(0.13) skewX(-7deg); opacity: 0.30; }
+  56% { transform: translateY(5%) scale(0.34) skewX(4deg); opacity: 0.82; }
+  70% { transform: translateY(2%) scale(0.62); opacity: 0.76; }
+  86% { transform: translateY(0) scale(1.035) skewX(-1deg); opacity: 0.88; }
   100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 

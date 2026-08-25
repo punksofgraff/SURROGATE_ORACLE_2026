@@ -1996,7 +1996,7 @@ export function SurrogateOracleImmersion() {
                     opacity: isOracleMode
                      ? (isGeminiSessionLive ? 1 : forceOracleManifest ? 0.44 : 0.36)
                       : oracleEntranceActive
-                        ? (isGeminiSessionLive ? 1 : 0.78)
+                        ? (isGeminiSessionLive ? 1 : 0.32)
                      : oraclePreviewVisible
                        ? (scenePhase === 'dormant' ? 0.12 : 0.24)
                        : 0,

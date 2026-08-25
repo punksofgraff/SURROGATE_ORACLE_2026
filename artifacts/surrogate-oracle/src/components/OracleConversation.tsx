@@ -19,7 +19,7 @@ import { createVADProcessor, type VADFrame } from '../hooks/useVAD';
 import { motion, AnimatePresence } from 'framer-motion';
 import { logStep } from './CodeAuditor';
 import { trackOracleEvent } from '../lib/analytics';
-import { Mic, MicOff, Send, Terminal, X, Zap } from 'lucide-react';
+import { Mic, MicOff, Send, Terminal, X, Zap, Paperclip } from 'lucide-react';
 import { getAudioContext, playSignalLockedSfx } from '../lib/oracleSfx';
 import { createAudioContext } from '../lib/browserCapabilities';
 import { useGeminiSession, GEMINI_MODEL, type GeminiSessionHandlers, type OraclePersonaMode } from '../hooks/useGeminiSession';
@@ -81,6 +81,11 @@ const isCopilotPersonaCommand = (text: string): boolean => {
   const normalized = normalizePersonaCommand(text);
   return normalized === 'oracle copilot' || normalized === 'copilot oracle';
 };
+
+// Requires an action plus a concrete media noun; ordinary file mentions stay
+// ordinary conversation and never open the device picker.
+const DOCUMENT_UPLOAD_INTENT =
+  /\b(?:upload|attach|add|send|import|open|show)\b[^.!?]{0,45}\b(?:document|file|photo|picture|image|video|pdf|docx)\b|\b(?:document|file|photo|picture|image|video)\s+(?:upload|attachment)\b/i;
 
 type Turn = {
   role: 'user' | 'oracle';
@@ -147,6 +152,9 @@ interface OracleConversationProps {
   personaMode?: OraclePersonaMode;
   /** Fires when the Seeker invokes a persona control phrase from voice or typing. */
   onPersonaCommand?: (mode: OraclePersonaMode) => void;
+  /** Opens the shared device-safe document picker (Co-pilot only for voice). */
+  onDocumentRequest?: () => void;
+  onDocumentSelected?: (file: File) => void;
 }
 
 export interface OracleConversationHandle {
@@ -229,11 +237,13 @@ const OracleConversation = forwardRef(
       cameraActive,
       visionPaused = false,
       onThinkingChange,
-       onMusicRequest,
+      onMusicRequest,
        onMusicReturn,
        musicMode = false,
       personaMode = 'deep',
        onPersonaCommand,
+      onDocumentRequest,
+      onDocumentSelected,
     } = props;
 
     const [isListening, setIsListening] = useState(false);
@@ -296,10 +306,12 @@ const OracleConversation = forwardRef(
     const onMusicRequestRef = useRef(onMusicRequest);
     const onMusicReturnRef = useRef(onMusicReturn);
     const onPersonaCommandRef = useRef(onPersonaCommand);
+    const personaModeRef = useRef(personaMode);
     const musicModeRef = useRef(musicMode);
     onMusicRequestRef.current = onMusicRequest;
     onMusicReturnRef.current = onMusicReturn;
     onPersonaCommandRef.current = onPersonaCommand;
+    personaModeRef.current = personaMode;
     musicModeRef.current = musicMode;
 
     const inspectMusicSignal = (text: string): boolean => {
@@ -318,6 +330,15 @@ const OracleConversation = forwardRef(
       if (!trimmed) return;
       if (isCopilotPersonaCommand(trimmed)) {
         activateCopilotFromCommand();
+        setShowSignalPad(false);
+        onTypeModeChange?.(false);
+        return;
+      }
+      if (personaMode === 'creative-director' && DOCUMENT_UPLOAD_INTENT.test(trimmed)) {
+        logStep('DOCUMENT REQUEST DETECTED (typed) — OPENING PICKER', 'ok');
+        if (onDocumentRequestRef.current) onDocumentRequestRef.current();
+        else openDocumentPicker();
+        setInputText('');
         setShowSignalPad(false);
         onTypeModeChange?.(false);
         return;
@@ -445,6 +466,17 @@ const OracleConversation = forwardRef(
     }, [sessionId]);
 
     const [showSignalPad, setShowSignalPad] = useState(false);
+    const [documentPickerPending, setDocumentPickerPending] = useState(false);
+    const documentInputRef = useRef<HTMLInputElement>(null);
+    const onDocumentRequestRef = useRef(onDocumentRequest);
+    const onDocumentSelectedRef = useRef(onDocumentSelected);
+    useEffect(() => { onDocumentRequestRef.current = onDocumentRequest; }, [onDocumentRequest]);
+    useEffect(() => { onDocumentSelectedRef.current = onDocumentSelected; }, [onDocumentSelected]);
+
+    const openDocumentPicker = useCallback(() => {
+      setDocumentPickerPending(true);
+      documentInputRef.current?.click();
+    }, []);
 
     const lastSupabaseTurnCountRef = useRef(0);
 
@@ -753,6 +785,12 @@ const OracleConversation = forwardRef(
           const spoken = currentUserTranscriptRef.current.trim();
           currentUserTranscriptRef.current = '';
           if (!spoken) return;
+          if (personaModeRef.current === 'creative-director' && DOCUMENT_UPLOAD_INTENT.test(spoken)) {
+            logStep('DOCUMENT REQUEST DETECTED (voice) — OPENING PICKER', 'ok');
+            if (onDocumentRequestRef.current) onDocumentRequestRef.current();
+            else openDocumentPicker();
+            return;
+          }
            const userTurn = { role: 'user' as const, content: spoken, timestamp: Date.now() };
            turnsRef.current = [...turnsRef.current, userTurn];
            setTurns(prev => [...prev, userTurn]);
@@ -990,6 +1028,12 @@ const OracleConversation = forwardRef(
       onUserEntry: (text) => {
           if (isCopilotPersonaCommand(text)) {
             activateCopilotFromCommand();
+            return;
+          }
+          if (personaModeRef.current === 'creative-director' && DOCUMENT_UPLOAD_INTENT.test(text)) {
+            logStep('DOCUMENT REQUEST DETECTED (typed) — OPENING PICKER', 'ok');
+            if (onDocumentRequestRef.current) onDocumentRequestRef.current();
+            else openDocumentPicker();
             return;
           }
           const userTurn = { role: 'user' as const, content: text, timestamp: Date.now() };
@@ -1806,6 +1850,18 @@ const OracleConversation = forwardRef(
           </AnimatePresence>
         </div>
 
+        {documentPickerPending && (
+          <div className="oc-document-picker-prompt" role="status">
+            <span>DOCUMENT SIGNAL READY — CHOOSE A FILE</span>
+            <button type="button" className="oc-send-btn" onClick={openDocumentPicker}>
+              <Paperclip size={14} /> OPEN PICKER
+            </button>
+            <button type="button" className="oc-document-picker-dismiss" onClick={() => setDocumentPickerPending(false)} aria-label="Dismiss document picker prompt">
+              DISMISS
+            </button>
+          </div>
+        )}
+
         {/* Conversation log — full session history, auto-scrolls to newest turn */}
         <AnimatePresence>
           {showSignalPad && turns.length > 0 && (
@@ -1857,6 +1913,29 @@ const OracleConversation = forwardRef(
                 })()}
 
                 <div className="oc-input-row">
+                  <input
+                    ref={documentInputRef}
+                    type="file"
+                    accept=".txt,.md,.csv,.json,.pdf,.docx,.png,.jpg,.jpeg,.webp,.gif,.mp4,.webm,.mov,.m4v"
+                    hidden
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = '';
+                      if (file) {
+                        setDocumentPickerPending(false);
+                        onDocumentSelectedRef.current?.(file);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="oc-attachment-btn"
+                    onClick={openDocumentPicker}
+                    aria-label="Attach a document, image, or video"
+                    title="Attach document, image, or video"
+                  >
+                    <Paperclip size={16} />
+                  </button>
                   <input
                     type="text"
                     value={inputText}

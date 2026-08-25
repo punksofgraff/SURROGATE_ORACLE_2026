@@ -4684,6 +4684,167 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   flex-shrink: 0;
 }
 
+.oc-attachment-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 36px;
+  border: 1px solid rgba(0,255,204,0.38);
+  background: rgba(0, 20, 24, 0.72);
+  color: #00ffcc;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.oc-attachment-btn:hover,
+.oc-attachment-btn:focus-visible {
+  border-color: #00ffcc;
+  box-shadow: 0 0 14px rgba(0,255,204,0.35);
+}
+.oc-document-picker-prompt {
+  position: absolute;
+  z-index: 12;
+  left: 50%;
+  bottom: 78px;
+  transform: translateX(-50%);
+  width: min(92vw, 520px);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(0,255,204,.5);
+  background: rgba(2, 12, 18, .94);
+  color: #00ffcc;
+  font-size: .68rem;
+  letter-spacing: .1em;
+  box-shadow: 0 0 20px rgba(0,255,204,.16);
+}
+.oc-document-picker-dismiss {
+  border: 0;
+  background: transparent;
+  color: rgba(235,255,249,.55);
+  cursor: pointer;
+  font: inherit;
+  font-size: .6rem;
+  letter-spacing: .08em;
+}
+
+.oracle-document-card {
+  position: absolute;
+  z-index: calc(var(--z-system) + 5);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(92vw, 620px);
+  max-height: min(78vh, 760px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 22px;
+  border: 1px solid rgba(0,255,204,0.6);
+  border-radius: 8px;
+  background: linear-gradient(150deg, rgba(2,18,24,0.97), rgba(6,3,18,0.97));
+  box-shadow: 0 0 35px rgba(0,255,204,0.22), inset 0 0 28px rgba(0,255,136,0.05);
+  color: rgba(235,255,249,0.94);
+  font-family: 'PhillySans', 'Share Tech Mono', monospace;
+  letter-spacing: .04em;
+}
+.oracle-document-card__topline,
+.oracle-document-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.oracle-document-card__topline { justify-content: space-between; }
+.oracle-document-card__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #00ffcc;
+  font-size: .72rem;
+  letter-spacing: .14em;
+}
+.oracle-document-card__close {
+  display: inline-flex;
+  color: rgba(255,255,255,.7);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.oracle-document-card__title {
+  margin: 16px 0 8px;
+  color: #fff;
+  font-size: clamp(1rem, 3vw, 1.35rem);
+  overflow-wrap: anywhere;
+}
+.oracle-document-card__detail {
+  color: rgba(0,255,204,.7);
+  font-size: .68rem;
+  margin: 4px 0 12px;
+}
+.oracle-document-card__copy {
+  max-height: 260px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.55;
+  font-family: ui-monospace, monospace;
+  font-size: .78rem;
+  color: rgba(240,255,250,.86);
+  border-left: 2px solid rgba(0,255,136,.5);
+  background: rgba(0,0,0,.28);
+}
+.oracle-document-card__preview {
+  display: block;
+  width: 100%;
+  max-height: 250px;
+  object-fit: contain;
+  margin: 12px 0;
+  background: #000;
+}
+.oracle-document-card__progress,
+.oracle-document-card__error {
+  margin-top: 12px;
+  text-align: center;
+  color: rgba(235,255,249,.76);
+  font-size: .72rem;
+}
+.oracle-document-card__bar {
+  height: 4px;
+  margin: 12px 0 8px;
+  background: rgba(0,255,204,.12);
+}
+.oracle-document-card__bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #00ff88, #00ffcc);
+  box-shadow: 0 0 12px #00ffcc;
+  transition: width .2s ease;
+}
+.oracle-document-card__error {
+  display: grid;
+  gap: 12px;
+  color: #ff9fdc;
+}
+.oracle-document-card__error strong { color: #ff55bb; letter-spacing: .16em; }
+.oracle-document-card__actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+.oracle-document-card__actions .oc-send-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oracle-document-card__bar span { transition: none; }
+}
+
 @media (max-width: 480px) {
   .oc-panel-v2 { height: 50%; }
   .oc-signal-pad { bottom: 10px; right: 10px; }

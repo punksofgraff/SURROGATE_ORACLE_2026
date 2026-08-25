@@ -72,6 +72,7 @@ import { useLyriaMusic } from '../hooks/useLyriaMusic';
 import { useOracleFilm } from '../hooks/useOracleFilm';
 import WalletGateCard from './WalletGateCard';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
+import { DocumentIntakeCard, type DocumentIntakeFile } from './DocumentIntakeCard';
 
 // Data
 import { COST_NAMES } from '../data/archetypes';
@@ -264,6 +265,7 @@ export function SurrogateOracleImmersion() {
   const [showJourneyLimitGate, setShowJourneyLimitGate] = useState(false);
   const [isRiftOpening, setIsRiftOpening] = useState(false);
   const [portraitViewerUrl, setPortraitViewerUrl] = useState<string | null>(null);
+  const [documentIntake, setDocumentIntake] = useState<DocumentIntakeFile | null>(null);
   const [showPortraitCard, setShowPortraitCard] = useState(false);
   const [isPortraitCardTucked, setIsPortraitCardTucked] = useState(false);
   const portraitRestoreRef = useRef<HTMLButtonElement>(null);
@@ -2783,6 +2785,10 @@ export function SurrogateOracleImmersion() {
               });
             }
           }}
+          onDocumentSelected={(file) => {
+            setDocumentIntake({ file, requestId: Date.now() });
+            logStep(`DOCUMENT INTAKE STARTED — ${file.name}`, 'ok');
+          }}
           seekerSummary={(() => {
             if (!echo) return null;
             const lines: string[] = [];
@@ -2792,6 +2798,14 @@ export function SurrogateOracleImmersion() {
             return lines.join('\n');
           })()}
           isGuidedTour={isGuidedTour}
+        />
+
+      )}
+
+      {documentIntake && (
+        <DocumentIntakeCard
+          intake={documentIntake}
+          onClose={() => setDocumentIntake(null)}
         />
       )}
 

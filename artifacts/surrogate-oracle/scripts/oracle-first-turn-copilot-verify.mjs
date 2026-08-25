@@ -36,6 +36,15 @@ async function typeSignal(page, text) {
   await page.locator('.oc-send-btn').click();
 }
 
+async function waitForCondition(predicate, timeoutMs, description) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await wait(100);
+  }
+  throw new Error(`timed out waiting for ${description}`);
+}
+
 (async () => {
   const browser = await chromium.launch({
     headless: true,
@@ -83,6 +92,11 @@ async function typeSignal(page, text) {
       frame.type === 'client.realtimeInput' &&
       frame.realtimeInput?.activityStart
     ), 'first-turn activation sends protocol interruption');
+    await waitForCondition(
+      () => sentFrames.filter((frame) => frame.type === 'session.config').length >= 2,
+      5_000,
+      'replacement session config',
+    );
     const configsAfterTakeover = sentFrames.filter((frame) => frame.type === 'session.config');
     const latestSystemText = configsAfterTakeover.at(-1)?.systemInstruction?.parts
       ?.map((part) => part.text || '').join('\n') || '';

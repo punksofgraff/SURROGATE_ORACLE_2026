@@ -447,6 +447,7 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     }));
     // Setup frame is on the wire — sendText may now send directly on this socket.
     configSentRef.current = true;
+    logStep('SESSION CONFIG SENT', 'ok');
     // Step 3 — context-window compression is forced on proxy-side; surface it for the audit log.
     logStep('CONTEXT COMPRESSION ACTIVE', 'ok');
     setIsConnected(true);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ParticleTypographyCard } from './ParticleTypographyCard';
+import { logStep } from './CodeAuditor';
 
 // ── Gradient colour per letter (Sacred Green → Brand Cyan) ───────────────────
 function gradientChar(i: number, total: number): string {
@@ -83,6 +84,7 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onStartTracking, 
     if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     if (hasRenderedCardRef.current) cardSwitchPendingRef.current = true;
     hasRenderedCardRef.current = true;
+    logStep(`TOUR CARD FLUSH REQUESTED [${activeIdx + 1}]`, 'ok');
     onActiveCardChangeRef.current?.();
 
     return () => {
@@ -106,11 +108,13 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onStartTracking, 
     previewRequestedRef.current = card.text;
     cardSwitchPendingRef.current = false;
     onStartTracking?.();
+    logStep(`TOUR CARD PREVIEW REQUESTED [${activeIdx + 1}]`, 'pending');
     onSpeakCard?.(card.text);
 
-    const beginReveal = () => {
+    const beginReveal = (source: 'PCM_CLOCK' | 'TIMEOUT_FALLBACK') => {
       rafRef.current = null;
       spokenCardRef.current = card.text;
+      logStep(`TOUR FIRST LETTER LANDING [${activeIdx + 1}] (${source})`, source === 'PCM_CLOCK' ? 'ok' : 'warn');
       intervalRef.current = setInterval(() => {
         count++;
         setLandedChars(count);
@@ -123,7 +127,7 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onStartTracking, 
     };
 
     if (!getPlaybackMs || !getBufferedMs) {
-      beginReveal();
+      beginReveal('TIMEOUT_FALLBACK');
     } else {
       const waitForPlayback = (now: number) => {
         const playbackMs = getPlaybackMs();
@@ -131,13 +135,15 @@ export function TourSelection({ isOracleSpeaking, onSpeakCard, onStartTracking, 
         // PCMPlayer starts both clocks when the first chunk is scheduled. This
         // removes the fixed 650ms guess while still keeping text behind audio.
         if (playbackMs > 0 && bufferedMs > 0) {
-          beginReveal();
+          logStep(`TOUR FIRST PLAYABLE AUDIO [${activeIdx + 1}] (${Math.round(playbackMs)}ms/${Math.round(bufferedMs)}ms)`, 'ok');
+          beginReveal('PCM_CLOCK');
           return;
         }
         // Never strand the guide if audio is unavailable; the session timeout
         // and its visible recovery path remain authoritative.
         if (now - revealStartedAt >= 2500) {
-          beginReveal();
+          logStep(`TOUR FIRST PLAYABLE AUDIO TIMEOUT [${activeIdx + 1}]`, 'warn');
+          beginReveal('TIMEOUT_FALLBACK');
           return;
         }
         rafRef.current = requestAnimationFrame(waitForPlayback);

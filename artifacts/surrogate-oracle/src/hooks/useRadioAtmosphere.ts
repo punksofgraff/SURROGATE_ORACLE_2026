@@ -17,6 +17,22 @@ const MUSIC_OFF_VOLUME      = 0;
 const LORE_DUCK_RAMP_MS     = 140;
 const LORE_RESTORE_RAMP_MS  = 1800;
 
+function publishRadioDebug(gain: GainNode | null, target: number) {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return;
+  const debugWindow = window as Window & {
+    __oracle_radio_debug?: {
+      actualGain: number;
+      targetGain: number;
+      timestamp: number;
+    };
+  };
+  debugWindow.__oracle_radio_debug = {
+    actualGain: gain?.gain.value ?? 0,
+    targetGain: target,
+    timestamp: performance.now(),
+  };
+}
+
 export interface UseRadioAtmosphereParams {
   scenePhase: string;
   showStage00: boolean;
@@ -74,10 +90,18 @@ export function useRadioAtmosphere({
       logStep(`AUDIO CONTEXT STATE: ${ctx.state}`, ctx.state === 'running' ? 'ok' : 'pending');
       const source = ctx.createMediaElementSource(audioRef.current);
       const gain   = ctx.createGain();
-      gain.gain.value = targetVol;
+      // Volume effects can run before the first gesture creates the graph.
+      // Initialize from the latest queued target, not a stale render value
+      // (the pre-gesture mute otherwise leaves the live graph at zero and
+      // later DOM target updates do not necessarily move that first node).
+      const initialTarget = requestedTargetRef.current > MUSIC_OFF_VOLUME
+        ? requestedTargetRef.current
+        : targetVol;
+      gain.gain.value = initialTarget;
       source.connect(gain);
       gain.connect(ctx.destination);
       radioGainRef.current = gain;
+      publishRadioDebug(gain, initialTarget);
       // iOS Safari requires audio element play() to be called synchronously inside the
       // gesture handler — the useEffect path (setIsAudioPlaying → play()) fires after
       // paint and is outside iOS's gesture window, so the element stays silent.
@@ -94,6 +118,7 @@ export function useRadioAtmosphere({
     const fadeGeneration = fadeGenerationRef.current;
     requestedTargetRef.current = target;
     setTargetVol(target);
+    publishRadioDebug(radioGainRef.current, target);
     const safeTarget = Math.max(0, target);
     if (!radioGainRef.current) return;
     const gain = radioGainRef.current;
@@ -123,6 +148,9 @@ export function useRadioAtmosphere({
         }, ms);
       }
       logStep(`AUDIO HARD MUTE INITIATED (${ms}ms)`, 'ok');
+      if (import.meta.env.DEV) {
+        window.setTimeout(() => publishRadioDebug(gain, target), ms + 20);
+      }
     } else {
       const ms = rampMs ?? 1500;
       gain.gain.setValueAtTime(gain.gain.value, now);
@@ -131,6 +159,9 @@ export function useRadioAtmosphere({
       // Resume element if it was paused
       if (audioRef.current && audioRef.current.paused) {
         audioRef.current.play().catch((err) => console.warn('[Radio] Resume play() failed:', err));
+      }
+      if (import.meta.env.DEV) {
+        window.setTimeout(() => publishRadioDebug(gain, target), ms + 20);
       }
     }
   }, []);

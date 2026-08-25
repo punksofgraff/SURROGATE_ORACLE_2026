@@ -2053,7 +2053,6 @@ export function SurrogateOracleImmersion() {
                             transporterTier={(renderTier >= 1 ? renderTier : 1) as 1 | 2 | 3}
                             reducedMotion={prefersReducedMotion}
                           />
-                          <div className="oracle-manifest-glitch" aria-hidden="true" />
                           </>
                         )}
                         {isMusicMode && (
@@ -2131,6 +2130,9 @@ export function SurrogateOracleImmersion() {
                       </Canvas>
                     </Suspense>
                   </OracleErrorBoundary>
+                  {oracleEntranceActive && (
+                    <div className="oracle-manifest-glitch" aria-hidden="true" />
+                  )}
                 </div>
               </div>
             )}

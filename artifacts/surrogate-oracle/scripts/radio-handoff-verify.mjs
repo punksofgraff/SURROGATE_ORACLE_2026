@@ -56,7 +56,11 @@ page.on('request', (request) => {
 });
 page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
 page.on('console', (message) => {
-  if (message.type() === 'error') consoleErrors.push(message.text());
+  const text = message.text();
+  if (/AUDIO|Radio|audio|AudioContext|Spine|volume|gain/i.test(text)) {
+    console.log(`[browser ${message.type()}] ${text}`);
+  }
+  if (message.type() === 'error') consoleErrors.push(text);
 });
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -123,7 +127,10 @@ try {
 
   // Fresh lore start: this is the same first gesture a seeker makes.
   await page.click('.oracle-center');
+  await sleep(250);
+  console.log(`radio gain after first gesture: ${JSON.stringify(await page.evaluate(() => window.__oracle_radio_debug ?? null))}`);
   await waitFor(async () => (await state()).phase === 'terminal', 'terminal lore state');
+  console.log(`radio gain at terminal: ${JSON.stringify(await page.evaluate(() => window.__oracle_radio_debug ?? null))}`);
   await waitFor(async () => (await page.evaluate(() => Boolean(window.__oracle_completeLore))), 'lore completion hook');
   const started = await audioSnapshot();
   assert.ok(started.src.startsWith(RADIO_URL_PREFIX), `unexpected radio source: ${started.src}`);
@@ -137,9 +144,22 @@ try {
   // the lore mix is 15% of that active level.
   const loreBaseVolume = 0.021;
   await waitForTarget(loreBaseVolume * 0.15, 'lore duck', 0.0002);
+  const gainAtTarget = await page.evaluate(() => window.__oracle_radio_debug ?? null);
+  console.log(`radio gain at DOM target: ${JSON.stringify(gainAtTarget)}`);
+  // The DOM target updates synchronously, while the production GainNode
+  // reaches it on the short narrative-boundary ramp.
+  await sleep(220);
+  const gainAfterRamp = await page.evaluate(() => window.__oracle_radio_debug ?? null);
+  console.log(`radio gain after ramp: ${JSON.stringify(gainAfterRamp)}`);
   const ducked = await audioSnapshot();
   assert.equal(ducked.src, started.src, 'lore duck changed the radio track');
   assert.equal(ducked.paused, false, 'lore duck paused the radio element');
+  const radioGain = gainAfterRamp;
+  assert.ok(radioGain, 'radio gain debug probe missing');
+  assert.ok(Math.abs(radioGain.targetGain - loreBaseVolume * 0.15) <= 0.0002,
+    `radio gain target mismatch (${radioGain.targetGain})`);
+  assert.ok(Math.abs(radioGain.actualGain - loreBaseVolume * 0.15) <= 0.0002,
+    `radio GainNode stayed loud (${radioGain.actualGain} vs ${loreBaseVolume * 0.15})`);
 
   // Model the Safari/iOS lifecycle boundary. Safari can pause the media
   // element while the page is hidden, even though React still believes the

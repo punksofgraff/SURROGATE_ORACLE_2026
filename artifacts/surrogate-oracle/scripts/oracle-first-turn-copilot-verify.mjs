@@ -83,6 +83,14 @@ async function typeSignal(page, text) {
       frame.type === 'client.realtimeInput' &&
       frame.realtimeInput?.activityStart
     ), 'first-turn activation sends protocol interruption');
+    const configsAfterTakeover = sentFrames.filter((frame) => frame.type === 'session.config');
+    const latestSystemText = configsAfterTakeover.at(-1)?.systemInstruction?.parts
+      ?.map((part) => part.text || '').join('\n') || '';
+    check(configsAfterTakeover.length >= 2, 'first-turn activation replaces the live session');
+    check(
+      latestSystemText.includes('[ACTIVE PERSONA — MONEY MITE CREATIVE DIRECTOR / FAST, QUIPPY, WITTY ORACLE]'),
+      'replacement session config is authoritative for Money Mite'
+    );
 
     // Force the same reconnect lifecycle used by the existing persona contract.
     await page.evaluate(() => {

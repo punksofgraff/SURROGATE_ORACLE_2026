@@ -152,6 +152,8 @@ interface OracleConversationProps {
   personaMode?: OraclePersonaMode;
   /** Fires when the Seeker invokes a persona control phrase from voice or typing. */
   onPersonaCommand?: (mode: OraclePersonaMode) => void;
+  /** Replaces the active Live session after a control-persona takeover. */
+  onPersonaTakeover?: (mode: OraclePersonaMode) => void;
   /** Opens the shared device-safe document picker (Co-pilot only for voice). */
   onDocumentRequest?: () => void;
   onDocumentSelected?: (file: File) => void;
@@ -178,6 +180,7 @@ export interface OracleConversationHandle {
   startMic: (stream?: MediaStream) => Promise<void>;
   toggleTypeMode: () => void;
   enableMicAutoRestart: () => void;
+  restartSession: (bootMessage?: string) => void;
 }
 
 const SAMPLE_RATE_INPUT = 16000;
@@ -242,6 +245,7 @@ const OracleConversation = forwardRef(
        musicMode = false,
       personaMode = 'deep',
        onPersonaCommand,
+       onPersonaTakeover,
       onDocumentRequest,
       onDocumentSelected,
     } = props;
@@ -306,12 +310,14 @@ const OracleConversation = forwardRef(
     const onMusicRequestRef = useRef(onMusicRequest);
     const onMusicReturnRef = useRef(onMusicReturn);
     const onPersonaCommandRef = useRef(onPersonaCommand);
+    const onPersonaTakeoverRef = useRef(onPersonaTakeover);
     const interruptResponseRef = useRef<() => void>(() => {});
     const personaModeRef = useRef(personaMode);
     const musicModeRef = useRef(musicMode);
     onMusicRequestRef.current = onMusicRequest;
     onMusicReturnRef.current = onMusicReturn;
     onPersonaCommandRef.current = onPersonaCommand;
+    onPersonaTakeoverRef.current = onPersonaTakeover;
     personaModeRef.current = personaMode;
     musicModeRef.current = musicMode;
 
@@ -766,6 +772,7 @@ const OracleConversation = forwardRef(
       setInputText('');
       logStep('VOICE PERSONA OVERRIDE — CREATIVE DIRECTOR', 'ok');
       onPersonaCommandRef.current?.('creative-director');
+      onPersonaTakeoverRef.current?.('creative-director');
     }, []);
 
     useEffect(() => {
@@ -1109,12 +1116,13 @@ const OracleConversation = forwardRef(
       reconnecting,
       reconnectExhausted,
       sendText,
-      interruptResponse,
+       interruptResponse,
       manualReconnect,
       disconnect,
       prewarm,
-      startSession,
-      sessionBootedRef,
+        startSession,
+        restartSession,
+       sessionBootedRef,
     } = geminiSession;
     interruptResponseRef.current = interruptResponse;
 
@@ -1647,7 +1655,10 @@ const OracleConversation = forwardRef(
       },
       enableMicAutoRestart: () => {
         micAutoRestartEnabledRef.current = true;
-      }
+      },
+      restartSession: (bootMessage?: string) => {
+        restartSession(bootMessage);
+      },
     }));
 
     // Quick-start prompts — surface when signal pad opens before first user message.

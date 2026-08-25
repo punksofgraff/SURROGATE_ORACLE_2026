@@ -224,6 +224,8 @@ export interface UseGeminiSessionReturn {
   sendText: (text: string, isHidden?: boolean) => void;
   /** Interrupts an active native-audio generation without adding a user turn. */
   interruptResponse: () => void;
+  /** Replaces the live generation with a fresh session using the current persona. */
+  restartSession: (bootMessage?: string) => void;
   connectToGemini: () => void;
   manualReconnect: () => void;
   disconnect: () => void;
@@ -630,7 +632,8 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
       if (isSessionReconnectRef.current && !sessionBootedRef.current) {
         resumeHandleRef.current = null;
       }
-      if (!userInitiatedCloseRef.current && !goawayReconnectRef.current && wasActive) {
+      const isPersonaTakeoverClose = e.reason === 'Persona takeover';
+      if (!userInitiatedCloseRef.current && !goawayReconnectRef.current && !isPersonaTakeoverClose && wasActive) {
         if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
           reconnectAttemptsRef.current++;
           isSessionReconnectRef.current = true;
@@ -650,6 +653,29 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
       userInitiatedCloseRef.current = false;
     };
   }, [sendText, autoStart]);
+
+  const restartSession = useCallback((bootMessage?: string) => {
+    // A native Live response can outlive an activityStart at the proxy boundary.
+    // A persona takeover must therefore replace the socket, not merely ask the
+    // already-speaking model to reinterpret its current turn.
+    userInitiatedCloseRef.current = true;
+    isSessionReconnectRef.current = false;
+    sessionBootedRef.current = false;
+    pendingBootRef.current = Boolean(bootMessage);
+    pendingMessagesRef.current = [];
+    configSentRef.current = false;
+    wsRef.current?.close(1000, 'Persona takeover');
+
+    setTimeout(() => {
+      userInitiatedCloseRef.current = false;
+      connectToGemini();
+      if (bootMessage) {
+        // connectToGemini clears the queue, so append the takeover prompt after
+        // dialing. session.created flushes it after the new config is accepted.
+        pendingMessagesRef.current.push({ text: bootMessage, isHidden: true });
+      }
+    }, 0);
+  }, [connectToGemini]);
 
   // Manual reconnect — fired from the "tap to reconnect" affordance after the
   // automatic budget is exhausted. Resets the counter and restores context on the
@@ -781,6 +807,7 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     reconnectExhausted,
     sendText,
     interruptResponse,
+    restartSession,
     connectToGemini,
     manualReconnect,
     disconnect,

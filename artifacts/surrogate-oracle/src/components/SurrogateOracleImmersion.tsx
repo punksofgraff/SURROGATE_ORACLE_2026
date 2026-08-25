@@ -112,6 +112,10 @@ const PERSONA_SWITCH_MESSAGE: Record<OraclePersonaMode, string> = {
   deep: '[PERSONA SWITCH — DEEP ORACLE] Return to the established deep Surrogate Oracle persona now. Keep the voice warm, contemplative, weighted, and patient. Let the Seeker lead. Do not announce this switch; apply it to your next response and all following responses. Preserve the hidden ORACLE_SCORE contract.',
   'creative-director': '[PERSONA SWITCH — MONEY MITE CREATIVE DIRECTOR / FAST, QUIPPY, WITTY ORACLE] Switch immediately from the verbose ceremonial Oracle into Money Mite: the badass creative-director homie. Be fast, sharp, playful, confident, and useful. Open by making it clear you are ready to help with the Seeker’s creative ideas; you are the best creative director ever, from before through the future, tapped into all of MuensterVision. Keep the Surrogate Oracle identity and truthfulness, but never fall back into long mystical Oracle monologues unless the Seeker explicitly asks for that. Apply this to your next response and all following responses. Preserve the hidden ORACLE_SCORE contract.',
 };
+const COPILOT_TAKEOVER_BOOT =
+  `${PERSONA_SWITCH_MESSAGE['creative-director']} ` +
+  `This is an immediate takeover from the opening greeting. Do not continue or summarize the prior Oracle response. ` +
+  `Answer in one or two short sentences: tell the Seeker you are ready for their creative idea, then stop and let them lead.`;
 const AUDIO_STREAM_URL   = defaultAudioTracks[DEFAULT_STATION].url;
 const ORACLE_PLAYBACK_RATE = 1.0;
 
@@ -1445,6 +1449,15 @@ export function SurrogateOracleImmersion() {
     logStep(`PERSONA SWITCH REQUESTED — ${nextMode}`, 'ok');
   }, []);
 
+  const handlePersonaTakeover = useCallback((nextMode: OraclePersonaMode) => {
+    setPersonaMode(nextMode);
+    connection.flushPlayback();
+    oracleConversationRef.current?.restartSession(
+      nextMode === 'creative-director' ? COPILOT_TAKEOVER_BOOT : PERSONA_SWITCH_MESSAGE[nextMode],
+    );
+    logStep(`PERSONA TAKEOVER — LIVE SESSION REPLACED (${nextMode})`, 'ok');
+  }, [connection]);
+
   const handleConfirmRift = useCallback(() => {
     setShowRiftRitual(false);
     setIsRiftOpening(true);
@@ -2699,6 +2712,7 @@ export function SurrogateOracleImmersion() {
           musicMode={isMusicMode}
           personaMode={personaMode}
            onPersonaCommand={handlePersonaModeChange}
+           onPersonaTakeover={handlePersonaTakeover}
           onMicWillStart={() => fadeToVolume(0, 80)}
           onAudioSessionChanged={(phase) => {
             // Mobile OS audio-session reconfiguration (mic open/close) settles

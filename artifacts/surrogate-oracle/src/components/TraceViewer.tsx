@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from 'react';
 import { getTraceToken } from '../lib/sessionTrace';
+import { reviewTourTrace } from '../lib/tourTraceContract';
 
 const SUPA_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 
@@ -38,60 +39,6 @@ type TraceRow = {
   client_ts: number | null;
   created_at: string;
 };
-
-type TourEvidence = {
-  cardIndex: number;
-  territory: string;
-  checkpoints: Partial<Record<string, TraceRow[]>>;
-  duplicatePreview: boolean;
-  timedOut: boolean;
-  interrupted: boolean;
-};
-
-function tourEvidence(rows: TraceRow[]): TourEvidence[] {
-  const grouped = new Map<number, TourEvidence>();
-  for (const row of rows) {
-    const payload = row.payload;
-    const checkpoint = payload.checkpoint;
-    let index = Number(payload.card_index);
-    // Accept older traces that only have the checkpoint in a step label.
-    if (!Number.isFinite(index)) {
-      const match = String(payload.label ?? '').match(/\[(\d+)\]/);
-      index = match ? Number(match[1]) : NaN;
-    }
-    if (!Number.isFinite(index) || (checkpoint !== undefined && row.event_type !== 'tour_checkpoint')) continue;
-    const existing = grouped.get(index) ?? {
-      cardIndex: index,
-      territory: String(payload.territory ?? `CARD ${index}`),
-      checkpoints: {},
-      duplicatePreview: false,
-      timedOut: false,
-      interrupted: false,
-    };
-    if (payload.territory) existing.territory = String(payload.territory);
-    const normalized = String(checkpoint ?? '').toLowerCase();
-    if (normalized) {
-      existing.checkpoints[normalized] = [...(existing.checkpoints[normalized] ?? []), row];
-      if (normalized === 'preview_request' && (existing.checkpoints[normalized]?.length ?? 0) > 1) {
-        existing.duplicatePreview = true;
-      }
-      if (normalized === 'preview_timeout') existing.timedOut = true;
-      if (normalized === 'preview_interrupted') existing.interrupted = true;
-    }
-    grouped.set(index, existing);
-  }
-  return [...grouped.values()].sort((a, b) => a.cardIndex - b.cardIndex);
-}
-
-function runProfile(rows: TraceRow[], cards: TourEvidence[]): string[] {
-  const tags: string[] = [];
-  const phase = rows.find((r) => r.event_type === 'oracle_phase_entered');
-  if (phase?.payload.is_returning === true) tags.push('RETURNING');
-  else tags.push('FRESH');
-  if (cards.some((c) => c.checkpoints.manual_advance?.length)) tags.push('MANUAL ADVANCE');
-  if (cards.some((c) => c.interrupted)) tags.push('INTERRUPTED PREVIEW');
-  return tags;
-}
 
 function checkpointLabel(name: string): string {
   return ({
@@ -181,8 +128,9 @@ export function TraceViewer() {
 
   const hasToken = !!getTraceToken();
   const enabled = DEBUG_ENABLED && !!SUPA_URL;
-  const cards = tourEvidence(trace);
-  const profile = runProfile(trace, cards);
+  const review = reviewTourTrace(trace);
+  const cards = review.cards;
+  const profile = review.profile;
 
   useEffect(() => {
     if (!open || !enabled || !hasToken) return;
@@ -333,20 +281,22 @@ export function TraceViewer() {
                      <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 9 }}>{profile.join(' · ')}</span>
                    </div>
                    <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: 9, marginBottom: 7 }}>
-                     CONFIG {trace.some((r) => r.event_type === 'step' && String(r.payload.label).includes('SESSION CONFIG')) ? '✓' : '—'}
+                     CONFIG {review.sessionConfigPresent ? '✓' : '—'}
                      {' · '} {cards.length} card{cards.length === 1 ? '' : 's'}
+                     {review.missing.length > 0 && <span style={{ color: '#ff3355' }}> · {review.missing.length} REQUIRED MISSING</span>}
                    </div>
                    {cards.map((card) => {
-                     const warning = card.duplicatePreview || card.timedOut || card.interrupted;
+                     const warning = card.warnings.length > 0;
+                     const missing = card.missing.length > 0;
                      return (
                        <div key={card.cardIndex} style={{
                          padding: '7px 8px', marginBottom: 5, borderRadius: 4,
-                         border: `1px solid ${warning ? 'rgba(255,204,0,0.55)' : 'rgba(0,255,136,0.2)'}`,
-                         background: warning ? 'rgba(255,180,0,0.07)' : 'rgba(0,255,136,0.035)',
+                         border: `1px solid ${missing ? 'rgba(255,51,85,0.7)' : warning ? 'rgba(255,204,0,0.55)' : 'rgba(0,255,136,0.2)'}`,
+                         background: missing ? 'rgba(255,51,85,0.08)' : warning ? 'rgba(255,180,0,0.07)' : 'rgba(0,255,136,0.035)',
                        }}>
                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 5 }}>
                            <span style={{ color: '#e0e8ff' }}><b style={{ color: '#c9a7ff' }}>{String(card.cardIndex).padStart(2, '0')}</b> {card.territory}</span>
-                           {warning && <span style={{ color: '#ffcc00', fontSize: 9, whiteSpace: 'nowrap' }}>⚠ REVIEW</span>}
+                           {(missing || warning) && <span style={{ color: missing ? '#ff3355' : '#ffcc00', fontSize: 9, whiteSpace: 'nowrap' }}>⚠ {missing ? 'FIX' : 'REVIEW'}</span>}
                          </div>
                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                            {(['card_flush', 'preview_request', 'first_playable_audio', 'first_letter_landing'] as const).map((name) => {
@@ -361,11 +311,12 @@ export function TraceViewer() {
                              </span>;
                            })}
                          </div>
-                         {(card.duplicatePreview || card.timedOut || card.interrupted) && (
+                         {(missing || warning) && (
                            <div style={{ color: '#ffcc00', fontSize: 9, marginTop: 5 }}>
-                             {card.duplicatePreview && <span style={{ marginRight: 8 }}>DUPLICATE PREVIEW ×{card.checkpoints.preview_request?.length}</span>}
-                             {card.timedOut && <span style={{ marginRight: 8 }}>AUDIO TIMEOUT FALLBACK</span>}
-                             {card.interrupted && <span>PREVIEW INTERRUPTED</span>}
+                             {missing && <span style={{ color: '#ff3355', marginRight: 8 }}>MISSING {card.missing.map(checkpointLabel).join(', ')}</span>}
+                             {card.warnings.includes('duplicate_preview') && <span style={{ marginRight: 8 }}>DUPLICATE PREVIEW ×{card.checkpoints.preview_request?.length}</span>}
+                             {card.warnings.includes('timeout_fallback') && <span style={{ marginRight: 8 }}>AUDIO TIMEOUT FALLBACK</span>}
+                             {card.warnings.includes('interrupted_preview') && <span>PREVIEW INTERRUPTED</span>}
                            </div>
                          )}
                        </div>

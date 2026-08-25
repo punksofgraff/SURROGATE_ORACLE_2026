@@ -1,0 +1,16 @@
+[
+  {"event_type":"step","payload":{"label":"SESSION CONFIG SENT"}},
+  {"event_type":"oracle_phase_entered","payload":{"is_returning":false}},
+  {"event_type":"tour_checkpoint","payload":{"checkpoint":"card_flush","card_index":1,"territory":"THE CASCADE"}},
+  {"event_type":"tour_checkpoint","payload":{"checkpoint":"preview_request","card_index":1,"territory":"THE CASCADE"}},
+  {"event_type":"tour_checkpoint","payload":{"checkpoint":"first_playable_audio","card_index":1,"territory":"THE CASCADE"}},
+  {"event_type":"tour_checkpoint","payload":{"checkpoint":"first_letter_landing","card_index":1,"territory":"THE CASCADE"}},
+  {"event_type":"tour_checkpoint","payload":{"checkpoint":"card_flush","card_index":2,"territory":"THE ORACLE"}},
+  {"event_type":"tour_checkpoint","payload":{"checkpoint":"preview_request","card_index":2,"territory":"THE ORACLE"}},
+  {"event_type":"tour_checkpoint","payload":{"checkpoint":"first_playable_audio","card_index":2,"territory":"THE ORACLE"}},
+  {"event_type":"tour_checkpoint","payload":{"checkpoint":"first_letter_landing","card_index":2,"territory":"THE ORACLE"}},
+  {"event_type":"tour_checkpoint","payload":{"checkpoint":"card_flush","card_index":3,"territory":"THE KNIFE"}},
+  {"event_type":"tour_checkpoint","payload":{"checkpoint":"preview_request","card_index":3,"territory":"THE KNIFE"}},
+  {"event_type":"tour_checkpoint","payload":{"checkpoint":"first_playable_audio","card_index":3,"territory":"THE KNIFE"}},
+  {"event_type":"tour_checkpoint","payload":{"checkpoint":"first_letter_landing","card_index":3,"territory":"THE KNIFE"}}
+]

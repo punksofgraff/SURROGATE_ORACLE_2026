@@ -1723,6 +1723,7 @@ export function SurrogateOracleImmersion() {
   const oracleManifestReady = awakened && (hasManifested || isGeminiConnected || forceOracleManifest);
   const oracleEntranceActive = awakened && !!journey.selectedKnifeQuestion && !isMusicMode && !isMusicReturning;
   const oracleWarmupActive = oracleEntranceActive && !isGeminiSessionLive;
+  const oracleCanvasExpanded = oracleEntranceActive && !isXRMode;
   // True when the 6s fallback fired but we still have no live session — shows "FRACTURE MANIFESTING"
   // instead of a silently frozen face so the seeker knows the system is trying to reconnect.
   const isFractureManifesting = isOracleMode && forceOracleManifest && !isGeminiConnected;
@@ -2024,7 +2025,7 @@ export function SurrogateOracleImmersion() {
                           // axes quadruples the CSS area, so DPR / 2 preserves the
                           // original raster pixel count. Do not floor this: a floor
                           // above base/2 would silently increase the mobile budget.
-                          return isOracleMode && !isXRMode ? base / ORACLE_ORBIT_EXPANSION : base;
+                          return oracleCanvasExpanded ? base / ORACLE_ORBIT_EXPANSION : base;
                         })()}
                         gl={{
                           antialias: renderTier >= 2,
@@ -2034,7 +2035,7 @@ export function SurrogateOracleImmersion() {
                         style={{ width: '100%', height: '100%', background: 'transparent' }}
                         frameloop="always"
                       >
-                        <OrbitZoomCompensator enabled={isOracleMode && !isXRMode} />
+                         <OrbitZoomCompensator enabled={oracleCanvasExpanded} />
                         {import.meta.env.DEV && <OracleSceneDiagnostics />}
                         {oracleEntranceActive && (
                           <>

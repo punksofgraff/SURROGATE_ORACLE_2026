@@ -5764,7 +5764,8 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
    in SurrogateOracleImmersion.tsx: OrbitZoomCompensator divides camera.zoom and
    the dpr budget by the same factor so the avatar's on-screen size and the
    total rendered pixel count are IDENTICAL to the card-sized canvas. */
- .oracle-stage[data-oracle-state="oracle"]:not([data-xr-mode="true"]) .oracle-avatar-canvas {
+ .oracle-stage[data-oracle-entrance="warming"]:not([data-xr-mode="true"]) .oracle-avatar-canvas,
+ .oracle-stage[data-oracle-entrance="live"]:not([data-xr-mode="true"]) .oracle-avatar-canvas {
   inset: -50% !important;
   width: auto !important;
   height: auto !important;
@@ -6132,8 +6133,10 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   width: clamp(200px, 82vmin, 420px) !important;
   aspect-ratio: 0.82 / 1 !important;
   transform-origin: 50% 50%;
-  animation: oracle-arcade-phase-in 4.2s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: transform;
+   overflow: visible !important;
+   transform: none !important;
+   animation: none !important;
+   will-change: auto;
 }
 
 .oracle-stage[data-oracle-entrance="warming"] .oracle-avatar-static {

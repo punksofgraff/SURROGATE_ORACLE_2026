@@ -236,6 +236,7 @@ export interface OracleAvatar3DProps {
 // All camera constants are in face-centered space (0 = face center).
 const CAM_DEFAULT_Z = 1.8;  // portrait distance — head + upper chest visible
 const CAM_MIN_Z     = 0.4;  // maximum zoom-in (eyes fill the frame)
+const CAM_ENTRANCE_Z = 4.2; // distant 3D start; camera advances to the settled portrait
 const CAM_X_RANGE   = 0.30; // horizontal look-around extent (world units)
 // <Center bottom>: feet at Y=0, head at ~Y=1.6. Target Y=1.32 frames the
 // eye/nose area at center — face forward, not looking up. Not throat.
@@ -287,6 +288,7 @@ export function OracleAvatar3D({
   const camTargetYRef = useRef(CAM_Y_CENTER);
   const camTargetYCalibrated = useRef(false);
   const avatarXCalibrated = useRef(false);
+  const entranceCameraInitialized = useRef(false);
 
   // Idle: strip arms so procedural pin owns them.
   // Talk: keep arm/hand/finger tracks so Mixamo gesture keyframes play during speech.
@@ -733,13 +735,30 @@ export function OracleAvatar3D({
     if (cameraStateRef?.current) {
       const cs = cameraStateRef.current;
       const targetZ = Math.min(CAM_DEFAULT_Z, Math.max(CAM_MIN_Z, CAM_DEFAULT_Z / Math.max(cs.zoom, 1)));
+      // The entrance is a real depth move, not a CSS scale of the whole
+      // wrapper. Keep the avatar's landing point and footprint fixed while
+      // the camera travels from the distant transporter view to the normal
+      // portrait distance. This preserves perspective and lets the particle
+      // field breathe outside the old square card.
+      const entranceDepth = transporterActive && transporterWarmup
+        ? THREE.MathUtils.lerp(CAM_ENTRANCE_Z, targetZ, warmupEase)
+        : targetZ;
+      if (transporterActive && transporterWarmup && !entranceCameraInitialized.current) {
+        // Canvas creates its camera at the settled portrait distance. Move it
+        // to the entrance origin before the first interpolation frame, so the
+        // manifestation never flashes near and then retreats into depth.
+        camera.position.set(0, camTargetY - cs.y * CAM_Y_RANGE, CAM_ENTRANCE_Z);
+        entranceCameraInitialized.current = true;
+      } else if (!transporterActive) {
+        entranceCameraInitialized.current = false;
+      }
       // Keep the hero's projection centered while the seeker tilts. Moving the
       // camera laterally and then looking back at world X=0 makes a face whose
       // calibrated head bone is already at X=0 project several pixels to one
       // side, especially on the expanded mobile canvas. Horizontal parallax
       // remains visible through head gaze, cabinet rotation, and the surrounding
       // depth layers; the focal avatar itself stays locked to the cabinet center.
-      camTarget.current.set(0, camTargetY - cs.y * CAM_Y_RANGE, targetZ);
+      camTarget.current.set(0, camTargetY - cs.y * CAM_Y_RANGE, entranceDepth);
       if (cs.snap) {
         // Hard-snap: avatar materialises centred every time — no lerp-in drift from
         // stale knife-tap offset during the 1.8s opacity fade-in.

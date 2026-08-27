@@ -1,5 +1,33 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
+function getTrustedClientIp(req: Request): string | null {
+  const value = req.headers.get('cf-connecting-ip')?.trim() ?? '';
+  return value && value.length <= 128 ? value : null;
+}
+
+async function resolveAllowedSeekerKeys(req: Request, supabase: any): Promise<string[]> {
+  const ipAddress = getTrustedClientIp(req);
+  if (!ipAddress) return [];
+  const { data, error } = await supabase
+    .from('user_wallets')
+    .select('wallet_address')
+    .eq('ip_address', ipAddress)
+    .maybeSingle();
+  if (error) throw error;
+  const walletAddress =
+    typeof data?.wallet_address === 'string' && /^0x[0-9a-fA-F]{40}$/.test(data.wallet_address)
+      ? data.wallet_address
+      : null;
+  return [...new Set([ipAddress, walletAddress].filter((key): key is string => Boolean(key)))];
+}
+
+function isAllowedSeekerKey(requestedKey: unknown, allowedKeys: string[]): requestedKey is string {
+  return typeof requestedKey === 'string'
+    && requestedKey.length > 0
+    && requestedKey.length <= 128
+    && allowedKeys.includes(requestedKey);
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -35,34 +63,6 @@ const COMPACT_SYSTEM =
   'No bullet points. Flowing prose. Dense, precise. This will be read by the Oracle mid-session to maintain continuity.';
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
-
-/** Extract the best available client IP from standard proxy headers. */
-function getClientIp(req: Request): string | null {
-  // Cloudflare (Supabase Edge runs behind CF) — most reliable
-  const cf = req.headers.get('cf-connecting-ip');
-  if (cf) return cf.trim();
-  // x-real-ip (set by some reverse proxies)
-  const real = req.headers.get('x-real-ip');
-  if (real) return real.trim();
-  // x-forwarded-for — take leftmost (client) IP
-  const xff = req.headers.get('x-forwarded-for');
-  if (xff) return xff.split(',')[0].trim();
-  return null;
-}
-
-/** True if the string looks like an IPv4 or IPv6 address (not a wallet). */
-function isIpAddress(s: string): boolean {
-  // IPv4: four dotted octets
-  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(s)) return true;
-  // IPv6: contains colons
-  if (s.includes(':')) return true;
-  return false;
-}
-
-/** True if the string looks like an EVM wallet address. */
-function isWalletAddress(s: string): boolean {
-  return /^0x[0-9a-fA-F]{40}$/.test(s);
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -102,19 +102,19 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── seekerKey ownership gate ────────────────────────────────────────────
-    // If the claimed seekerKey is an IP address, validate it matches the
-    // actual caller IP so one user cannot write to another user's session.
-    // Wallet addresses (0x…) are cryptographically unguessable without the
-    // signing key — they pass through without an IP check.
-    // If seekerKey is absent or an unrecognised format, we allow the write
-    // but omit the seekerKey from the DB row (safe: no cross-user pollution).
-    if (seekerKey && isIpAddress(seekerKey)) {
-      const callerIp = getClientIp(req);
-      if (!callerIp || callerIp !== seekerKey) {
-        console.warn(`compact-conversation: seekerKey IP mismatch — claimed=${seekerKey} caller=${callerIp}`);
+  // The key is only a storage hint; the server decides whether it belongs to
+  // the caller. Wallet-looking strings are not accepted merely because they
+  // have a recognizable format.
+  if (seekerKey) {
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    );
+    const allowedKeys = await resolveAllowedSeekerKeys(req, supabase);
+    if (!isAllowedSeekerKey(seekerKey, allowedKeys)) {
+      console.warn('compact-conversation: rejected unowned seeker key');
         return new Response(
-          JSON.stringify({ success: false, error: 'Forbidden: seekerKey does not match caller IP' }),
+        JSON.stringify({ success: false, error: 'Forbidden' }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
         );
       }
@@ -192,12 +192,8 @@ Deno.serve(async (req: Request) => {
       const prevSummaries: unknown[] =
         Array.isArray(prevData.compact_summaries) ? prevData.compact_summaries : [];
 
-      // Only include the seekerKey in the DB row when it has been verified above
-      // (IP match) or is a recognisable wallet address. Unknown formats are omitted.
-      const verifiedSeekerKey =
-        seekerKey && (isIpAddress(seekerKey) || isWalletAddress(seekerKey))
-          ? seekerKey
-          : null;
+      // Only include a key after the caller-ownership check above.
+      const verifiedSeekerKey = seekerKey ?? null;
 
       const newEntry = {
         batch_index: batchIndex,

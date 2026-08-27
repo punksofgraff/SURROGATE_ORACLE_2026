@@ -776,63 +776,39 @@ export function SurrogateOracleImmersion() {
     const loadedEcho = seekerKeyRef.current ? await loadEcho(seekerKeyRef.current) : null;
     window.__terminal_start = Date.now();
 
-    // Non-blocking: fetch compact summaries from past sessions for this seeker.
-    // Stored in priorCompactSummariesRef so handleKnifeClick can inject them into the seed.
-    const _seekerKey = seekerKeyRef.current;
-    if (_seekerKey) {
-      const supaUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supaKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (supaUrl && supaKey) {
-        const hdrs = { 'apikey': supaKey, 'Authorization': `Bearer ${supaKey}` };
+    // Non-blocking: server resolves the caller's own IP/wallet identity and
+    // returns only bounded continuity context. The browser no longer queries
+    // raw session tables with the public Supabase key.
+    supabase.functions
+      .invoke('seeker-echo', { body: { op: 'continuity' } })
+      .then(({ data, error }) => {
+        if (error) throw error;
+        const compactSummaries: Array<{ summary: string }> = Array.isArray(data?.compactSummaries)
+          ? data.compactSummaries
+            .filter((entry: unknown): entry is { summary: string } =>
+              Boolean(entry && typeof entry === 'object' && typeof (entry as { summary?: unknown }).summary === 'string'))
+            .map((entry: { summary: string }) => ({ summary: entry.summary }))
+          : [];
+        priorCompactSummariesRef.current = compactSummaries.slice(0, 4).map((entry) => entry.summary);
+        if (priorCompactSummariesRef.current.length) {
+          logStep(`PRIOR COMPACT SUMMARIES LOADED — ${priorCompactSummariesRef.current.length} blocks`, 'ok');
+          return;
+        }
 
-        fetch(
-          `${supaUrl}/rest/v1/surrogate_sessions?seeker_key=eq.${encodeURIComponent(_seekerKey)}&select=session_id,conversation_data&order=created_at.desc&limit=4`,
-          { headers: hdrs }
-        )
-          .then((r) => r.json())
-          .then(async (rows: Array<{ session_id: string; conversation_data?: { compact_summaries?: Array<{ summary: string; compacted_at: string }> } }>) => {
-            // Primary path: compact summaries
-            const all: Array<{ summary: string; compacted_at: string }> = [];
-            for (const row of rows) {
-              const cs = row?.conversation_data?.compact_summaries;
-              if (Array.isArray(cs)) all.push(...cs);
-            }
-            all.sort((a, b) => b.compacted_at.localeCompare(a.compacted_at));
-            priorCompactSummariesRef.current = all.slice(0, 4).map((e) => e.summary);
-
-            if (priorCompactSummariesRef.current.length) {
-              logStep(`PRIOR COMPACT SUMMARIES LOADED — ${priorCompactSummariesRef.current.length} blocks`, 'ok');
-              return;
-            }
-
-            // Backup path: no compact summaries yet — grab raw turns from prior sessions
-            const sessionIds = rows.map((r) => r.session_id).filter(Boolean);
-            if (!sessionIds.length) return;
-
-            const ids = sessionIds.map((id) => `"${id}"`).join(',');
-            const turnsRes = await fetch(
-              `${supaUrl}/rest/v1/conversation_turns?session_id=in.(${ids})&select=role,content,turn_index,session_id&order=turn_index.desc&limit=20`,
-              { headers: hdrs }
-            );
-            if (!turnsRes.ok) return;
-
-            const rawTurns: Array<{ role: string; content: string; turn_index: number }> = await turnsRes.json();
-            if (!rawTurns.length) return;
-
-            // Reverse into chronological order and format as a compact exchange log
-            rawTurns.reverse();
-            const excerpt = rawTurns
-              .map((t) => `${t.role === 'user' ? 'Seeker' : 'Oracle'}: ${t.content.slice(0, 120).replace(/\n/g, ' ')}`)
-              .join('\n');
-
-            priorCompactSummariesRef.current = [
-              `[Raw signal fragment — last ${rawTurns.length} exchanges from a prior encounter:\n${excerpt}]`
-            ];
-            logStep(`BACKUP CONTEXT LOADED — ${rawTurns.length} raw turns from prior sessions`, 'ok');
-          })
-          .catch(() => { /* non-fatal — Oracle simply won't have prior compact context */ });
-      }
-    }
+        const rawTurns = Array.isArray(data?.rawTurns) ? data.rawTurns : [];
+        if (!rawTurns.length) return;
+        const excerpt = rawTurns
+          .slice()
+          .reverse()
+          .map((turn: { role?: string; content?: string }) =>
+            `${turn.role === 'user' ? 'Seeker' : 'Oracle'}: ${(turn.content ?? '').slice(0, 120).replace(/\n/g, ' ')}`)
+          .join('\n');
+        priorCompactSummariesRef.current = [
+          `[Raw signal fragment — last ${rawTurns.length} exchanges from a prior encounter:\n${excerpt}]`,
+        ];
+        logStep(`BACKUP CONTEXT LOADED — ${rawTurns.length} sanitized prior turns`, 'ok');
+      })
+      .catch(() => { /* non-fatal — Oracle simply won't have prior compact context */ });
 
     // Wallet-signed returning seeker — skip lore + terminal, land straight in the alley.
     // Check both the React state (set by async IP check) AND the IP-agnostic localStorage

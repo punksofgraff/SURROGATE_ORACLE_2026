@@ -1,5 +1,33 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
+function getTrustedClientIp(req: Request): string | null {
+  const value = req.headers.get('cf-connecting-ip')?.trim() ?? '';
+  return value && value.length <= 128 ? value : null;
+}
+
+async function resolveAllowedSeekerKeys(req: Request, supabase: any): Promise<string[]> {
+  const ipAddress = getTrustedClientIp(req);
+  if (!ipAddress) return [];
+  const { data, error } = await supabase
+    .from('user_wallets')
+    .select('wallet_address')
+    .eq('ip_address', ipAddress)
+    .maybeSingle();
+  if (error) throw error;
+  const walletAddress =
+    typeof data?.wallet_address === 'string' && /^0x[0-9a-fA-F]{40}$/.test(data.wallet_address)
+      ? data.wallet_address
+      : null;
+  return [...new Set([ipAddress, walletAddress].filter((key): key is string => Boolean(key)))];
+}
+
+function isAllowedSeekerKey(requestedKey: unknown, allowedKeys: string[]): requestedKey is string {
+  return typeof requestedKey === 'string'
+    && requestedKey.length > 0
+    && requestedKey.length <= 128
+    && allowedKeys.includes(requestedKey);
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -7,18 +35,19 @@ const corsHeaders = {
 };
 
 // Seeker Echo persistence (design §I.5 / §I.3 totem ladder).
-// GET  ?seeker_key=<wallet|ip>           → { success, echo: <row|null> }
 // POST { op: 'read', seekerKey }          → { success, echo: <row|null> }
+//      seekerKey is checked against the server-derived caller identity.
 // POST { op: 'fragments' }               → { success, phrases: string[] }
 //      → returns ghost_phrase values from recent records (no PII columns).
 //        Raw session content is NEVER read or returned by this branch.
+// POST { op: 'continuity' }              → sanitized prior-session context
 // POST { seekerKey, name?, lastArchetype?, totemLevel?, lastCost?, alignment? }
 //      → upsert: writes fields, increments visit_count, bumps last_seen_at.
 //
 // Note: the supabase-js client always invokes edge functions via POST, so the
 // `op: 'read'` POST branch mirrors the GET read for client (functions.invoke) use.
 interface SeekerEchoUpsert {
-  op?: 'read' | 'upsert' | 'fragments';
+  op?: 'read' | 'upsert' | 'fragments' | 'continuity';
   seekerKey?: string;
   name?: string | null;
   handles?: string[] | null;
@@ -49,7 +78,7 @@ Deno.serve(async (req: Request) => {
     );
 
     const readEcho = async (seekerKey: string) => {
-      console.log(`👁️ Seeker Echo: reading echo for ${seekerKey}`);
+      console.log('👁️ Seeker Echo: reading caller-owned echo');
 
       const { data: echo, error } = await supabase
         .from('seeker_echo')
@@ -61,7 +90,7 @@ Deno.serve(async (req: Request) => {
       if (error && error.code !== 'PGRST116') {
         console.error('❌ Seeker Echo read failed:', error);
         return new Response(
-          JSON.stringify({ success: false, error: `Failed to read echo: ${error.message}` }),
+          JSON.stringify({ success: false, error: 'Unable to read seeker memory' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -72,19 +101,13 @@ Deno.serve(async (req: Request) => {
       );
     };
 
-    // ---- READ via GET (?seeker_key=) ----
+    // Direct GET reads are intentionally disabled. The old GET path accepted
+    // an arbitrary seeker_key and exposed PII through a public URL.
     if (req.method === 'GET') {
-      const url = new URL(req.url);
-      const seekerKey = url.searchParams.get('seeker_key') ?? url.searchParams.get('seekerKey');
-
-      if (!seekerKey) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'seeker_key is required' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      return await readEcho(seekerKey);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Method not allowed' }),
+        { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // ---- POST: read (op:'read'), fragments (op:'fragments'), or upsert ----
@@ -97,6 +120,13 @@ Deno.serve(async (req: Request) => {
           return new Response(
             JSON.stringify({ success: false, error: 'seekerKey is required' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        const allowedKeys = await resolveAllowedSeekerKeys(req, supabase);
+        if (!isAllowedSeekerKey(seekerKey, allowedKeys)) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Forbidden' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
         return await readEcho(seekerKey);
@@ -137,6 +167,103 @@ Deno.serve(async (req: Request) => {
         );
       }
 
+      // ── op: 'continuity' — caller-owned prior-session context ─────────────
+      // The browser never supplies a seeker key for this operation. The
+      // function resolves the caller's IP and any wallet mapped to that IP,
+      // then returns only bounded compact summaries or short turn excerpts.
+      if (body.op === 'continuity') {
+        const allowedKeys = await resolveAllowedSeekerKeys(req, supabase);
+        if (!allowedKeys.length) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Caller identity unavailable' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const { data: sessions, error: sessionsError } = await supabase
+          .from('surrogate_sessions')
+          .select('session_id, conversation_data')
+          .in('seeker_key', allowedKeys)
+          .order('created_at', { ascending: false })
+          .limit(4);
+
+        if (sessionsError) {
+          console.error('❌ Seeker continuity lookup failed:', sessionsError);
+          return new Response(
+            JSON.stringify({ success: false, error: 'Unable to load prior continuity' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const compactSummaries: Array<{ summary: string; compacted_at: string }> = [];
+        const sessionIds: string[] = [];
+        for (const row of sessions ?? []) {
+          if (typeof row.session_id === 'string') sessionIds.push(row.session_id);
+          const raw = (row.conversation_data as { compact_summaries?: unknown } | null)?.compact_summaries;
+          if (!Array.isArray(raw)) continue;
+          for (const entry of raw) {
+            if (
+              entry
+              && typeof entry === 'object'
+              && typeof (entry as { summary?: unknown }).summary === 'string'
+              && typeof (entry as { compacted_at?: unknown }).compacted_at === 'string'
+            ) {
+              compactSummaries.push({
+                summary: (entry as { summary: string }).summary.slice(0, 1200),
+                compacted_at: (entry as { compacted_at: string }).compacted_at,
+              });
+            }
+          }
+        }
+
+        compactSummaries.sort((a, b) => b.compacted_at.localeCompare(a.compacted_at));
+        if (compactSummaries.length) {
+          return new Response(
+            JSON.stringify({
+              success: true,
+              compactSummaries: compactSummaries.slice(0, 4),
+              rawTurns: [],
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (!sessionIds.length) {
+          return new Response(
+            JSON.stringify({ success: true, compactSummaries: [], rawTurns: [] }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const { data: rawTurns, error: turnsError } = await supabase
+          .from('conversation_turns')
+          .select('role, content, turn_index, session_id')
+          .in('session_id', sessionIds)
+          .order('turn_index', { ascending: false })
+          .limit(20);
+
+        if (turnsError) {
+          console.error('❌ Seeker continuity turn lookup failed:', turnsError);
+          return new Response(
+            JSON.stringify({ success: false, error: 'Unable to load prior continuity' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            compactSummaries: [],
+            rawTurns: (rawTurns ?? []).map((turn) => ({
+              role: turn.role === 'user' ? 'user' : 'oracle',
+              content: typeof turn.content === 'string' ? turn.content.slice(0, 120) : '',
+              turn_index: typeof turn.turn_index === 'number' ? turn.turn_index : 0,
+            })),
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       if (!seekerKey) {
         return new Response(
           JSON.stringify({ success: false, error: 'seekerKey is required' }),
@@ -144,7 +271,15 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      console.log(`🔮 Seeker Echo: upserting echo for ${seekerKey}`);
+      const allowedKeys = await resolveAllowedSeekerKeys(req, supabase);
+      if (!isAllowedSeekerKey(seekerKey, allowedKeys)) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Forbidden' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('🔮 Seeker Echo: upserting caller-owned echo');
 
       const nowIso = new Date().toISOString();
 
@@ -158,7 +293,7 @@ Deno.serve(async (req: Request) => {
       if (fetchError && fetchError.code !== 'PGRST116') {
         console.error('❌ Seeker Echo fetch-before-upsert failed:', fetchError);
         return new Response(
-          JSON.stringify({ success: false, error: `Failed to read echo: ${fetchError.message}` }),
+          JSON.stringify({ success: false, error: 'Unable to read seeker memory' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -203,7 +338,7 @@ Deno.serve(async (req: Request) => {
       if (upsertError) {
         console.error('❌ Seeker Echo upsert failed:', upsertError);
         return new Response(
-          JSON.stringify({ success: false, error: `Failed to write echo: ${upsertError.message}` }),
+          JSON.stringify({ success: false, error: 'Unable to save seeker memory' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -223,7 +358,7 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error('❌ Seeker Echo error:', error);
     return new Response(
-      JSON.stringify({ success: false, error: `Internal server error: ${error.message}` }),
+      JSON.stringify({ success: false, error: 'Unable to complete seeker memory request' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

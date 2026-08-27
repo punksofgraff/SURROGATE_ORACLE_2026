@@ -422,18 +422,30 @@ const OracleConversation = forwardRef(
       }).catch((err) => console.warn('[Persistence] Conversation turn upload failed:', err));
     }, [turns, sessionId]);
 
-    // Load turns from Supabase on mount when localStorage has nothing (new device / cleared storage)
+    // Load turns through the session-scoped edge function when localStorage has
+    // nothing. Never read conversation_turns directly with the public key.
     useEffect(() => {
       if (!sessionId) return;
       if (turns.length > 0) return; // localStorage already has data — skip
       const supaUrl = import.meta.env.VITE_SUPABASE_URL;
       const supaKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
       if (!supaUrl || !supaKey) return;
-      fetch(`${supaUrl}/rest/v1/conversation_turns?session_id=eq.${encodeURIComponent(sessionId)}&order=turn_index.asc&limit=30`, {
-        headers: { 'apikey': supaKey, 'Authorization': `Bearer ${supaKey}` },
+      tracedFetch('conversation-history', `${supaUrl}/functions/v1/conversation-history`, {
+        method: 'POST',
+        headers: {
+          'apikey': supaKey,
+          'Authorization': `Bearer ${supaKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sessionId }),
       })
-        .then(r => r.json())
-        .then((rows: Array<{ role: string; content: string }>) => {
+        .then(async (response) => {
+          if (!response.ok) return null;
+          const payload = await response.json() as { turns?: unknown };
+          return Array.isArray(payload.turns) ? payload.turns : [];
+        })
+        .then((rows: Array<{ role: string; content: string }> | null) => {
+          if (!rows) return;
           if (!Array.isArray(rows) || rows.length === 0) return;
           const loaded: Turn[] = rows.map(r => ({
             role: r.role as 'user' | 'oracle',

@@ -1,5 +1,33 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
+function getTrustedClientIp(req: Request): string | null {
+  const value = req.headers.get('cf-connecting-ip')?.trim() ?? '';
+  return value && value.length <= 128 ? value : null;
+}
+
+async function resolveAllowedSeekerKeys(req: Request, supabase: any): Promise<string[]> {
+  const ipAddress = getTrustedClientIp(req);
+  if (!ipAddress) return [];
+  const { data, error } = await supabase
+    .from('user_wallets')
+    .select('wallet_address')
+    .eq('ip_address', ipAddress)
+    .maybeSingle();
+  if (error) throw error;
+  const walletAddress =
+    typeof data?.wallet_address === 'string' && /^0x[0-9a-fA-F]{40}$/.test(data.wallet_address)
+      ? data.wallet_address
+      : null;
+  return [...new Set([ipAddress, walletAddress].filter((key): key is string => Boolean(key)))];
+}
+
+function isAllowedSeekerKey(requestedKey: unknown, allowedKeys: string[]): requestedKey is string {
+  return typeof requestedKey === 'string'
+    && requestedKey.length > 0
+    && requestedKey.length <= 128
+    && allowedKeys.includes(requestedKey);
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -68,6 +96,18 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ success: false, error: 'seekerKey and turns required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    const allowedKeys = await resolveAllowedSeekerKeys(req, supabase);
+    if (!isAllowedSeekerKey(seekerKey, allowedKeys)) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Forbidden' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -186,11 +226,6 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Persist to seeker_echo ──────────────────────────────────────────────
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
     const updatePayload: Record<string, unknown> = {
       session_summary: sessionSummary,
       last_session_themes: allThemes.length ? allThemes : null,

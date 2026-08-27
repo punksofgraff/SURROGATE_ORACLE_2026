@@ -1,0 +1,300 @@
+# Unified Presence Permission Architecture (v2)
+
+## Core Insight: Permission = Bearer Token
+
+Browser permission grants persist for the **entire SPA session** after a single `getUserMedia` call. The actual `MediaStream` tracks can be stopped and re-acquired freely — the grant is the token, not the stream.
+
+```
+Splash Tap (one gesture)
+   └── getUserMedia({ video + audio })  →  ONE combined dialog
+   └── DeviceOrientation.requestPermission()  →  piggybacked (iOS)
+          │
+          ├── video tracks → kept live for AR / face tracking
+          └── audio tracks → stopped immediately (not needed yet)
+                                 │
+                      [... user plays SNEAKARCADE games ...]
+                                 │
+                            Oracle mic-tap later
+                            └── getUserMedia({ audio })
+                                 → INSTANT (permission already granted)
+                                 → ZERO prompt
+```
+
+**One permission moment. Zero re-prompts. Entire session.**
+
+---
+
+## Problem (Current State)
+
+Three independent acquisition sites, up to 3 native permission dialogs:
+
+| Site | What it acquires | When | Problem |
+|---|---|---|---|
+| `HolodeXRShell.bootUnifiedSession` (line 594) | Camera + gyro | Splash tap | Only gets camera, not mic |
+| `SurrogateOracleImmersion.onMicClick` (line 1906) | Camera + mic ("joint warmer") | Oracle mic-tap | Acquires → immediately stops → re-acquires. iOS hates this. |
+| `OracleConversation.startMic` (line 780) | Audio only | Mic button | Third `getUserMedia` call, third potential prompt |
+
+Additionally, `useParallax` and `useXRMode` both independently call `requestDeviceOrientationPermission()` with **no deduplication** — can trigger double iOS motion dialogs.
+
+---
+
+## Proposed Changes
+
+### 1. Shared Presence Preflight Module
+
+#### [NEW] [`lib/presence/startPresencePreflight.ts`](file:///c:/Users/User/Documents/Anti-Gravity/PROJECTS/KREAIT-PRO/sneakar-xr-engine/lib/presence/startPresencePreflight.ts)
+
+Single entry point. Acquires **all three capabilities** in one gesture. Singleton-deduped.
+
+```typescript
+export interface PresenceResult {
+  stream: MediaStream | null;     // combined video + audio
+  motionGranted: boolean;
+  error?: string;
+}
+
+// Singleton — concurrent calls share the same in-flight request
+let activeRequest: Promise<PresenceResult> | null = null;
+let cachedResult: PresenceResult | null = null;
+
+export async function startPresencePreflight(): Promise<PresenceResult> {
+  if (cachedResult?.stream?.active) return cachedResult;
+  if (activeRequest) return activeRequest;
+  activeRequest = acquire();
+  cachedResult = await activeRequest;
+  activeRequest = null;
+  return cachedResult;
+}
+
+async function acquire(): Promise<PresenceResult> {
+  let motionGranted = true;
+  let stream: MediaStream | null = null;
+
+  // Parallel: motion permission + getUserMedia
+  const [motionResult, mediaResult] = await Promise.allSettled([
+    requestDeviceOrientationPermission('[Preflight]'),
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } },
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+    }),
+  ]);
+
+  if (motionResult.status === 'fulfilled') motionGranted = motionResult.value;
+  if (mediaResult.status === 'fulfilled') stream = mediaResult.value;
+
+  return { stream, motionGranted, error: mediaResult.status === 'rejected' ? String(mediaResult.reason) : undefined };
+}
+
+/** Extract just the video tracks as a new stream (for camera/face subsystems). */
+export function extractVideoStream(combined: MediaStream): MediaStream {
+  return new MediaStream(combined.getVideoTracks());
+}
+
+/** Stop audio tracks but keep video alive. Permission grant persists. */
+export function releaseAudioTracks(combined: MediaStream): void {
+  combined.getAudioTracks().forEach(t => t.stop());
+}
+```
+
+---
+
+### 2. Global Motion Permission Deduplication
+
+#### [MODIFY] [`components/surrogate/lib/browserCapabilities.ts`](file:///c:/Users/User/Documents/Anti-Gravity/PROJECTS/KREAIT-PRO/sneakar-xr-engine/components/surrogate/lib/browserCapabilities.ts)
+
+```diff
++let _motionPromise: Promise<boolean> | null = null;
++
+ export async function requestDeviceOrientationPermission(logPrefix: string): Promise<boolean> {
++  if (_motionPromise) return _motionPromise;
+   const DE = DeviceOrientationEvent as unknown as {
+     requestPermission?: () => Promise<'granted' | 'denied'>;
+   };
+   if (typeof DE?.requestPermission !== 'function') return true;
+-  try {
+-    const result = await DE.requestPermission();
+-    return result === 'granted';
+-  } catch (err) {
+-    console.warn(`${logPrefix} DeviceOrientation permission request failed or unsupported:`, err);
+-    return false;
+-  }
++  _motionPromise = DE.requestPermission()
++    .then(r => r === 'granted')
++    .catch(err => {
++      console.warn(`${logPrefix} DeviceOrientation permission failed:`, err);
++      return false;
++    });
++  return _motionPromise;
+ }
+```
+
+**Effect:** `useParallax` and `useXRMode` both call this — first caller wins, second gets the same promise. Zero duplicate iOS dialogs.
+
+---
+
+### 3. HolodeXRShell — Splash Tap (SNEAKARCADE Path)
+
+#### [MODIFY] [`components/HolodeXRShell.tsx`](file:///c:/Users/User/Documents/Anti-Gravity/PROJECTS/KREAIT-PRO/sneakar-xr-engine/components/HolodeXRShell.tsx)
+
+**`bootUnifiedSession`** (~line 594):
+```diff
+ const bootUnifiedSession = useCallback(async () => {
+   try { localStorage.setItem("sneakar-has-launched", "1"); } catch {}
+-  try {
+-    const stream = await XRSessionManager.ensureCamera();
+-    (window as any).sharedMediaStream = stream;
+-    ...
+-  } catch (e) { ... }
+-  try {
+-    if (typeof DeviceOrientationEvent !== "undefined" && ...)
+-      await (DeviceOrientationEvent as any).requestPermission();
+-  } catch {}
++  const { stream } = await startPresencePreflight();
++  if (stream) {
++    // Keep video for AR, release audio (mic not needed yet — permission persists)
++    releaseAudioTracks(stream);
++    const videoStream = extractVideoStream(stream);
++    (window as any).sharedMediaStream = videoStream;
++    if (videoRef.current) {
++      videoRef.current.srcObject = videoStream;
++      videoRef.current.play().catch(() => {});
++    }
++  }
+   setPhase("live");
+ }, [setPhase]);
+```
+
+**`requestXRPermissions`** (~line 621): Same refactor — call `startPresencePreflight()`.
+
+**`confirmJitPermission`** (permission-precard): Same — routes through `startPresencePreflight()`.
+
+**AIM N PLAY + Chevron HUD**: Zero changes needed. They already consume `window.sharedMediaStream`. Permission was granted at splash — camera works, AR works, HUD works.
+
+---
+
+### 4. SurrogateOracleImmersion — Mic Tap (Oracle Path)
+
+#### [MODIFY] [`components/surrogate/components/SurrogateOracleImmersion.tsx`](file:///c:/Users/User/Documents/Anti-Gravity/PROJECTS/KREAIT-PRO/sneakar-xr-engine/components/surrogate/components/SurrogateOracleImmersion.tsx)
+
+**`onMicClick` handler** (~line 1889):
+```diff
+ onMicClick={async (willListen) => {
+   if (willListen) {
+     setIsAudioPlaying(false);
+     localStorage.setItem('oracle_session_muted', 'false');
+     connection.setVolume(2.50, 300);
+     oracleConversationRef.current?.enableMicAutoRestart();
+
+-    // 1. Gyro — raw requestPermission
+-    const _DE = (DeviceOrientationEvent as any);
+-    if (typeof _DE?.requestPermission === 'function')
+-      _DE.requestPermission().catch(...);
+-
+-    // 2. Joint warmer — acquire + immediately stop
+-    try {
+-      const jointStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+-      jointStream.getTracks().forEach(t => t.stop());
+-    } catch (err) { ... }
+-
+-    // 3. Camera — re-acquires again
+-    activateCamera();
++    // If splash already granted permissions, this resolves instantly.
++    // If Oracle is standalone (no splash), this is the one permission moment.
++    const { stream } = await startPresencePreflight();
++    if (stream) {
++      activateCameraWithStream(stream);  // video → face tracking (no re-prompt)
++    }
++    // Mic: permission already granted — startMic's getUserMedia resolves instantly
++    oracleConversationRef.current?.startMic();
+
+     logStep('SIGNAL CONNECTED — SENSORS ACTIVE', 'ok');
+   }
+ }}
+```
+
+**Key insight:** Whether the user came through the SNEAKARCADE splash (permissions already granted) or directly to the Oracle (standalone), the preflight singleton handles both paths identically.
+
+---
+
+### 5. OracleConversation — Prompt-Free Mic Acquisition
+
+#### [MODIFY] [`components/surrogate/components/OracleConversation.tsx`](file:///c:/Users/User/Documents/Anti-Gravity/PROJECTS/KREAIT-PRO/sneakar-xr-engine/components/surrogate/components/OracleConversation.tsx)
+
+**`startMic()`** (~line 763): The existing `getUserMedia({ audio })` call stays — but it now resolves **instantly** because the permission was granted at splash or mic-tap preflight.
+
+No structural change needed here. The bearer token (permission grant) means this call is prompt-free.
+
+**Mic mute behavior** (already correct):
+- `track.enabled = false` — mute without releasing
+- No `track.stop()`, no re-`getUserMedia`, no iOS audio session flip
+- Full release only on Oracle exit / unmount
+
+---
+
+### 6. useXRMode — Accept Pre-Acquired Stream
+
+#### [MODIFY] [`components/surrogate/hooks/useXRMode.ts`](file:///c:/Users/User/Documents/Anti-Gravity/PROJECTS/KREAIT-PRO/sneakar-xr-engine/components/surrogate/hooks/useXRMode.ts)
+
+Add `activateCameraWithStream()` to skip redundant `getUserMedia`:
+
+```typescript
+const activateCameraWithStream = useCallback((combinedStream: MediaStream) => {
+  const videoTracks = combinedStream.getVideoTracks();
+  if (!videoTracks.length) {
+    console.warn('[XR] activateCameraWithStream: no video tracks in stream');
+    return;
+  }
+  // Stop any existing camera stream first
+  if (streamRef.current) {
+    streamRef.current.getTracks().forEach(t => t.stop());
+  }
+  streamRef.current = new MediaStream(videoTracks);
+  setCameraReady(true);
+  setCameraActive(true);
+}, []);
+```
+
+Exposed in `UseXRModeReturn` interface alongside existing `activateCamera`.
+
+---
+
+## File Summary
+
+| File | Change | Risk |
+|---|---|---|
+| `lib/presence/startPresencePreflight.ts` | **NEW** — singleton preflight | Low — new code, no existing deps |
+| `browserCapabilities.ts` | Add motion dedup (`_motionPromise`) | Low — additive, backward compatible |
+| `HolodeXRShell.tsx` | Splash → `startPresencePreflight()` | Medium — touches splash flow |
+| `SurrogateOracleImmersion.tsx` | Remove joint warmer, use preflight | Medium — touches mic-tap flow |
+| `OracleConversation.tsx` | No structural change (bearer token) | None |
+| `useXRMode.ts` | Add `activateCameraWithStream()` | Low — additive method |
+| `useParallax.ts` | No change needed (dedup auto-applies) | None |
+
+---
+
+## Verification Plan
+
+### TypeScript
+```bash
+npx tsc --noEmit
+```
+
+### iOS Safari (Critical Path)
+1. Fresh page load → splash tap → **ONE "Camera and Microphone" dialog** → Allow
+2. SNEAKARCADE games: Chevron HUD visible, AIM N PLAY AR works, camera feed live
+3. Navigate to Oracle → tap mic → **ZERO dialogs** → mic activates instantly
+4. Mute/unmute mic → **ZERO dialogs** → track.enabled toggles
+5. Exit Oracle → return to SNEAKARCADE → camera still works
+
+### Android Chrome
+- Same flow — camera+mic dialog appears once at splash, everything else is instant
+
+### Desktop
+- Camera+mic dialog once → mouse parallax works (no motion dialog needed)
+
+### Regression
+- AIM N PLAY with CHEVRON HUD at base after permissions ✓
+- Oracle portrait generation still works ✓
+- Wallet gate still fires correctly ✓
+- HolodeXR iframe bridge still receives `sharedMediaStream` ✓
+- Cartridge switching does not re-prompt ✓

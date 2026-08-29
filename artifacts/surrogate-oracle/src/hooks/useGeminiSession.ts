@@ -272,13 +272,13 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
   const userInitiatedCloseRef = useRef(false);
   // Set true when onclose/goaway triggers a reconnect; read in session.created to
   // distinguish continuation from cold start. Reset after use. This decouples
-  // reconnect detection from reconnectAttemptsRef, which ws.onopen resets to 0
-  // before session.created ever fires (previously caused re-greeting on reconnect).
+  // reconnect detection from the retry budget, which is only reset once
+  // session.created confirms that Gemini accepted setup.
   const isSessionReconnectRef = useRef(false);
 
   // Stable ref to latest connectToGemini so ws.onclose can call it without stale closure
   const connectToGeminiRef = useRef<() => void>(() => {});
-  // Reconnect attempt counter — resets on successful open, stops after MAX attempts.
+  // Reconnect attempt counter — resets on session.created, stops after MAX attempts.
   // 5 (was 3) gives a flaky expo-Wi-Fi room more room to recover before giving up.
   const MAX_RECONNECT_ATTEMPTS = 5;
   const reconnectAttemptsRef = useRef(0);
@@ -291,6 +291,21 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
   const resumeHandleRef = useRef<string | null>(null);
 
   const pendingMessagesRef = useRef<PendingMessage[]>([]);
+  // Every delayed callback is scoped to the mounted hook and, where applicable, to
+  // the socket that created it. This prevents an old close/reconnect/boot callback
+  // from waking up a later session after exit, reset, or a persona takeover.
+  const mountedRef = useRef(true);
+  const lifecycleEpochRef = useRef(0);
+  const socketGenerationRef = useRef(0);
+  type SessionTimer = ReturnType<typeof setTimeout>;
+  const reconnectTimerRef = useRef<SessionTimer | null>(null);
+  const restartTimerRef = useRef<SessionTimer | null>(null);
+  const goawayTimerRef = useRef<SessionTimer | null>(null);
+  const sessionTimersRef = useRef<Set<SessionTimer>>(new Set());
+  const isOnlineRef = useRef(typeof navigator === 'undefined' || navigator.onLine);
+  // A close while offline (or an initial connect while offline) leaves recovery
+  // pending. The online event consumes this flag and schedules one bounded retry.
+  const recoveryPendingRef = useRef(false);
 
   // ── World briefing — fetched at connect time, injected into system prompt ──
   // The fetch is kicked off inside connectToGemini() BEFORE the WebSocket is
@@ -312,6 +327,69 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
   // handshake lifecycle or causing a socket churn effect.
   const personaModeRef = useRef<OraclePersonaMode>(personaMode);
   personaModeRef.current = personaMode;
+
+  const clearTrackedTimers = useCallback(() => {
+    if (reconnectTimerRef.current !== null) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (restartTimerRef.current !== null) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+    if (goawayTimerRef.current !== null) {
+      clearTimeout(goawayTimerRef.current);
+      goawayTimerRef.current = null;
+    }
+    sessionTimersRef.current.forEach(timer => clearTimeout(timer));
+    sessionTimersRef.current.clear();
+  }, []);
+
+  const scheduleSessionTimer = useCallback((
+    callback: () => void,
+    delay: number,
+    lifecycleEpoch: number,
+    socketGeneration?: number,
+  ) => {
+    let timer: SessionTimer;
+    timer = setTimeout(() => {
+      sessionTimersRef.current.delete(timer);
+      if (
+        !mountedRef.current ||
+        lifecycleEpochRef.current !== lifecycleEpoch ||
+        (socketGeneration !== undefined && socketGenerationRef.current !== socketGeneration)
+      ) return;
+      callback();
+    }, delay);
+    sessionTimersRef.current.add(timer);
+    return timer;
+  }, []);
+
+  const scheduleReconnect = useCallback((delay: number) => {
+    if (!mountedRef.current) return;
+    recoveryPendingRef.current = true;
+    if (!isOnlineRef.current) {
+      setReconnecting(true);
+      return;
+    }
+    if (reconnectTimerRef.current !== null) return;
+    const lifecycleEpoch = lifecycleEpochRef.current;
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectTimerRef.current = null;
+      if (
+        !mountedRef.current ||
+        lifecycleEpochRef.current !== lifecycleEpoch ||
+        !recoveryPendingRef.current
+      ) return;
+      if (!isOnlineRef.current) {
+        setReconnecting(true);
+        return;
+      }
+      recoveryPendingRef.current = false;
+      connectToGeminiRef.current();
+    }, delay);
+    setReconnecting(true);
+  }, []);
 
   /** Idempotent world-briefing fetch. Starts (or reuses) one request; resolves when
    *  it settles. Success lands in worldBriefingRef; failure/timeout resolves silently. */
@@ -386,6 +464,17 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
   }, []);
 
   const connectToGemini = useCallback(() => {
+    if (!mountedRef.current) return;
+    if (!isOnlineRef.current) {
+      recoveryPendingRef.current = true;
+      setReconnecting(true);
+      logStep('GEMINI WS PAUSED — OFFLINE', 'warn');
+      return;
+    }
+    // A manual/prewarm connect supersedes a queued automatic retry and any
+    // delayed work belonging to the previous socket.
+    clearTrackedTimers();
+
     // Fail closed rather than silently falling back to a hardcoded project URL —
     // a stale/wrong default would route audio to the wrong backend without any signal.
     const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -397,7 +486,15 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
       return;
     }
 
-    if (wsRef.current) wsRef.current.close();
+    const previousWs = wsRef.current;
+    if (previousWs) {
+      // Detach before close. Browsers deliver close asynchronously, and the old
+      // callback must not be able to alter the new socket's state or retry it.
+      wsRef.current = null;
+      socketGenerationRef.current++;
+      userInitiatedCloseRef.current = true;
+      previousWs.close();
+    }
     pendingMessagesRef.current = []; // Clear queue on fresh connect
     configSentRef.current = false;   // New socket — setup frame not sent yet
     handlersRef.current.onConnectStart();
@@ -416,14 +513,19 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
 
     logStep('GEMINI WS CONNECTING', 'pending');
     const ws = new WebSocket(wsUrl);
+    const socketGeneration = ++socketGenerationRef.current;
     wsRef.current = ws;
 
     ws.onopen = async () => {
-    reconnectAttemptsRef.current = 0;
+    if (
+      !mountedRef.current ||
+      wsRef.current !== ws ||
+      socketGenerationRef.current !== socketGeneration
+    ) return;
     logStep('GEMINI WS OPENED', 'ok');
     debugInfo.current.connectedAt = Date.now();
     // Socket may have died or been replaced while awaiting — bail, onclose owns recovery.
-    if (wsRef.current !== ws || ws.readyState !== WebSocket.OPEN) return;
+    if (ws.readyState !== WebSocket.OPEN) return;
     // Base prompt + optional returning-seeker memory
     let systemText = seekerSummary
       ? ORACLE_SYSTEM_PROMPT + `\n\n[RETURNING SEEKER — what we remember from the last encounter:]\n${seekerSummary}`
@@ -494,8 +596,18 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     };
 
     ws.onmessage = async (event) => {
+    if (
+      !mountedRef.current ||
+      wsRef.current !== ws ||
+      socketGenerationRef.current !== socketGeneration
+    ) return;
     try {
       const text = event.data instanceof Blob ? await event.data.text() : event.data;
+      if (
+        !mountedRef.current ||
+        wsRef.current !== ws ||
+        socketGenerationRef.current !== socketGeneration
+      ) return;
       const msg = typeof text === 'string' ? JSON.parse(text) : null;
       if (!msg) return;
 
@@ -507,6 +619,10 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
 
       if (msg.type === 'session.created') {
         logStep('GEMINI SESSION CREATED', 'ok');
+        // Only a real Gemini session resets the retry budget. ws.onopen merely
+        // proves that the transport connected; setup can still be rejected.
+        reconnectAttemptsRef.current = 0;
+        recoveryPendingRef.current = false;
         // A reconnect of an already-booted session must re-enter the boot block so the
         // context-restore path runs — otherwise (autoStart=false, pendingBootRef=false)
         // the Oracle comes back silent after an expo-Wi-Fi drop.
@@ -524,12 +640,22 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
               .join('\n');
             const restoreMsg = `[SIGNAL RESTORED — you just reconnected mid-session. Do NOT re-introduce yourself. Continue the conversation naturally from where it was. Last exchange:\n${lastTurns}]`;
             logStep('SESSION CONTEXT RESTORED', 'ok');
-            setTimeout(() => sendText(restoreMsg, true), 300);
+            scheduleSessionTimer(
+              () => sendText(restoreMsg, true),
+              300,
+              lifecycleEpochRef.current,
+              socketGeneration,
+            );
           } else if (pendingMessagesRef.current.length === 0) {
             // Only send default boot when no custom message (e.g. lore story) was queued.
             // If a custom bootMessage was queued while WS was connecting, let it be the
             // Oracle's first utterance — don't prepend a separate "Greetings... Seeker".
-            setTimeout(() => sendText('__ORACLE_BOOT__'), 200);
+            scheduleSessionTimer(
+              () => sendText('__ORACLE_BOOT__'),
+              200,
+              lifecycleEpochRef.current,
+              socketGeneration,
+            );
           }
         }
 
@@ -537,10 +663,10 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
         if (pendingMessagesRef.current.length > 0) {
           logStep(`Flushing ${pendingMessagesRef.current.length} queued messages`, 'ok');
           // Delay slightly to follow the boot message (if any)
-          setTimeout(() => {
+          scheduleSessionTimer(() => {
             pendingMessagesRef.current.forEach(m => sendText(m.text, m.isHidden));
             pendingMessagesRef.current = [];
-          }, 450);
+          }, 450, lifecycleEpochRef.current, socketGeneration);
         }
         // Signal parent that Gemini has truly accepted the session and is ready to speak.
         // Intentionally after session setup — isGeminiConnected now means "session.created confirmed",
@@ -591,10 +717,11 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
             sessionBootedRef.current = false;
             goawayReconnectRef.current = true; // tell onclose this path already owns the reconnect
             logStep(`SESSION REFRESH via GOAWAY (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`, 'warn');
-            setTimeout(() => {
+            goawayTimerRef.current = scheduleSessionTimer(() => {
+              goawayTimerRef.current = null;
               goawayReconnectRef.current = false;
-              connectToGeminiRef.current();
-            }, 200);
+              scheduleReconnect(0);
+            }, 200, lifecycleEpochRef.current, socketGeneration);
           }
         }
       } catch (e) {
@@ -603,11 +730,22 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     };
 
     ws.onerror = (e) => {
+      if (
+        !mountedRef.current ||
+        wsRef.current !== ws ||
+        socketGenerationRef.current !== socketGeneration
+      ) return;
       logStep('GEMINI WS ERROR', 'err');
       console.error('[Oracle] WebSocket error:', e);
       debugInfo.current.lastError = 'Connection error';
     };
     ws.onclose = (e) => {
+      if (
+        !mountedRef.current ||
+        wsRef.current !== ws ||
+        socketGenerationRef.current !== socketGeneration
+      ) return;
+      wsRef.current = null;
       setIsConnected(false);
       // Always clear speaking/thinking state on close — the Oracle can't still be
       // speaking if the socket is gone. Without this, isOracleSpeakingRef stays true
@@ -638,11 +776,10 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
           reconnectAttemptsRef.current++;
           isSessionReconnectRef.current = true;
           sessionBootedRef.current = false; // allow re-boot on new session
-          setReconnecting(true);
           // Linear backoff capped at 6s so a flaky room doesn't hammer the proxy.
           const delay = Math.min(reconnectAttemptsRef.current * 1500, 6000);
           logStep(`SESSION REFRESH (attempt ${reconnectAttemptsRef.current}/${MAX_RECONNECT_ATTEMPTS})`, 'warn');
-          setTimeout(() => connectToGeminiRef.current(), delay);
+          scheduleReconnect(delay);
         } else {
           // Out of automatic attempts — surface a manual retry rather than dying silently.
           setReconnecting(false);
@@ -652,21 +789,50 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
       }
       userInitiatedCloseRef.current = false;
     };
-  }, [sendText, autoStart]);
+  }, [clearTrackedTimers, scheduleReconnect, scheduleSessionTimer, sendText, autoStart]);
+
+  const terminateSession = useCallback((reason: string, clearResumeHandle = true) => {
+    lifecycleEpochRef.current++;
+    clearTrackedTimers();
+    recoveryPendingRef.current = false;
+    isSessionReconnectRef.current = false;
+    goawayReconnectRef.current = false;
+    pendingBootRef.current = false;
+    pendingMessagesRef.current = [];
+    pendingInterruptRef.current = false;
+    configSentRef.current = false;
+    sessionBootedRef.current = false;
+    if (clearResumeHandle) resumeHandleRef.current = null;
+
+    const ws = wsRef.current;
+    wsRef.current = null;
+    socketGenerationRef.current++;
+    userInitiatedCloseRef.current = true;
+    if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+      ws.close(1000, reason);
+    }
+
+    setIsConnected(false);
+    setReconnecting(false);
+    setReconnectExhausted(false);
+    // Detaching before close intentionally bypasses ws.onclose. Preserve the
+    // existing disconnect notification contract explicitly.
+    if (ws) {
+      handlersRef.current.onDisconnect();
+      onDisconnectedRef.current?.();
+    }
+  }, [clearTrackedTimers]);
 
   const restartSession = useCallback((bootMessage?: string) => {
     // A native Live response can outlive an activityStart at the proxy boundary.
     // A persona takeover must therefore replace the socket, not merely ask the
     // already-speaking model to reinterpret its current turn.
-    userInitiatedCloseRef.current = true;
-    isSessionReconnectRef.current = false;
-    sessionBootedRef.current = false;
+    terminateSession('Persona takeover', false);
     pendingBootRef.current = Boolean(bootMessage);
-    pendingMessagesRef.current = [];
-    configSentRef.current = false;
-    wsRef.current?.close(1000, 'Persona takeover');
-
-    setTimeout(() => {
+    const lifecycleEpoch = lifecycleEpochRef.current;
+    restartTimerRef.current = scheduleSessionTimer(() => {
+      restartTimerRef.current = null;
+      if (lifecycleEpochRef.current !== lifecycleEpoch) return;
       userInitiatedCloseRef.current = false;
       connectToGemini();
       if (bootMessage) {
@@ -674,24 +840,64 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
         // dialing. session.created flushes it after the new config is accepted.
         pendingMessagesRef.current.push({ text: bootMessage, isHidden: true });
       }
-    }, 0);
-  }, [connectToGemini]);
+    }, 0, lifecycleEpoch);
+  }, [connectToGemini, scheduleSessionTimer, terminateSession]);
 
   // Manual reconnect — fired from the "tap to reconnect" affordance after the
   // automatic budget is exhausted. Resets the counter and restores context on the
   // fresh socket (isSessionReconnectRef) so the conversation continues, not restarts.
   const manualReconnect = useCallback(() => {
-    reconnectAttemptsRef.current = 0;
+    terminateSession('Manual reconnect', false);
     isSessionReconnectRef.current = true;
     sessionBootedRef.current = false;
     setReconnectExhausted(false);
     setReconnecting(true);
     logStep('MANUAL RECONNECT', 'warn');
     connectToGeminiRef.current();
-  }, []);
+  }, [terminateSession]);
 
   // Keep ref in sync so ws.onclose can reconnect via the latest instance
   useEffect(() => { connectToGeminiRef.current = connectToGemini; }, [connectToGemini]);
+
+  // Browser connectivity is a separate gate from WebSocket state. On mobile,
+  // waiting for a timer while offline creates needless failed dials; retain the
+  // recovery intent and resume it with the same bounded backoff on online.
+  useEffect(() => {
+    const handleOffline = () => {
+      isOnlineRef.current = false;
+      const hadPendingRecovery = recoveryPendingRef.current ||
+        reconnectTimerRef.current !== null ||
+        goawayTimerRef.current !== null ||
+        wsRef.current?.readyState !== WebSocket.OPEN;
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      if (goawayTimerRef.current !== null) {
+        clearTimeout(goawayTimerRef.current);
+        sessionTimersRef.current.delete(goawayTimerRef.current);
+        goawayTimerRef.current = null;
+      }
+      if (hadPendingRecovery) {
+        recoveryPendingRef.current = true;
+        setReconnecting(true);
+        logStep('GEMINI RECOVERY PAUSED — OFFLINE', 'warn');
+      }
+    };
+    const handleOnline = () => {
+      isOnlineRef.current = true;
+      if (!mountedRef.current || !recoveryPendingRef.current) return;
+      const delay = Math.min(Math.max(reconnectAttemptsRef.current, 1) * 1500, 6000);
+      logStep(`GEMINI RECOVERY RESUMING — ONLINE (in ${delay}ms)`, 'ok');
+      scheduleReconnect(delay);
+    };
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [scheduleReconnect]);
 
   useEffect(() => {
     logStep('OracleConversation MOUNTED', 'ok');
@@ -709,9 +915,16 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
     connectToGeminiRef.current();
     return () => {
       logStep('ORACLE_CONV UNMOUNT', 'warn');
-      if (wsRef.current) {
-        userInitiatedCloseRef.current = true;
-        wsRef.current.close(1000, 'Component unmounted');
+      mountedRef.current = false;
+      lifecycleEpochRef.current++;
+      clearTrackedTimers();
+      recoveryPendingRef.current = false;
+      const ws = wsRef.current;
+      wsRef.current = null;
+      socketGenerationRef.current++;
+      userInitiatedCloseRef.current = true;
+      if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+        ws.close(1000, 'Component unmounted');
       }
       onSessionEndRef.current?.(
         sessionAlignRef.current,
@@ -719,12 +932,11 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
         sessionCoinsRef.current,
       );
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [clearTrackedTimers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const disconnect = useCallback(() => {
-    userInitiatedCloseRef.current = true;
-    wsRef.current?.close(1000, 'User disconnected');
-  }, []);
+    terminateSession('User disconnected');
+  }, [terminateSession]);
 
   const prewarm = useCallback(() => {
     logStep('prewarm() CALLED — silent pre-warm', 'ok');
@@ -797,8 +1009,8 @@ export function useGeminiSession(params: UseGeminiSessionParams): UseGeminiSessi
   }, [connectToGemini, sendText]);
 
   const resetSessionBoot = useCallback(() => {
-    sessionBootedRef.current = false;
-  }, []);
+    terminateSession('Session reset');
+  }, [terminateSession]);
 
   return {
     wsRef,

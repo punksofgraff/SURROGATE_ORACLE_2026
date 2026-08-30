@@ -65,6 +65,27 @@ export function useOracleFilm(sessionId: string | null | undefined) {
     }, REMOTE_POLL_INTERVAL_MS);
   }, [poll]);
 
+  const waitForCompletion = useCallback(async (jobId: string): Promise<OracleFilmJob> => {
+    for (let attempt = 0; attempt < 180; attempt += 1) {
+      try {
+        const next = await poll(jobId);
+        if (next && ['ready', 'failed', 'cancelled'].includes(next.status)) return next;
+      } catch {
+        // Keep the scene recoverable through the normal remote poll path.
+      }
+      await new Promise(resolve => window.setTimeout(resolve, 2000));
+    }
+    return {
+      id: jobId,
+      provider: 'fal',
+      status: 'failed',
+      progress: 0,
+      chunkCount: 1,
+      finalMediaUrl: null,
+      error: 'Premium film rendering timed out. The scene can be retried.',
+    };
+  }, [poll]);
+
   useEffect(() => {
     if (!sessionId || typeof window === 'undefined') return;
     try {
@@ -281,5 +302,5 @@ export function useOracleFilm(sessionId: string | null | undefined) {
     if (recorderRef.current && recorderRef.current.state !== 'inactive') recorderRef.current.stop();
   }, []);
 
-  return { job, createFilm, cancelFilm };
+  return { job, createFilm, cancelFilm, waitForCompletion };
 }

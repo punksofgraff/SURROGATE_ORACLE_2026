@@ -49,6 +49,7 @@ export type CreativeScene = {
   brief: string;
   status: 'planned' | 'generating' | 'ready' | 'failed' | 'cancelled';
   progress: number;
+  jobId?: string | null;
   outputUrl?: string | null;
   error?: string | null;
 };
@@ -73,6 +74,8 @@ export type CreativeSeriesManifest = {
   finalAssemblyUrl?: string | null;
   episodes: CreativeEpisode[];
 };
+
+export type SeriesRenderMode = 'local' | 'premium';
 
 export type CreativeArtifact = {
   id: string;
@@ -249,7 +252,7 @@ export function createSeriesManifest(prompt: string, createdAt = new Date().toIS
     seriesId,
     title: 'Signal series manifest',
     prompt,
-    status: 'ready',
+    status: 'planned',
     finalAssemblyUrl: null,
     episodes: Array.from({ length: count }, (_, index) => ({
       id: `${seriesId}-episode-${index + 1}`,
@@ -264,6 +267,7 @@ export function createSeriesManifest(prompt: string, createdAt = new Date().toIS
         brief: `Scene ${sceneIndex + 1} beats for episode ${index + 1}.`,
         status: 'planned',
         progress: 0,
+         jobId: null,
         outputUrl: null,
         error: null,
       })),
@@ -271,6 +275,100 @@ export function createSeriesManifest(prompt: string, createdAt = new Date().toIS
       error: null,
     })),
   };
+}
+
+function episodeStatusFor(scenes: CreativeScene[]): CreativeEpisode['status'] {
+  if (scenes.every(scene => scene.status === 'ready')) return 'ready';
+  if (scenes.some(scene => scene.status === 'generating')) return 'generating';
+  if (scenes.some(scene => scene.status === 'ready')) return 'partial';
+  if (scenes.some(scene => scene.status === 'failed')) return 'failed';
+  if (scenes.some(scene => scene.status === 'cancelled')) return 'cancelled';
+  return 'planned';
+}
+
+export function refreshSeriesProgress(manifest: CreativeSeriesManifest): CreativeSeriesManifest {
+  const episodes = manifest.episodes.map(episode => {
+    const progress = episode.scenes.length
+      ? Math.round(episode.scenes.reduce((sum, scene) => sum + scene.progress, 0) / episode.scenes.length)
+      : 0;
+    const status = episodeStatusFor(episode.scenes);
+    return {
+      ...episode,
+      status,
+      progress,
+      error: status === 'failed'
+        ? episode.scenes.find(scene => scene.error)?.error ?? 'One or more scenes failed.'
+        : null,
+    };
+  });
+  const hasGenerating = episodes.some(episode => episode.status === 'generating');
+  const hasReady = episodes.some(episode => episode.status === 'ready' || episode.status === 'partial');
+  const hasFailed = episodes.some(episode => episode.status === 'failed');
+  const hasCancelled = episodes.some(episode => episode.status === 'cancelled');
+  const allAssembled = episodes.length > 0 && episodes.every(episode => episode.status === 'ready' && episode.outputUrl);
+  const status = manifest.status === 'assembling'
+    ? 'assembling'
+    : manifest.finalAssemblyUrl
+      ? 'ready'
+      : hasGenerating
+        ? 'partial'
+        : allAssembled
+          ? 'partial'
+          : hasFailed || hasCancelled || hasReady
+            ? 'partial'
+            : 'planned';
+  return {
+    ...manifest,
+    episodes,
+    status,
+  };
+}
+
+export function updateSeriesScene(
+  manifest: CreativeSeriesManifest,
+  episodeId: string,
+  sceneId: string,
+  patch: Partial<CreativeScene>,
+): CreativeSeriesManifest {
+  const next = {
+    ...manifest,
+    episodes: manifest.episodes.map(episode => episode.id !== episodeId
+      ? episode
+      : {
+          ...episode,
+          scenes: episode.scenes.map(scene => scene.id === sceneId ? { ...scene, ...patch } : scene),
+        }),
+  };
+  return refreshSeriesProgress(next);
+}
+
+export function createSeriesAssemblyDataUrl(
+  manifest: CreativeSeriesManifest,
+  scope: 'episode' | 'series' = 'series',
+  episodeId?: string,
+): string {
+  const episodes = manifest.episodes
+    .filter(episode => scope === 'series' || episode.id === episodeId)
+    .map(episode => ({
+      id: episode.id,
+      number: episode.number,
+      title: episode.title,
+      brief: episode.brief,
+      outputUrl: episode.outputUrl ?? null,
+      scenes: episode.scenes.map(scene => ({
+        id: scene.id,
+        title: scene.title,
+        brief: scene.brief,
+        outputUrl: scene.outputUrl ?? null,
+      })),
+    }));
+  return createDataUrl(JSON.stringify({
+    type: scope === 'series' ? 'surrogate-oracle-series' : 'surrogate-oracle-episode',
+    title: manifest.title,
+    prompt: manifest.prompt,
+    seriesId: manifest.seriesId,
+    episodes,
+  }, null, 2), 'application/json;charset=utf-8');
 }
 
 export function createCreativeTextOutput(artifact: CreativeArtifact): string {

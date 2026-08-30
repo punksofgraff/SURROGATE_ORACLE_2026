@@ -11,12 +11,16 @@ import {
   FileVideo,
   LoaderCircle,
   OctagonX,
+  Pause,
+  Play,
+  Layers3,
+  PackageCheck,
   RefreshCw,
   ShieldCheck,
   Sparkles,
   X,
 } from 'lucide-react';
-import type { CreativeArtifact } from '../lib/creativeProduction';
+import type { CreativeArtifact, CreativeEpisode, SeriesRenderMode } from '../lib/creativeProduction';
 import './CreativeArtifactCard.css';
 
 export type CreativeArtifactCardProps = {
@@ -27,6 +31,15 @@ export type CreativeArtifactCardProps = {
   onDownload: () => void;
   onPreview: () => void;
   onClose: () => void;
+  seriesRenderMode?: SeriesRenderMode;
+  seriesIsRunning?: boolean;
+  seriesRunningEpisodeId?: string | null;
+  onSeriesModeChange?: (mode: SeriesRenderMode) => void;
+  onSeriesEpisodeStart?: (episodeId: string, mode: SeriesRenderMode) => void;
+  onSeriesPause?: () => void;
+  onSeriesSceneRetry?: (episodeId: string, sceneId: string, mode: SeriesRenderMode) => void;
+  onSeriesAssembleEpisode?: (episodeId: string) => void;
+  onSeriesAssemble?: () => void;
 };
 
 type ArtifactStatus = CreativeArtifact['status'];
@@ -133,6 +146,15 @@ function outputKind(kind: unknown): 'image' | 'video' | 'audio' | 'generic' {
   return 'generic';
 }
 
+function seriesEpisodeLabel(episode: CreativeEpisode): string {
+  if (episode.status === 'ready') return 'Ready';
+  if (episode.status === 'generating') return 'Rendering';
+  if (episode.status === 'partial') return 'Partial';
+  if (episode.status === 'failed') return 'Needs retry';
+  if (episode.status === 'cancelled') return 'Paused';
+  return 'Planned';
+}
+
 export function CreativeArtifactCard({
   artifact,
   onConfirm,
@@ -141,6 +163,15 @@ export function CreativeArtifactCard({
   onDownload,
   onPreview,
   onClose,
+  seriesRenderMode = 'local',
+  seriesIsRunning = false,
+  seriesRunningEpisodeId = null,
+  onSeriesModeChange,
+  onSeriesEpisodeStart,
+  onSeriesPause,
+  onSeriesSceneRetry,
+  onSeriesAssembleEpisode,
+  onSeriesAssemble,
 }: CreativeArtifactCardProps) {
   const titleId = useId();
   const descriptionId = useId();
@@ -150,12 +181,14 @@ export function CreativeArtifactCard({
   const metadataRecord = artifact.metadata as Record<string, unknown> | undefined;
   const hasOutput = Boolean(outputUrl);
   const hasMetadata = Boolean(metadataRecord && Object.keys(metadataRecord).length);
+  const series = artifact.seriesManifest;
+  const isSeries = Boolean(series);
   const isDraft = status === 'draft';
   const isWorking = status === 'queued' || status === 'generating';
   const isRecoverable = status === 'failed' || status === 'cancelled' || status === 'partial';
   const canCancel = isDraft || isWorking;
-  const canRetry = isRecoverable;
-  const canOutput = (status === 'ready' || status === 'partial') && hasOutput;
+  const canRetry = isRecoverable && !isSeries;
+  const canOutput = !isSeries && (status === 'ready' || status === 'partial') && hasOutput;
   const previewType = outputKind(artifact.kind);
   const metadataEntries = hasMetadata
     ? Object.entries(metadataRecord ?? {}).slice(0, 4)
@@ -199,6 +232,171 @@ export function CreativeArtifactCard({
         <FileText size={24} aria-hidden="true" />
         <span className="creative-artifact-card__preview-label">{artifact.outputLabel ?? 'Artifact signal ready'}</span>
         <span className="creative-artifact-card__preview-subline">Use preview to open the full creative output.</span>
+      </div>
+    );
+  };
+
+  const renderSeries = () => {
+    if (!series) return null;
+    const assembledEpisodes = series.episodes.filter(episode => Boolean(episode.outputUrl)).length;
+    const readyScenes = series.episodes.reduce(
+      (sum, episode) => sum + episode.scenes.filter(scene => scene.status === 'ready').length,
+      0,
+    );
+    const totalScenes = series.episodes.reduce((sum, episode) => sum + episode.scenes.length, 0);
+    const canAssembleSeries = series.episodes.length > 0
+      && series.episodes.every(episode => episode.status === 'ready' && episode.outputUrl)
+      && !series.finalAssemblyUrl;
+
+    return (
+      <div className="creative-series" aria-label="Series production dashboard">
+        <div className="creative-series__heading">
+          <div>
+            <span className="creative-artifact-card__output-label">Series production board</span>
+            <div className="creative-series__summary">
+              <Layers3 size={15} aria-hidden="true" />
+              <strong>{assembledEpisodes}/{series.episodes.length} episodes assembled</strong>
+              <span>{readyScenes}/{totalScenes} scenes ready</span>
+            </div>
+          </div>
+          <span className={`creative-series__manifest-status creative-series__manifest-status--${series.status}`}>
+            {series.status === 'assembling' ? 'Assembling' : series.status}
+          </span>
+        </div>
+
+        <div className="creative-series__toolbar">
+          <div className="creative-series__mode" role="group" aria-label="Series render lane">
+            <span>RENDER LANE</span>
+            <button
+              type="button"
+              className={seriesRenderMode === 'local' ? 'is-selected' : ''}
+              onClick={() => onSeriesModeChange?.('local')}
+              aria-pressed={seriesRenderMode === 'local'}
+              disabled={seriesIsRunning}
+            >
+              FREE / BROWSER
+            </button>
+            <button
+              type="button"
+              className={seriesRenderMode === 'premium' ? 'is-selected is-premium' : 'is-premium'}
+              onClick={() => onSeriesModeChange?.('premium')}
+              aria-pressed={seriesRenderMode === 'premium'}
+              disabled={seriesIsRunning}
+            >
+              PREMIUM / FAL
+            </button>
+          </div>
+          {seriesIsRunning ? (
+            <button type="button" className="creative-artifact-card__button creative-artifact-card__button--quiet" onClick={onSeriesPause}>
+              <Pause size={14} aria-hidden="true" />
+              Pause episode
+            </button>
+          ) : canAssembleSeries ? (
+            <button type="button" className="creative-artifact-card__button creative-artifact-card__button--primary" onClick={onSeriesAssemble}>
+              <PackageCheck size={14} aria-hidden="true" />
+              Assemble series
+            </button>
+          ) : null}
+        </div>
+
+        {seriesRenderMode === 'premium' && (
+          <p className="creative-series__lane-note">
+            Premium is a separate confirmed lane. It requires the existing Lyria soundtrack plus a hosted neural portrait, then returns a muxed visual when the audio gate passes.
+          </p>
+        )}
+
+        <div className="creative-series__episodes">
+          {series.episodes.map(episode => {
+            const runnableScenes = episode.scenes.filter(scene => ['planned', 'failed', 'cancelled'].includes(scene.status));
+            const allScenesReady = episode.scenes.length > 0 && episode.scenes.every(scene => scene.status === 'ready');
+            const isCurrentEpisode = seriesRunningEpisodeId === episode.id;
+            return (
+              <details className="creative-series__episode" key={episode.id} open={isCurrentEpisode || episode.status === 'partial' || episode.status === 'failed'}>
+                <summary className="creative-series__episode-summary">
+                  <span className="creative-series__episode-number">E{String(episode.number).padStart(2, '0')}</span>
+                  <span className="creative-series__episode-title">{episode.title}</span>
+                  <span className="creative-series__episode-progress">{episode.progress}% · {seriesEpisodeLabel(episode)}</span>
+                </summary>
+                <div className="creative-series__episode-body">
+                  <p className="creative-series__episode-brief">{episode.brief}</p>
+                  <div className="creative-series__episode-actions">
+                    {!seriesIsRunning && runnableScenes.length > 0 && (
+                      <button
+                        type="button"
+                        className="creative-artifact-card__button creative-artifact-card__button--primary"
+                        onClick={() => onSeriesEpisodeStart?.(episode.id, seriesRenderMode)}
+                      >
+                        <Play size={13} aria-hidden="true" />
+                        {episode.status === 'cancelled' || episode.status === 'partial' ? 'Resume episode' : 'Start episode'}
+                      </button>
+                    )}
+                    {allScenesReady && !episode.outputUrl && !seriesIsRunning && (
+                      <button
+                        type="button"
+                        className="creative-artifact-card__button"
+                        onClick={() => onSeriesAssembleEpisode?.(episode.id)}
+                      >
+                        <PackageCheck size={13} aria-hidden="true" />
+                        Assemble episode
+                      </button>
+                    )}
+                    {episode.outputUrl && (
+                      <a
+                        className="creative-artifact-card__button"
+                        href={episode.outputUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        download={`episode-${String(episode.number).padStart(2, '0')}-assembly.json`}
+                      >
+                        <Eye size={13} aria-hidden="true" />
+                        Inspect assembly
+                      </a>
+                    )}
+                  </div>
+                  <div className="creative-series__scenes">
+                    {episode.scenes.map(scene => (
+                      <div className="creative-series__scene" data-status={scene.status} key={scene.id}>
+                        <div className="creative-series__scene-main">
+                          <span className="creative-series__scene-title">{scene.title}</span>
+                          <span className="creative-series__scene-status">
+                            {scene.status} · {scene.progress}%
+                            {scene.jobId ? ` · job ${scene.jobId.slice(0, 12)}` : ''}
+                          </span>
+                          {scene.error && <span className="creative-series__scene-error">{scene.error}</span>}
+                        </div>
+                        <div className="creative-series__scene-actions">
+                          {scene.outputUrl && (
+                            <a href={scene.outputUrl} target="_blank" rel="noreferrer" aria-label={`Inspect ${scene.title}`} className="creative-series__scene-link">
+                              INSPECT
+                            </a>
+                          )}
+                          {['failed', 'cancelled'].includes(scene.status) && !seriesIsRunning && (
+                            <button type="button" onClick={() => onSeriesSceneRetry?.(episode.id, scene.id, seriesRenderMode)}>
+                              RETRY
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </details>
+            );
+          })}
+        </div>
+
+        {series.finalAssemblyUrl && (
+          <div className="creative-series__final">
+            <PackageCheck size={18} aria-hidden="true" />
+            <div>
+              <strong>Finished series package ready</strong>
+              <span>Every assembled episode is included. The package is recoverable from this manifest.</span>
+            </div>
+            <a href={series.finalAssemblyUrl} target="_blank" rel="noreferrer" download="surrogate-oracle-series.json">
+              DOWNLOAD
+            </a>
+          </div>
+        )}
       </div>
     );
   };
@@ -290,7 +488,7 @@ export function CreativeArtifactCard({
           </div>
         )}
 
-        {status === 'ready' && (
+        {status === 'ready' && !isSeries && (
           <div className="creative-artifact-card__output">
             <span className="creative-artifact-card__output-label">Output signal</span>
             {renderOutput() ?? (
@@ -307,7 +505,7 @@ export function CreativeArtifactCard({
           </div>
         )}
 
-        {status === 'partial' && (
+        {status === 'partial' && !isSeries && (
           <div className="creative-artifact-card__output">
             <span className="creative-artifact-card__output-label">Recovered output</span>
             {renderOutput() ?? (
@@ -344,6 +542,8 @@ export function CreativeArtifactCard({
             ))}
           </div>
         )}
+
+        {renderSeries()}
 
         <div className="creative-artifact-card__actions">
           {isDraft && (

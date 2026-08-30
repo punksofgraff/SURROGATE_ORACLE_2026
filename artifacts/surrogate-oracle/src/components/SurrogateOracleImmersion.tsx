@@ -82,8 +82,13 @@ import {
   createCreativeDraft,
   createCreativeTextOutput,
   createDataUrl,
+  createSeriesAssemblyDataUrl,
   createSeriesManifest,
+  refreshSeriesProgress,
+  updateSeriesScene,
   type CreativeArtifact,
+  type CreativeSeriesManifest,
+  type SeriesRenderMode,
 } from '../lib/creativeProduction';
 
 // Data
@@ -271,6 +276,9 @@ export function SurrogateOracleImmersion() {
   const [sessionCoins, setSessionCoins]     = useState(0);
   const [showArtifactCard, setShowArtifactCard] = useState(false);
   const [creativeArtifact, setCreativeArtifact] = useState<CreativeArtifact | null>(null);
+  const [seriesRenderMode, setSeriesRenderMode] = useState<SeriesRenderMode>('local');
+  const [seriesIsRunning, setSeriesIsRunning] = useState(false);
+  const [seriesRunningEpisodeId, setSeriesRunningEpisodeId] = useState<string | null>(null);
   // The Mirror reveal — the archetype name the Oracle just spoke, staged as a designed
   // beat (hush + name landing with weight) instead of scrolling past as more conversation.
   const [mirrorReveal, setMirrorReveal] = useState<string | null>(null);
@@ -383,6 +391,14 @@ export function SurrogateOracleImmersion() {
   const finalTurnsRef = useRef<SessionTurns>([]);
   const activeCreativeArtifactRef = useRef<CreativeArtifact | null>(null);
   const creativeDispatchTokenRef = useRef(0);
+  const seriesRunRef = useRef<{
+    token: number;
+    episodeId: string;
+    sceneId: string | null;
+    jobId: string | null;
+    mode: SeriesRenderMode;
+    paused: boolean;
+  } | null>(null);
 
   // ── Service Hooks ───────────────────────────────────────────────────────
   const { isReturning, hasCompletedLore, hasSignedWallet, markVisited, markLoreCompleted, markWalletSigned, ipAddress } = useIpCheck();
@@ -1530,10 +1546,79 @@ export function SurrogateOracleImmersion() {
   const portrait = usePortraitPipeline({ currentUserId, userEmail, currentSessionId, onPortraitGenerated: handlePortraitGenerated });
   const oracleFilm = useOracleFilm(currentSessionId);
 
+  const persistSeriesArtifact = useCallback((artifact: CreativeArtifact | null) => {
+    if (!artifact?.seriesManifest || typeof window === 'undefined') return;
+    localStorage.setItem(
+      `oracle_creative_series_${currentSessionId}`,
+      JSON.stringify(artifact),
+    );
+  }, [currentSessionId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = localStorage.getItem(`oracle_creative_series_${currentSessionId}`);
+      if (!stored) return;
+      const restored = JSON.parse(stored) as CreativeArtifact;
+      if (restored?.kind !== 'episodic-series' || !restored.seriesManifest) return;
+      const artifact = {
+        ...restored,
+        seriesManifest: refreshSeriesProgress(restored.seriesManifest),
+      };
+      activeCreativeArtifactRef.current = artifact;
+      setCreativeArtifact(artifact);
+      setShowArtifactCard(true);
+    } catch {
+      localStorage.removeItem(`oracle_creative_series_${currentSessionId}`);
+    }
+  }, [currentSessionId]);
+
   const updateCreativeArtifact = useCallback((artifactId: string, patch: Partial<CreativeArtifact>) => {
     if (activeCreativeArtifactRef.current?.id !== artifactId) return;
-    setCreativeArtifact(current => current?.id === artifactId ? { ...current, ...patch } : current);
-  }, []);
+    setCreativeArtifact(current => {
+      if (current?.id !== artifactId) return current;
+      const next = { ...current, ...patch };
+      activeCreativeArtifactRef.current = next;
+      persistSeriesArtifact(next);
+      return next;
+    });
+  }, [persistSeriesArtifact]);
+
+  const updateSeriesManifest = useCallback((
+    artifactId: string,
+    transform: (manifest: CreativeSeriesManifest) => CreativeSeriesManifest,
+  ) => {
+    if (activeCreativeArtifactRef.current?.id !== artifactId) return;
+    setCreativeArtifact(current => {
+      if (current?.id !== artifactId || !current.seriesManifest) return current;
+      const seriesManifest = refreshSeriesProgress(transform(current.seriesManifest));
+      const progress = seriesManifest.episodes.length
+        ? Math.round(seriesManifest.episodes.reduce((sum, episode) => sum + episode.progress, 0) / seriesManifest.episodes.length)
+        : 0;
+      const next: CreativeArtifact = {
+        ...current,
+        status: seriesManifest.finalAssemblyUrl
+          ? 'ready'
+          : seriesManifest.status === 'assembling'
+            ? 'generating'
+            : 'partial',
+        progress,
+        outputUrl: seriesManifest.finalAssemblyUrl ?? null,
+        outputLabel: seriesManifest.finalAssemblyUrl ? 'Finished series package · JSON' : undefined,
+        seriesManifest,
+        metadata: {
+          ...(current.metadata ?? {}),
+          episodeCount: seriesManifest.episodes.length,
+          sceneCount: seriesManifest.episodes.reduce((sum, episode) => sum + episode.scenes.length, 0),
+          readyScenes: seriesManifest.episodes.reduce((sum, episode) => sum + episode.scenes.filter(scene => scene.status === 'ready').length, 0),
+          assembly: seriesManifest.finalAssemblyUrl ? 'complete' : 'scene-by-scene',
+        },
+      };
+      activeCreativeArtifactRef.current = next;
+      persistSeriesArtifact(next);
+      return next;
+    });
+  }, [persistSeriesArtifact]);
 
   const handleCreativeRequest = useCallback((prompt: string) => {
     const artifact = createCreativeDraft(prompt);
@@ -1592,22 +1677,29 @@ export function SurrogateOracleImmersion() {
       return;
     }
 
+    if (artifact.kind === 'episodic-series') {
+      const manifest = createSeriesManifest(artifact.prompt, artifact.createdAt);
+      updateCreativeArtifact(artifact.id, {
+        status: 'partial',
+        progress: 0,
+        outputUrl: null,
+        outputLabel: undefined,
+        provider: 'local-series-manifest',
+        providerLabel: 'Local series manifest',
+        seriesManifest: manifest,
+        metadata: {
+          episodeCount: manifest.episodes.length,
+          sceneCount: manifest.episodes.reduce((sum, episode) => sum + episode.scenes.length, 0),
+          readyScenes: 0,
+          assembly: 'scene-by-scene',
+        },
+      });
+      logStep(`SERIES MANIFEST CREATED — ${manifest.episodes.length} episodes / scene-by-scene lane`, 'ok');
+      return;
+    }
+
     window.setTimeout(() => {
       if (!isCurrent()) return;
-      if (artifact.kind === 'episodic-series') {
-        const manifest = createSeriesManifest(artifact.prompt, artifact.createdAt);
-        updateCreativeArtifact(artifact.id, {
-          status: 'ready',
-          progress: 100,
-          outputUrl: createDataUrl(JSON.stringify(manifest, null, 2), 'application/json;charset=utf-8'),
-          outputLabel: `${manifest.episodes.length}-episode series manifest · JSON`,
-          provider: 'local-series-manifest',
-          providerLabel: 'Local series manifest',
-          seriesManifest: manifest,
-          metadata: { episodeCount: manifest.episodes.length, sceneCount: manifest.episodes.reduce((sum, episode) => sum + episode.scenes.length, 0), assembly: 'not started' },
-        });
-        return;
-      }
       if (artifact.kind === 'image') {
         updateCreativeArtifact(artifact.id, {
           status: 'ready',
@@ -1631,12 +1723,205 @@ export function SurrogateOracleImmersion() {
         metadata: { editable: true, remoteUpload: false, characters: content.length },
       });
     }, 180);
-  }, [createCreativeDraft, lyria, oracleFilm, portraitViewerUrl, requestMusic, updateCreativeArtifact]);
+  }, [createCreativeDraft, createSeriesManifest, lyria, oracleFilm, portraitViewerUrl, requestMusic, updateCreativeArtifact, updateSeriesManifest]);
+
+  const renderSeriesScene = useCallback(async (
+    artifactId: string,
+    episodeId: string,
+    sceneId: string,
+    mode: SeriesRenderMode,
+    token: number,
+  ) => {
+    const artifact = activeCreativeArtifactRef.current;
+    const episode = artifact?.seriesManifest?.episodes.find(item => item.id === episodeId);
+    const scene = episode?.scenes.find(item => item.id === sceneId);
+    if (!artifact || artifact.kind !== 'episodic-series' || !episode || !scene) return null;
+    if (mode === 'premium' && !lyria.audioUrl) {
+      updateSeriesManifest(artifactId, manifest => updateSeriesScene(manifest, episodeId, sceneId, {
+        status: 'failed',
+        progress: 0,
+        error: 'Premium scenes require the existing Lyria soundtrack. Generate music first, or use the free browser lane.',
+      }));
+      return 'failed' as const;
+    }
+    if (mode === 'premium' && !portraitViewerUrl?.startsWith('https://')) {
+      updateSeriesManifest(artifactId, manifest => updateSeriesScene(manifest, episodeId, sceneId, {
+        status: 'failed',
+        progress: 0,
+        error: 'Premium scenes require a hosted neural portrait. Summon a portrait first, or use the free browser lane.',
+      }));
+      return 'failed' as const;
+    }
+
+    seriesRunRef.current = seriesRunRef.current?.token === token
+      ? { ...seriesRunRef.current, sceneId }
+      : seriesRunRef.current;
+    updateSeriesManifest(artifactId, manifest => updateSeriesScene(manifest, episodeId, sceneId, {
+      status: 'generating',
+      progress: 2,
+      outputUrl: null,
+      error: null,
+    }));
+
+    const sourceUrl = mode === 'premium'
+      ? portraitViewerUrl!
+      : createConceptSvgDataUrl(`${artifact.prompt} — ${episode.title} — ${scene.title}`);
+    const restoredJob = scene.jobId && oracleFilm.job?.id === scene.jobId
+      && !['failed', 'cancelled'].includes(oracleFilm.job.status)
+      ? oracleFilm.job
+      : null;
+    const initialJob = restoredJob ?? await oracleFilm.createFilm(sourceUrl, lyria.audioUrl, scene.brief, mode);
+    if (!initialJob) return null;
+    if (seriesRunRef.current?.token === token) {
+      seriesRunRef.current = { ...seriesRunRef.current, jobId: initialJob.id };
+    }
+    updateSeriesManifest(artifactId, manifest => updateSeriesScene(manifest, episodeId, sceneId, {
+      jobId: initialJob.id,
+    }));
+    const job = initialJob.provider === 'browser' || ['ready', 'failed', 'cancelled'].includes(initialJob.status)
+      ? initialJob
+      : await oracleFilm.waitForCompletion(initialJob.id);
+    const currentRun = seriesRunRef.current;
+    if (!currentRun || currentRun.token !== token) return null;
+    updateSeriesManifest(artifactId, manifest => updateSeriesScene(manifest, episodeId, sceneId, {
+      status: job.status === 'ready' ? 'ready' : job.status === 'cancelled' ? 'cancelled' : 'failed',
+      progress: job.status === 'ready' ? 100 : job.progress,
+      outputUrl: job.finalMediaUrl,
+      error: job.error,
+    }));
+    return job.status;
+  }, [lyria.audioUrl, oracleFilm, portraitViewerUrl, updateSeriesManifest]);
+
+  const startSeriesEpisode = useCallback(async (
+    episodeId: string,
+    mode: SeriesRenderMode,
+    onlySceneId?: string,
+  ) => {
+    if (seriesRunRef.current) return;
+    const artifact = activeCreativeArtifactRef.current;
+    const episode = artifact?.seriesManifest?.episodes.find(item => item.id === episodeId);
+    if (!artifact || artifact.kind !== 'episodic-series' || !episode) return;
+    const scenes = episode.scenes.filter(scene =>
+      (!onlySceneId || scene.id === onlySceneId)
+      && scene.status !== 'ready',
+    );
+    if (!scenes.length) return;
+    const token = creativeDispatchTokenRef.current + 1;
+    creativeDispatchTokenRef.current = token;
+    seriesRunRef.current = { token, episodeId, sceneId: null, jobId: null, mode, paused: false };
+    setSeriesIsRunning(true);
+    setSeriesRunningEpisodeId(episodeId);
+    logStep(`SERIES EPISODE STARTED — E${String(episode.number).padStart(2, '0')} / ${mode}`, 'ok');
+
+    for (const scene of scenes) {
+      const run = seriesRunRef.current;
+      if (!run || run.token !== token || run.paused) break;
+      await renderSeriesScene(artifact.id, episodeId, scene.id, mode, token);
+    }
+
+    if (seriesRunRef.current?.token === token) {
+      seriesRunRef.current = null;
+      setSeriesIsRunning(false);
+      setSeriesRunningEpisodeId(null);
+      logStep(`SERIES EPISODE PAUSED OR COMPLETE — E${String(episode.number).padStart(2, '0')}`, 'ok');
+    }
+  }, [renderSeriesScene]);
+
+  const pauseSeries = useCallback(async () => {
+    const run = seriesRunRef.current;
+    if (!run) return;
+    run.paused = true;
+    const sceneId = run.sceneId;
+    seriesRunRef.current = null;
+    setSeriesIsRunning(false);
+    setSeriesRunningEpisodeId(null);
+    await oracleFilm.cancelFilm();
+    const artifact = activeCreativeArtifactRef.current;
+    if (artifact && sceneId) {
+      updateSeriesManifest(artifact.id, manifest => updateSeriesScene(manifest, run.episodeId, sceneId, {
+        status: 'cancelled',
+        progress: 0,
+        error: null,
+      }));
+    }
+    logStep(`SERIES EPISODE PAUSED — ${run.episodeId}`, 'warn');
+  }, [oracleFilm, updateSeriesManifest]);
+
+  const retrySeriesScene = useCallback((
+    episodeId: string,
+    sceneId: string,
+    mode: SeriesRenderMode,
+  ) => {
+    const artifact = activeCreativeArtifactRef.current;
+    if (!artifact?.seriesManifest || seriesRunRef.current) return;
+    updateSeriesManifest(artifact.id, manifest => updateSeriesScene(manifest, episodeId, sceneId, {
+      status: 'planned',
+      progress: 0,
+      jobId: null,
+      outputUrl: null,
+      error: null,
+    }));
+    window.setTimeout(() => { void startSeriesEpisode(episodeId, mode, sceneId); }, 0);
+  }, [startSeriesEpisode, updateSeriesManifest]);
+
+  const assembleSeriesEpisode = useCallback((episodeId: string) => {
+    const artifact = activeCreativeArtifactRef.current;
+    const manifest = artifact?.seriesManifest;
+    const episode = manifest?.episodes.find(item => item.id === episodeId);
+    if (!artifact || artifact.kind !== 'episodic-series' || !manifest || !episode
+      || !episode.scenes.length || !episode.scenes.every(scene => scene.status === 'ready')
+      || episode.outputUrl) return;
+    updateSeriesManifest(artifact.id, current => {
+      const next = {
+        ...current,
+        episodes: current.episodes.map(item => item.id === episodeId
+          ? { ...item, outputUrl: createSeriesAssemblyDataUrl(current, 'episode', episodeId), error: null }
+          : item),
+      };
+      return next;
+    });
+    logStep(`SERIES EPISODE ASSEMBLED — E${String(episode.number).padStart(2, '0')}`, 'ok');
+  }, [updateSeriesManifest]);
+
+  const assembleSeries = useCallback(() => {
+    const artifact = activeCreativeArtifactRef.current;
+    const manifest = artifact?.seriesManifest;
+    if (!artifact || artifact.kind !== 'episodic-series' || !manifest
+      || !manifest.episodes.every(episode => episode.status === 'ready' && episode.outputUrl)
+      || manifest.finalAssemblyUrl) return;
+    updateSeriesManifest(artifact.id, current => ({ ...current, status: 'assembling' }));
+    window.setTimeout(() => {
+      const currentArtifact = activeCreativeArtifactRef.current;
+      const currentManifest = currentArtifact?.seriesManifest;
+      if (!currentArtifact || currentArtifact.kind !== 'episodic-series' || !currentManifest
+        || !currentManifest.episodes.every(episode => episode.status === 'ready' && episode.outputUrl)) return;
+      const finalAssemblyUrl = createSeriesAssemblyDataUrl(currentManifest);
+      updateSeriesManifest(currentArtifact.id, current => ({
+        ...current,
+        status: 'ready',
+        finalAssemblyUrl,
+      }));
+      logStep('SERIES FINAL ASSEMBLY READY — ALL EPISODES RECOVERABLE', 'ok');
+    }, 220);
+  }, [updateSeriesManifest]);
 
   useEffect(() => {
     const artifact = activeCreativeArtifactRef.current;
     const job = oracleFilm.job;
-    if (!artifact || artifact.kind !== 'film' || !job || !['queued', 'generating', 'stitching', 'ready', 'failed', 'cancelled'].includes(job.status)) return;
+    if (!artifact || !job || !['queued', 'generating', 'stitching', 'ready', 'failed', 'cancelled'].includes(job.status)) return;
+    if (artifact.kind === 'episodic-series'
+      && seriesRunRef.current?.sceneId
+      && seriesRunRef.current.jobId === job.id) {
+      const run = seriesRunRef.current;
+      updateSeriesManifest(artifact.id, manifest => updateSeriesScene(manifest, run.episodeId, run.sceneId!, {
+        status: job.status === 'ready' ? 'ready' : job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
+        progress: job.progress,
+        outputUrl: job.finalMediaUrl,
+        error: job.error,
+      }));
+      return;
+    }
+    if (artifact.kind !== 'film') return;
     updateCreativeArtifact(artifact.id, {
       status: job.status === 'ready' ? 'ready' : job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : job.status === 'stitching' ? 'generating' : job.status,
       progress: job.progress,
@@ -1646,7 +1931,7 @@ export function SurrogateOracleImmersion() {
       provider: 'browser-film',
       providerLabel: 'Free browser film lane',
     });
-  }, [oracleFilm.job, updateCreativeArtifact]);
+  }, [oracleFilm.job, updateCreativeArtifact, updateSeriesManifest]);
 
   useEffect(() => {
     const artifact = activeCreativeArtifactRef.current;
@@ -3035,6 +3320,15 @@ export function SurrogateOracleImmersion() {
               onDownload={downloadCreativeArtifact}
               onPreview={previewCreativeArtifact}
               onClose={() => setShowArtifactCard(false)}
+              seriesRenderMode={seriesRenderMode}
+              seriesIsRunning={seriesIsRunning}
+              seriesRunningEpisodeId={seriesRunningEpisodeId}
+              onSeriesModeChange={setSeriesRenderMode}
+              onSeriesEpisodeStart={(episodeId, mode) => { void startSeriesEpisode(episodeId, mode); }}
+              onSeriesPause={() => { void pauseSeries(); }}
+              onSeriesSceneRetry={retrySeriesScene}
+              onSeriesAssembleEpisode={assembleSeriesEpisode}
+              onSeriesAssemble={assembleSeries}
             />
           </motion.div>
         )}

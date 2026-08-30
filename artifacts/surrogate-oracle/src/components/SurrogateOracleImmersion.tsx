@@ -75,6 +75,16 @@ import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { DocumentIntakeCard, type DocumentIntakeFile } from './DocumentIntakeCard';
 import { DocumentArchive } from './DocumentArchive';
 import { loadDocumentArchive, saveDocumentReadout, type ArchivedDocumentReadout } from '../lib/documentArchive';
+import CreativeArtifactCard from './CreativeArtifactCard';
+import {
+  classifyCreativeRequest,
+  createConceptSvgDataUrl,
+  createCreativeDraft,
+  createCreativeTextOutput,
+  createDataUrl,
+  createSeriesManifest,
+  type CreativeArtifact,
+} from '../lib/creativeProduction';
 
 // Data
 import { COST_NAMES } from '../data/archetypes';
@@ -260,6 +270,7 @@ export function SurrogateOracleImmersion() {
   const [userEmail, setUserEmail]           = useState<string | null>(null);
   const [sessionCoins, setSessionCoins]     = useState(0);
   const [showArtifactCard, setShowArtifactCard] = useState(false);
+  const [creativeArtifact, setCreativeArtifact] = useState<CreativeArtifact | null>(null);
   // The Mirror reveal — the archetype name the Oracle just spoke, staged as a designed
   // beat (hush + name landing with weight) instead of scrolling past as more conversation.
   const [mirrorReveal, setMirrorReveal] = useState<string | null>(null);
@@ -369,6 +380,8 @@ export function SurrogateOracleImmersion() {
   // already-captured turn snapshot. Reset alongside sessionEndedRef.
   const sessionFinalizedRef = useRef(false);
   const finalTurnsRef = useRef<SessionTurns>([]);
+  const activeCreativeArtifactRef = useRef<CreativeArtifact | null>(null);
+  const creativeDispatchTokenRef = useRef(0);
 
   // ── Service Hooks ───────────────────────────────────────────────────────
   const { isReturning, hasCompletedLore, hasSignedWallet, markVisited, markLoreCompleted, markWalletSigned, ipAddress } = useIpCheck();
@@ -691,11 +704,11 @@ export function SurrogateOracleImmersion() {
     window.setTimeout(() => setIsMusicReturning(false), 1500);
   }, [connection, fadeToVolume, isMusicMode, lyria]);
 
-  const requestMusic = useCallback(async (prompt: string) => {
+  const requestMusic = useCallback(async (prompt: string): Promise<string | null> => {
     try {
       // An errored music panel is recoverable: allow its RETRY action to reuse
       // the same mode instead of requiring a fresh spoken command.
-      if (musicRequestInFlightRef.current || (isMusicMode && lyria.status !== 'error') || lyria.status === 'generating') return;
+      if (musicRequestInFlightRef.current || (isMusicMode && lyria.status !== 'error') || lyria.status === 'generating') return null;
       musicRequestInFlightRef.current = true;
       setIsMusicMode(true);
       setIsMusicReturning(false);
@@ -708,7 +721,7 @@ export function SurrogateOracleImmersion() {
         // seeker can retry without repeating the voice command. Returning to
         // the Oracle remains an explicit choice via RETURN TO ORACLE.
         logStep('LYRIA FAILED — RETRY AVAILABLE', 'warn');
-        return;
+        return null;
       }
       // Try autoplay after generation; browsers that reject it leave the
       // explicit PLAY button visible in the overlay.
@@ -719,6 +732,7 @@ export function SurrogateOracleImmersion() {
       } catch (error) {
         logStep(`LYRIA PLAYBACK NEEDS TAP: ${error instanceof Error ? error.message : 'autoplay blocked'}`, 'warn');
       }
+      return generatedUrl;
     } finally {
       musicRequestInFlightRef.current = false;
     }
@@ -1513,6 +1527,170 @@ export function SurrogateOracleImmersion() {
 
   const portrait = usePortraitPipeline({ currentUserId, userEmail, currentSessionId, onPortraitGenerated: handlePortraitGenerated });
   const oracleFilm = useOracleFilm(currentSessionId);
+
+  const updateCreativeArtifact = useCallback((artifactId: string, patch: Partial<CreativeArtifact>) => {
+    if (activeCreativeArtifactRef.current?.id !== artifactId) return;
+    setCreativeArtifact(current => current?.id === artifactId ? { ...current, ...patch } : current);
+  }, []);
+
+  const handleCreativeRequest = useCallback((prompt: string) => {
+    const artifact = createCreativeDraft(prompt);
+    activeCreativeArtifactRef.current = artifact;
+    creativeDispatchTokenRef.current += 1;
+    setCreativeArtifact(artifact);
+    setShowArtifactCard(true);
+    const classification = classifyCreativeRequest(prompt);
+    logStep(`CREATIVE DISPATCH STAGED — ${classification.kind} / ${classification.confidence}`, 'ok');
+  }, []);
+
+  const confirmCreativeArtifact = useCallback(() => {
+    const artifact = activeCreativeArtifactRef.current;
+    if (!artifact || artifact.status !== 'draft') return;
+    const token = creativeDispatchTokenRef.current + 1;
+    creativeDispatchTokenRef.current = token;
+    const isCurrent = () => activeCreativeArtifactRef.current?.id === artifact.id && creativeDispatchTokenRef.current === token;
+    updateCreativeArtifact(artifact.id, { status: 'queued', progress: 4, error: null });
+    logStep(`CREATIVE DISPATCH CONFIRMED — ${artifact.kind}`, 'ok');
+
+    if (artifact.kind === 'music') {
+      void requestMusic(artifact.prompt).then((url) => {
+        if (!isCurrent()) return;
+        if (url) {
+          updateCreativeArtifact(artifact.id, {
+            status: 'ready',
+            progress: 100,
+            outputUrl: url,
+            outputLabel: 'Lyria audio signal',
+            provider: 'lyria',
+            providerLabel: 'Lyria music lane',
+            metadata: { model: lyria.model, requestId: lyria.requestId, durationSeconds: lyria.durationSeconds },
+          });
+        } else {
+          updateCreativeArtifact(artifact.id, { status: 'failed', progress: 0, error: lyria.error ?? 'Lyria did not return a playable track.' });
+        }
+      });
+      return;
+    }
+
+    if (artifact.kind === 'film') {
+      const sourceUrl = portraitViewerUrl ?? createConceptSvgDataUrl(artifact.prompt);
+      void oracleFilm.createFilm(sourceUrl, lyria.audioUrl, artifact.prompt, 'local').then((job) => {
+        if (!isCurrent() || !job) return;
+        updateCreativeArtifact(artifact.id, {
+          status: job.status === 'ready' ? 'ready' : job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
+          progress: job.progress,
+          outputUrl: job.finalMediaUrl,
+          outputLabel: job.finalMediaUrl ? 'Free browser film · WebM' : undefined,
+          provider: 'browser-film',
+          providerLabel: 'Free browser film lane',
+          error: job.error,
+          metadata: { chunkCount: job.chunkCount, mediaType: 'mediaType' in job ? job.mediaType : undefined, source: portraitViewerUrl ? 'neural portrait' : 'local concept board' },
+        });
+      });
+      return;
+    }
+
+    window.setTimeout(() => {
+      if (!isCurrent()) return;
+      if (artifact.kind === 'episodic-series') {
+        const manifest = createSeriesManifest(artifact.prompt, artifact.createdAt);
+        updateCreativeArtifact(artifact.id, {
+          status: 'ready',
+          progress: 100,
+          outputUrl: createDataUrl(JSON.stringify(manifest, null, 2), 'application/json;charset=utf-8'),
+          outputLabel: `${manifest.episodes.length}-episode series manifest · JSON`,
+          provider: 'local-series-manifest',
+          providerLabel: 'Local series manifest',
+          seriesManifest: manifest,
+          metadata: { episodeCount: manifest.episodes.length, sceneCount: manifest.episodes.reduce((sum, episode) => sum + episode.scenes.length, 0), assembly: 'not started' },
+        });
+        return;
+      }
+      if (artifact.kind === 'image') {
+        updateCreativeArtifact(artifact.id, {
+          status: 'ready',
+          progress: 100,
+          outputUrl: createConceptSvgDataUrl(artifact.prompt),
+          outputLabel: 'Local visual concept · SVG',
+          provider: 'local-concept',
+          providerLabel: 'Local concept board',
+          metadata: { delivery: 'editable concept board', remoteUpload: false },
+        });
+        return;
+      }
+      const content = createCreativeTextOutput(artifact);
+      updateCreativeArtifact(artifact.id, {
+        status: 'ready',
+        progress: 100,
+        outputUrl: createDataUrl(content),
+        outputLabel: `${artifact.title} · TXT`,
+        provider: 'local-draft',
+        providerLabel: 'Local editable draft',
+        metadata: { editable: true, remoteUpload: false, characters: content.length },
+      });
+    }, 180);
+  }, [createCreativeDraft, lyria, oracleFilm, portraitViewerUrl, requestMusic, updateCreativeArtifact]);
+
+  useEffect(() => {
+    const artifact = activeCreativeArtifactRef.current;
+    const job = oracleFilm.job;
+    if (!artifact || artifact.kind !== 'film' || !job || !['queued', 'generating', 'stitching', 'ready', 'failed', 'cancelled'].includes(job.status)) return;
+    updateCreativeArtifact(artifact.id, {
+      status: job.status === 'ready' ? 'ready' : job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : job.status === 'stitching' ? 'generating' : job.status,
+      progress: job.progress,
+      outputUrl: job.finalMediaUrl,
+      outputLabel: job.finalMediaUrl ? 'Free browser film · WebM' : undefined,
+      error: job.error,
+      provider: 'browser-film',
+      providerLabel: 'Free browser film lane',
+    });
+  }, [oracleFilm.job, updateCreativeArtifact]);
+
+  useEffect(() => {
+    const artifact = activeCreativeArtifactRef.current;
+    if (!artifact || artifact.kind !== 'music') return;
+    if (lyria.status === 'generating') updateCreativeArtifact(artifact.id, { status: 'generating', progress: 48, provider: 'lyria', providerLabel: 'Lyria music lane' });
+    if (lyria.status === 'error') updateCreativeArtifact(artifact.id, { status: 'failed', progress: 0, error: lyria.error ?? 'Lyria did not return a playable track.' });
+    if ((lyria.status === 'ready' || lyria.status === 'playing') && lyria.audioUrl) {
+      updateCreativeArtifact(artifact.id, { status: 'ready', progress: 100, outputUrl: lyria.audioUrl, outputLabel: 'Lyria audio signal', provider: 'lyria', providerLabel: 'Lyria music lane' });
+    }
+  }, [lyria.audioUrl, lyria.error, lyria.status, updateCreativeArtifact]);
+
+  const cancelCreativeArtifact = useCallback(() => {
+    const artifact = activeCreativeArtifactRef.current;
+    if (!artifact || !['draft', 'queued', 'generating'].includes(artifact.status)) return;
+    creativeDispatchTokenRef.current += 1;
+    if (artifact.kind === 'film') void oracleFilm.cancelFilm();
+    if (artifact.kind === 'music') exitMusicMode();
+    updateCreativeArtifact(artifact.id, { status: 'cancelled', progress: 0, error: null });
+    logStep(`CREATIVE DISPATCH CANCELLED — ${artifact.kind}`, 'warn');
+  }, [exitMusicMode, oracleFilm, updateCreativeArtifact]);
+
+  const retryCreativeArtifact = useCallback(() => {
+    const artifact = activeCreativeArtifactRef.current;
+    if (!artifact || !['failed', 'cancelled', 'partial'].includes(artifact.status)) return;
+    creativeDispatchTokenRef.current += 1;
+    const next = { ...artifact, status: 'draft' as const, progress: 0, outputUrl: null, error: null };
+    activeCreativeArtifactRef.current = next;
+    setCreativeArtifact(next);
+    setShowArtifactCard(true);
+    logStep(`CREATIVE DISPATCH RE-ARMED — ${artifact.kind}`, 'ok');
+  }, []);
+
+  const downloadCreativeArtifact = useCallback(() => {
+    const url = activeCreativeArtifactRef.current?.outputUrl;
+    if (!url) return;
+    const artifact = activeCreativeArtifactRef.current;
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${(artifact?.title ?? 'creative-artifact').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'creative-artifact'}.${artifact?.kind === 'image' ? 'svg' : artifact?.kind === 'music' ? 'mp3' : artifact?.kind === 'film' ? 'webm' : artifact?.kind === 'episodic-series' ? 'json' : 'txt'}`;
+    anchor.click();
+  }, []);
+
+  const previewCreativeArtifact = useCallback(() => {
+    const url = activeCreativeArtifactRef.current?.outputUrl;
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  }, []);
 
   useEffect(() => {
     const handleFilmReady = (event: Event) => {
@@ -2763,6 +2941,7 @@ export function SurrogateOracleImmersion() {
             setDocumentIntake({ file, requestId: Date.now() });
             logStep(`DOCUMENT INTAKE STARTED — ${file.name}`, 'ok');
           }}
+           onCreativeRequest={handleCreativeRequest}
           seekerSummary={(() => {
             if (!echo) return null;
             const lines: string[] = [];
@@ -2807,6 +2986,28 @@ export function SurrogateOracleImmersion() {
           onClose={() => setShowDocumentArchive(false)}
         />
       )}
+
+      <AnimatePresence>
+        {showArtifactCard && creativeArtifact && (
+          <motion.div
+            className="oracle-creative-artifact-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            role="presentation"
+          >
+            <CreativeArtifactCard
+              artifact={creativeArtifact}
+              onConfirm={confirmCreativeArtifact}
+              onCancel={cancelCreativeArtifact}
+              onRetry={retryCreativeArtifact}
+              onDownload={downloadCreativeArtifact}
+              onPreview={previewCreativeArtifact}
+              onClose={() => setShowArtifactCard(false)}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {isOracleMode && isMusicMode && (
         <div

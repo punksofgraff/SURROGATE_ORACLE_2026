@@ -6965,3 +6965,36 @@ body[data-exit-alignment="profane"] .oracle-stage[data-oracle-state="oracle"] .o
   animation: scanlines-verdict-profane 3s cubic-bezier(0.22, 1, 0.36, 1) both !important;
   z-index: 25 !important;
 }
+
+.oracle-creative-artifact-overlay {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 3, 12, 0.62);
+  pointer-events: auto;
+}
+
+.oracle-creative-artifact-overlay::before {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(0, 255, 204, 0.08), transparent 42%),
+    repeating-linear-gradient(90deg, transparent 0, transparent 44px, rgba(176, 38, 255, 0.035) 45px);
+  content: '';
+  pointer-events: none;
+}
+
+.oracle-creative-artifact-overlay .creative-artifact-card {
+  position: relative;
+  z-index: 1;
+}
+
+@media (max-width: 520px) {
+  .oracle-creative-artifact-overlay {
+    align-items: end;
+    padding: 10px;
+  }
+}

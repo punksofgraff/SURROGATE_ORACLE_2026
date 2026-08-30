@@ -28,6 +28,7 @@ import { tracedFetch } from '../lib/tracedFetch';
 import { useVisionFrames } from '../hooks/useVisionFrames';
 import { useConversationCompactor } from '../hooks/useConversationCompactor';
 import type { SensorLifecycleState } from '../lib/sensorLifecycle';
+import { isCreativeProductionRequest } from '../lib/creativeProduction';
 
 // GEMINI_MODEL, ORACLE_SYSTEM_PROMPT and its supporting prompt blocks moved to
 // useGeminiSession.ts — they are pure inputs to the WS session.config payload
@@ -163,6 +164,8 @@ interface OracleConversationProps {
   /** Opens the shared device-safe document picker (Co-pilot only for voice). */
   onDocumentRequest?: () => void;
   onDocumentSelected?: (file: File) => void;
+  /** Routes an explicit Money Mite production brief into the parent job layer. */
+  onCreativeRequest?: (prompt: string) => void;
 }
 
 export interface OracleConversationHandle {
@@ -259,6 +262,7 @@ const OracleConversation = forwardRef(
        onPersonaTakeover,
       onDocumentRequest,
       onDocumentSelected,
+      onCreativeRequest,
     } = props;
 
     const [isListening, setIsListening] = useState(false);
@@ -500,8 +504,10 @@ const OracleConversation = forwardRef(
     const documentInputRef = useRef<HTMLInputElement>(null);
     const onDocumentRequestRef = useRef(onDocumentRequest);
     const onDocumentSelectedRef = useRef(onDocumentSelected);
+    const onCreativeRequestRef = useRef(onCreativeRequest);
     useEffect(() => { onDocumentRequestRef.current = onDocumentRequest; }, [onDocumentRequest]);
     useEffect(() => { onDocumentSelectedRef.current = onDocumentSelected; }, [onDocumentSelected]);
+    useEffect(() => { onCreativeRequestRef.current = onCreativeRequest; }, [onCreativeRequest]);
 
     const openDocumentPicker = useCallback(() => {
       setDocumentPickerPending(true);
@@ -870,11 +876,16 @@ const OracleConversation = forwardRef(
           setSeekerCount(seekerEntryCountRef.current);
           onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
           if (seekerEntryCountRef.current === SEEKER_MAX) playSignalLockedSfx();
-           if (MUSIC_INTENT.test(spoken)) {
+           const isCreativeBrief = personaModeRef.current === 'creative-director' && isCreativeProductionRequest(spoken) && !MUSIC_RETURN.test(spoken);
+           if (!isCreativeBrief && MUSIC_INTENT.test(spoken)) {
              pendingMusicPromptRef.current = spoken;
              logStep('MUSIC INTENT QUEUED — WAITING FOR FULL TRANSCRIPT', 'ok');
            } else if (musicModeRef.current && MUSIC_RETURN.test(spoken)) {
              pendingMusicPromptRef.current = spoken;
+           }
+           if (isCreativeBrief) {
+             logStep('CREATIVE REQUEST DETECTED (voice) — ROUTING TO DISPATCH', 'ok');
+             onCreativeRequestRef.current?.(spoken);
            }
           if (isPortraitRequest(spoken, seekerEntryCountRef.current)) {
             logStep('PORTRAIT INTENT DETECTED (voice)', 'ok');
@@ -1135,7 +1146,12 @@ const OracleConversation = forwardRef(
         setSeekerCount(seekerEntryCountRef.current);
         onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
         if (seekerEntryCountRef.current === SEEKER_MAX) playSignalLockedSfx();
-        inspectMusicSignal(text);
+        const isCreativeBrief = personaModeRef.current === 'creative-director' && isCreativeProductionRequest(text) && !MUSIC_RETURN.test(text);
+        if (!isCreativeBrief) inspectMusicSignal(text);
+        if (isCreativeBrief) {
+          logStep('CREATIVE REQUEST DETECTED (typed) — ROUTING TO DISPATCH', 'ok');
+          onCreativeRequestRef.current?.(text);
+        }
 
         if (isPortraitRequest(text, seekerEntryCountRef.current)) {
           logStep('PORTRAIT INTENT DETECTED (typed)', 'ok');

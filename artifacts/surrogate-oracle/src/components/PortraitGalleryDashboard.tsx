@@ -165,6 +165,18 @@ export function PortraitGalleryDashboard({
         ))}
       </div>
 
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, marginBottom: 18, padding: '12px 14px', background: 'rgba(0,255,136,0.05)', border: '1px solid rgba(0,255,136,0.2)', borderRadius: '4px 12px 4px 12px' }}>
+        <div>
+          <div style={{ fontFamily: "'Share Tech Mono', monospace", color: '#00ffcc', fontSize: '0.68rem', letterSpacing: '0.14em' }}>SESSION PORTRAIT ALLOWANCE</div>
+          <div style={{ color: 'rgba(255,255,255,0.48)', fontFamily: "'Share Tech Mono', monospace", fontSize: '0.62rem', lineHeight: 1.4, marginTop: 4 }}>
+            Two successful portraits per Oracle session. Failed generations do not consume the allowance.
+          </div>
+        </div>
+        <strong style={{ flexShrink: 0, color: stats.total >= 2 ? '#d19cff' : '#00ff88', fontFamily: "'Share Tech Mono', monospace", fontSize: '1.05rem', letterSpacing: '0.08em' }}>
+          {Math.min(stats.total, 2)} / 2
+        </strong>
+      </div>
+
       {/* Toolbar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <span style={{ fontFamily: "'PhillySans', monospace", fontSize: '0.84rem', fontWeight: 800, letterSpacing: '0.16em', color: 'rgba(0,255,136,0.45)', textTransform: 'uppercase' }}>PORTRAIT COLLECTION</span>

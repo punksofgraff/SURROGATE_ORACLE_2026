@@ -19,7 +19,7 @@ import { createVADProcessor, type VADFrame } from '../hooks/useVAD';
 import { motion, AnimatePresence } from 'framer-motion';
 import { logStep } from './CodeAuditor';
 import { trackOracleEvent } from '../lib/analytics';
-import { Mic, MicOff, CameraOff, Send, Terminal, X, Zap, Paperclip } from 'lucide-react';
+import { Mic, MicOff, CameraOff, Send, Terminal, X, Zap, Paperclip, Loader2, RefreshCw } from 'lucide-react';
 import { getAudioContext, playSignalLockedSfx } from '../lib/oracleSfx';
 import { createAudioContext } from '../lib/browserCapabilities';
 import { useGeminiSession, GEMINI_MODEL, type GeminiSessionHandlers, type OraclePersonaMode } from '../hooks/useGeminiSession';
@@ -33,7 +33,7 @@ import { isCreativeProductionRequest } from '../lib/creativeProduction';
 // GEMINI_MODEL, ORACLE_SYSTEM_PROMPT and its supporting prompt blocks moved to
 // useGeminiSession.ts — they are pure inputs to the WS session.config payload
 // and have no dependency on component state.
-
+import type { PortraitPipelineState } from '../hooks/usePortraitPipeline';
 export type OracleScore = {
   alignment: 'sacred' | 'profane';
   coinAward: number;
@@ -104,6 +104,13 @@ interface OracleConversationProps {
   onSessionEnd?: (alignment: string, totemLevel: number, coins: number) => void;
   onTurnComplete?: (turnNumber: number, score: OracleScore | null, themes: string[]) => void;
   onPortraitRequest?: () => void;
+  onPortraitRetry?: () => void;
+  onPortraitView?: () => void;
+  portraitState?: PortraitPipelineState;
+  portraitError?: string | null;
+  portraitCount?: number;
+  portraitLimit?: number;
+  portraitUrl?: string | null;
   onSeekerProgress?: (count: number, max: number) => void;
   onSeekerIdentified?: (name: string | null, handles: string[]) => void;
   onConnected?: () => void;
@@ -241,6 +248,9 @@ const OracleConversation = forwardRef(
       isGuidedTour,
       micAutoRestartAllowed = false,
       onSessionEnd, onTurnComplete, onPortraitRequest, onSeekerProgress, onSeekerIdentified,
+      onPortraitRetry, onPortraitView,
+      portraitState = 'ready', portraitError = null, portraitCount = 0,
+      portraitLimit = 2, portraitUrl = null,
       onMicWillStart,
       onMicClick,
       onAudioSessionChanged,
@@ -1866,21 +1876,17 @@ const OracleConversation = forwardRef(
           </button>
         </div>
 
-        {/* Summon meter — top XR-HUD band. Fills with signal depth during the live
-            conversation (voice + typing); at full it flicker-swaps in place into the
-            SUMMON PORTRAIT control. Appears after the first oracle turn. */}
+        {/* Portrait access HUD — keeps the payoff legible while the Oracle is
+            live: unlock progress, generation state, retry path, and the
+            per-session allowance all stay visible in one place. */}
         {turns.filter(t => t.role === 'oracle').length >= 1 && onPortraitRequestRef.current && (
           <div className="oc-summon-hud">
-            {seekerCount >= SEEKER_MAX ? (
-              <button
-                key="summon-ready"
-                className="oc-summon-hud__btn"
-                onClick={() => onPortraitRequestRef.current?.()}
-              >
-                ⚗ SUMMON PORTRAIT
-              </button>
-            ) : (
-              <div key="summon-meter" className="oc-summon-hud__meter">
+            <div className="oc-summon-hud__header">
+              <span>◈ PORTRAIT ACCESS</span>
+              <span>{Math.min(portraitCount, portraitLimit)} / {portraitLimit}</span>
+            </div>
+            {!seekerCount || seekerCount < SEEKER_MAX ? (
+              <div key="summon-meter" className="oc-summon-hud__meter" data-testid="portrait-access-locked">
                 <div
                   className="oc-summon-hud__track"
                   role="progressbar"
@@ -1894,7 +1900,66 @@ const OracleConversation = forwardRef(
                     style={{ width: `${Math.min(100, (seekerCount / SEEKER_MAX) * 100)}%` }}
                   />
                 </div>
-                <div className="oc-summon-hud__label">◈ SIGNAL DEPTH {seekerCount} / {SEEKER_MAX}</div>
+                <div className="oc-summon-hud__label">
+                  {seekerCount === 0
+                    ? 'SHARE 5 SIGNALS TO UNLOCK'
+                    : `SIGNAL DEPTH ${seekerCount} / ${SEEKER_MAX} — ${SEEKER_MAX - seekerCount} MORE TO GO`}
+                </div>
+              </div>
+            ) : portraitCount >= portraitLimit ? (
+              <div key="portrait-limit" className="oc-summon-hud__state oc-summon-hud__state--limit" data-testid="portrait-access-limit">
+                <strong>SESSION LIMIT REACHED</strong>
+                <span>Two portraits per Oracle session. No cooldown is required; your collection remains available below.</span>
+                {portraitUrl && onPortraitView && (
+                  <button type="button" className="oc-summon-hud__btn oc-summon-hud__btn--compact" onClick={onPortraitView}>
+                    ◈ VIEW LATEST PORTRAIT
+                  </button>
+                )}
+              </div>
+            ) : portraitState === 'generating' ? (
+              <div key="portrait-generating" className="oc-summon-hud__state" data-testid="portrait-access-generating">
+                <span className="oc-summon-hud__state-title"><Loader2 size={13} className="oc-summon-hud__spinner" /> GENERATING PORTRAIT</span>
+                <span>Usually ready in under 90 seconds. Keep this window open while the signal materializes.</span>
+                <span className="oc-summon-hud__fine-print">TWO PORTRAITS PER SESSION · NO FAILURE COOLDOWN</span>
+              </div>
+            ) : portraitState === 'failed' ? (
+              <div key="portrait-failed" className="oc-summon-hud__state oc-summon-hud__state--failed" data-testid="portrait-access-failed">
+                <strong>PORTRAIT FAILED</strong>
+                <span>{portraitError || 'The signal did not return. Your portrait allowance was not used.'}</span>
+                <button
+                  type="button"
+                  className="oc-summon-hud__btn oc-summon-hud__btn--retry"
+                  onClick={() => onPortraitRetry?.()}
+                  disabled={!onPortraitRetry}
+                >
+                  <RefreshCw size={13} /> RETRY SAFE
+                </button>
+                <span className="oc-summon-hud__fine-print">NO COOLDOWN · A RETRY USES ONE REQUEST ONLY</span>
+              </div>
+            ) : portraitState === 'success' ? (
+              <div key="portrait-success" className="oc-summon-hud__state oc-summon-hud__state--success" data-testid="portrait-access-success">
+                <strong>PORTRAIT READY</strong>
+                <span>Your signal has been synthesized and saved to the collection.</span>
+                <div className="oc-summon-hud__actions">
+                  {portraitUrl && onPortraitView && (
+                    <button type="button" className="oc-summon-hud__btn oc-summon-hud__btn--compact" onClick={onPortraitView}>
+                      ◈ VIEW PORTRAIT
+                    </button>
+                  )}
+                  <button type="button" className="oc-summon-hud__btn oc-summon-hud__btn--secondary" onClick={() => onPortraitRequestRef.current?.()}>
+                    ⚗ SUMMON {portraitCount + 1} / {portraitLimit}
+                  </button>
+                </div>
+                <span className="oc-summon-hud__fine-print">TWO PORTRAITS PER SESSION · NO COOLDOWN</span>
+              </div>
+            ) : (
+              <div key="portrait-ready" className="oc-summon-hud__state oc-summon-hud__state--ready" data-testid="portrait-access-ready">
+                <strong>PORTRAIT READY TO SUMMON</strong>
+                <span>The Oracle has enough signal depth. You can create up to two portraits in this session.</span>
+                <button type="button" className="oc-summon-hud__btn" onClick={() => onPortraitRequestRef.current?.()}>
+                  ⚗ SUMMON PORTRAIT
+                </button>
+                <span className="oc-summon-hud__fine-print">2 PORTRAITS / SESSION · NO COOLDOWN</span>
               </div>
             )}
           </div>

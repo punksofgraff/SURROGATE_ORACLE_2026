@@ -9,8 +9,9 @@
  * session phase) ride along — so the generated portrait mirrors THIS seeker's
  * session instead of a fixed theme lookup.
  */
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { logStep } from '../components/CodeAuditor';
+import { traceEvent } from '../lib/sessionTrace';
 
 interface UsePortraitPipelineProps {
   currentUserId?: string | null;
@@ -43,6 +44,8 @@ export interface PortraitContext {
 const MAX_SEEKER_LINES = 6;
 const MAX_LINE_CHARS = 220;
 
+export type PortraitPipelineState = 'ready' | 'generating' | 'success' | 'failed';
+
 export function usePortraitPipeline({
   currentUserId,
   userEmail,
@@ -50,8 +53,15 @@ export function usePortraitPipeline({
   onPortraitGenerated,
 }: UsePortraitPipelineProps) {
   const [isGenerating, setIsGenerating] = useState(false);
+  const [pipelineState, setPipelineState] = useState<PortraitPipelineState>('ready');
   const [latestPortraitUrl, setLatestPortraitUrl] = useState<string | null>(null);
   const [portraitError, setPortraitError] = useState<string | null>(null);
+  const [lastRequestId, setLastRequestId] = useState<string | null>(null);
+  // React state is intentionally not used as the request lock: two taps in the
+  // same event loop can otherwise both observe isGenerating === false.
+  const generationInFlightRef = useRef(false);
+  const retryContextRef = useRef<{ themes: string[]; seekerLines?: string[] } | null>(null);
+  const attemptRef = useRef(0);
   // Weighted tally — a theme that surfaces across many scored turns outweighs
   // one mentioned once. Replaces the old Set (which flattened all recurrence).
   const themeWeightsRef = useRef<Map<string, number>>(new Map());
@@ -64,8 +74,26 @@ export function usePortraitPipeline({
     themes: string[],
     seekerLines?: string[],
   ): Promise<boolean> => {
+    if (generationInFlightRef.current) {
+      logStep('PORTRAIT REQUEST ALREADY IN FLIGHT — SKIPPED', 'warn');
+      return false;
+    }
+
+    generationInFlightRef.current = true;
+    const requestId = crypto.randomUUID();
+    const attempt = attemptRef.current + 1;
+    attemptRef.current = attempt;
+    retryContextRef.current = { themes: [...themes], seekerLines: seekerLines ? [...seekerLines] : undefined };
+    setLastRequestId(requestId);
+    setPortraitError(null);
+    setPipelineState('generating');
     setIsGenerating(true);
     logStep('GENERATING PORTRAIT...', 'pending');
+    traceEvent('portrait_generation_started', {
+      request_id: requestId,
+      session_id: currentSessionId ?? null,
+      attempt,
+    });
 
     try {
       const { supabase } = await import('../lib/supabase');
@@ -107,6 +135,10 @@ export function usePortraitPipeline({
           sessionId: currentSessionId || undefined,
           enhancePrompt: true,
         },
+        headers: {
+          'x-oracle-request-id': requestId,
+          'x-oracle-session-id': currentSessionId ?? '',
+        },
       });
 
       if (error) throw error;
@@ -119,17 +151,35 @@ export function usePortraitPipeline({
       }
       logStep('NEURAL PORTRAIT SYNTHESIZED ✓', 'ok');
       setLatestPortraitUrl(data.portraitUrl);
+      setPipelineState('success');
       onPortraitGenerated?.(data.portraitUrl);
       return true;
     } catch (err) {
       console.error('Portrait generation failed:', err);
       logStep('PORTRAIT GENERATION FAILED', 'err');
-      setPortraitError('SIGNAL LOST — PORTRAIT SYNTHESIS FAILED');
+      setPipelineState('failed');
+      setPortraitError('SIGNAL LOST — PORTRAIT SYNTHESIS FAILED. SAFE RETRY AVAILABLE.');
+      traceEvent('portrait_generation_failed', {
+        request_id: requestId,
+        session_id: currentSessionId ?? null,
+        attempt,
+        error: err instanceof Error ? err.name : 'unknown_error',
+      });
       return false;
     } finally {
+      generationInFlightRef.current = false;
       setIsGenerating(false);
     }
   }, [userEmail, currentSessionId, onPortraitGenerated]);
+
+  const retryPortrait = useCallback((): Promise<boolean> => {
+    const previous = retryContextRef.current;
+    if (!previous) {
+      logStep('PORTRAIT RETRY UNAVAILABLE — NO REQUEST CONTEXT', 'warn');
+      return Promise.resolve(false);
+    }
+    return generatePortrait(previous.themes, previous.seekerLines);
+  }, [generatePortrait]);
 
   const addThemes = useCallback((themes: string[]) => {
     themes.forEach(t => {
@@ -160,12 +210,26 @@ export function usePortraitPipeline({
 
   const clearPortraitError = useCallback(() => setPortraitError(null), []);
 
+  // A new session starts with a clean access state. The request lock is kept
+  // separate so an old network response cannot make a new session duplicate it.
+  useEffect(() => {
+    setPipelineState('ready');
+    setLatestPortraitUrl(null);
+    setPortraitError(null);
+    setLastRequestId(null);
+    retryContextRef.current = null;
+    attemptRef.current = 0;
+  }, [currentSessionId]);
+
   return {
     isGenerating,
+    pipelineState,
     latestPortraitUrl,
     portraitError,
+    lastRequestId,
     clearPortraitError,
     generatePortrait,
+    retryPortrait,
     addThemes,
     recordScoreSignals,
     getThemes,

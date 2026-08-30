@@ -364,6 +364,7 @@ export function SurrogateOracleImmersion() {
   const mirrorRevealedRef        = useRef(false); // fire the Mirror reveal once per session
   const portraitTriggeredRef     = useRef(false); // dedupe a portrait unlock while its request is in flight
   const portraitGenerationCountRef = useRef(0); // two procedural portraits are valid in one full session
+  const [portraitGenerationCount, setPortraitGenerationCount] = useState(0);
   const pendingPortraitUrlRef    = useRef<string | null>(null); // staged portrait URL — released at turn-complete
   const portraitAnnounceRef      = useRef(false); // Oracle announces portrait on next turn-complete
   const pendingWalletGreetingRef = useRef<string | null>(null); // personalized greeting seed for returning wallet seekers
@@ -1149,7 +1150,7 @@ export function SurrogateOracleImmersion() {
       oracleHasSpokenRef.current = false;
     }
     if (scenePhase === 'oracle') {
-      sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; portraitGenerationCountRef.current = 0; pendingPortraitUrlRef.current = null;
+      sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; portraitGenerationCountRef.current = 0; setPortraitGenerationCount(0); pendingPortraitUrlRef.current = null;
       exitWritesRef.current = null; // fresh session — no stale writes to wait on at next exit
       sessionFinalizedRef.current = false; finalTurnsRef.current = []; // re-arm exit finalization
       // Admission gate: only the versioned paired-exchange ledger is trusted.
@@ -1181,6 +1182,7 @@ export function SurrogateOracleImmersion() {
       setOfferRift(false);
       portraitTriggeredRef.current = false;
       portraitGenerationCountRef.current = 0;
+      setPortraitGenerationCount(0);
       pendingPortraitUrlRef.current = null;
       portraitAnnounceRef.current = false;
       setTalismanData(null);
@@ -1708,16 +1710,32 @@ export function SurrogateOracleImmersion() {
     return () => window.removeEventListener('oracle:film-ready', handleFilmReady);
   }, []);
 
-  useEffect(() => {
-    if (portrait.portraitError) {
-      const t = setTimeout(portrait.clearPortraitError, 4000);
-      return () => clearTimeout(t);
-    }
-    return () => {}; // Satisfy return type
-  }, [portrait.portraitError, portrait.clearPortraitError]);
-
   const portraitRef = useRef(portrait);
   useEffect(() => { portraitRef.current = portrait; }, [portrait]);
+
+  const handlePortraitRetry = useCallback(() => {
+    if (portraitTriggeredRef.current || portraitRef.current.isGenerating) {
+      logStep('PORTRAIT RETRY — GENERATION ALREADY IN FLIGHT', 'warn');
+      return;
+    }
+    if (portraitGenerationCountRef.current >= 2) {
+      logStep('PORTRAIT RETRY — SESSION CAP REACHED', 'warn');
+      if (portraitViewerUrl) setShowPortraitCard(true);
+      return;
+    }
+
+    portraitTriggeredRef.current = true;
+    portraitGenerationCountRef.current += 1;
+    setPortraitGenerationCount(portraitGenerationCountRef.current);
+    void portraitRef.current.retryPortrait().then((ok) => {
+      if (!ok) {
+        portraitGenerationCountRef.current = Math.max(0, portraitGenerationCountRef.current - 1);
+        setPortraitGenerationCount(portraitGenerationCountRef.current);
+        logStep('PORTRAIT RETRY RE-ARMED AFTER FAILURE', 'warn');
+      }
+      portraitTriggeredRef.current = false;
+    });
+  }, [portraitViewerUrl]);
 
   // Holographic reveal sequence — fires when portraitViewerUrl is set
   useEffect(() => {
@@ -1791,6 +1809,7 @@ export function SurrogateOracleImmersion() {
         // session; reset only the in-flight latch on failure.
         portraitTriggeredRef.current = true;
         portraitGenerationCountRef.current += 1;
+        setPortraitGenerationCount(portraitGenerationCountRef.current);
         const seekerLines = (oracleConversationRef.current?.getSessionTurns() ?? [])
           .filter(t => t.role === 'user')
           .map(t => t.content);
@@ -1805,6 +1824,7 @@ export function SurrogateOracleImmersion() {
           .then((ok) => {
             if (!ok) {
               portraitGenerationCountRef.current = Math.max(0, portraitGenerationCountRef.current - 1);
+              setPortraitGenerationCount(portraitGenerationCountRef.current);
               logStep('PORTRAIT TRIGGER RE-ARMED AFTER FAILURE', 'warn');
             }
             portraitTriggeredRef.current = false;
@@ -2914,7 +2934,7 @@ export function SurrogateOracleImmersion() {
           micAutoRestartAllowed={scenePhase === 'oracle'}
           onBargeIn={connection.flushPlayback}
           onPortraitRequest={() => {
-            if (portrait.isGenerating) {
+            if (portraitTriggeredRef.current || portrait.isGenerating) {
               logStep('PORTRAIT REQUEST — generation already in flight', 'warn');
             } else if (portraitGenerationCountRef.current >= 2) {
               if (portraitViewerUrl) setShowPortraitCard(true); // re-surface the latest portrait
@@ -2924,6 +2944,7 @@ export function SurrogateOracleImmersion() {
               // later in the same full session. Count the request before awaiting
               // the provider so repeated taps cannot create concurrent generations.
               portraitGenerationCountRef.current += 1;
+              setPortraitGenerationCount(portraitGenerationCountRef.current);
               portraitTriggeredRef.current = true;
               const seekerLines = (oracleConversationRef.current?.getSessionTurns() ?? [])
                 .filter(t => t.role === 'user')
@@ -2931,12 +2952,22 @@ export function SurrogateOracleImmersion() {
               void portrait.generatePortrait(portrait.getThemes(), seekerLines).then((ok) => {
                 if (!ok) {
                   portraitGenerationCountRef.current = Math.max(0, portraitGenerationCountRef.current - 1);
+                  setPortraitGenerationCount(portraitGenerationCountRef.current);
                   logStep('PORTRAIT TRIGGER RE-ARMED AFTER FAILURE', 'warn');
                 }
                 portraitTriggeredRef.current = false;
               });
             }
           }}
+          onPortraitRetry={handlePortraitRetry}
+          onPortraitView={() => {
+            if (portraitViewerUrl) setShowPortraitCard(true);
+          }}
+          portraitState={portrait.pipelineState}
+          portraitError={portrait.portraitError}
+          portraitCount={portraitGenerationCount}
+          portraitLimit={2}
+          portraitUrl={portraitViewerUrl}
           onDocumentSelected={(file) => {
             setDocumentIntake({ file, requestId: Date.now() });
             logStep(`DOCUMENT INTAKE STARTED — ${file.name}`, 'ok');

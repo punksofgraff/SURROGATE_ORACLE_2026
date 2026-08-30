@@ -10,6 +10,8 @@ import { logStep } from '../components/CodeAuditor';
 import { PCMPlayer } from '../utils/PCMPlayer';
 import type { VisemeState } from '../lib/visemeDetector';
 import { playOraclePresence, getAudioContext } from '../lib/oracleSfx';
+import { trackOracleEvent } from '../lib/analytics';
+import type { SensorLifecycleState } from '../lib/sensorLifecycle';
 
 interface UseOracleConnectionProps {
   playbackRate: number;
@@ -26,6 +28,21 @@ export function useOracleConnection({
   const pcmPlayerRef           = useRef<PCMPlayer | null>(null);
   const isFirstChunkRef        = useRef(true);
   const flushVersionRef        = useRef(0);
+  const [playbackLifecycle, setPlaybackLifecycle] = useState<SensorLifecycleState>('inactive');
+  const playbackLifecycleRef = useRef<SensorLifecycleState>('inactive');
+
+  const updatePlaybackLifecycle = useCallback((state: SensorLifecycleState, reason?: string) => {
+    if (playbackLifecycleRef.current === state) return;
+    playbackLifecycleRef.current = state;
+    setPlaybackLifecycle(state);
+    trackOracleEvent({
+      event: 'oracle_sensor_lifecycle',
+      sensor: 'oracle-playback',
+      state,
+      ...(reason ? { reason } : {}),
+    });
+    logStep(`ORACLE PLAYBACK ${state.toUpperCase()}${reason ? ` — ${reason}` : ''}`, state === 'failed' ? 'err' : state === 'suspended' ? 'warn' : 'ok');
+  }, []);
 
   // ── PRIMARY PATH: PCMPlayer init (synchronous, instant) ──────────────────
 
@@ -35,6 +52,7 @@ export function useOracleConnection({
     player.setVisemeCallback(onViseme);
     player.setProcessingCallback(onProcessingChange);
     pcmPlayerRef.current = player;
+    updatePlaybackLifecycle('active', 'player initialized');
     logStep('ENTERPRISE AUDIO WORKLET ACTIVE', 'ok');
     // Dev-only introspection for headless verification (?devui / step-log flag —
     // same visibility contract as CodeAuditor). Lets automated tests read the
@@ -53,7 +71,7 @@ export function useOracleConnection({
         };
       }
     } catch { /* SSR/storage guards — non-fatal */ }
-  }, [playbackRate, onViseme, onProcessingChange]);
+  }, [playbackRate, onViseme, onProcessingChange, updatePlaybackLifecycle]);
 
   const initializeOracle = useCallback(async () => {
     initializePCMPlayer();
@@ -75,6 +93,15 @@ export function useOracleConnection({
       logStep(`PLAYBACK REASSERTED${label ? ' (' + label + ')' : ''}: gain ${before.toFixed(3)} → target`, 'warn');
     }
   }, []);
+
+  const resumePlayback = useCallback(async () => {
+    const player = pcmPlayerRef.current;
+    if (!player) return false;
+    updatePlaybackLifecycle('recovering', 'manual foreground retry');
+    const resumed = await player.resumeFromPage();
+    updatePlaybackLifecycle(resumed ? 'active' : 'failed', resumed ? 'manual foreground retry' : 'manual resume failed');
+    return resumed;
+  }, [updatePlaybackLifecycle]);
 
   // ── Audio response handler ────────────────────────────────────────────────
 
@@ -155,7 +182,42 @@ export function useOracleConnection({
   const cleanup = useCallback(() => {
     pcmPlayerRef.current?.stop();
     pcmPlayerRef.current = null;
+    updatePlaybackLifecycle('inactive', 'player cleaned up');
   }, []);
+
+  useEffect(() => {
+    const suspend = (reason: string) => {
+      if (!pcmPlayerRef.current) return;
+      pcmPlayerRef.current.suspendForPage();
+      updatePlaybackLifecycle('suspended', reason);
+    };
+    const recover = () => {
+      const player = pcmPlayerRef.current;
+      if (!player || playbackLifecycleRef.current !== 'suspended') return;
+      updatePlaybackLifecycle('recovering', 'foreground recovery');
+      void player.resumeFromPage().then((ok) => {
+        if (ok) {
+          updatePlaybackLifecycle('active', 'foreground recovery');
+        } else {
+          updatePlaybackLifecycle('failed', 'audio context resume failed');
+        }
+      });
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) suspend('page hidden');
+      else recover();
+    };
+    const onPageHide = () => suspend('pagehide');
+    const onPageShow = () => recover();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, [updatePlaybackLifecycle]);
 
   const boostMicVolume = useCallback((multiplier: number) => {
     pcmPlayerRef.current?.boostVolume(multiplier, 50);
@@ -219,12 +281,15 @@ export function useOracleConnection({
     getLoreBufferedMs,
     setVolume,
     reassertPlayback,
+    resumePlayback,
+    playbackLifecycle,
   }), [
     error,
     initializePCMPlayer, initializeOracle,
     handleOracleResponse, resetFirstChunk, cleanup, boostMicVolume, getAnalyser, setTransmissionQ, setTauntMode,
     flushPlayback, startQuestionTracking, getQuestionPlaybackMs, getQuestionBufferedMs,
-    startLoreTracking, getLorePlaybackMs, getLoreBufferedMs, setVolume, reassertPlayback,
+    startLoreTracking, getLorePlaybackMs, getLoreBufferedMs, setVolume, reassertPlayback, resumePlayback,
+    playbackLifecycle,
   ]);
 
   return value;

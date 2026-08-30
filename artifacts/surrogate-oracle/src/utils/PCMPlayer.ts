@@ -64,6 +64,10 @@ export class PCMPlayer {
   private tauntEchoGain: GainNode | null = null;
   private tauntFeedbackGain: GainNode | null = null;
   private tauntActive = false;
+  // Explicit page lifecycle gate. Browsers can suspend/resume an AudioContext
+  // opportunistically; this flag prevents a late Gemini chunk from reviving it
+  // while the seeker has the app backgrounded.
+  private pageSuspended = false;
 
   // ── Viseme watchdog / analyser fallback ────────────────────────────────────
   // When the AudioWorklet fails to load (flaky mobile network, Safari quirk),
@@ -354,6 +358,34 @@ export class PCMPlayer {
     return true;
   }
 
+  /** Suspend output on pagehide/hidden without changing the seeker's volume target. */
+  public suspendForPage(): void {
+    this.pageSuspended = true;
+    // Drop queued speech rather than letting a hidden-page backlog play as a
+    // delayed, fast-forwarded response after the phone wakes.
+    this.stop();
+    if (this.context.state !== 'suspended' && this.context.state !== 'closed') {
+      this.context.suspend().catch((err) => {
+        console.warn('[PCMPlayer] Page suspend failed:', err);
+      });
+    }
+  }
+
+  /** Resume output after the page is visible again. Returns false on failure. */
+  public async resumeFromPage(): Promise<boolean> {
+    if (!this.pageSuspended) return true;
+    try {
+      if (this.context.state !== 'running' && this.context.state !== 'closed') {
+        await this.context.resume();
+      }
+      this.pageSuspended = false;
+      return true;
+    } catch (err) {
+      console.warn('[PCMPlayer] Page resume failed:', err);
+      return false;
+    }
+  }
+
   /** Effective master-gain value right now (instrumentation only). */
   public getCurrentGain(): number {
     return this.masterGain ? this.masterGain.gain.value : -1;
@@ -465,6 +497,7 @@ export class PCMPlayer {
   }
 
   public async feed(data: Int16Array) {
+    if (this.pageSuspended) return;
     // feed() is called from Gemini audio callbacks (never a gesture handler), so it
     // is safe to await here. If the context is suspended (e.g. iOS tab switch or
     // background), we must wait for it to resume before feeding the worklet ring

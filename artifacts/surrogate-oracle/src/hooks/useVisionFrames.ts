@@ -25,12 +25,15 @@
  * independent interval, entirely decoupled from `onaudioprocess`.
  */
 import { useEffect, useRef, type MutableRefObject } from 'react';
+import type { SensorLifecycleState } from '../lib/sensorLifecycle';
 
 export interface UseVisionFramesParams {
   /** The already-active camera <video> element from useXRMode (may be null/absent). */
   videoRef?: React.RefObject<HTMLVideoElement | null>;
   /** Mirrors useXRMode's cameraActive — camera permission granted and stream attached. */
   active?: boolean;
+  /** Camera lifecycle gate. Backgrounded/recovering cameras must not emit frames. */
+  cameraLifecycle?: SensorLifecycleState;
   wsRef: MutableRefObject<WebSocket | null>;
   sessionBootedRef: MutableRefObject<boolean>;
   /**
@@ -58,6 +61,7 @@ export interface UseVisionFramesParams {
 export function useVisionFrames({
   videoRef,
   active,
+  cameraLifecycle,
   wsRef,
   sessionBootedRef,
   conversationActiveRef,
@@ -68,10 +72,14 @@ export function useVisionFrames({
 }: UseVisionFramesParams): void {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const onFrameSentRef = useRef(onFrameSent);
+  const activeRef = useRef(active);
+  const cameraLifecycleRef = useRef(cameraLifecycle);
   useEffect(() => { onFrameSentRef.current = onFrameSent; }, [onFrameSent]);
+  useEffect(() => { activeRef.current = active; }, [active]);
+  useEffect(() => { cameraLifecycleRef.current = cameraLifecycle; }, [cameraLifecycle]);
 
   useEffect(() => {
-    if (!videoRef || !active) return;
+    if (!videoRef || !active || (cameraLifecycle && cameraLifecycle !== 'active')) return;
 
     if (!canvasRef.current) {
       canvasRef.current = document.createElement('canvas');
@@ -82,6 +90,7 @@ export function useVisionFrames({
 
     const tick = () => {
       const ws = wsRef.current;
+      if (document.hidden) return;
       if (!ws || ws.readyState !== WebSocket.OPEN || !sessionBootedRef.current) return;
       // Cost gate: skip frame if a conversationActiveRef is wired up but currently false.
       // This pauses vision during extended silences — frames resume the moment either
@@ -107,7 +116,14 @@ export function useVisionFrames({
           if (!blob) return;
           // Re-check gates: WS state or session may have changed during async encode.
           const currentWs = wsRef.current;
-          if (!currentWs || currentWs.readyState !== WebSocket.OPEN || !sessionBootedRef.current) return;
+           if (
+             document.hidden ||
+             !activeRef.current ||
+             (cameraLifecycleRef.current && cameraLifecycleRef.current !== 'active') ||
+             !currentWs ||
+             currentWs.readyState !== WebSocket.OPEN ||
+             !sessionBootedRef.current
+           ) return;
 
           const reader = new FileReader();
           reader.onload = () => {
@@ -115,7 +131,13 @@ export function useVisionFrames({
             const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
             if (!base64) return;
             const ws2 = wsRef.current;
-            if (!ws2 || ws2.readyState !== WebSocket.OPEN) return;
+             if (
+               document.hidden ||
+               !activeRef.current ||
+               (cameraLifecycleRef.current && cameraLifecycleRef.current !== 'active') ||
+               !ws2 ||
+               ws2.readyState !== WebSocket.OPEN
+             ) return;
             ws2.send(JSON.stringify({
               type: 'client.realtimeInput',
               realtimeInput: {
@@ -136,5 +158,5 @@ export function useVisionFrames({
 
     const id = setInterval(tick, intervalMs);
     return () => clearInterval(id);
-  }, [videoRef, active, wsRef, sessionBootedRef, conversationActiveRef, intervalMs, maxDimension, quality]);
+  }, [videoRef, active, cameraLifecycle, wsRef, sessionBootedRef, conversationActiveRef, intervalMs, maxDimension, quality]);
 }

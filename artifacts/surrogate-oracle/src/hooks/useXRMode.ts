@@ -29,6 +29,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { isInIframe, needsDeviceOrientationPermission, requestDeviceOrientationPermission } from '../lib/browserCapabilities';
+import { trackOracleEvent } from '../lib/analytics';
+import type { SensorLifecycleState } from '../lib/sensorLifecycle';
+import { logStep } from '../components/CodeAuditor';
 import * as THREE from 'three';
 
 const THREE_MathUtils = THREE.MathUtils;
@@ -70,6 +73,7 @@ export interface UseXRModeReturn {
   cameraVideoRef: React.RefObject<HTMLVideoElement | null>;
   cameraReady: boolean;
   cameraError: string | null;
+  cameraLifecycle: SensorLifecycleState;
   markerActive: boolean;
   autoStart: boolean; // ?autostart param — skips tap gesture, boots immediately
   seekerMotionRef: React.RefObject<SeekerMotion>;
@@ -96,12 +100,17 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraLifecycle, setCameraLifecycle] = useState<SensorLifecycleState>('inactive');
   const [markerActive, setMarkerActive] = useState(false);
 
   const autoStart = isXRMode && new URLSearchParams(window.location.search).has('autostart');
 
   const cameraVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const cameraLifecycleRef = useRef<SensorLifecycleState>('inactive');
+  const cameraDesiredActiveRef = useRef(false);
+  const cameraAcquiringRef = useRef(false);
+  const cameraSuspendedRef = useRef(false);
   const seekerMotionRef = useRef<SeekerMotion>({
     phoneTilt: { x: 0, y: 0 },
     facePos:   { x: 0, y: 0 },
@@ -201,7 +210,8 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   useEffect(() => {
     if (!cameraActive) return;
 
-    let rafId: number;
+    let rafId: number | null = null;
+    let throttleTimer: ReturnType<typeof setTimeout> | null = null;
     let frameCount = 0;
     let detecting = false;
     let detectorFailLogged = false;
@@ -287,8 +297,23 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
       }
     };
 
+    const scheduleNext = () => {
+      if (document.hidden) {
+        throttleTimer = setTimeout(() => {
+          throttleTimer = null;
+          rafId = requestAnimationFrame(tick);
+        }, 1000);
+      } else {
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+
     const tick = () => {
-      rafId = requestAnimationFrame(tick);
+      scheduleNext();
+      // Keep the loop alive at a very low rate while backgrounded so a
+      // visibility return does not require rebuilding the detector, but never
+      // read camera pixels or run FaceDetector in the background.
+      if (document.hidden) return;
       frameCount++;
       const video = cameraVideoRef.current;
       if (!video || video.readyState < 2 || video.videoWidth === 0) return;
@@ -316,9 +341,22 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
       }
     };
 
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        if (throttleTimer !== null) {
+          clearTimeout(throttleTimer);
+          throttleTimer = null;
+        }
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
     rafId = requestAnimationFrame(tick);
     return () => {
-      cancelAnimationFrame(rafId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (throttleTimer !== null) clearTimeout(throttleTimer);
       if (faceDetectedTimerRef.current) clearTimeout(faceDetectedTimerRef.current);
     };
   }, [cameraActive]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -327,9 +365,54 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   const onMarkerRef = useRef(onMarkerDetected);
   useEffect(() => { onMarkerRef.current = onMarkerDetected; }, [onMarkerDetected]);
 
-  const startCamera = useCallback(async () => {
-    if (streamRef.current) return; // already running
+  const updateCameraLifecycle = useCallback((next: SensorLifecycleState, reason?: string) => {
+    if (cameraLifecycleRef.current === next) return;
+    cameraLifecycleRef.current = next;
+    setCameraLifecycle(next);
+    trackOracleEvent({ event: 'oracle_sensor_lifecycle', sensor: 'camera', state: next, ...(reason ? { reason } : {}) });
+    const label = `CAMERA ${next.toUpperCase()}${reason ? ` — ${reason}` : ''}`;
+    logStep(label, next === 'failed' ? 'err' : next === 'suspended' ? 'warn' : 'ok');
+  }, []);
+
+  const clearFaceState = useCallback(() => {
+    if (faceDetectedTimerRef.current) {
+      clearTimeout(faceDetectedTimerRef.current);
+      faceDetectedTimerRef.current = null;
+    }
+    faceBoundsRef.current = null;
+    setFaceDetected(false);
+    seekerMotionRef.current.hasFace = false;
+    seekerMotionRef.current.facePos = { x: 0, y: 0 };
+  }, []);
+
+  const startCamera = useCallback(async (reason = 'user activation') => {
+    cameraDesiredActiveRef.current = true;
+    if (cameraAcquiringRef.current) return;
+    const liveTrack = streamRef.current?.getVideoTracks().find(track => track.readyState === 'live');
+    if (liveTrack) {
+      liveTrack.enabled = true;
+      cameraSuspendedRef.current = false;
+      setCameraError(null);
+      setCameraReady(true);
+      setCameraActive(true);
+      updateCameraLifecycle('active', reason);
+      const video = cameraVideoRef.current;
+      if (video) {
+        if (video.srcObject !== streamRef.current) video.srcObject = streamRef.current;
+        video.play().catch((err) => console.warn('[XR] Camera preview resume failed:', err));
+      }
+      return;
+    }
+
+    // A stopped track cannot be revived. Drop the old stream before asking for
+    // a replacement, otherwise the browser may keep reporting the dead stream.
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
     setCameraError(null); // clear any previous error so the retry safety-net doesn't fire immediately
+    cameraAcquiringRef.current = true;
+    updateCameraLifecycle('recovering', reason);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -339,19 +422,38 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
         },
         audio: false,
       });
+      if (!cameraDesiredActiveRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        updateCameraLifecycle('inactive', 'activation cancelled');
+        return;
+      }
       streamRef.current = stream;
       // cameraVideoRef.current may be null here — the <video> element only renders
       // after setCameraActive(true) triggers a re-render. The useEffect below
       // attaches the stream once the element is in the DOM.
       setCameraReady(true);
       setCameraActive(true);
+      cameraSuspendedRef.current = false;
+      updateCameraLifecycle('active', reason);
+      stream.getVideoTracks().forEach(track => {
+        track.addEventListener('ended', () => {
+          if (streamRef.current !== stream || !cameraDesiredActiveRef.current) return;
+          setCameraReady(false);
+          clearFaceState();
+          updateCameraLifecycle('failed', 'video track ended');
+        });
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Camera unavailable';
       setCameraError(msg);
       setCameraActive(false);
+      setCameraReady(false);
+      updateCameraLifecycle('failed', msg);
       console.warn('[XR] Camera failed:', msg);
+    } finally {
+      cameraAcquiringRef.current = false;
     }
-  }, []);
+  }, [clearFaceState, updateCameraLifecycle]);
 
   // Attach stream to video element once it renders (cameraActive flip triggers re-render)
   useEffect(() => {
@@ -366,16 +468,18 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   }, [cameraActive]);
 
   const stopCamera = useCallback(() => {
+    cameraDesiredActiveRef.current = false;
+    cameraSuspendedRef.current = false;
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     setCameraReady(false);
     setCameraActive(false);
-    seekerMotionRef.current.hasFace = false;
-    seekerMotionRef.current.facePos = { x: 0, y: 0 };
+    clearFaceState();
     if (cameraVideoRef.current) {
       cameraVideoRef.current.srcObject = null;
     }
-  }, []);
+    updateCameraLifecycle('inactive', 'camera deactivated');
+  }, [clearFaceState, updateCameraLifecycle]);
 
   const activateXRMode = useCallback(() => {
     setIsXRMode(true);
@@ -400,14 +504,81 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     const videoTracks = stream.getVideoTracks();
     if (videoTracks.length === 0) return;
     streamRef.current = new MediaStream(videoTracks);
+    cameraDesiredActiveRef.current = true;
+    cameraSuspendedRef.current = false;
     setCameraError(null);
     setCameraReady(true);
     setCameraActive(true);
-  }, []);
+    updateCameraLifecycle('active', 'presence preflight');
+    videoTracks.forEach(track => {
+      track.addEventListener('ended', () => {
+        if (!cameraDesiredActiveRef.current) return;
+        setCameraReady(false);
+        clearFaceState();
+        updateCameraLifecycle('failed', 'video track ended');
+      });
+    });
+  }, [clearFaceState, updateCameraLifecycle]);
 
   const deactivateCamera = useCallback(() => {
     stopCamera();
   }, [stopCamera]);
+
+  // A hidden page is not a safe place to leave a camera track transmitting.
+  // Disable capture and pause the preview without throwing away permission.
+  // On return, validate the track first and reacquire only when it died.
+  useEffect(() => {
+    const suspendCamera = (reason: string) => {
+      const hasStream = !!streamRef.current;
+      if (!cameraDesiredActiveRef.current || !hasStream) return;
+      cameraSuspendedRef.current = true;
+      streamRef.current?.getVideoTracks().forEach(track => { track.enabled = false; });
+      cameraVideoRef.current?.pause();
+      clearFaceState();
+      updateCameraLifecycle('suspended', reason);
+    };
+
+    const recoverCamera = () => {
+      if (!cameraSuspendedRef.current || !cameraDesiredActiveRef.current) return;
+      if (cameraAcquiringRef.current) return;
+      cameraSuspendedRef.current = false;
+      updateCameraLifecycle('recovering', 'foreground recovery');
+      const track = streamRef.current?.getVideoTracks()[0];
+      if (track && track.readyState === 'live') {
+        track.enabled = true;
+        setCameraError(null);
+        setCameraReady(true);
+        setCameraActive(true);
+        updateCameraLifecycle('active', 'foreground recovery');
+        const video = cameraVideoRef.current;
+        if (video) {
+          if (video.srcObject !== streamRef.current) video.srcObject = streamRef.current;
+          video.play().catch((err) => {
+            setCameraError(err instanceof Error ? err.message : 'Camera preview unavailable');
+            updateCameraLifecycle('failed', 'preview resume failed');
+          });
+        }
+      } else {
+        void startCamera('dead track recovery');
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.hidden) suspendCamera('page hidden');
+      else recoverCamera();
+    };
+    const onPageHide = () => suspendCamera('pagehide');
+    const onPageShow = () => recoverCamera();
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, [clearFaceState, startCamera, updateCameraLifecycle]);
 
   // Main XR setup effect
   useEffect(() => {
@@ -429,7 +600,7 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
       switch (msg.type) {
         case 'holodexr:init':
           setIsXRMode(true);
-          startCamera();
+          startCamera('HolodeXR init');
           try {
             (e.source as Window)?.postMessage({ type: 'oracle:ready', version: '2.0' }, '*');
           } catch (err) {
@@ -465,7 +636,7 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
       version: '2.0',
       launch: () => {
         setIsXRMode(true);
-        startCamera();
+        startCamera('bridge launch');
       },
       markerDetected: (markerId?: string) => {
         console.log('[XR] Marker detected:', markerId ?? '(no id)');
@@ -493,6 +664,7 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   // Cleanup camera stream on unmount
   useEffect(() => {
     return () => {
+      cameraDesiredActiveRef.current = false;
       streamRef.current?.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     };
@@ -508,5 +680,5 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
     }
   }, [isXRMode, cameraReady]);
 
-  return { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, activateCameraWithStream, deactivateCamera, cameraVideoRef, cameraReady, cameraError, markerActive, autoStart, seekerMotionRef };
+  return { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, activateCameraWithStream, deactivateCamera, cameraVideoRef, cameraReady, cameraError, cameraLifecycle, markerActive, autoStart, seekerMotionRef };
 }

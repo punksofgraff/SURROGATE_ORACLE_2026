@@ -1350,7 +1350,7 @@ export function SurrogateOracleImmersion() {
     };
   }, [connection, journey, handleAwakeTransition, loreStarted]);
 
-  const { isXRMode, cameraActive, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, activateCameraWithStream, deactivateCamera, cameraVideoRef, cameraError, seekerMotionRef } = useXRMode(() => enterTerminal());
+  const { isXRMode, cameraActive, cameraLifecycle, faceDetected, faceBoundsRef, activateXRMode, deactivateXRMode, activateCamera, activateCameraWithStream, deactivateCamera, cameraVideoRef, cameraError, seekerMotionRef } = useXRMode(() => enterTerminal());
   activateCameraWithStreamRef.current = activateCameraWithStream;
   const faceFrameDivRef = useRef<HTMLDivElement>(null);
 
@@ -2643,6 +2643,11 @@ export function SurrogateOracleImmersion() {
           sessionId={currentSessionId}
           cameraVideoRef={cameraVideoRef}
           cameraActive={cameraActive}
+          cameraLifecycle={cameraLifecycle}
+          cameraError={cameraError}
+          onCameraRecover={activateCamera}
+          playbackLifecycle={connection.playbackLifecycle}
+          onPlaybackRecover={() => { void connection.resumePlayback(); }}
           visionPaused={visionPaused}
           onOracleResponse={connection.handleOracleResponse}
           onCoinsEarned={(amt) => setSessionCoins(s => s + amt)}

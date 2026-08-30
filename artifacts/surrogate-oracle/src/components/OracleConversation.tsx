@@ -19,7 +19,7 @@ import { createVADProcessor, type VADFrame } from '../hooks/useVAD';
 import { motion, AnimatePresence } from 'framer-motion';
 import { logStep } from './CodeAuditor';
 import { trackOracleEvent } from '../lib/analytics';
-import { Mic, MicOff, Send, Terminal, X, Zap, Paperclip } from 'lucide-react';
+import { Mic, MicOff, CameraOff, Send, Terminal, X, Zap, Paperclip } from 'lucide-react';
 import { getAudioContext, playSignalLockedSfx } from '../lib/oracleSfx';
 import { createAudioContext } from '../lib/browserCapabilities';
 import { useGeminiSession, GEMINI_MODEL, type GeminiSessionHandlers, type OraclePersonaMode } from '../hooks/useGeminiSession';
@@ -27,6 +27,7 @@ import { setTraceSession, traceEvent } from '../lib/sessionTrace';
 import { tracedFetch } from '../lib/tracedFetch';
 import { useVisionFrames } from '../hooks/useVisionFrames';
 import { useConversationCompactor } from '../hooks/useConversationCompactor';
+import type { SensorLifecycleState } from '../lib/sensorLifecycle';
 
 // GEMINI_MODEL, ORACLE_SYSTEM_PROMPT and its supporting prompt blocks moved to
 // useGeminiSession.ts — they are pure inputs to the WS session.config payload
@@ -114,7 +115,7 @@ interface OracleConversationProps {
    *  routing). Parent uses this to re-assert Oracle playback state (context
    *  running + master gain at its last requested target) so mic toggles can't
    *  shift Oracle loudness. No-op when nothing drifted, so desktop is unaffected. */
-  onAudioSessionChanged?: (phase: 'mic-started' | 'mic-stopped') => void;
+  onAudioSessionChanged?: (phase: 'mic-started' | 'mic-stopped' | 'page-resumed') => void;
   onTypeModeChange?: (isTypeMode: boolean) => void;
   initialTotemLevel?: number;
   isVisible?: boolean;
@@ -136,6 +137,11 @@ interface OracleConversationProps {
   cameraVideoRef?: React.RefObject<HTMLVideoElement | null>;
   /** Mirrors useXRMode's cameraActive — camera permission granted and stream attached. */
   cameraActive?: boolean;
+  cameraLifecycle?: SensorLifecycleState;
+  cameraError?: string | null;
+  onCameraRecover?: () => void;
+  playbackLifecycle?: SensorLifecycleState;
+  onPlaybackRecover?: () => void;
   /** When true, suppresses JPEG frame sending to Gemini without affecting local
    *  face-tracking gaze. Seeker-controlled session toggle — defaults to false. */
   visionPaused?: boolean;
@@ -238,6 +244,11 @@ const OracleConversation = forwardRef(
       onTypeModeChange,
       cameraVideoRef,
       cameraActive,
+      cameraLifecycle = 'inactive',
+      cameraError,
+      onCameraRecover,
+      playbackLifecycle = 'inactive',
+      onPlaybackRecover,
       visionPaused = false,
       onThinkingChange,
       onMusicRequest,
@@ -702,6 +713,39 @@ const OracleConversation = forwardRef(
     const [micSignalLost, setMicSignalLost] = useState(false);
     const micSignalLostRef = useRef(false); // logic-read mirror of state (closure-safe)
     const silentSinceRef = useRef<number | null>(null);
+    const [micLifecycle, setMicLifecycleState] = useState<SensorLifecycleState>('inactive');
+    const micLifecycleRef = useRef<SensorLifecycleState>('inactive');
+    const micPageSuspendedRef = useRef(false);
+    const micWasActiveBeforeSuspendRef = useRef(false);
+
+    const updateMicLifecycle = useCallback((state: SensorLifecycleState, reason?: string) => {
+      if (micLifecycleRef.current === state) return;
+      micLifecycleRef.current = state;
+      setMicLifecycleState(state);
+      trackOracleEvent({
+        event: 'oracle_sensor_lifecycle',
+        sensor: 'microphone',
+        state,
+        ...(reason ? { reason } : {}),
+      });
+      logStep(
+        `MIC ${state.toUpperCase()}${reason ? ` — ${reason}` : ''}`,
+        state === 'failed' ? 'err' : state === 'suspended' ? 'warn' : 'ok',
+      );
+    }, []);
+
+    const markMicFailed = useCallback((reason: string) => {
+      if (micLifecycleRef.current === 'failed') return;
+      captureEnabledRef.current = false;
+      isListeningRef.current = false;
+      setIsListening(false);
+      setMicSignalLost(true);
+      micSignalLostRef.current = true;
+      silentSinceRef.current = null;
+      onListeningChangeRef.current?.(false);
+      onUserSpeakingChangeRef.current?.(false, 0);
+      updateMicLifecycle('failed', reason);
+    }, [updateMicLifecycle]);
 
     const parseScore = (text: string): { clean: string; score: OracleScore | null } => {
       // More forgiving regex matching 1 or 2 brackets, and optional colon spacing
@@ -1145,6 +1189,7 @@ const OracleConversation = forwardRef(
     useVisionFrames({
       videoRef: cameraVideoRef,
       active: cameraActive && !visionPaused,
+      cameraLifecycle,
       wsRef,
       sessionBootedRef,
       conversationActiveRef: visionConversationActiveRef,
@@ -1181,6 +1226,7 @@ const OracleConversation = forwardRef(
       onListeningChangeRef.current?.(true);
       // Record that the mic has been used at least once — switches idle label to "CHANNEL SEALED"
       setHasMicBeenStarted(true);
+      updateMicLifecycle('active', 'capture live');
     };
 
     const startMic = async (providedStream?: MediaStream) => {
@@ -1203,7 +1249,7 @@ const OracleConversation = forwardRef(
         try {
           const ctx = getAudioContext();
           if (ctx.state === 'suspended') await ctx.resume();
-          if (micAudioContextRef.current && micAudioContextRef.current.state === 'suspended') {
+          if (!micPageSuspendedRef.current && micAudioContextRef.current && micAudioContextRef.current.state === 'suspended') {
             await micAudioContextRef.current.resume();
           }
           mediaStreamRef.current!.getAudioTracks().forEach(t => { t.enabled = true; });
@@ -1212,6 +1258,7 @@ const OracleConversation = forwardRef(
         } catch (e) {
           const err = e as Error;
           logStep(`MIC UNMUTE FAILED: ${err.message ?? err}`, 'err');
+          updateMicLifecycle('failed', err.message ?? 'microphone resume failed');
           console.error('[Mic] Unmute failed:', e);
         }
         return;
@@ -1220,6 +1267,7 @@ const OracleConversation = forwardRef(
       micAcquiringRef.current = true;
       micDesiredOnRef.current = true;
       releaseDuringAcquireRef.current = null;
+      updateMicLifecycle('recovering', 'microphone acquisition');
       try {
         console.log('[startMic] acquiring mic, onMicWillStartRef.current=', onMicWillStartRef.current);
         // Notify parent to duck music BEFORE getUserMedia — iOS audio session change
@@ -1257,8 +1305,9 @@ const OracleConversation = forwardRef(
             channelCount: 1
           }
         });
-        // Resume again after getUserMedia — handles iOS audio session reconfigurations
-        await ctx.resume();
+        // Resume again after getUserMedia — handles iOS audio session
+        // reconfigurations. Never reopen the shared context while hidden.
+        if (!micPageSuspendedRef.current) await ctx.resume();
         mediaStreamRef.current = stream;
 
         // Initialize a dedicated AudioContext for microphone capture at native hardware sample rate
@@ -1267,11 +1316,16 @@ const OracleConversation = forwardRef(
           micAudioContextRef.current = createAudioContext();
         }
         const micCtx = micAudioContextRef.current;
-        if (micCtx.state === 'suspended') {
+        if (!micPageSuspendedRef.current && micCtx.state === 'suspended') {
           await micCtx.resume();
         }
 
         const source = micCtx.createMediaStreamSource(stream);
+        const micTrack = stream.getAudioTracks()[0];
+        micTrack?.addEventListener('ended', () => {
+          if (mediaStreamRef.current !== stream) return;
+          markMicFailed('audio track ended');
+        });
         
         const micSampleRate = source.context.sampleRate;
         logStep(`MIC SOURCE ACTIVE: rate=${micSampleRate}Hz`, 'ok');
@@ -1284,6 +1338,11 @@ const OracleConversation = forwardRef(
           // iOS audio session never flips) but NOTHING is processed or sent:
           // no VAD, no UI events, no frames to Gemini.
           if (!captureEnabledRef.current) return;
+          const liveTrack = mediaStreamRef.current?.getAudioTracks().some(track => track.readyState === 'live');
+          if (!liveTrack) {
+            markMicFailed('audio track is no longer live');
+            return;
+          }
           const input = e.inputBuffer.getChannelData(0);
 
           // Resample from hardware rate to Gemini's required 16 kHz
@@ -1493,6 +1552,14 @@ const OracleConversation = forwardRef(
           return;
         }
 
+        if (micPageSuspendedRef.current) {
+          stream.getAudioTracks().forEach(t => { t.enabled = false; });
+          clearListeningState();
+          updateMicLifecycle('suspended', 'page hidden during acquisition');
+          onAudioSessionChangedRef.current?.('mic-started');
+          return;
+        }
+
         // Taps landed while getUserMedia was in flight — apply the LATEST
         // intent. If the final tap said "muted", keep the track (retained-mute
         // architecture) but land in the muted state.
@@ -1515,6 +1582,7 @@ const OracleConversation = forwardRef(
       } catch (e) {
         const err = e as Error;
         logStep(`MIC FAILED: ${err.message ?? err}`, 'err');
+        updateMicLifecycle('failed', err.message ?? 'microphone unavailable');
         console.error('[Mic] Failed:', e);
       } finally {
         micAcquiringRef.current = false;
@@ -1536,6 +1604,7 @@ const OracleConversation = forwardRef(
       vadRef.current.reset();
       bargeInFramesRef.current = 0;
       onUserSpeakingChangeRef.current?.(false, 0);
+      updateMicLifecycle('inactive', 'capture stopped');
     };
 
     // MUTE (task #99) — the MediaStream, capture graph, and mic context all stay
@@ -1607,6 +1676,86 @@ const OracleConversation = forwardRef(
       }
     };
     releaseMicRef.current = releaseMic;
+
+    // Backgrounding is an explicit privacy and resource boundary. Keep the
+    // stream only long enough to validate it on return; do not process or send
+    // microphone data while the page is hidden.
+    useEffect(() => {
+      const suspendMic = (reason: string) => {
+        if (micPageSuspendedRef.current) return;
+        const hasStream = !!mediaStreamRef.current;
+        const wasActive = isListeningRef.current || micAcquiringRef.current || captureEnabledRef.current;
+        if (!hasStream && !micAcquiringRef.current) return;
+
+        micWasActiveBeforeSuspendRef.current = wasActive;
+        micPageSuspendedRef.current = true;
+        captureEnabledRef.current = false;
+        mediaStreamRef.current?.getAudioTracks().forEach(track => { track.enabled = false; });
+        if (micAudioContextRef.current && micAudioContextRef.current.state !== 'closed') {
+          void micAudioContextRef.current.suspend().catch((error) => {
+            console.warn('[Mic] Background suspend failed:', error);
+          });
+        }
+        if (wasActive) {
+          isListeningRef.current = false;
+          setIsListening(false);
+          onListeningChangeRef.current?.(false);
+          onUserSpeakingChangeRef.current?.(false, 0);
+          updateMicLifecycle('suspended', reason);
+        }
+      };
+
+      const recoverMic = () => {
+        if (!micPageSuspendedRef.current || micAcquiringRef.current) return;
+        const shouldListen = micWasActiveBeforeSuspendRef.current && micDesiredOnRef.current;
+        if (!shouldListen) {
+          micPageSuspendedRef.current = false;
+          updateMicLifecycle('inactive', 'foreground while muted');
+          return;
+        }
+
+        micPageSuspendedRef.current = false;
+        updateMicLifecycle('recovering', 'foreground recovery');
+        const track = mediaStreamRef.current?.getAudioTracks()[0];
+        if (track?.readyState === 'live' && processorRef.current) {
+          const resume = async () => {
+            try {
+              const sharedContext = getAudioContext();
+              if (sharedContext.state === 'suspended') await sharedContext.resume();
+              if (micAudioContextRef.current?.state === 'suspended') await micAudioContextRef.current.resume();
+              track.enabled = true;
+              markListening();
+              onAudioSessionChangedRef.current?.('page-resumed');
+            } catch (error) {
+              markMicFailed(`foreground resume failed: ${error instanceof Error ? error.message : 'audio context unavailable'}`);
+            }
+          };
+          void resume();
+          return;
+        }
+
+        // The browser ended or discarded the track while hidden. Clear the old
+        // graph, then perform one fresh acquisition.
+        releaseMicRef.current('dead track recovery');
+        micDesiredOnRef.current = true;
+        void startMicRef.current();
+      };
+
+      const onVisibilityChange = () => {
+        if (document.hidden) suspendMic('page hidden');
+        else recoverMic();
+      };
+      const onPageHide = () => suspendMic('pagehide');
+      const onPageShow = () => recoverMic();
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      window.addEventListener('pagehide', onPageHide);
+      window.addEventListener('pageshow', onPageShow);
+      return () => {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        window.removeEventListener('pagehide', onPageHide);
+        window.removeEventListener('pageshow', onPageShow);
+      };
+    }, [markListening, markMicFailed, updateMicLifecycle]);
 
     // sessionContext / initialKnifeThemes are intentionally NOT injected as hidden
     // messages here. Any client.realtimeInput text to Gemini Live triggers a full
@@ -1822,17 +1971,103 @@ const OracleConversation = forwardRef(
             )}
           </AnimatePresence>
 
-          {/* Silent-mic recovery — surfaces when the mic has gone dead while listening.
-              Tap re-opens the capture (stop + start). The one affordance a solo,
-              unstaffed attendee needs so a dead mic doesn't kill the whole session. */}
+          {/* Device lifecycle status — backgrounding is intentional, not a silent
+              browser failure. Recovery actions stay local to the affected sensor. */}
           <AnimatePresence>
-            {micSignalLost && isListening && (
+            {micLifecycle === 'suspended' && (
+              <motion.div
+                key="mic-suspended"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="oc-status-pill"
+                style={{ color: 'rgba(140,140,180,0.95)', borderColor: 'rgba(140,140,180,0.35)' }}
+              >
+                <MicOff size={12} />
+                <span>MIC SUSPENDED — APP IN BACKGROUND</span>
+              </motion.div>
+            )}
+            {micLifecycle === 'recovering' && (
+              <motion.div
+                key="mic-recovering"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: [0.5, 1, 0.5], y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ opacity: { repeat: Infinity, duration: 1.2 }, y: { duration: 0.2 } }}
+                className="oc-status-pill"
+                style={{ color: 'rgba(0,255,204,0.85)', borderColor: 'rgba(0,255,204,0.3)' }}
+              >
+                <span>MIC RECOVERING…</span>
+              </motion.div>
+            )}
+            {playbackLifecycle === 'suspended' && (
+              <motion.div
+                key="playback-suspended"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="oc-status-pill"
+                style={{ color: 'rgba(140,140,180,0.95)', borderColor: 'rgba(140,140,180,0.35)' }}
+              >
+                <span>ORACLE PLAYBACK SUSPENDED — APP IN BACKGROUND</span>
+              </motion.div>
+            )}
+            {playbackLifecycle === 'recovering' && (
+              <motion.div
+                key="playback-recovering"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: [0.5, 1, 0.5], y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ opacity: { repeat: Infinity, duration: 1.2 }, y: { duration: 0.2 } }}
+                className="oc-status-pill"
+                style={{ color: 'rgba(0,255,204,0.85)', borderColor: 'rgba(0,255,204,0.3)' }}
+              >
+                <span>ORACLE PLAYBACK RECOVERING…</span>
+              </motion.div>
+            )}
+            {cameraLifecycle === 'suspended' && (
+              <motion.div
+                key="camera-suspended"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="oc-status-pill"
+                style={{ color: 'rgba(140,140,180,0.95)', borderColor: 'rgba(140,140,180,0.35)' }}
+              >
+                <CameraOff size={12} />
+                <span>CAMERA SUSPENDED — APP IN BACKGROUND</span>
+              </motion.div>
+            )}
+            {cameraLifecycle === 'recovering' && (
+              <motion.div
+                key="camera-recovering"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: [0.5, 1, 0.5], y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ opacity: { repeat: Infinity, duration: 1.2 }, y: { duration: 0.2 } }}
+                className="oc-status-pill"
+                style={{ color: 'rgba(0,255,204,0.85)', borderColor: 'rgba(0,255,204,0.3)' }}
+              >
+                <span>CAMERA RECOVERING…</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Failed or silent microphones are recoverable with an explicit
+              stop-and-reacquire action. */}
+          <AnimatePresence>
+            {(micLifecycle === 'failed' || (micSignalLost && isListening)) && (
               <motion.button
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
                 className="oc-status-pill"
-                onClick={(e) => { e.stopPropagation(); releaseMic('dead-mic recovery'); startMic(); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  releaseMic('dead-mic recovery');
+                  micDesiredOnRef.current = true;
+                  void startMicRef.current();
+                }}
                 style={{
                   pointerEvents: 'auto', cursor: 'pointer',
                   color: '#b026ff', borderColor: 'rgba(176,38,255,0.5)',
@@ -1841,6 +2076,39 @@ const OracleConversation = forwardRef(
               >
                 <MicOff size={12} />
                 <span>SIGNAL LOST — TAP TO REOPEN MIC</span>
+              </motion.button>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {cameraLifecycle === 'failed' && (
+              <motion.button
+                key="camera-failed"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="oc-status-pill"
+                onClick={(e) => { e.stopPropagation(); onCameraRecover?.(); }}
+                style={{
+                  pointerEvents: 'auto', cursor: 'pointer',
+                  color: '#b026ff', borderColor: 'rgba(176,38,255,0.5)',
+                  boxShadow: '0 0 18px rgba(176,38,255,0.45)',
+                }}
+              >
+                <span>{cameraError ? 'CAMERA FAILED — TAP TO REOPEN' : 'CAMERA SIGNAL LOST — TAP TO REOPEN'}</span>
+              </motion.button>
+            )}
+            {playbackLifecycle === 'failed' && (
+              <motion.button
+                key="playback-failed"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="oc-status-pill"
+                onClick={(e) => { e.stopPropagation(); onPlaybackRecover?.(); }}
+                style={{ color: '#b026ff', borderColor: 'rgba(176,38,255,0.5)', pointerEvents: 'auto', cursor: 'pointer' }}
+              >
+                <span>ORACLE PLAYBACK FAILED — TAP TO RETRY</span>
               </motion.button>
             )}
           </AnimatePresence>

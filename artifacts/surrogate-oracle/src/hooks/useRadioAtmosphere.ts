@@ -3,6 +3,7 @@ import type { RefObject } from 'react';
 import { getAudioContext } from '../lib/oracleSfx';
 import { defaultAudioTracks } from '../config/audioTracks';
 import { logStep } from '../components/CodeAuditor';
+import type { SensorLifecycleState } from '../lib/sensorLifecycle';
 
 const DEFAULT_STATION = 0; // Graff Punks — sole station
 
@@ -78,6 +79,7 @@ export function useRadioAtmosphere({
   const [targetVol, setTargetVol]           = useState(0.021);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const [currentStation, setCurrentStation] = useState(DEFAULT_STATION);
+  const [radioLifecycle, setRadioLifecycle] = useState<SensorLifecycleState>('inactive');
 
   const setupAudioSpine = useCallback(() => {
     // Fully synchronous — no await, no setTimeout. iOS Safari requires ALL audio
@@ -103,6 +105,7 @@ export function useRadioAtmosphere({
       source.connect(gain);
       gain.connect(ctx.destination);
       radioGainRef.current = gain;
+      setRadioLifecycle('active');
       publishRadioDebug(gain, initialTarget);
       // iOS Safari requires audio element play() to be called synchronously inside the
       // gesture handler — the useEffect path (setIsAudioPlaying → play()) fires after
@@ -280,48 +283,58 @@ export function useRadioAtmosphere({
   // iOS Safari may pause the media element as well as suspending the audio
   // context when Safari backgrounds or locks the device. React state does not
   // change in that case, so the normal playback-sync effect above will not run
-  // again on foreground. Resume both sides of the graph without changing the
-  // element's src (or seeking it), and never revive an intentional hard mute.
+  // again on foreground. Suspend both sides intentionally and resume them
+  // without changing the element's src, seeking it, or the chosen target gain.
   useEffect(() => {
-    const handleVisibilityChange = () => {
+    const suspend = (reason: string) => {
+      if (!radioGainRef.current && !audioRef.current) return;
+      setRadioLifecycle('suspended');
+      audioRef.current?.pause();
       const ctx = getAudioContext();
-      if (document.hidden) {
-        void ctx.suspend()
-          .then(() => logStep('TAB BACKGROUNDED', 'warn'))
-          .catch((error: unknown) => {
-            console.warn('[Radio] Tab-background suspend failed (non-fatal):', error);
-          });
-        return;
-      }
-      if (!isAudioPlaying) return;
-
-      const audio = audioRef.current;
-      // Start the continuation immediately. Waiting for resume() first can
-      // lose the short iOS foreground activation window, and a suspended
-      // AudioContext can leave that promise pending during device wake.
-      if (
-        audio
-        && requestedTargetRef.current > MUSIC_OFF_VOLUME
-        && audio.paused
-      ) {
-        audio.play().catch((err) => console.warn('[Radio] Foreground resume failed:', err));
-      }
-      void ctx.resume()
-        .then(() => logStep('TAB FOREGROUNDED', 'ok'))
+      void ctx.suspend()
+        .then(() => logStep(`RADIO SUSPENDED — ${reason}`, 'warn'))
         .catch((error: unknown) => {
-          // iOS can reject resume while the media device is still returning.
-          // A later user gesture or visibility event can retry safely.
-          console.warn('[Radio] Tab-foreground resume failed (non-fatal):', error);
+          console.warn('[Radio] Background suspend failed (non-fatal):', error);
         });
     };
 
+    const recover = () => {
+      if (radioLifecycle !== 'suspended') return;
+      setRadioLifecycle('recovering');
+      const ctx = getAudioContext();
+      const audio = audioRef.current;
+      if (audio && requestedTargetRef.current > MUSIC_OFF_VOLUME) {
+        audio.play().catch((err) => console.warn('[Radio] Foreground resume failed:', err));
+      }
+      void ctx.resume()
+        .then(() => {
+          setRadioLifecycle('active');
+          logStep('RADIO FOREGROUNDED', 'ok');
+        })
+        .catch((error: unknown) => {
+          setRadioLifecycle('failed');
+          console.warn('[Radio] Tab-foreground resume failed:', error);
+        });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        suspend('page hidden');
+        return;
+      }
+      recover();
+    };
+
+    const handlePageHide = () => suspend('pagehide');
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
     window.addEventListener('pageshow', handleVisibilityChange);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
       window.removeEventListener('pageshow', handleVisibilityChange);
     };
-  }, [isAudioPlaying]);
+  }, [isAudioPlaying, radioLifecycle]);
 
   return {
     audioRef,
@@ -333,5 +346,6 @@ export function useRadioAtmosphere({
     fadeToVolume,
     stopRadioImmediately,
     switchStation,
+    radioLifecycle,
   };
 }

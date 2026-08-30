@@ -22,7 +22,13 @@ export type OracleAnalyticsEvent =
   | { event: 'oracle_seeker_reflection';   prompt_id: string; char_count: number }
   | { event: 'oracle_portrait_generated';  session_id: string; turn_number: number }
   | { event: 'oracle_claim_initiated';     session_id: string }
-  | { event: 'oracle_claim_error';         session_id: string; error: string };
+  | { event: 'oracle_claim_error';         session_id: string; error: string }
+  | {
+      event: 'oracle_sensor_lifecycle';
+      sensor: 'camera' | 'microphone' | 'oracle-playback';
+      state: 'inactive' | 'active' | 'suspended' | 'recovering' | 'failed';
+      reason?: string;
+    };
 
 const SUPABASE_URL     = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const IS_PROD          = import.meta.env.PROD === true;

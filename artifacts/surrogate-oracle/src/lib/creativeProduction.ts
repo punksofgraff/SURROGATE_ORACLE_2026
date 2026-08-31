@@ -83,6 +83,8 @@ export type CreativeArtifact = {
   kind: CreativeKind;
   title: string;
   prompt: string;
+  missingDetails: CreativeMissingDetail[];
+  followUpCompleted: boolean;
   status: CreativeArtifactStatus;
   providerLabel: string;
   provider?: CreativeProvider;
@@ -132,6 +134,26 @@ const KIND_TITLES: Record<CreativeKind, string> = {
   music: 'Original music signal',
   film: 'Single film',
   'episodic-series': 'Episodic series',
+};
+
+const CREATIVE_DETAIL_LABELS: Record<CreativeMissingDetail, string> = {
+  audience: 'Audience',
+  platform: 'Platform or channel',
+  subject: 'Main subject',
+  mood: 'Mood or sonic direction',
+  format: 'Format or purpose',
+  'episode-count': 'Episode count',
+  purpose: 'Intent',
+};
+
+const CREATIVE_DETAIL_QUESTIONS: Record<CreativeMissingDetail, string> = {
+  audience: 'Who is this for?',
+  platform: 'Which platform or channel should this be built for?',
+  subject: 'What is the main subject?',
+  mood: 'What mood or sonic direction should it carry?',
+  format: 'What format or purpose should this take?',
+  'episode-count': 'How many episodes should the series have?',
+  purpose: 'What should this help accomplish?',
 };
 
 function makeId(prefix: string): string {
@@ -186,16 +208,53 @@ export function classifyCreativeRequest(prompt: string): CreativeClassification 
 
 function missingCopy(details: CreativeMissingDetail[]): string {
   if (!details.length) return 'The brief is staged. Clear it when you are ready to start production.';
-  const labels: Record<CreativeMissingDetail, string> = {
-    audience: 'who it is for',
-    platform: 'which platform or channel',
-    subject: 'the main subject',
-    mood: 'the mood or sonic direction',
-    format: 'the intended format or purpose',
-    'episode-count': 'how many episodes',
-    purpose: 'a little more intent',
+  return `Money Mite can start from this brief. One detail will sharpen the first pass: ${CREATIVE_DETAIL_LABELS[details[0]].toLowerCase()}.`;
+}
+
+export function creativeDetailLabel(detail: CreativeMissingDetail): string {
+  return CREATIVE_DETAIL_LABELS[detail];
+}
+
+export function creativeDetailQuestion(detail: CreativeMissingDetail): string {
+  return CREATIVE_DETAIL_QUESTIONS[detail];
+}
+
+/**
+ * Fold one focused answer into the staged brief. This deliberately completes
+ * only the first requested gap: the card should never turn into a long intake
+ * form, and the caller still controls the separate production confirmation.
+ */
+export function captureCreativeDetail(
+  artifact: CreativeArtifact,
+  detail: CreativeMissingDetail,
+  answer: string,
+): CreativeArtifact {
+  const cleanAnswer = normalizedPrompt(answer).slice(0, 280);
+  const missingDetails = artifact.missingDetails ?? [];
+  if (
+    artifact.status !== 'draft'
+    || artifact.followUpCompleted
+    || missingDetails[0] !== detail
+    || !cleanAnswer
+  ) {
+    return artifact;
+  }
+
+  const remainingDetails = missingDetails.slice(1);
+  return {
+    ...artifact,
+    prompt: `${artifact.prompt}\n${CREATIVE_DETAIL_LABELS[detail]}: ${cleanAnswer}`,
+    missingDetails: remainingDetails,
+    followUpCompleted: true,
+    confirmationCopy: remainingDetails.length
+      ? 'Brief updated. The remaining open signals are optional; production still waits for your confirmation.'
+      : missingCopy([]),
+    metadata: {
+      ...(artifact.metadata ?? {}),
+      missingDetails: remainingDetails,
+      capturedDetail: detail,
+    },
   };
-  return `Money Mite can start from this brief. For a sharper first pass, add ${details.map(detail => labels[detail]).join(', ')}.`;
 }
 
 export function createCreativeDraft(prompt: string, createdAt = new Date().toISOString()): CreativeArtifact {
@@ -208,6 +267,8 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
     kind: classification.kind,
     title: classification.title,
     prompt: clean,
+    missingDetails: classification.missingDetails,
+    followUpCompleted: classification.missingDetails.length === 0,
     status: 'draft',
     provider: classification.provider,
     providerLabel: classification.provider === 'lyria'

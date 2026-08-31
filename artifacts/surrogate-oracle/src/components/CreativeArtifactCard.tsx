@@ -1,4 +1,4 @@
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   AlertTriangle,
   Check,
@@ -20,12 +20,20 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import type { CreativeArtifact, CreativeEpisode, SeriesRenderMode } from '../lib/creativeProduction';
+import {
+  creativeDetailLabel,
+  creativeDetailQuestion,
+  type CreativeArtifact,
+  type CreativeEpisode,
+  type CreativeMissingDetail,
+  type SeriesRenderMode,
+} from '../lib/creativeProduction';
 import './CreativeArtifactCard.css';
 
 export type CreativeArtifactCardProps = {
   artifact: CreativeArtifact;
   onConfirm: () => void;
+  onFollowUpSubmit?: (detail: CreativeMissingDetail, answer: string) => void;
   onCancel: () => void;
   onRetry: () => void;
   onDownload: () => void;
@@ -158,6 +166,7 @@ function seriesEpisodeLabel(episode: CreativeEpisode): string {
 export function CreativeArtifactCard({
   artifact,
   onConfirm,
+  onFollowUpSubmit,
   onCancel,
   onRetry,
   onDownload,
@@ -179,11 +188,13 @@ export function CreativeArtifactCard({
   const progress = Math.max(0, Math.min(100, Number(artifact.progress) || 0));
   const outputUrl = artifact.outputUrl;
   const metadataRecord = artifact.metadata as Record<string, unknown> | undefined;
+  const missingDetails = artifact.missingDetails ?? [];
   const hasOutput = Boolean(outputUrl);
   const hasMetadata = Boolean(metadataRecord && Object.keys(metadataRecord).length);
   const series = artifact.seriesManifest;
   const isSeries = Boolean(series);
   const isDraft = status === 'draft';
+  const followUpDetail = isDraft && !artifact.followUpCompleted ? missingDetails[0] : undefined;
   const isWorking = status === 'queued' || status === 'generating';
   const isRecoverable = status === 'failed' || status === 'cancelled' || status === 'partial';
   const canCancel = isDraft || isWorking;
@@ -193,6 +204,7 @@ export function CreativeArtifactCard({
   const metadataEntries = hasMetadata
     ? Object.entries(metadataRecord ?? {}).slice(0, 4)
     : [];
+  const [followUpAnswer, setFollowUpAnswer] = useState('');
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -201,6 +213,17 @@ export function CreativeArtifactCard({
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, [onClose]);
+
+  useEffect(() => {
+    setFollowUpAnswer('');
+  }, [artifact.id, followUpDetail]);
+
+  const submitFollowUp = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!followUpDetail || !followUpAnswer.trim()) return;
+    onFollowUpSubmit?.(followUpDetail, followUpAnswer.trim());
+    setFollowUpAnswer('');
+  };
 
   const renderOutput = () => {
     if (!canOutput || !outputUrl) return null;
@@ -445,6 +468,41 @@ export function CreativeArtifactCard({
           <span className="creative-artifact-card__prompt-label">Brief received</span>
           <p className="creative-artifact-card__prompt">{artifact.prompt}</p>
         </div>
+
+        {followUpDetail && (
+          <div className="creative-artifact-card__follow-up" role="group" aria-labelledby={`${descriptionId}-follow-up`}>
+            <div className="creative-artifact-card__follow-up-heading">
+              <Sparkles size={15} aria-hidden="true" />
+              <span id={`${descriptionId}-follow-up`}>Money Mite asks one thing</span>
+            </div>
+            <p className="creative-artifact-card__follow-up-question">
+              {creativeDetailQuestion(followUpDetail)}
+            </p>
+            <form className="creative-artifact-card__follow-up-form" onSubmit={submitFollowUp}>
+              <label htmlFor={`${descriptionId}-follow-up-answer`}>
+                {creativeDetailLabel(followUpDetail)}
+              </label>
+              <div className="creative-artifact-card__follow-up-input-row">
+                <input
+                  id={`${descriptionId}-follow-up-answer`}
+                  type="text"
+                  value={followUpAnswer}
+                  onChange={(event) => setFollowUpAnswer(event.target.value)}
+                  placeholder="Add one clear detail..."
+                  autoComplete="off"
+                  maxLength={280}
+                />
+                <button
+                  type="submit"
+                  className="creative-artifact-card__button creative-artifact-card__button--primary"
+                  disabled={!followUpAnswer.trim()}
+                >
+                  Add to brief
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {isDraft && (
           <div className="creative-artifact-card__confirmation" role="status">

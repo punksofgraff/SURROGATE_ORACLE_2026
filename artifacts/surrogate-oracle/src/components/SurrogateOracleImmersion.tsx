@@ -78,6 +78,7 @@ import { loadDocumentArchive, saveDocumentReadout, type ArchivedDocumentReadout 
 import CreativeArtifactCard from './CreativeArtifactCard';
 import {
   classifyCreativeRequest,
+  captureCreativeDetail,
   createConceptSvgDataUrl,
   createCreativeDraft,
   createCreativeTextOutput,
@@ -87,6 +88,7 @@ import {
   refreshSeriesProgress,
   updateSeriesScene,
   type CreativeArtifact,
+  type CreativeMissingDetail,
   type CreativeSeriesManifest,
   type SeriesRenderMode,
 } from '../lib/creativeProduction';
@@ -1629,6 +1631,20 @@ export function SurrogateOracleImmersion() {
     const classification = classifyCreativeRequest(prompt);
     logStep(`CREATIVE DISPATCH STAGED — ${classification.kind} / ${classification.confidence}`, 'ok');
   }, []);
+
+  const handleCreativeFollowUp = useCallback((
+    detail: CreativeMissingDetail,
+    answer: string,
+  ) => {
+    const artifact = activeCreativeArtifactRef.current;
+    if (!artifact || artifact.status !== 'draft') return;
+    const next = captureCreativeDetail(artifact, detail, answer);
+    if (next === artifact) return;
+    activeCreativeArtifactRef.current = next;
+    setCreativeArtifact(next);
+    persistSeriesArtifact(next);
+    logStep(`CREATIVE BRIEF UPDATED — ${detail}`, 'ok');
+  }, [persistSeriesArtifact]);
 
   const confirmCreativeArtifact = useCallback(() => {
     const artifact = activeCreativeArtifactRef.current;
@@ -3315,6 +3331,7 @@ export function SurrogateOracleImmersion() {
             <CreativeArtifactCard
               artifact={creativeArtifact}
               onConfirm={confirmCreativeArtifact}
+              onFollowUpSubmit={handleCreativeFollowUp}
               onCancel={cancelCreativeArtifact}
               onRetry={retryCreativeArtifact}
               onDownload={downloadCreativeArtifact}

@@ -24,6 +24,18 @@ export type CreativeProvider =
   | 'browser-film'
   | 'premium-film';
 
+export type IllustrationStoryPage = {
+  id: string;
+  pageNumber: number;
+  sheetIndex: 0 | 1;
+  row: number;
+  column: number;
+  title: string;
+  narration: string;
+  durationSeconds: number;
+  transition: 'fade';
+};
+
 export type CreativeMissingDetail =
   | 'audience'
   | 'platform'
@@ -98,7 +110,76 @@ export type CreativeArtifact = {
   error?: string | null;
   metadata?: Record<string, unknown>;
   seriesManifest?: CreativeSeriesManifest;
+  storyPages?: IllustrationStoryPage[];
 };
+
+export const ILLUSTRATION_STORY_PAGE_COUNT = 32;
+export const ILLUSTRATION_STORY_PAGE_DURATION_SECONDS = 3.75;
+
+export function isIllustrationStoryRequest(prompt: string): boolean {
+  return /\b(?:illustration sheets?|picture[-\s]?book|storybook|page[-\s]?by[-\s]?page|4\s*[x×]\s*4|32\s+(?:page|panel))/i.test(prompt)
+    || (/illustration/i.test(prompt) && /(?:story|film|video|animation|narrat)/i.test(prompt));
+}
+
+export function createIllustrationStoryPages(
+  prompt: string,
+  createdAt = new Date().toISOString(),
+): IllustrationStoryPage[] {
+  const storyId = createdAt.replace(/\D/g, '').slice(-10) || 'story';
+  const leviPages = [
+    'A bright new adventure begins on the shore.',
+    'Levi and Lennon discover a secret waiting in the sea.',
+    'Pickles leads the way beneath the sparkling waves.',
+    'Even a silly pair of flip-flops can be important.',
+    'A sudden splash sends the friends searching.',
+    'A glowing tunnel opens under the water.',
+    'The friends follow the light into a hidden kingdom.',
+    'Coral castles and tiny fish welcome them inside.',
+    'A golden sea turtle swims up to say hello.',
+    'A giant shadow makes the water tremble.',
+    'The whale needs help, and the friends listen carefully.',
+    'Pickles finds the biggest piece of the mystery.',
+    'Together, everyone frees the whale.',
+    'The sea turtle shares a brave little secret.',
+    'At moonrise, the friends promise to return.',
+    'Goodnight, Levi, Lennon, Pickles, and the sea.',
+  ];
+  const spiderPages = [
+    'In a magical kingdom, a pink tunnel glows softly.',
+    'Princess Ghost Spider and her friends wake to adventure.',
+    'Mario Spider-Man and Donkey hurry to join her.',
+    'A rumble shakes the tunnel, but brave friends stay close.',
+    'The friends make a plan and share their courage.',
+    'A mysterious door waits behind the sparkling rocks.',
+    'On the other side, the trees can talk.',
+    'A grumbly roar echoes through the enchanted forest.',
+    'The friends discover a monster who is scared and lonely.',
+    'Princess Ghost Spider asks what is really wrong.',
+    'Everyone works together, one small helpful step at a time.',
+    'A happy ending blooms when kindness lights the way.',
+    'This proof-of-concept can grow into a longer bedtime tale.',
+    'Every page has a new color, sound, and surprise.',
+    'The story reminds us that teamwork makes brave hearts bigger.',
+    'And the friends wave goodnight from the Pink Spider Tunnel.',
+  ];
+  return Array.from({ length: ILLUSTRATION_STORY_PAGE_COUNT }, (_, index) => {
+    const pageNumber = index + 1;
+    const sheetIndex: 0 | 1 = index < 16 ? 0 : 1;
+    const sheetPage = index % 16;
+    const sourceNarration = sheetIndex === 0 ? leviPages[sheetPage] : spiderPages[sheetPage];
+    return {
+      id: `illustration-story-${storyId}-page-${String(pageNumber).padStart(2, '0')}`,
+      pageNumber,
+      sheetIndex,
+      row: Math.floor(sheetPage / 4),
+      column: sheetPage % 4,
+      title: `Page ${String(pageNumber).padStart(2, '0')}`,
+      narration: `${sourceNarration} ${prompt.toLowerCase().includes('child') ? '' : 'Turn the page.'}`.trim(),
+      durationSeconds: ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,
+      transition: 'fade',
+    };
+  });
+}
 
 export type CreativeClassification = {
   kind: CreativeKind;
@@ -121,7 +202,7 @@ const KIND_RULES: Array<{ kind: CreativeKind; pattern: RegExp }> = [
   { kind: 'pitch-deck', pattern: /\b(?:pitch\s*deck|deck|slides?|presentation|keynote|investor\s+presentation)\b/i },
   { kind: 'social-pack', pattern: /\b(?:social|instagram|linkedin|tiktok|threads?|x\s+post|tweets?|captions?|content\s+pack)\b/i },
   { kind: 'music', pattern: /\b(?:music|song|track|beat|soundtrack|soundscape|instrumental|score|audio)\b/i },
-  { kind: 'film', pattern: /\b(?:film|video|reel|trailer|music\s+video|short\s+film|motion\s+piece)\b/i },
+  { kind: 'film', pattern: /\b(?:film|video|reel|trailer|animation|animated|music\s+video|short\s+film|motion\s+piece)\b/i },
   { kind: 'image', pattern: /\b(?:image|visual|illustration|poster|cover|key\s+art|graphic|artwork|logo)\b/i },
   { kind: 'document', pattern: /\b(?:document|report|brief|manifesto|memo|whitepaper|copy|article|write|draft)\b/i },
 ];
@@ -260,12 +341,13 @@ export function captureCreativeDetail(
 export function createCreativeDraft(prompt: string, createdAt = new Date().toISOString()): CreativeArtifact {
   const clean = normalizedPrompt(prompt);
   const classification = classifyCreativeRequest(clean);
+  const illustrationStory = classification.kind === 'film' && isIllustrationStoryRequest(clean);
   const requestId = makeId('request');
   return {
     id: makeId('artifact'),
     requestId,
     kind: classification.kind,
-    title: classification.title,
+    title: illustrationStory ? 'Illustration story film' : classification.title,
     prompt: clean,
     missingDetails: classification.missingDetails,
     followUpCompleted: classification.missingDetails.length === 0,
@@ -283,7 +365,9 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
     progress: 0,
     createdAt,
     requiresConfirmation: classification.requiresConfirmation,
-    confirmationLabel: classification.kind === 'music'
+    confirmationLabel: illustrationStory
+      ? 'Confirm 32-page story film'
+      : classification.kind === 'music'
       ? 'Confirm music generation'
       : classification.kind === 'film'
         ? 'Confirm free film render'
@@ -291,9 +375,18 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
           ? 'Create series manifest'
           : 'Create draft',
     confirmationCopy: missingCopy(classification.missingDetails),
+    storyPages: illustrationStory ? createIllustrationStoryPages(clean, createdAt) : undefined,
     metadata: {
       confidence: classification.confidence,
       missingDetails: classification.missingDetails,
+      ...(illustrationStory ? {
+        production: 'illustration-story-proof',
+        pageCount: ILLUSTRATION_STORY_PAGE_COUNT,
+        pageDurationSeconds: ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,
+        soundtrack: 'Lyria instrumental anchor',
+        narration: 'Gemini child-friendly narration',
+        sourceAssets: 'two local 4x4 illustration sheets; originals remain unchanged',
+      } : {}),
       deliveryBoundary: classification.kind === 'film' || classification.kind === 'music'
         ? 'This first pass uses the existing local/browser or Lyria seam. Premium or outbound delivery is never implicit.'
         : 'This first pass stays local and editable. Originals are never uploaded by this route.',

@@ -192,6 +192,8 @@ export function CreativeArtifactCard({
   const hasOutput = Boolean(outputUrl);
   const hasMetadata = Boolean(metadataRecord && Object.keys(metadataRecord).length);
   const series = artifact.seriesManifest;
+  const storyPages = artifact.storyPages ?? [];
+  const isIllustrationStory = artifact.metadata?.production === 'illustration-story-proof';
   const isSeries = Boolean(series);
   const isDraft = status === 'draft';
   const followUpDetail = isDraft && !artifact.followUpCompleted ? missingDetails[0] : undefined;
@@ -542,6 +544,30 @@ export function CreativeArtifactCard({
               {status === 'queued'
                 ? 'The request is safe in the queue. No duplicate dispatch will be made.'
                 : 'Signal is moving. You can cancel without hiding the current state.'}
+            </p>
+          </div>
+        )}
+
+        {isIllustrationStory && storyPages.length > 0 && (
+          <div className="creative-story-proof" aria-label="Illustration story production">
+            <div className="creative-story-proof__heading">
+              <Layers3 size={15} aria-hidden="true" />
+              <strong>Illustration story / {storyPages.length} pages</strong>
+              <span>{formatMetadataValue(metadataRecord?.storyStage ?? 'page plan ready')}</span>
+            </div>
+            <div className="creative-story-proof__track" aria-hidden="true">
+              <span style={{ width: `${progress}%` }} />
+            </div>
+            <div className="creative-story-proof__pages">
+              {storyPages.map(page => (
+                <span key={page.id} title={`${page.title}: ${page.narration}`} data-state={progress >= (page.pageNumber / storyPages.length) * 100 ? 'complete' : 'planned'}>
+                  {String(page.pageNumber).padStart(2, '0')}
+                </span>
+              ))}
+            </div>
+            <p>
+              Two local 4×4 illustration sheets · {Math.round(storyPages.reduce((sum, page) => sum + page.durationSeconds, 0))} seconds ·
+              gentle zoom/fade transitions · Lyria backing music · child-friendly narration
             </p>
           </div>
         )}

@@ -70,6 +70,9 @@ import { useWalletBridge } from '../hooks/useWalletBridge';
 import { useRadioAtmosphere } from '../hooks/useRadioAtmosphere';
 import { useLyriaMusic } from '../hooks/useLyriaMusic';
 import { useOracleFilm } from '../hooks/useOracleFilm';
+import { useIllustrationStoryFilm } from '../hooks/useIllustrationStoryFilm';
+import storySheetOneUrl from '@assets/567AA27C-1D47-49A5-ABA9-7197F053B021_1788204328509.png';
+import storySheetTwoUrl from '@assets/A2388D28-67B5-4258-9D55-CB618DC165D1_1788204328509.png';
 import WalletGateCard from './WalletGateCard';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { DocumentIntakeCard, type DocumentIntakeFile } from './DocumentIntakeCard';
@@ -83,6 +86,7 @@ import {
   createCreativeDraft,
   createCreativeTextOutput,
   createDataUrl,
+  createIllustrationStoryPages,
   createSeriesAssemblyDataUrl,
   createSeriesManifest,
   refreshSeriesProgress,
@@ -1547,6 +1551,7 @@ export function SurrogateOracleImmersion() {
 
   const portrait = usePortraitPipeline({ currentUserId, userEmail, currentSessionId, onPortraitGenerated: handlePortraitGenerated });
   const oracleFilm = useOracleFilm(currentSessionId);
+  const illustrationStoryFilm = useIllustrationStoryFilm();
 
   const persistSeriesArtifact = useCallback((artifact: CreativeArtifact | null) => {
     if (!artifact?.seriesManifest || typeof window === 'undefined') return;
@@ -1676,6 +1681,84 @@ export function SurrogateOracleImmersion() {
     }
 
     if (artifact.kind === 'film') {
+      const isIllustrationStory = artifact.metadata?.production === 'illustration-story-proof';
+      if (isIllustrationStory) {
+        void (async () => {
+          try {
+            updateCreativeArtifact(artifact.id, {
+              status: 'generating',
+              progress: 8,
+              provider: 'browser-film',
+              providerLabel: 'FFmpeg story stitch lane',
+              outputLabel: undefined,
+              metadata: {
+                ...(artifact.metadata ?? {}),
+                storyStage: 'generating Lyria soundtrack',
+                pageCount: artifact.storyPages?.length ?? 32,
+              },
+            });
+            const musicUrl = lyria.audioUrl ?? await lyria.generate(
+              'Gentle child-friendly instrumental bedtime story music, warm felt piano, soft marimba, light ocean sparkle, no vocals, calm and curious.',
+            );
+            if (!musicUrl) throw new Error(lyria.error ?? 'Lyria did not return a playable story soundtrack.');
+            const pages = artifact.storyPages?.length
+              ? artifact.storyPages
+              : createIllustrationStoryPages(artifact.prompt, artifact.createdAt);
+            const result = await illustrationStoryFilm.renderStory(
+              [storySheetOneUrl, storySheetTwoUrl],
+              pages,
+              musicUrl,
+              progress => {
+                if (isCurrent()) updateCreativeArtifact(artifact.id, {
+                  status: 'generating',
+                  progress,
+                  providerLabel: 'FFmpeg story stitch lane',
+                  metadata: {
+                    ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+                    storyStage: progress < 30 ? 'preparing pages and narration' : progress < 100 ? 'stitching 32 scenes with FFmpeg' : 'validating playable MP4',
+                    currentPage: Math.min(32, Math.max(1, Math.ceil((progress / 100) * 32))),
+                  },
+                });
+              },
+            );
+            if (!isCurrent()) return;
+            updateCreativeArtifact(artifact.id, {
+              status: 'ready',
+              progress: 100,
+              outputUrl: result.url,
+              outputLabel: `32-page narrated story film · ${Math.round(result.durationSeconds)}s MP4`,
+              provider: 'browser-film',
+              providerLabel: 'FFmpeg story stitch lane',
+              metadata: {
+                ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+                storyStage: 'complete',
+                pageCount: result.pageCount,
+                totalDurationSeconds: result.durationSeconds,
+                ffmpegStitch: 'complete',
+                soundtrack: 'Lyria instrumental anchor',
+                narration: result.narrationAvailable ? 'Gemini child-friendly narration' : 'narration unavailable; soundtrack preserved',
+                sourceAssets: 'two local 4x4 illustration sheets; originals unchanged',
+              },
+            });
+            logStep('ILLUSTRATION STORY READY — 32 PAGES / MP4 / LYRIA + NARRATION', 'ok');
+          } catch (error) {
+            if (!isCurrent()) return;
+            updateCreativeArtifact(artifact.id, {
+              status: 'failed',
+              progress: 0,
+              provider: 'browser-film',
+              providerLabel: 'FFmpeg story stitch lane',
+              error: error instanceof Error ? error.message : 'Illustration story film failed.',
+              metadata: {
+                ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+                storyStage: 'failed; retry will restart from the original sheets',
+              },
+            });
+            logStep('ILLUSTRATION STORY FAILED — RETRY AVAILABLE', 'warn');
+          }
+        })();
+        return;
+      }
       const sourceUrl = portraitViewerUrl ?? createConceptSvgDataUrl(artifact.prompt);
       void oracleFilm.createFilm(sourceUrl, lyria.audioUrl, artifact.prompt, 'local').then((job) => {
         if (!isCurrent() || !job) return;
@@ -1739,7 +1822,7 @@ export function SurrogateOracleImmersion() {
         metadata: { editable: true, remoteUpload: false, characters: content.length },
       });
     }, 180);
-  }, [createCreativeDraft, createSeriesManifest, lyria, oracleFilm, portraitViewerUrl, requestMusic, updateCreativeArtifact, updateSeriesManifest]);
+  }, [createCreativeDraft, createIllustrationStoryPages, createSeriesManifest, illustrationStoryFilm, lyria, oracleFilm, portraitViewerUrl, requestMusic, updateCreativeArtifact, updateSeriesManifest]);
 
   const renderSeriesScene = useCallback(async (
     artifactId: string,
@@ -1964,10 +2047,11 @@ export function SurrogateOracleImmersion() {
     if (!artifact || !['draft', 'queued', 'generating'].includes(artifact.status)) return;
     creativeDispatchTokenRef.current += 1;
     if (artifact.kind === 'film') void oracleFilm.cancelFilm();
+    if (artifact.metadata?.production === 'illustration-story-proof') illustrationStoryFilm.cancel();
     if (artifact.kind === 'music') exitMusicMode();
     updateCreativeArtifact(artifact.id, { status: 'cancelled', progress: 0, error: null });
     logStep(`CREATIVE DISPATCH CANCELLED — ${artifact.kind}`, 'warn');
-  }, [exitMusicMode, oracleFilm, updateCreativeArtifact]);
+  }, [exitMusicMode, illustrationStoryFilm, oracleFilm, updateCreativeArtifact]);
 
   const retryCreativeArtifact = useCallback(() => {
     const artifact = activeCreativeArtifactRef.current;
@@ -1986,7 +2070,8 @@ export function SurrogateOracleImmersion() {
     const artifact = activeCreativeArtifactRef.current;
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `${(artifact?.title ?? 'creative-artifact').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'creative-artifact'}.${artifact?.kind === 'image' ? 'svg' : artifact?.kind === 'music' ? 'mp3' : artifact?.kind === 'film' ? 'webm' : artifact?.kind === 'episodic-series' ? 'json' : 'txt'}`;
+    const isStoryFilm = artifact?.metadata?.production === 'illustration-story-proof';
+    anchor.download = `${(artifact?.title ?? 'creative-artifact').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'creative-artifact'}.${artifact?.kind === 'image' ? 'svg' : artifact?.kind === 'music' ? 'mp3' : artifact?.kind === 'film' ? (isStoryFilm ? 'mp4' : 'webm') : artifact?.kind === 'episodic-series' ? 'json' : 'txt'}`;
     anchor.click();
   }, []);
 

@@ -17,6 +17,7 @@
     "fresh-dormant-verify": "node scripts/oracle-fresh-dormant-verify.mjs",
     "presence-entry-verify": "node scripts/oracle-presence-entry-verify.mjs",
     "tour-checkpoint-test": "tsx scripts/tour-checkpoint-contract.test.mjs",
+    "creative-dispatch-test": "tsx scripts/creative-dispatch-contract.test.mjs",
     "copilot-verify": "node scripts/oracle-copilot-framing-verify.mjs",
     "smoke-evidence-test": "node scripts/oracle-smoke-evidence.test.mjs",
     "smoke-clean": "node scripts/oracle-smoke-clean.mjs",

@@ -16,6 +16,52 @@ export type CreativeArtifactStatus =
   | 'cancelled'
   | 'partial';
 
+/**
+ * A dispatch claim is captured at the moment a confirmed production request
+ * starts. Provider callbacks may arrive after the seeker has replaced,
+ * cancelled, or retried the brief, so every asynchronous artifact write must
+ * prove that its claim still matches the active dispatch.
+ */
+export type CreativeDispatchClaim = Readonly<{
+  artifactId: string;
+  token: number;
+}>;
+
+export function isCreativeDispatchCurrent(
+  claim: CreativeDispatchClaim | null | undefined,
+  current: {
+    artifactId: string | null;
+    token: number;
+    status?: CreativeArtifactStatus | null;
+  },
+): boolean {
+  return Boolean(
+    claim
+    && claim.artifactId === current.artifactId
+    && claim.token === current.token
+    && current.status !== 'cancelled',
+  );
+}
+
+export function isCreativeFilmJobCurrent(
+  claim: CreativeDispatchClaim | null | undefined,
+  jobId: string | null | undefined,
+  activeJob: { claim: CreativeDispatchClaim; jobId: string } | null | undefined,
+  current: {
+    artifactId: string | null;
+    token: number;
+    status?: CreativeArtifactStatus | null;
+  },
+): boolean {
+  return Boolean(
+    jobId
+    && activeJob?.jobId === jobId
+    && activeJob.claim.artifactId === claim?.artifactId
+    && activeJob.claim.token === claim?.token
+    && isCreativeDispatchCurrent(claim, current),
+  );
+}
+
 export type CreativeProvider =
   | 'local-draft'
   | 'local-concept'

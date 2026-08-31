@@ -92,9 +92,12 @@ import {
   refreshSeriesProgress,
   updateSeriesScene,
   type CreativeArtifact,
+  type CreativeDispatchClaim,
   type CreativeMissingDetail,
   type CreativeSeriesManifest,
   type SeriesRenderMode,
+  isCreativeDispatchCurrent,
+  isCreativeFilmJobCurrent,
 } from '../lib/creativeProduction';
 
 // Data
@@ -397,6 +400,11 @@ export function SurrogateOracleImmersion() {
   const finalTurnsRef = useRef<SessionTurns>([]);
   const activeCreativeArtifactRef = useRef<CreativeArtifact | null>(null);
   const creativeDispatchTokenRef = useRef(0);
+  // Provider hooks expose one shared status/job stream. These claims keep a
+  // late stream update tied to the dispatch that actually created it, rather
+  // than merely to whichever artifact happens to have the same React state.
+  const creativeProviderClaimRef = useRef<CreativeDispatchClaim | null>(null);
+  const creativeFilmJobClaimRef = useRef<{ claim: CreativeDispatchClaim; jobId: string } | null>(null);
   const seriesRunRef = useRef<{
     token: number;
     episodeId: string;
@@ -1580,10 +1588,24 @@ export function SurrogateOracleImmersion() {
     }
   }, [currentSessionId]);
 
-  const updateCreativeArtifact = useCallback((artifactId: string, patch: Partial<CreativeArtifact>) => {
+  const updateCreativeArtifact = useCallback((
+    artifactId: string,
+    patch: Partial<CreativeArtifact>,
+    claim?: CreativeDispatchClaim,
+  ) => {
     if (activeCreativeArtifactRef.current?.id !== artifactId) return;
+    if (claim && !isCreativeDispatchCurrent(claim, {
+      artifactId: activeCreativeArtifactRef.current?.id ?? null,
+      token: creativeDispatchTokenRef.current,
+      status: activeCreativeArtifactRef.current?.status ?? null,
+    })) return;
     setCreativeArtifact(current => {
       if (current?.id !== artifactId) return current;
+      if (claim && !isCreativeDispatchCurrent(claim, {
+        artifactId: current.id,
+        token: creativeDispatchTokenRef.current,
+        status: current.status,
+      })) return current;
       const next = { ...current, ...patch };
       activeCreativeArtifactRef.current = next;
       persistSeriesArtifact(next);
@@ -1594,10 +1616,13 @@ export function SurrogateOracleImmersion() {
   const updateSeriesManifest = useCallback((
     artifactId: string,
     transform: (manifest: CreativeSeriesManifest) => CreativeSeriesManifest,
+    dispatchToken?: number,
   ) => {
     if (activeCreativeArtifactRef.current?.id !== artifactId) return;
+    if (dispatchToken !== undefined && creativeDispatchTokenRef.current !== dispatchToken) return;
     setCreativeArtifact(current => {
       if (current?.id !== artifactId || !current.seriesManifest) return current;
+      if (dispatchToken !== undefined && creativeDispatchTokenRef.current !== dispatchToken) return current;
       const seriesManifest = refreshSeriesProgress(transform(current.seriesManifest));
       const progress = seriesManifest.episodes.length
         ? Math.round(seriesManifest.episodes.reduce((sum, episode) => sum + episode.progress, 0) / seriesManifest.episodes.length)
@@ -1631,6 +1656,8 @@ export function SurrogateOracleImmersion() {
     const artifact = createCreativeDraft(prompt);
     activeCreativeArtifactRef.current = artifact;
     creativeDispatchTokenRef.current += 1;
+    creativeProviderClaimRef.current = null;
+    creativeFilmJobClaimRef.current = null;
     setCreativeArtifact(artifact);
     setShowArtifactCard(true);
     const classification = classifyCreativeRequest(prompt);
@@ -1656,13 +1683,26 @@ export function SurrogateOracleImmersion() {
     if (!artifact || artifact.status !== 'draft') return;
     const token = creativeDispatchTokenRef.current + 1;
     creativeDispatchTokenRef.current = token;
-    const isCurrent = () => activeCreativeArtifactRef.current?.id === artifact.id && creativeDispatchTokenRef.current === token;
+    const claim: CreativeDispatchClaim = { artifactId: artifact.id, token };
+    creativeProviderClaimRef.current = artifact.kind === 'music' || artifact.kind === 'film' ? claim : null;
+    creativeFilmJobClaimRef.current = null;
+    const isCurrent = () => isCreativeDispatchCurrent(claim, {
+      artifactId: activeCreativeArtifactRef.current?.id ?? null,
+      token: creativeDispatchTokenRef.current,
+      status: activeCreativeArtifactRef.current?.status ?? null,
+    });
+    const isProviderCurrent = () => isCurrent() && isCreativeDispatchCurrent(creativeProviderClaimRef.current, {
+      artifactId: activeCreativeArtifactRef.current?.id ?? null,
+      token: creativeDispatchTokenRef.current,
+      status: activeCreativeArtifactRef.current?.status ?? null,
+    });
     updateCreativeArtifact(artifact.id, { status: 'queued', progress: 4, error: null });
     logStep(`CREATIVE DISPATCH CONFIRMED — ${artifact.kind}`, 'ok');
 
     if (artifact.kind === 'music') {
+      updateCreativeArtifact(artifact.id, { status: 'generating', progress: 48 }, claim);
       void requestMusic(artifact.prompt).then((url) => {
-        if (!isCurrent()) return;
+        if (!isProviderCurrent()) return;
         if (url) {
           updateCreativeArtifact(artifact.id, {
             status: 'ready',
@@ -1672,9 +1712,9 @@ export function SurrogateOracleImmersion() {
             provider: 'lyria',
             providerLabel: 'Lyria music lane',
             metadata: { model: lyria.model, requestId: lyria.requestId, durationSeconds: lyria.durationSeconds },
-          });
+          }, claim);
         } else {
-          updateCreativeArtifact(artifact.id, { status: 'failed', progress: 0, error: lyria.error ?? 'Lyria did not return a playable track.' });
+          updateCreativeArtifact(artifact.id, { status: 'failed', progress: 0, error: lyria.error ?? 'Lyria did not return a playable track.' }, claim);
         }
       });
       return;
@@ -1761,7 +1801,16 @@ export function SurrogateOracleImmersion() {
       }
       const sourceUrl = portraitViewerUrl ?? createConceptSvgDataUrl(artifact.prompt);
       void oracleFilm.createFilm(sourceUrl, lyria.audioUrl, artifact.prompt, 'local').then((job) => {
-        if (!isCurrent() || !job) return;
+        if (!isProviderCurrent()) return;
+        if (!job) {
+          updateCreativeArtifact(artifact.id, {
+            status: 'failed',
+            progress: 0,
+            error: 'This browser could not render a free film locally.',
+          }, claim);
+          return;
+        }
+        creativeFilmJobClaimRef.current = { claim, jobId: job.id };
         updateCreativeArtifact(artifact.id, {
           status: job.status === 'ready' ? 'ready' : job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
           progress: job.progress,
@@ -1771,7 +1820,7 @@ export function SurrogateOracleImmersion() {
           providerLabel: 'Free browser film lane',
           error: job.error,
           metadata: { chunkCount: job.chunkCount, mediaType: 'mediaType' in job ? job.mediaType : undefined, source: portraitViewerUrl ? 'neural portrait' : 'local concept board' },
-        });
+        }, claim);
       });
       return;
     }
@@ -1860,7 +1909,7 @@ export function SurrogateOracleImmersion() {
       progress: 2,
       outputUrl: null,
       error: null,
-    }));
+    }), token);
 
     const sourceUrl = mode === 'premium'
       ? portraitViewerUrl!
@@ -1871,12 +1920,11 @@ export function SurrogateOracleImmersion() {
       : null;
     const initialJob = restoredJob ?? await oracleFilm.createFilm(sourceUrl, lyria.audioUrl, scene.brief, mode);
     if (!initialJob) return null;
-    if (seriesRunRef.current?.token === token) {
-      seriesRunRef.current = { ...seriesRunRef.current, jobId: initialJob.id };
-    }
+    if (!seriesRunRef.current || seriesRunRef.current.token !== token) return null;
+    seriesRunRef.current = { ...seriesRunRef.current, jobId: initialJob.id };
     updateSeriesManifest(artifactId, manifest => updateSeriesScene(manifest, episodeId, sceneId, {
       jobId: initialJob.id,
-    }));
+    }), token);
     const job = initialJob.provider === 'browser' || ['ready', 'failed', 'cancelled'].includes(initialJob.status)
       ? initialJob
       : await oracleFilm.waitForCompletion(initialJob.id);
@@ -1887,7 +1935,7 @@ export function SurrogateOracleImmersion() {
       progress: job.status === 'ready' ? 100 : job.progress,
       outputUrl: job.finalMediaUrl,
       error: job.error,
-    }));
+    }), token);
     return job.status;
   }, [lyria.audioUrl, oracleFilm, portraitViewerUrl, updateSeriesManifest]);
 
@@ -1941,7 +1989,7 @@ export function SurrogateOracleImmersion() {
         status: 'cancelled',
         progress: 0,
         error: null,
-      }));
+      }), run.token);
     }
     logStep(`SERIES EPISODE PAUSED — ${run.episodeId}`, 'warn');
   }, [oracleFilm, updateSeriesManifest]);
@@ -2017,10 +2065,16 @@ export function SurrogateOracleImmersion() {
         progress: job.progress,
         outputUrl: job.finalMediaUrl,
         error: job.error,
-      }));
+      }), run.token);
       return;
     }
     if (artifact.kind !== 'film') return;
+    const filmClaim = creativeFilmJobClaimRef.current;
+    if (!filmClaim || !isCreativeFilmJobCurrent(filmClaim.claim, job.id, filmClaim, {
+      artifactId: artifact.id,
+      token: creativeDispatchTokenRef.current,
+      status: artifact.status,
+    })) return;
     updateCreativeArtifact(artifact.id, {
       status: job.status === 'ready' ? 'ready' : job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : job.status === 'stitching' ? 'generating' : job.status,
       progress: job.progress,
@@ -2029,23 +2083,15 @@ export function SurrogateOracleImmersion() {
       error: job.error,
       provider: 'browser-film',
       providerLabel: 'Free browser film lane',
-    });
+    }, filmClaim.claim);
   }, [oracleFilm.job, updateCreativeArtifact, updateSeriesManifest]);
-
-  useEffect(() => {
-    const artifact = activeCreativeArtifactRef.current;
-    if (!artifact || artifact.kind !== 'music') return;
-    if (lyria.status === 'generating') updateCreativeArtifact(artifact.id, { status: 'generating', progress: 48, provider: 'lyria', providerLabel: 'Lyria music lane' });
-    if (lyria.status === 'error') updateCreativeArtifact(artifact.id, { status: 'failed', progress: 0, error: lyria.error ?? 'Lyria did not return a playable track.' });
-    if ((lyria.status === 'ready' || lyria.status === 'playing') && lyria.audioUrl) {
-      updateCreativeArtifact(artifact.id, { status: 'ready', progress: 100, outputUrl: lyria.audioUrl, outputLabel: 'Lyria audio signal', provider: 'lyria', providerLabel: 'Lyria music lane' });
-    }
-  }, [lyria.audioUrl, lyria.error, lyria.status, updateCreativeArtifact]);
 
   const cancelCreativeArtifact = useCallback(() => {
     const artifact = activeCreativeArtifactRef.current;
     if (!artifact || !['draft', 'queued', 'generating'].includes(artifact.status)) return;
     creativeDispatchTokenRef.current += 1;
+    creativeProviderClaimRef.current = null;
+    creativeFilmJobClaimRef.current = null;
     if (artifact.kind === 'film') void oracleFilm.cancelFilm();
     if (artifact.metadata?.production === 'illustration-story-proof') illustrationStoryFilm.cancel();
     if (artifact.kind === 'music') exitMusicMode();
@@ -2057,6 +2103,8 @@ export function SurrogateOracleImmersion() {
     const artifact = activeCreativeArtifactRef.current;
     if (!artifact || !['failed', 'cancelled', 'partial'].includes(artifact.status)) return;
     creativeDispatchTokenRef.current += 1;
+    creativeProviderClaimRef.current = null;
+    creativeFilmJobClaimRef.current = null;
     const next = { ...artifact, status: 'draft' as const, progress: 0, outputUrl: null, error: null };
     activeCreativeArtifactRef.current = next;
     setCreativeArtifact(next);

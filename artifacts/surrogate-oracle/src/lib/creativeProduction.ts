@@ -70,16 +70,22 @@ export type CreativeProvider =
   | 'browser-film'
   | 'premium-film';
 
+export type IllustrationStoryPageStatus = 'planned' | 'generating' | 'ready' | 'failed' | 'cancelled';
 export type IllustrationStoryPage = {
   id: string;
   pageNumber: number;
   sheetIndex: 0 | 1;
   row: number;
   column: number;
+  storyTitle: string;
+  sourceAsset: string;
   title: string;
   narration: string;
   durationSeconds: number;
   transition: 'fade';
+  status: IllustrationStoryPageStatus;
+  progress: number;
+  error?: string | null;
 };
 
 export type IllustrationStoryScene = {
@@ -245,14 +251,42 @@ export function createIllustrationStoryPages(
       sheetIndex,
       row: Math.floor(sheetPage / 4),
       column: sheetPage % 4,
+      storyTitle: ILLUSTRATION_STORY_NAMES[sheetIndex],
+      sourceAsset: ILLUSTRATION_STORY_SOURCE_ASSETS[sheetIndex],
       title: `Page ${String(pageNumber).padStart(2, '0')}`,
       narration: `${sourceNarration} ${prompt.toLowerCase().includes('child') ? '' : 'Turn the page.'}`.trim(),
       durationSeconds: ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,
       transition: 'fade',
+      status: 'planned',
+      progress: 0,
+      error: null,
     };
   });
 }
 
+export function updateIllustrationStoryPages(
+  pages: IllustrationStoryPage[],
+  progress: number,
+  failure?: string | null,
+): IllustrationStoryPage[] {
+  const boundedProgress = Math.max(0, Math.min(100, Number(progress) || 0));
+  const stitchProgress = Math.max(0, Math.min(100, ((boundedProgress - 30) / 70) * 100));
+  const currentPage = stitchProgress > 0
+    ? Math.min(pages.length, Math.max(1, Math.ceil((stitchProgress / 100) * pages.length)))
+    : 0;
+  return pages.map((page, index) => {
+    if (failure && index + 1 === currentPage) {
+      return { ...page, status: 'failed', progress: 0, error: failure };
+    }
+    if (currentPage > 0 && index + 1 < currentPage) {
+      return { ...page, status: 'ready', progress: 100, error: null };
+    }
+    if (currentPage > 0 && index + 1 === currentPage && boundedProgress < 100) {
+      return { ...page, status: 'generating', progress: Math.round((stitchProgress % (100 / pages.length)) * pages.length), error: null };
+    }
+    return { ...page, status: boundedProgress >= 100 ? 'ready' : 'planned', progress: boundedProgress >= 100 ? 100 : 0, error: null };
+  });
+}
 export type CreativeClassification = {
   kind: CreativeKind;
   confidence: 'high' | 'medium';
@@ -424,10 +458,8 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
     missingDetails: classification.missingDetails,
     followUpCompleted: classification.missingDetails.length === 0,
     status: 'draft',
-    provider: illustrationStory ? 'premium-film' : classification.provider,
-    providerLabel: illustrationStory
-      ? 'Premium FAL story lane'
-      : classification.provider === 'lyria'
+    provider: classification.provider,
+    providerLabel: classification.provider === 'lyria'
       ? 'Lyria music lane'
       : classification.provider === 'browser-film'
         ? 'Free browser film lane'
@@ -440,7 +472,7 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
     createdAt,
     requiresConfirmation: classification.requiresConfirmation,
     confirmationLabel: illustrationStory
-      ? 'Start premium 32-page story film'
+      ? 'Confirm 32-page story film'
       : classification.kind === 'music'
       ? 'Confirm music generation'
       : classification.kind === 'film'
@@ -456,14 +488,16 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
       confidence: classification.confidence,
       missingDetails: classification.missingDetails,
       ...(illustrationStory ? {
-        production: 'illustration-story-premium',
+        production: 'illustration-story-proof',
         pageCount: ILLUSTRATION_STORY_PAGE_COUNT,
         pageDurationSeconds: ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,
+        targetDurationSeconds: ILLUSTRATION_STORY_PAGE_COUNT * ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,
+        storyOne: ILLUSTRATION_STORY_NAMES[0],
+        storyTwo: ILLUSTRATION_STORY_NAMES[1],
+        pageOrder: 'Story 1 pages 01–16, then Story 2 pages 17–32',
         soundtrack: 'Lyria instrumental anchor',
-        narration: 'Gemini child-friendly narration',
-        sourceAssets: '32 locked panel references from two immutable 4x4 illustration sheets',
-        visualGeneration: 'one FAL image-to-video scene per page',
-        delivery: 'server-side FFmpeg stitch and audio mux; persisted MP4 only',
+        narration: 'plan: Gemini child-friendly narration',
+        sourceAssets: `${ILLUSTRATION_STORY_SOURCE_ASSETS[0]} + ${ILLUSTRATION_STORY_SOURCE_ASSETS[1]}; originals remain unchanged`,
       } : {}),
       deliveryBoundary: classification.kind === 'film' || classification.kind === 'music'
         ? 'This first pass uses the existing local/browser or Lyria seam. Premium or outbound delivery is never implicit.'
@@ -827,3 +861,13 @@ export function createConceptSvgDataUrl(prompt: string): string {
 export function createDataUrl(content: string, mimeType = 'text/plain;charset=utf-8'): string {
   return `data:${mimeType},${encodeURIComponent(content)}`;
 }
+
+export const ILLUSTRATION_STORY_NAMES = [
+  'Levi, Lennon & Pickles · The Secret Ocean Adventure',
+  'Princess Ghost Spider, Mario Spider-Man & Donkey · A Pink Spider Tunnel Adventure',
+] as const;
+
+export const ILLUSTRATION_STORY_SOURCE_ASSETS = [
+  '567AA27C-1D47-49A5-ABA9-7197F053B021_1788204328509.png',
+  'A2388D28-67B5-4258-9D55-CB618DC165D1_1788204328509.png',
+] as const;

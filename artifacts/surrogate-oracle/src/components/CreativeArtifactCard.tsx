@@ -332,10 +332,23 @@ export function CreativeArtifactCard({
   const hasMetadata = Boolean(metadataRecord && Object.keys(metadataRecord).length);
   const series = artifact.seriesManifest;
   const storyPages = artifact.storyPages ?? [];
-  const isIllustrationStory = artifact.metadata?.production === 'illustration-story-premium';
+  const isIllustrationStory = ['illustration-story-premium', 'illustration-story-proof'].includes(
+    String(artifact.metadata?.production),
+  );
   const storyScenes = Array.isArray(metadataRecord?.storyScenes)
     ? metadataRecord.storyScenes as IllustrationStoryScene[]
-    : [];
+    : storyPages.map(page => ({
+      pageNumber: page.pageNumber,
+      sheetIndex: page.sheetIndex,
+      row: page.row,
+      column: page.column,
+      durationSeconds: page.durationSeconds,
+      seed: page.pageNumber,
+      referenceUrl: page.sourceAsset,
+      status: page.status,
+      progress: page.progress,
+      error: page.error,
+    }));
   const isSeries = Boolean(series);
   const isDraft = status === 'draft';
   const followUpDetail = isDraft && !artifact.followUpCompleted ? missingDetails[0] : undefined;
@@ -744,7 +757,10 @@ export function CreativeArtifactCard({
             </div>
             <p>
               32 locked panel references · {Math.round(storyPages.reduce((sum, page) => sum + page.durationSeconds, 0))} seconds ·
-              FAL motion per page · Lyria backing music · Gemini child-friendly narration
+              {artifact.metadata?.production === 'illustration-story-proof'
+                ? 'gentle local pan/zoom motion ·'
+                : 'FAL motion per page ·'}
+              {' '}Lyria backing music · optional Gemini child-friendly narration
             </p>
           </div>
         )}

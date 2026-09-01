@@ -96,16 +96,45 @@ async function runFfmpeg(args: string[]): Promise<void> {
   await execFileAsync('ffmpeg', ['-hide_banner', '-loglevel', 'error', ...args], { maxBuffer: 2 * 1024 * 1024 });
 }
 
-async function stitchIllustrationStory(body: any): Promise<{ bytes: Buffer; narrationAvailable: boolean }> {
+async function validateStoryFilm(file: string, expectedDuration: number): Promise<{ durationSeconds: number; audioTrackPresent: boolean }> {
+  const { stdout } = await execFileAsync('ffprobe', [
+    '-v', 'error',
+    '-show_entries', 'format=duration:stream=codec_type',
+    '-of', 'json',
+    file,
+  ], { maxBuffer: 256 * 1024 });
+  const probe = JSON.parse(stdout) as {
+    format?: { duration?: string };
+    streams?: Array<{ codec_type?: string }>;
+  };
+  const durationSeconds = Number(probe.format?.duration);
+  const audioTrackPresent = Boolean(probe.streams?.some(stream => stream.codec_type === 'audio'));
+  if (!Number.isFinite(durationSeconds) || Math.abs(durationSeconds - expectedDuration) > 0.75) {
+    throw new Error(`Story film duration validation failed (${Number.isFinite(durationSeconds) ? `${durationSeconds.toFixed(2)}s` : 'unknown'}; expected ${expectedDuration}s).`);
+  }
+  if (!audioTrackPresent) throw new Error('Story film validation failed: the final MP4 has no audio track.');
+  return { durationSeconds, audioTrackPresent };
+}
+
+async function stitchIllustrationStory(body: any): Promise<{
+  bytes: Buffer;
+  narrationAvailable: boolean;
+  durationSeconds: number;
+  audioTrackPresent: boolean;
+}> {
   const sheets = Array.isArray(body?.sheets) ? body.sheets : [];
   const pages = Array.isArray(body?.pages) ? body.pages as StoryPageRequest[] : [];
   if (sheets.length !== 2 || pages.length !== 32) throw new Error('A story proof requires two sheets and 32 pages.');
   const duration = pages.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
-  if (!pages.every(page => Number.isInteger(page.pageNumber) && page.sheetIndex >= 0 && page.sheetIndex <= 1
+  const orderedPages = pages.every((page, index) => page.pageNumber === index + 1
+    && page.sheetIndex === (index < 16 ? 0 : 1)
+    && page.row === Math.floor((index % 16) / 4)
+    && page.column === index % 4);
+  if (!orderedPages || !pages.every(page => Number.isInteger(page.pageNumber) && page.sheetIndex >= 0 && page.sheetIndex <= 1
     && page.row >= 0 && page.row < 4 && page.column >= 0 && page.column < 4
     && Number(page.durationSeconds) > 0 && Number(page.durationSeconds) <= 10)
     || duration < 100 || duration > 180) {
-    throw new Error('Story page timing or grid coordinates are invalid.');
+    throw new Error('Story pages must be contiguous 01–32 in sheet order with valid 4×4 coordinates and timing.');
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-story-'));
   try {
@@ -159,7 +188,12 @@ async function stitchIllustrationStory(body: any): Promise<{ bytes: Buffer; narr
         '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-t', String(duration), finalFile,
       ]);
     }
-    return { bytes: fs.readFileSync(finalFile), narrationAvailable: Boolean(narrationFile) };
+    const validation = await validateStoryFilm(finalFile, duration);
+    return {
+      bytes: fs.readFileSync(finalFile),
+      narrationAvailable: Boolean(narrationFile),
+      ...validation,
+    };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -189,6 +223,8 @@ function illustrationStoryStitchPlugin() {
               'Cache-Control': 'no-store',
               'X-Story-Page-Count': '32',
               'X-Story-Narration': result.narrationAvailable ? 'available' : 'unavailable',
+              'X-Story-Duration': String(result.durationSeconds),
+              'X-Story-Audio': result.audioTrackPresent ? 'present' : 'missing',
             });
             res.end(result.bytes);
           } catch (error) {

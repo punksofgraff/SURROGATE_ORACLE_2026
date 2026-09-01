@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import {
+  createIllustrationStoryPages,
   isCreativeDispatchCurrent,
   isCreativeFilmJobCurrent,
+  updateIllustrationStoryPages,
 } from '../src/lib/creativeProduction.ts';
 
 const runtime = (artifactId, token, status = 'generating') => ({
@@ -98,4 +100,18 @@ assert.equal(
   'film progress must be rejected until this dispatch owns a job',
 );
 
-console.log('creative dispatch contract passed (new brief, cancel, retry, and film job races)');
+const storyPages = createIllustrationStoryPages('make a child-friendly page-by-page story film', '2026-09-01T12:00:00.000Z');
+assert.equal(storyPages.length, 32, 'story proof must contain 32 panels');
+assert.deepEqual(
+  storyPages.map(page => [page.pageNumber, page.sheetIndex, page.row, page.column]),
+  Array.from({ length: 32 }, (_, index) => [index + 1, index < 16 ? 0 : 1, Math.floor((index % 16) / 4), index % 4]),
+  'story panels must remain contiguous and mapped to their source sheet grid',
+);
+assert.equal(storyPages[0].status, 'planned');
+const inFlightPages = updateIllustrationStoryPages(storyPages, 58);
+assert.equal(inFlightPages.filter(page => page.status === 'ready').length, 12, 'completed panels should remain visible during stitching');
+assert.equal(inFlightPages.find(page => page.status === 'generating')?.pageNumber, 13, 'one active panel should be visible during stitching');
+const failedPages = updateIllustrationStoryPages(inFlightPages, 58, 'stitch failed');
+assert.equal(failedPages.find(page => page.status === 'failed')?.pageNumber, 13, 'the active panel should retain a retryable failure');
+
+console.log('creative dispatch contract passed (new brief, cancel, retry, film races, and story panel order)');

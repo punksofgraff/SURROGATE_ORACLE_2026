@@ -136,6 +136,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
   const jobRef = useRef<IllustrationStoryFilmJob | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const localObjectUrlRef = useRef<string | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
   const pollingRef = useRef(false);
 
@@ -267,6 +268,68 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     return complete;
   }, [publish, waitForCompletion]);
 
+  const renderLocalStory = useCallback(async (
+    sheetUrls: [string, string],
+    pages: IllustrationStoryPage[],
+    musicUrl: string,
+    onProgress?: (progress: number) => void,
+  ): Promise<IllustrationStoryFilmResult> => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    onProgress?.(8);
+
+    const [sheetOne, sheetTwo, music] = await Promise.all([
+      urlToBase64(sheetUrls[0]),
+      urlToBase64(sheetUrls[1]),
+      urlToBase64(musicUrl),
+    ]);
+    if (controller.signal.aborted) throw new Error('Story film render cancelled.');
+    onProgress?.(20);
+
+    const narration = await createNarrationAudio(
+      pages.map(page => `Page ${page.pageNumber}. ${page.narration}`).join(' '),
+    );
+    if (controller.signal.aborted) throw new Error('Story film render cancelled.');
+    onProgress?.(30);
+
+    const response = await fetch(`${import.meta.env.BASE_URL}api/illustration-story-stitch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sheets: [sheetOne, sheetTwo], music, narration, pages }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      let detail = '';
+      try { detail = (await response.json()).error ?? ''; } catch { /* keep status */ }
+      throw new Error(detail || `FFmpeg story stitch failed (${response.status}).`);
+    }
+    const validatedPageCount = Number(response.headers.get('X-Story-Page-Count'));
+    const validatedDuration = Number(response.headers.get('X-Story-Duration'));
+    if (validatedPageCount !== pages.length) throw new Error('Story film validation failed: page count mismatch.');
+    if (
+      !Number.isFinite(validatedDuration)
+      || Math.abs(validatedDuration - pages.reduce((sum, page) => sum + page.durationSeconds, 0)) > 0.75
+    ) {
+      throw new Error('Story film validation failed: duration mismatch.');
+    }
+    if (response.headers.get('X-Story-Audio') !== 'present') {
+      throw new Error('Story film validation failed: audio track missing.');
+    }
+    const blob = await response.blob();
+    if (!blob.size) throw new Error('FFmpeg returned an empty story film.');
+    if (localObjectUrlRef.current) URL.revokeObjectURL(localObjectUrlRef.current);
+    localObjectUrlRef.current = URL.createObjectURL(blob);
+    onProgress?.(100);
+    return {
+      url: localObjectUrlRef.current,
+      mediaType: 'video/mp4',
+      pageCount: pages.length,
+      durationSeconds: validatedDuration,
+      narrationAvailable: response.headers.get('X-Story-Narration') === 'available',
+    };
+  }, []);
+
   const cancel = useCallback(async () => {
     abortRef.current?.abort();
     if (pollTimerRef.current) window.clearTimeout(pollTimerRef.current);
@@ -322,7 +385,8 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
   useEffect(() => () => {
     abortRef.current?.abort();
     if (pollTimerRef.current) window.clearTimeout(pollTimerRef.current);
+    if (localObjectUrlRef.current) URL.revokeObjectURL(localObjectUrlRef.current);
   }, []);
 
-  return { job, renderStory, retryScene, cancel };
+  return { job, renderStory, renderLocalStory, retryScene, cancel };
 }

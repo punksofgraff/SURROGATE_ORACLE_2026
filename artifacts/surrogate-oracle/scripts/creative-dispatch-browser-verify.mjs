@@ -15,15 +15,17 @@
 
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer';
+import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEV_URL = process.env.DEV_URL ?? 'http://localhost:80/surrogate-oracle';
 const TEST_URL = `${DEV_URL}${DEV_URL.includes('?') ? '&' : '?'}devui&creative-test`;
+const NIX_CHROME = '/nix/store/0n9rl5l9syy808xi9bk4f6dhnfrvhkww-playwright-browsers-chromium/chromium-1080/chrome-linux/chrome';
 const CHROME = process.env.PUPPETEER_EXECUTABLE_PATH
   ?? process.env.CHROME_BIN
-  ?? puppeteer.executablePath();
+  ?? (existsSync(NIX_CHROME) ? NIX_CHROME : puppeteer.executablePath());
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const providerResponseHeaders = {

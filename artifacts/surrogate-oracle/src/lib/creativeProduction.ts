@@ -82,6 +82,21 @@ export type IllustrationStoryPage = {
   transition: 'fade';
 };
 
+export type IllustrationStoryScene = {
+  pageNumber: number;
+  sheetIndex: 0 | 1;
+  row: number;
+  column: number;
+  durationSeconds: number;
+  seed: number;
+  referenceUrl?: string | null;
+  status: 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled';
+  progress: number;
+  jobId?: string | null;
+  outputUrl?: string | null;
+  error?: string | null;
+};
+
 export type CreativeMissingDetail =
   | 'audience'
   | 'platform'
@@ -409,8 +424,10 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
     missingDetails: classification.missingDetails,
     followUpCompleted: classification.missingDetails.length === 0,
     status: 'draft',
-    provider: classification.provider,
-    providerLabel: classification.provider === 'lyria'
+    provider: illustrationStory ? 'premium-film' : classification.provider,
+    providerLabel: illustrationStory
+      ? 'Premium FAL story lane'
+      : classification.provider === 'lyria'
       ? 'Lyria music lane'
       : classification.provider === 'browser-film'
         ? 'Free browser film lane'
@@ -423,7 +440,7 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
     createdAt,
     requiresConfirmation: classification.requiresConfirmation,
     confirmationLabel: illustrationStory
-      ? 'Confirm 32-page story film'
+      ? 'Start premium 32-page story film'
       : classification.kind === 'music'
       ? 'Confirm music generation'
       : classification.kind === 'film'
@@ -437,12 +454,14 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
       confidence: classification.confidence,
       missingDetails: classification.missingDetails,
       ...(illustrationStory ? {
-        production: 'illustration-story-proof',
+        production: 'illustration-story-premium',
         pageCount: ILLUSTRATION_STORY_PAGE_COUNT,
         pageDurationSeconds: ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,
         soundtrack: 'Lyria instrumental anchor',
         narration: 'Gemini child-friendly narration',
-        sourceAssets: 'two local 4x4 illustration sheets; originals remain unchanged',
+        sourceAssets: '32 locked panel references from two immutable 4x4 illustration sheets',
+        visualGeneration: 'one FAL image-to-video scene per page',
+        delivery: 'server-side FFmpeg stitch and audio mux; persisted MP4 only',
       } : {}),
       deliveryBoundary: classification.kind === 'film' || classification.kind === 'music'
         ? 'This first pass uses the existing local/browser or Lyria seam. Premium or outbound delivery is never implicit.'

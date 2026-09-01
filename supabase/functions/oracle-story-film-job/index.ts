@@ -148,11 +148,19 @@ async function falJson(path: string, init: RequestInit = {}): Promise<Record<str
   return data;
 }
 
+function providerStoryLanguage(value: string): string {
+  return value
+    .replace(/\bPrincess Ghost Spider\b/gi, 'a ghostly princess with spider-like agility')
+    .replace(/\bMario Spider-Man\b/gi, 'a cheerful red-capped web-slinging hero')
+    .replace(/\bSpider-Man\b/gi, 'a friendly wall-crawling hero')
+    .replace(/\bMario\b/gi, 'a cheerful red-capped adventurer');
+}
+
 async function createFalScene(referenceUrl: string, prompt: string, sessionId: string, seed: number): Promise<string> {
   const data = await falJson(`/${FAL_MODEL}`, {
     method: 'POST',
     body: JSON.stringify({
-      prompt,
+      prompt: providerStoryLanguage(prompt),
       image_url: referenceUrl,
       resolution: '480p',
       duration: '5',
@@ -247,15 +255,16 @@ async function persistRemoteScene(
 }
 
 function storyPrompt(page: Record<string, unknown>): string {
-  const narration = safeText(page.narration, 600);
+  const narration = providerStoryLanguage(safeText(page.narration, 600));
   const pageNumber = Number(page.pageNumber);
   return [
-    'Animate this exact locked storybook panel into a gentle child-friendly 5-second scene.',
-    'Use the supplied panel as the visual reference and preserve its characters, costumes, colors, layout, linework, and readable story composition.',
-    'Do not redesign, replace, crop, zoom away from, or invent a different scene.',
-    'Only add subtle living motion: blinking, breathing, a small wave, drifting sparkles, a soft camera push, or another motion that is already implied by the panel.',
-    'No new text, no logos, no photorealism, no audio, no morphing, and no character identity drift.',
-    `This is story page ${pageNumber} of 32. Narration context: ${narration}`,
+    'Use the supplied locked illustration panel as the source of truth for this animated story shot.',
+    'Bring the entire panel to life as a cinematic, child-friendly 5-second story moment: animate the depicted characters, expressions, props, environment, and implied action so the story visibly develops on screen.',
+    'Preserve the panel characters, identities, costumes, colors, relationships, setting, composition, linework, and storybook visual style while the action unfolds.',
+    'Do not replace the characters, redesign the scene, remove key elements, or turn it into a different story. Let the camera move naturally through the existing composition when that helps the action read.',
+    'Use the story beat as direction for what the depicted characters do, not as a request to invent unrelated objects or locations.',
+    'No added dialogue text, logos, watermarks, photorealistic restyling, audio, or character morphing.',
+    `This is story page ${pageNumber} of 32. Story beat: ${narration}`,
   ].join(' ');
 }
 

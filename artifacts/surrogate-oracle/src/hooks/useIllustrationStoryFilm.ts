@@ -2,6 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { IllustrationStoryPage } from '../lib/creativeProduction';
 
+export type IllustrationStoryFailureKind =
+  | 'provider-safety'
+  | 'provider'
+  | 'submission'
+  | 'audio-gate'
+  | null;
+
 export type IllustrationStorySceneState = {
   pageNumber: number;
   sheetIndex: 0 | 1;
@@ -15,6 +22,8 @@ export type IllustrationStorySceneState = {
   jobId?: string | null;
   outputUrl?: string | null;
   error?: string | null;
+  failureKind?: Exclude<IllustrationStoryFailureKind, 'audio-gate'>;
+  recovery?: 'retry' | 'replace' | null;
 };
 
 export type IllustrationStoryFilmJob = {
@@ -28,6 +37,18 @@ export type IllustrationStoryFilmJob = {
   scenes: IllustrationStorySceneState[];
   finalMediaUrl: string | null;
   error: string | null;
+  failureKind: IllustrationStoryFailureKind;
+  audioGate?: {
+    musicReady: boolean;
+    narrationReady: boolean;
+    verified: boolean;
+    passed: boolean;
+  };
+  finalGate?: {
+    everyPageReady: boolean;
+    audioReady: boolean;
+    passed: boolean;
+  };
 };
 
 export type IllustrationStoryFilmResult = {
@@ -251,11 +272,12 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     pageNumber: number,
     onProgress?: (progress: number) => void,
     onJob?: StoryJobListener,
+    mode: 'retry' | 'replace' = 'retry',
   ) => {
     const currentId = activeJobIdRef.current ?? jobRef.current?.id;
     if (!currentId) throw new Error('There is no saved story film job to retry.');
     const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
-      body: { action: 'retry', jobId: currentId, pageNumber },
+      body: { action: mode, jobId: currentId, pageNumber },
     });
     if (error) throw error;
     if (!data?.id) throw new Error(data?.error || 'Story page retry returned no job.');
@@ -266,6 +288,31 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       onJob?.(next);
     });
     return complete;
+  }, [publish, waitForCompletion]);
+
+  const replaceScene = useCallback(async (
+    pageNumber: number,
+    onProgress?: (progress: number) => void,
+    onJob?: StoryJobListener,
+  ) => retryScene(pageNumber, onProgress, onJob, 'replace'), [retryScene]);
+
+  const retryAssembly = useCallback(async (
+    onProgress?: (progress: number) => void,
+    onJob?: StoryJobListener,
+  ) => {
+    const currentId = activeJobIdRef.current ?? jobRef.current?.id;
+    if (!currentId) throw new Error('There is no saved story film job to stitch.');
+    const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
+      body: { action: 'retry-stitch', jobId: currentId },
+    });
+    if (error) throw error;
+    if (!data?.id) throw new Error(data?.error || 'Story stitch retry returned no job.');
+    publish(data as IllustrationStoryFilmJob, onJob);
+    onProgress?.(data.progress);
+    return waitForCompletion(data.id, next => {
+      onProgress?.(next.progress);
+      onJob?.(next);
+    });
   }, [publish, waitForCompletion]);
 
   const renderLocalStory = useCallback(async (
@@ -388,5 +435,5 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     if (localObjectUrlRef.current) URL.revokeObjectURL(localObjectUrlRef.current);
   }, []);
 
-  return { job, renderStory, renderLocalStory, retryScene, cancel };
+  return { job, renderStory, renderLocalStory, retryScene, replaceScene, retryAssembly, cancel };
 }

@@ -34,8 +34,11 @@ type StoryScene = {
   jobId: string | null;
   outputUrl: string | null;
   error: string | null;
+  failureKind?: 'provider-safety' | 'provider' | 'submission' | null;
+  recovery?: 'retry' | 'replace' | null;
 };
 
+type StoryFailureKind = 'provider-safety' | 'provider' | 'submission' | 'audio-gate' | null;
 type StoryJobRow = {
   id: string;
   session_id: string;
@@ -89,8 +92,26 @@ function sceneList(value: unknown): StoryScene[] {
   return Array.isArray(value) ? value as StoryScene[] : [];
 }
 
+function errorDetail(value: unknown): string {
+  if (typeof value === 'string') return safeText(value, 300);
+  if (!value || typeof value !== 'object') return '';
+  try {
+    return safeText(JSON.stringify(value), 300);
+  } catch {
+    return '';
+  }
+}
 function publicJob(row: StoryJobRow) {
   const scenes = sceneList(row.story_scenes);
+  const manifest = row.story_manifest && typeof row.story_manifest === 'object'
+    ? row.story_manifest as Record<string, unknown>
+    : {};
+  const audioVerification = manifest.audioVerification && typeof manifest.audioVerification === 'object'
+    ? manifest.audioVerification as Record<string, unknown>
+    : {};
+  const everyPageReady = scenes.length === PAGE_COUNT
+    && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl));
+  const audioReady = Boolean(row.music_url && row.narration_url);
   return {
     id: row.id,
     provider: 'fal',
@@ -112,11 +133,29 @@ function publicJob(row: StoryJobRow) {
       jobId: scene.jobId,
       outputUrl: scene.outputUrl,
       error: scene.error,
+      failureKind: scene.failureKind ?? null,
+      recovery: scene.recovery ?? null,
     })),
     finalMediaUrl: row.final_media_url,
     narrationUrl: row.narration_url,
     musicUrl: row.music_url,
     error: row.error_message,
+    failureKind: typeof manifest.failureKind === 'string' ? manifest.failureKind : null,
+    audioGate: {
+      musicReady: Boolean(row.music_url),
+      narrationReady: Boolean(row.narration_url),
+      verified: audioVerification.audioStreamPresent === true && audioVerification.durationMatch === true,
+      passed: row.status === 'ready' && everyPageReady && audioReady
+        && audioVerification.audioStreamPresent === true
+        && audioVerification.durationMatch === true,
+    },
+    finalGate: {
+      everyPageReady,
+      audioReady,
+      passed: row.status === 'ready' && everyPageReady && audioReady
+        && audioVerification.audioStreamPresent === true
+        && audioVerification.durationMatch === true,
+    },
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -143,7 +182,7 @@ async function falJson(path: string, init: RequestInit = {}): Promise<Record<str
   let data: Record<string, unknown> = {};
   try { data = JSON.parse(raw); } catch { /* use the short raw message below */ }
   if (!response.ok) {
-    throw new Error(`FAL ${response.status}: ${safeText(data.error ?? raw, 240)}`);
+    throw new Error(`FAL ${response.status}: ${falErrorDetail(data) || safeText(raw, 240)}`);
   }
   return data;
 }
@@ -189,7 +228,7 @@ async function pollFalScene(requestId: string): Promise<{ status: StoryScene['st
       : { status: 'failed', progress: 0, error: 'FAL completed without a video URL.' };
   }
   if (state === 'FAILED' || state === 'ERROR') {
-    return { status: 'failed', progress: 0, error: safeText(status.error, 300) || 'FAL page animation failed.' };
+    return { status: 'failed', progress: 0, error: falErrorDetail(status) || 'FAL page animation failed.' };
   }
   if (state === 'CANCELED' || state === 'CANCELLED') {
     return { status: 'cancelled', progress: 0, error: 'FAL page animation was cancelled.' };
@@ -268,6 +307,15 @@ function storyPrompt(page: Record<string, unknown>): string {
   ].join(' ');
 }
 
+function replacementStoryPrompt(scene: StoryScene): string {
+  return [
+    'Create a gentle, child-friendly 5-second animated storybook page using the supplied illustration only as a broad color, layout, and movement reference.',
+    'Use an original, non-identifying illustrated interpretation: do not reproduce a real person, celebrity, recognizable face, trademarked character, or exact likeness.',
+    'Preserve the page mood and simple actions, but replace any recognizable identity with abstract storybook silhouettes, friendly animals, objects, or non-identifying fictional figures.',
+    'No text, logos, photorealism, audio, face matching, or identity-preserving transformation.',
+    `This is a safe replacement for story page ${scene.pageNumber} of ${PAGE_COUNT}.`,
+  ].join(' ');
+}
 async function updateJob(
   supabase: ReturnType<typeof createClient>,
   jobId: string,
@@ -315,6 +363,7 @@ async function pollStoryJob(
               requestedDurationSeconds: requestedDuration,
               durationMatch: durationMatches,
             },
+            failureKind: 'audio-gate',
           },
         });
       }
@@ -331,6 +380,7 @@ async function pollStoryJob(
             requestedDurationSeconds: requestedDuration,
             durationMatch: true,
           },
+          failureKind: null,
         },
       });
     }
@@ -338,6 +388,10 @@ async function pollStoryJob(
       return updateJob(supabase, current.id, {
         status: 'failed',
         error_message: safeText(remote.error, 300) || 'Server-side story stitching failed.',
+        story_manifest: {
+          ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
+          failureKind: 'provider',
+        },
       });
     }
     return updateJob(supabase, current.id, {
@@ -353,15 +407,33 @@ async function pollStoryJob(
       const next = await pollFalScene(scene.falRequestId);
       if (next.status === 'ready' && next.output) {
         const stableUrl = await persistRemoteScene(supabase, current.id, scene.pageNumber, next.output);
-        return { ...scene, status: 'ready' as const, progress: 100, outputUrl: stableUrl, error: null };
+        return {
+          ...scene,
+          status: 'ready' as const,
+          progress: 100,
+          outputUrl: stableUrl,
+          error: null,
+          failureKind: null,
+          recovery: null,
+        };
       }
-      return { ...scene, status: next.status, progress: next.progress, error: next.error ?? null };
+      if (next.status === 'failed') {
+        const failure = sceneFailure(scene.pageNumber, next.error ?? '', 'FAL page animation failed.');
+        return { ...scene, status: 'failed' as const, progress: 0, error: failure.error, failureKind: failure.failureKind };
+      }
+      return { ...scene, status: next.status, progress: next.progress, error: null };
     } catch (error) {
+      const failure = sceneFailure(
+        scene.pageNumber,
+        error instanceof Error ? error.message : '',
+        'FAL page retrieval failed.',
+      );
       return {
         ...scene,
         status: 'failed' as const,
         progress: 0,
-        error: error instanceof Error ? error.message : 'FAL page retrieval failed.',
+        error: failure.error,
+        failureKind: failure.failureKind,
       };
     }
   }));
@@ -372,15 +444,34 @@ async function pollStoryJob(
   const nextScenes = JSON.stringify(changed) !== JSON.stringify(scenes) ? changed : scenes;
 
   if (failedCount > 0 && readyCount + failedCount === PAGE_COUNT) {
+    const safetyBlocked = changed.filter(scene => scene.failureKind === 'provider-safety').length;
     return updateJob(supabase, current.id, {
       story_scenes: nextScenes,
       status: 'failed',
       progress: Math.max(current.progress, 10 + visualProgress),
-      error_message: `${failedCount} page animation${failedCount === 1 ? '' : 's'} failed. Retry the individual page.`,
+      error_message: safetyBlocked
+        ? `${safetyBlocked} page${safetyBlocked === 1 ? '' : 's'} were blocked by FAL's provider safety policy. Retry or replace those pages individually; successful scenes are preserved.`
+        : `${failedCount} page animation${failedCount === 1 ? '' : 's'} failed. Retry the individual page.`,
+      story_manifest: {
+        ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
+        failureKind: safetyBlocked ? 'provider-safety' : 'provider',
+      },
     });
   }
 
   if (readyCount === PAGE_COUNT && changed.every(scene => scene.outputUrl)) {
+    if (!current.music_url || !current.narration_url) {
+      return updateJob(supabase, current.id, {
+        story_scenes: changed,
+        status: 'failed',
+        progress: Math.max(current.progress, 78),
+        error_message: 'Story cannot be stitched until both the Lyria soundtrack and Gemini narration pass the audio gate.',
+        story_manifest: {
+          ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
+          failureKind: 'audio-gate',
+        },
+      });
+    }
     const stitch = await runpod('run', 'POST', {
       input: {
         task: 'stitch_oracle_story',
@@ -398,6 +489,10 @@ async function pollStoryJob(
       progress: 78,
       runpod_job_id: `story-mux:${stitchId}`,
       error_message: null,
+      story_manifest: {
+        ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
+        failureKind: null,
+      },
     });
   }
 
@@ -406,8 +501,14 @@ async function pollStoryJob(
     status: 'generating',
     progress: Math.max(current.progress, 10 + visualProgress),
     error_message: failedCount
-      ? `${failedCount} page${failedCount === 1 ? '' : 's'} need a retry; remaining pages are still generating.`
+      ? `${failedCount} page${failedCount === 1 ? '' : 's'} need a retry${changed.some(scene => scene.failureKind === 'provider-safety') ? ' because of a provider safety block' : ''}; remaining pages are still in the oven.`
       : null,
+    story_manifest: {
+      ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
+      failureKind: failedCount && changed.some(scene => scene.failureKind === 'provider-safety')
+        ? 'provider-safety'
+        : failedCount ? 'provider' : null,
+    },
   });
 }
 
@@ -428,7 +529,7 @@ Deno.serve(async (req: Request) => {
   const jobId = safeText(payload.jobId ?? url.searchParams.get('jobId'), 64);
 
   if (action === 'latest') {
-    const sessionId = safeText(payload.sessionId ?? url.searchParams.get('sessionId'), 120);
+    const sessionId = safeText(payload.sessionId, 120);
     if (!sessionId) return json({ error: 'sessionId is required.' }, 400);
     const { data: latest, error: latestError } = await supabase.from('oracle_film_jobs')
       .select('*')
@@ -490,18 +591,22 @@ Deno.serve(async (req: Request) => {
       const narrationBytes = decodeBase64(narrationBase64);
       const musicUrl = await uploadAsset(supabase, `films/${row.id}/audio/lyria.mp3`, musicBytes, 'audio/mpeg');
       const narrationUrl = await uploadAsset(supabase, `films/${row.id}/audio/narration.wav`, narrationBytes, 'audio/wav');
-      const scenes: StoryScene[] = [];
+    const scenes = sceneList(current.story_scenes);
+
+    const everyPageReady = scenes.length === PAGE_COUNT
+      && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl));
 
       for (let batchStart = 0; batchStart < PAGE_COUNT; batchStart += 4) {
         const batch = pages.slice(batchStart, batchStart + 4).map(async (page, offset) => {
           const index = batchStart + offset;
           const panel = panels[index];
+          let referenceUrl: string | null = null;
           try {
             const panelBytes = decodeBase64(panel?.base64);
             const mimeType = typeof panel?.mimeType === 'string' && panel.mimeType.startsWith('image/')
               ? panel.mimeType
               : 'image/jpeg';
-            const referenceUrl = await uploadAsset(
+            referenceUrl = await uploadAsset(
               supabase,
               `films/${row.id}/references/page-${String(index + 1).padStart(2, '0')}.jpg`,
               panelBytes,
@@ -524,8 +629,12 @@ Deno.serve(async (req: Request) => {
               jobId: `fal:${requestId}`,
               outputUrl: null,
               error: null,
+              failureKind: null,
+              recovery: null,
             };
           } catch (error) {
+            const detail = error instanceof Error ? error.message : '';
+            const failure = sceneFailure(index + 1, detail, 'Could not submit this page to FAL.');
             return {
               pageNumber: index + 1,
               sheetIndex: Number(page.sheetIndex) as 0 | 1,
@@ -534,13 +643,15 @@ Deno.serve(async (req: Request) => {
               durationSeconds: Number(page.durationSeconds),
               seed: 730_000 + index,
               prompt: storyPrompt(page),
-              referenceUrl: null,
+              referenceUrl,
               falRequestId: null,
               status: 'failed' as const,
               progress: 0,
               jobId: null,
               outputUrl: null,
-              error: error instanceof Error ? error.message : 'Could not submit this page to FAL.',
+              error: failure.error,
+              failureKind: referenceUrl ? failure.failureKind : 'submission',
+              recovery: null,
             };
           }
         });
@@ -564,8 +675,14 @@ Deno.serve(async (req: Request) => {
         music_url: musicUrl,
         narration_url: narrationUrl,
         error_message: scenes.some(scene => scene.status === 'failed')
-          ? 'One or more pages failed during submission. Retry them individually.'
+          ? 'One or more pages failed during submission. Retry or replace only the affected pages.'
           : null,
+        story_manifest: {
+          ...(row.story_manifest && typeof row.story_manifest === 'object' ? row.story_manifest : {}),
+          failureKind: scenes.some(scene => scene.failureKind === 'provider-safety')
+            ? 'provider-safety'
+            : scenes.some(scene => scene.status === 'failed') ? 'submission' : null,
+        },
       });
       return json(publicJob(completed), 202);
     } catch (error) {
@@ -573,6 +690,12 @@ Deno.serve(async (req: Request) => {
         status: 'failed',
         progress: 0,
         error_message: error instanceof Error ? error.message : 'Premium story setup failed.',
+        story_manifest: {
+          ...(row.story_manifest && typeof row.story_manifest === 'object' ? row.story_manifest : {}),
+          failureKind: /\b(?:gemini|narration|lyria|soundtrack|audio)\b/i.test(error instanceof Error ? error.message : '')
+            ? 'audio-gate'
+            : 'submission',
+        },
       });
       return json(publicJob(failed), 503);
     }
@@ -586,6 +709,9 @@ Deno.serve(async (req: Request) => {
 
   if (action === 'resume' && current.status === 'failed') {
     const scenes = sceneList(current.story_scenes);
+
+    const everyPageReady = scenes.length === PAGE_COUNT
+      && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl));
     if (scenes.some(scene => ['queued', 'generating'].includes(scene.status))) {
       current = await updateJob(supabase, current.id, {
         status: 'generating',
@@ -594,8 +720,11 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  if (action === 'cancel') {
+  if (action === 'retry-stitch') {
     const scenes = sceneList(current.story_scenes);
+
+    const everyPageReady = scenes.length === PAGE_COUNT
+      && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl));
     await Promise.all(scenes.map(async scene => {
       if (scene.falRequestId && ['queued', 'generating'].includes(scene.status)) {
         try { await cancelFalScene(scene.falRequestId); } catch { /* local state remains authoritative */ }
@@ -614,17 +743,30 @@ Deno.serve(async (req: Request) => {
     return json(publicJob(current));
   }
 
-  if (action === 'retry') {
+  if (action === 'retry' || action === 'replace') {
     const pageNumber = Number(payload.pageNumber);
     const scenes = sceneList(current.story_scenes);
+
+    const everyPageReady = scenes.length === PAGE_COUNT
+      && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl));
     const scene = scenes.find(item => item.pageNumber === pageNumber);
-    if (!scene || !['failed', 'cancelled'].includes(scene.status) || !scene.referenceUrl) {
-      return json({ error: 'Only a failed or cancelled page with a persisted reference can be retried.' }, 400);
-    }
-    try {
-      const requestId = await createFalScene(scene.referenceUrl, scene.prompt, current.session_id, scene.seed);
+
+    const isReplacement = action === 'replace';
+      const requestId = await createFalScene(scene.referenceUrl, nextPrompt, current.session_id, nextSeed);
       const nextScenes = scenes.map(item => item.pageNumber === pageNumber
-        ? { ...item, falRequestId: requestId, status: 'generating' as const, progress: 8, jobId: `fal:${requestId}`, outputUrl: null, error: null }
+        ? {
+          ...item,
+          prompt: nextPrompt,
+          seed: nextSeed,
+          falRequestId: requestId,
+          status: 'generating' as const,
+          progress: 8,
+          jobId: `fal:${requestId}`,
+          outputUrl: null,
+          error: null,
+          failureKind: null,
+          recovery: isReplacement ? 'replace' : 'retry',
+        }
         : item);
       current = await updateJob(supabase, current.id, {
         status: 'generating',
@@ -632,15 +774,37 @@ Deno.serve(async (req: Request) => {
         runpod_job_id: null,
         story_scenes: nextScenes,
         error_message: null,
+        story_manifest: {
+          ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
+          failureKind: null,
+        },
       });
       return json(publicJob(current), 202);
     } catch (retryError) {
       current = await updateJob(supabase, current.id, {
         story_scenes: scenes.map(item => item.pageNumber === pageNumber
-          ? { ...item, status: 'failed', progress: 0, error: retryError instanceof Error ? retryError.message : 'Page retry failed.' }
+          ? {
+            ...item,
+            status: 'failed',
+            progress: 0,
+            error: sceneFailure(
+              pageNumber,
+              retryError instanceof Error ? retryError.message : '',
+              'Page retry failed before FAL accepted the request.',
+            ).error,
+            failureKind: isProviderSafetyBlock(retryError instanceof Error ? retryError.message : '')
+              ? 'provider-safety' : 'provider',
+          }
           : item),
         status: 'failed',
-        error_message: 'The page retry failed before FAL accepted the request.',
+        error_message: isReplacement
+          ? 'The safe replacement page could not be submitted. Retry or replace this page again.'
+          : 'The page retry failed before FAL accepted the request.',
+        story_manifest: {
+          ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
+          failureKind: isProviderSafetyBlock(retryError instanceof Error ? retryError.message : '')
+            ? 'provider-safety' : 'provider',
+        },
       });
       return json(publicJob(current), 503);
     }
@@ -655,3 +819,49 @@ Deno.serve(async (req: Request) => {
   }
   return json(publicJob(current));
 });
+
+      const stitchId = typeof stitch.id === 'string' ? stitch.id : '';
+
+      const stitch = await runpod('run', 'POST', {
+        input: {
+          task: 'stitch_oracle_story',
+          scene_urls: scenes.map(scene => scene.outputUrl),
+          durations: scenes.map(scene => scene.durationSeconds),
+          music_url: current.music_url,
+          narration_url: current.narration_url,
+        },
+      });
+
+      const nextPrompt = isReplacement ? replacementStoryPrompt(scene) : scene.prompt;
+
+function sceneFailure(
+  pageNumber: number,
+  detail: string,
+  fallback: string,
+): { error: string; failureKind: NonNullable<StoryScene['failureKind']> } {
+  const cleanDetail = detail || fallback;
+  if (isProviderSafetyBlock(cleanDetail)) {
+    return {
+      failureKind: 'provider-safety',
+      error: `Page ${pageNumber} was blocked by FAL's provider safety policy${detail ? `: ${detail}` : '.'} This is a page-level block; the other pages are unchanged. Retry or replace this page.`,
+    };
+  }
+  return {
+    failureKind: 'provider',
+    error: `Page ${pageNumber} failed in FAL${detail ? `: ${detail}` : `: ${fallback}`}. Retry this page without restarting successful scenes.`,
+  };
+}
+
+      const nextSeed = isReplacement ? scene.seed + 500_000 : scene.seed;
+
+function isProviderSafetyBlock(detail: string): boolean {
+  return /\b(?:safety|safe(?:ty)?[-\s]?checker|moderation|likeness|identity|celebrity|face(?:[-\s]?(?:recognition|matching))?|content.{0,18}(?:blocked|flagged|policy)|blocked.{0,18}(?:content|policy|safety|likeness))\b/i.test(detail);
+}
+
+function falErrorDetail(value: Record<string, unknown>): string {
+  for (const key of ['error', 'detail', 'message', 'reason', 'failure_reason']) {
+    const detail = errorDetail(value[key]);
+    if (detail) return detail;
+  }
+  return '';
+}

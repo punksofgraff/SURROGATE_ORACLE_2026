@@ -101,6 +101,8 @@ export type IllustrationStoryScene = {
   jobId?: string | null;
   outputUrl?: string | null;
   error?: string | null;
+  failureKind?: 'provider-safety' | 'provider' | 'submission' | null;
+  recovery?: 'retry' | 'replace' | null;
 };
 
 export type CreativeMissingDetail =

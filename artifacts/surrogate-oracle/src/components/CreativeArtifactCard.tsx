@@ -52,6 +52,8 @@ export type CreativeArtifactCardProps = {
   onSeriesAssembleEpisode?: (episodeId: string) => void;
   onSeriesAssemble?: () => void;
   onStorySceneRetry?: (pageNumber: number) => void;
+  onStorySceneReplace?: (pageNumber: number) => void;
+  onStoryFilmRetry?: () => void;
   savedSeriesCount?: number;
   onOpenSeriesHistory?: () => void;
 };
@@ -130,16 +132,31 @@ function StoryPizzaTracker({
 }) {
   const references = scenes.filter(scene => Boolean(scene.referenceUrl)).length;
   const animated = scenes.filter(scene => scene.status === 'ready').length;
-  const failed = scenes.filter(scene => scene.status === 'failed').length;
+  const blocked = scenes.filter(scene => scene.failureKind === 'provider-safety').length;
+  const failed = scenes.filter(scene => scene.status === 'failed' && scene.failureKind !== 'provider-safety').length;
+  const pending = scenes.filter(scene => ['planned', 'queued', 'generating'].includes(scene.status)).length;
   const stitching = artifact.status === 'generating'
     && scenes.length === 32
     && animated === 32;
   const ready = artifact.status === 'ready' && Boolean(artifact.outputUrl);
+  const audioGateFailed = ['audio-gate', 'gemini-audio'].includes(String(artifact.metadata?.storyFailureKind));
   const steps = [
     { key: 'brief', label: 'Brief', value: 'cleared', complete: artifact.status !== 'draft', active: artifact.status === 'draft' },
     { key: 'refs', label: 'Locked slices', value: `${references}/32`, complete: references === 32, active: references > 0 && references < 32 },
-    { key: 'bake', label: 'FAL oven', value: `${animated}/32`, complete: animated === 32, active: references === 32 && animated < 32 && !failed },
-    { key: 'finish', label: 'Stitch + audio', value: ready ? 'served' : stitching ? 'baking' : failed ? 'retry' : 'next', complete: ready, active: stitching },
+    {
+      key: 'bake',
+      label: 'FAL oven',
+      value: blocked ? `${animated}/32 · ${blocked} blocked` : `${animated}/32${pending ? ` · ${pending} in oven` : ''}`,
+      complete: animated === 32,
+      active: references === 32 && animated < 32 && pending > 0,
+    },
+    {
+      key: 'finish',
+      label: 'Stitch + audio',
+      value: ready ? 'served' : stitching ? 'baking' : audioGateFailed ? 'audio check' : blocked || failed ? 'recover' : 'next',
+      complete: ready,
+      active: stitching,
+    },
   ];
   const progress = Math.round((references + animated + (ready ? 32 : 0)) / 96 * 100);
 
@@ -149,7 +166,13 @@ function StoryPizzaTracker({
         <div>
           <span className="creative-pizza-tracker__eyebrow">Money Mite / pizza tracker</span>
           <strong>
-            {ready ? 'The whole pie is served.' : failed ? `${failed} slice${failed === 1 ? '' : 's'} needs a retry.` : 'Your story is in the oven.'}
+            {ready
+              ? 'The whole pie is served.'
+              : blocked
+                ? `${blocked} slice${blocked === 1 ? '' : 's'} blocked by provider safety review.`
+                : failed
+                  ? `${failed} slice${failed === 1 ? '' : 's'} needs a retry.`
+                  : 'Your story is in the oven.'}
           </strong>
         </div>
         <span className="creative-pizza-tracker__pie" aria-hidden="true">🍕</span>
@@ -171,8 +194,12 @@ function StoryPizzaTracker({
       <p className="creative-pizza-tracker__note">
         {ready
           ? 'MP4 is persisted and ready to preview or download.'
-          : failed
-            ? 'Tap a failed page below to retry only that slice. Completed slices stay saved.'
+          : blocked
+            ? 'Blocked pages are recoverable one at a time. Retry the page or use a safe replacement; completed slices stay saved.'
+            : failed
+              ? 'Retry only the affected page below. Completed slices stay saved.'
+              : pending
+                ? `${pending} page${pending === 1 ? '' : 's'} still in the FAL oven.`
             : 'Live state from the server job — no placeholder percentages.'}
       </p>
     </section>
@@ -318,6 +345,8 @@ export function CreativeArtifactCard({
   onSeriesAssembleEpisode,
   onSeriesAssemble,
   onStorySceneRetry,
+  onStorySceneReplace,
+  onStoryFilmRetry,
   savedSeriesCount = 0,
   onOpenSeriesHistory,
 }: CreativeArtifactCardProps) {
@@ -335,7 +364,7 @@ export function CreativeArtifactCard({
   const isIllustrationStory = ['illustration-story-premium', 'illustration-story-proof'].includes(
     String(artifact.metadata?.production),
   );
-  const storyScenes = Array.isArray(metadataRecord?.storyScenes)
+  const storyScenes: IllustrationStoryScene[] = Array.isArray(metadataRecord?.storyScenes)
     ? metadataRecord.storyScenes as IllustrationStoryScene[]
     : storyPages.map(page => ({
       pageNumber: page.pageNumber,
@@ -348,14 +377,18 @@ export function CreativeArtifactCard({
       status: page.status,
       progress: page.progress,
       error: page.error,
-    }));
+    } as IllustrationStoryScene));
   const isSeries = Boolean(series);
   const isDraft = status === 'draft';
   const followUpDetail = isDraft && !artifact.followUpCompleted ? missingDetails[0] : undefined;
   const isWorking = status === 'queued' || status === 'generating';
   const isRecoverable = status === 'failed' || status === 'cancelled' || status === 'partial';
+  const storyFailureKind = metadataRecord?.storyFailureKind;
+  const storyHasScenes = isIllustrationStory && storyScenes.length > 0;
+  const storyAudioGateFailed = storyHasScenes
+    && (storyFailureKind === 'audio-gate' || storyFailureKind === 'gemini-audio');
   const canCancel = isDraft || isWorking;
-  const canRetry = isRecoverable && !isSeries;
+  const canRetry = isRecoverable && !isSeries && !storyHasScenes;
   const canOutput = !isSeries && (status === 'ready' || status === 'partial') && hasOutput;
   const previewType = outputKind(artifact.kind);
   const metadataEntries = hasMetadata
@@ -740,22 +773,74 @@ export function CreativeArtifactCard({
                   >
                     {String(page.pageNumber).padStart(2, '0')}
                     {['failed', 'cancelled'].includes(state) && onStorySceneRetry && (
-                      <button
-                        type="button"
-                        className="creative-story-proof__page-retry"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onStorySceneRetry(page.pageNumber);
-                        }}
-                        aria-label={`Retry story page ${page.pageNumber}`}
-                      >
-                        ↻
-                      </button>
+                      <span className="creative-story-proof__page-actions">
+                        <button
+                          type="button"
+                          className="creative-story-proof__page-retry"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onStorySceneRetry(page.pageNumber);
+                          }}
+                          aria-label={`Retry story page ${page.pageNumber}`}
+                        >
+                          ↻
+                        </button>
+                        {scene?.failureKind === 'provider-safety' && onStorySceneReplace && (
+                          <button
+                            type="button"
+                            className="creative-story-proof__page-replace"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onStorySceneReplace(page.pageNumber);
+                            }}
+                            aria-label={`Use a safe replacement for story page ${page.pageNumber}`}
+                          >
+                            ⇄
+                          </button>
+                        )}
+                      </span>
                     )}
                   </span>
                 );
               })}
             </div>
+            {storyScenes.some(scene => scene.failureKind === 'provider-safety') && (
+              <div className="creative-story-proof__recovery" role="alert">
+                <strong>Provider safety block — page only</strong>
+                <p>
+                  FAL rejected the affected illustration for a likeness or safety policy. This does not mean the Gemini key,
+                  narration, soundtrack, or the rest of the film failed.
+                </p>
+                {storyScenes
+                  .filter(scene => scene.failureKind === 'provider-safety')
+                  .map(scene => (
+                    <div className="creative-story-proof__recovery-row" key={scene.pageNumber}>
+                      <span>Page {String(scene.pageNumber).padStart(2, '0')}: {scene.error}</span>
+                      <span className="creative-story-proof__recovery-actions">
+                        {onStorySceneRetry && (
+                          <button type="button" onClick={() => onStorySceneRetry(scene.pageNumber)}>
+                            RETRY PAGE
+                          </button>
+                        )}
+                        {onStorySceneReplace && (
+                          <button type="button" onClick={() => onStorySceneReplace(scene.pageNumber)}>
+                            SAFE REPLACEMENT
+                          </button>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            )}
+            {storyAudioGateFailed && (
+              <div className="creative-story-proof__audio-gate" role="alert">
+                <strong>Audio gate failed — pages remain saved</strong>
+                <p>
+                  The film will not be marked ready until the Gemini narration, Lyria soundtrack, and final audio validation pass.
+                  Retry the stitch and audio gate without regenerating any successful page.
+                </p>
+              </div>
+            )}
             <p>
               32 locked panel references · {Math.round(storyPages.reduce((sum, page) => sum + page.durationSeconds, 0))} seconds ·
               {artifact.metadata?.production === 'illustration-story-proof'
@@ -834,6 +919,12 @@ export function CreativeArtifactCard({
             <button type="button" className="creative-artifact-card__button creative-artifact-card__button--purple" onClick={onRetry}>
               <RefreshCw size={14} aria-hidden="true" />
               Retry dispatch
+            </button>
+          )}
+          {storyAudioGateFailed && onStoryFilmRetry && (
+            <button type="button" className="creative-artifact-card__button creative-artifact-card__button--purple" onClick={onStoryFilmRetry}>
+              <RefreshCw size={14} aria-hidden="true" />
+              Retry stitch + audio gate
             </button>
           )}
           {canOutput && (

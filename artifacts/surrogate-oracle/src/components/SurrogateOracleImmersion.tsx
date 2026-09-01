@@ -70,7 +70,7 @@ import { useWalletBridge } from '../hooks/useWalletBridge';
 import { useRadioAtmosphere } from '../hooks/useRadioAtmosphere';
 import { useLyriaMusic } from '../hooks/useLyriaMusic';
 import { useOracleFilm } from '../hooks/useOracleFilm';
-import { useIllustrationStoryFilm } from '../hooks/useIllustrationStoryFilm';
+import { useIllustrationStoryFilm, type IllustrationStoryFilmJob } from '../hooks/useIllustrationStoryFilm';
 import storySheetOneUrl from '@assets/567AA27C-1D47-49A5-ABA9-7197F053B021_1788204328509.png';
 import storySheetTwoUrl from '@assets/A2388D28-67B5-4258-9D55-CB618DC165D1_1788204328509.png';
 import WalletGateCard from './WalletGateCard';
@@ -119,6 +119,13 @@ function parseStoredJson(value: string): unknown {
   } catch {
     return null;
   }
+}
+
+function storyFailureKindForError(error: unknown): 'gemini-audio' | 'audio-gate' | 'provider' {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  if (/\b(?:stitch|audio gate|audio validation|final media gate|mux)\b/i.test(message)) return 'audio-gate';
+  if (/\b(?:gemini|narration|lyria|soundtrack|audio)\b/i.test(message)) return 'gemini-audio';
+  return 'provider';
 }
 import { getABVariant } from '../lib/ab-testing';
 import { requestDeviceOrientationPermission } from '../lib/browserCapabilities';
@@ -1719,7 +1726,11 @@ export function SurrogateOracleImmersion() {
         metadata: {
           ...(restored.metadata ?? {}),
           storyScenes: job.scenes,
-          storyStage: job.status === 'stitching' ? 'server-stitching 32 animated scenes' : `FAL page animation ${job.scenes.filter(scene => scene.status === 'ready').length}/32`,
+          storyFailureKind: job.failureKind,
+          audioGate: job.audioGate,
+          storyStage: job.status === 'stitching'
+            ? 'server-stitching 32 animated scenes'
+            : `${job.scenes.filter(scene => scene.status === 'ready').length}/32 pages ready · ${job.scenes.filter(scene => scene.status === 'failed').length} page recovery item(s)`,
         },
       };
       activeCreativeArtifactRef.current = artifact;
@@ -1739,11 +1750,13 @@ export function SurrogateOracleImmersion() {
       metadata: {
         ...(artifact.metadata ?? {}),
         storyScenes: job.scenes,
+        storyFailureKind: job.failureKind,
+        audioGate: job.audioGate,
         storyStage: job.status === 'stitching'
           ? 'server-stitching 32 animated scenes'
           : job.status === 'ready'
             ? 'complete'
-            : `FAL page animation ${job.scenes.filter(scene => scene.status === 'ready').length}/32`,
+            : `${job.scenes.filter(scene => scene.status === 'ready').length}/32 pages ready · ${job.scenes.filter(scene => scene.status === 'failed').length} page recovery item(s)`,
       },
     });
   }, [illustrationStoryFilm.job, persistIllustrationStoryArtifact, updateCreativeArtifact]);
@@ -2016,6 +2029,8 @@ export function SurrogateOracleImmersion() {
                     ...(activeCreativeArtifactRef.current?.metadata ?? {}),
                     storyStage: job.status === 'stitching' ? 'server-stitching 32 animated scenes' : `FAL page animation ${readyScenes}/32`,
                     storyScenes: job.scenes,
+                      storyFailureKind: job.failureKind,
+                      audioGate: job.audioGate,
                     currentPage: job.scenes.find(scene => ['queued', 'generating'].includes(scene.status))?.pageNumber ?? readyScenes,
                   },
                 }, claim);
@@ -2032,6 +2047,8 @@ export function SurrogateOracleImmersion() {
               metadata: {
                 ...(activeCreativeArtifactRef.current?.metadata ?? {}),
                 storyStage: 'complete',
+                  storyFailureKind: null,
+                  audioGate: { musicReady: true, narrationReady: true, verified: true, passed: true },
                 pageCount: result.pageCount,
                 totalDurationSeconds: result.durationSeconds,
                 ffmpegStitch: 'complete',
@@ -2044,6 +2061,8 @@ export function SurrogateOracleImmersion() {
             logStep('ILLUSTRATION STORY READY — 32 PAGES / MP4 / LYRIA + NARRATION', 'ok');
           } catch (error) {
             if (!isCurrent()) return;
+            const failureKind = activeCreativeArtifactRef.current?.metadata?.storyFailureKind
+              ?? storyFailureKindForError(error);
             updateCreativeArtifact(artifact.id, {
               status: 'failed',
               progress: 0,
@@ -2052,7 +2071,12 @@ export function SurrogateOracleImmersion() {
               error: error instanceof Error ? error.message : 'Illustration story film failed.',
               metadata: {
                 ...(activeCreativeArtifactRef.current?.metadata ?? {}),
-                storyStage: 'failed; retry the failed page or restart the production',
+                storyFailureKind: failureKind,
+                storyStage: failureKind === 'audio-gate'
+                  ? 'audio gate failed; retry stitch without regenerating pages'
+                  : failureKind === 'gemini-audio'
+                    ? 'Gemini/Lyria audio setup failed before the film could pass its audio gate'
+                    : 'failed; retry or replace the affected page',
               },
             });
             logStep('ILLUSTRATION STORY FAILED — RETRY AVAILABLE', 'warn');
@@ -2390,7 +2414,7 @@ export function SurrogateOracleImmersion() {
     };
   }, [cancelCreativeArtifact, confirmCreativeArtifact, handleCreativeRequest, retryCreativeArtifact]);
 
-  const retryIllustrationStoryScene = useCallback((pageNumber: number) => {
+  const retryIllustrationStoryScene = useCallback((pageNumber: number, mode: 'retry' | 'replace' = 'retry') => {
     const artifact = activeCreativeArtifactRef.current;
     if (artifact?.metadata?.production === 'illustration-story-proof') {
       const token = creativeDispatchTokenRef.current + 1;
@@ -2406,7 +2430,7 @@ export function SurrogateOracleImmersion() {
         providerLabel: 'FFmpeg story stitch lane',
         metadata: {
           ...(artifact.metadata ?? {}),
-          storyStage: `retrying page ${String(pageNumber).padStart(2, '0')} from the original sheets`,
+          storyStage: `${mode === 'replace' ? 'using safe replacement for' : 'retrying'} page ${String(pageNumber).padStart(2, '0')} from the original sheets`,
         },
       }, claim);
       void (async () => {
@@ -2434,7 +2458,7 @@ export function SurrogateOracleImmersion() {
                 ),
                 metadata: {
                   ...(activeCreativeArtifactRef.current?.metadata ?? {}),
-                  storyStage: `retrying page ${String(pageNumber).padStart(2, '0')} from the original sheets`,
+                  storyStage: `${mode === 'replace' ? 'using safe replacement for' : 'retrying'} page ${String(pageNumber).padStart(2, '0')} from the original sheets`,
                 },
               }, claim);
             },
@@ -2495,11 +2519,104 @@ export function SurrogateOracleImmersion() {
       providerLabel: 'Premium FAL / server stitch',
       metadata: {
         ...(artifact.metadata ?? {}),
-        storyStage: `retrying page ${String(pageNumber).padStart(2, '0')}`,
+        storyStage: `${mode === 'replace' ? 'using safe replacement for' : 'retrying'} page ${String(pageNumber).padStart(2, '0')}`,
       },
     }, claim);
-    void illustrationStoryFilm.retryScene(
-      pageNumber,
+    const onProgress = (progress: number) => {
+        if (!isCreativeDispatchCurrent(claim, {
+          artifactId: activeCreativeArtifactRef.current?.id ?? null,
+          token: creativeDispatchTokenRef.current,
+          status: activeCreativeArtifactRef.current?.status ?? null,
+        })) return;
+        updateCreativeArtifact(artifact.id, { status: 'generating', progress }, claim);
+      };
+    const onJob = (nextJob: IllustrationStoryFilmJob) => {
+        if (!isCreativeDispatchCurrent(claim, {
+          artifactId: activeCreativeArtifactRef.current?.id ?? null,
+          token: creativeDispatchTokenRef.current,
+          status: activeCreativeArtifactRef.current?.status ?? null,
+        })) return;
+        updateCreativeArtifact(artifact.id, {
+          status: nextJob.status === 'failed' ? 'failed' : nextJob.status === 'cancelled' ? 'cancelled' : 'generating',
+          progress: nextJob.progress,
+          outputUrl: nextJob.finalMediaUrl,
+          metadata: {
+            ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+            storyScenes: nextJob.scenes,
+            storyStage: nextJob.status === 'stitching'
+              ? 'server-stitching 32 animated scenes'
+              : `${mode === 'replace' ? 'using safe replacement for' : 'retrying'} FAL page`,
+            storyFailureKind: nextJob.failureKind,
+            audioGate: nextJob.audioGate,
+          },
+          error: nextJob.error,
+        }, claim);
+      };
+    const pageRequest = mode === 'replace'
+      ? illustrationStoryFilm.replaceScene(pageNumber, onProgress, onJob)
+      : illustrationStoryFilm.retryScene(pageNumber, onProgress, onJob, 'retry');
+    void pageRequest.then(nextJob => {
+      if (!nextJob) throw new Error('Story retry is already being polled in another tab.');
+      if (!isCreativeDispatchCurrent(claim, {
+        artifactId: activeCreativeArtifactRef.current?.id ?? null,
+        token: creativeDispatchTokenRef.current,
+        status: activeCreativeArtifactRef.current?.status ?? null,
+      })) return;
+      updateCreativeArtifact(artifact.id, {
+        status: nextJob.status === 'ready' ? 'ready' : nextJob.status === 'cancelled' ? 'cancelled' : 'failed',
+        progress: nextJob.progress,
+        outputUrl: nextJob.finalMediaUrl,
+        outputLabel: nextJob.finalMediaUrl ? '32-page premium story film · MP4' : undefined,
+        error: nextJob.error,
+        metadata: {
+          ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+          storyScenes: nextJob.scenes,
+          storyStage: nextJob.status === 'ready'
+            ? 'complete'
+            : `${mode === 'replace' ? 'safe replacement' : 'page retry'} failed`,
+          storyFailureKind: nextJob.failureKind,
+          audioGate: nextJob.audioGate,
+        },
+      }, claim);
+    }).catch(error => {
+      if (!isCreativeDispatchCurrent(claim, {
+        artifactId: activeCreativeArtifactRef.current?.id ?? null,
+        token: creativeDispatchTokenRef.current,
+        status: activeCreativeArtifactRef.current?.status ?? null,
+      })) return;
+      updateCreativeArtifact(artifact.id, {
+        status: 'failed',
+        progress: 0,
+        error: error instanceof Error ? error.message : 'Story page retry failed.',
+        metadata: {
+          ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+          storyFailureKind: storyFailureKindForError(error),
+          storyStage: `${mode === 'replace' ? 'safe replacement' : 'page retry'} failed`,
+        },
+      }, claim);
+    });
+  }, [illustrationStoryFilm, lyria, updateCreativeArtifact]);
+
+  const retryIllustrationStoryFilm = useCallback(() => {
+    const artifact = activeCreativeArtifactRef.current;
+    if (artifact?.metadata?.production !== 'illustration-story-premium') return;
+    const token = creativeDispatchTokenRef.current + 1;
+    creativeDispatchTokenRef.current = token;
+    const claim: CreativeDispatchClaim = { artifactId: artifact.id, token };
+    creativeProviderClaimRef.current = claim;
+    updateCreativeArtifact(artifact.id, {
+      status: 'generating',
+      progress: Math.max(78, artifact.progress),
+      error: null,
+      provider: 'premium-film',
+      providerLabel: 'Premium FAL / server stitch',
+      metadata: {
+        ...(artifact.metadata ?? {}),
+        storyStage: 'retrying stitch + audio gate without regenerating pages',
+        storyFailureKind: null,
+      },
+    }, claim);
+    void illustrationStoryFilm.retryAssembly(
       progress => {
         if (!isCreativeDispatchCurrent(claim, {
           artifactId: activeCreativeArtifactRef.current?.id ?? null,
@@ -2518,31 +2635,35 @@ export function SurrogateOracleImmersion() {
           status: nextJob.status === 'failed' ? 'failed' : nextJob.status === 'cancelled' ? 'cancelled' : 'generating',
           progress: nextJob.progress,
           outputUrl: nextJob.finalMediaUrl,
+          error: nextJob.error,
           metadata: {
             ...(activeCreativeArtifactRef.current?.metadata ?? {}),
             storyScenes: nextJob.scenes,
-            storyStage: nextJob.status === 'stitching' ? 'server-stitching 32 animated scenes' : 'retrying FAL page',
+            storyFailureKind: nextJob.failureKind,
+            audioGate: nextJob.audioGate,
+            storyStage: nextJob.status === 'stitching' ? 'server-stitching and audio validation' : 'retrying stitch + audio gate',
           },
-          error: nextJob.error,
         }, claim);
       },
     ).then(nextJob => {
-      if (!nextJob) throw new Error('Story retry is already being polled in another tab.');
       if (!isCreativeDispatchCurrent(claim, {
         artifactId: activeCreativeArtifactRef.current?.id ?? null,
         token: creativeDispatchTokenRef.current,
         status: activeCreativeArtifactRef.current?.status ?? null,
       })) return;
+      if (!nextJob) throw new Error('Story stitch retry is already being polled in another tab.');
       updateCreativeArtifact(artifact.id, {
         status: nextJob.status === 'ready' ? 'ready' : nextJob.status === 'cancelled' ? 'cancelled' : 'failed',
         progress: nextJob.progress,
         outputUrl: nextJob.finalMediaUrl,
-        outputLabel: nextJob.finalMediaUrl ? '32-page premium story film · MP4' : undefined,
+        outputLabel: nextJob.finalMediaUrl ? '32-page narrated story film · MP4' : undefined,
         error: nextJob.error,
         metadata: {
           ...(activeCreativeArtifactRef.current?.metadata ?? {}),
           storyScenes: nextJob.scenes,
-          storyStage: nextJob.status === 'ready' ? 'complete' : 'retry failed',
+          storyFailureKind: nextJob.failureKind,
+          audioGate: nextJob.audioGate,
+          storyStage: nextJob.status === 'ready' ? 'complete' : 'audio gate still needs recovery',
         },
       }, claim);
     }).catch(error => {
@@ -2554,10 +2675,15 @@ export function SurrogateOracleImmersion() {
       updateCreativeArtifact(artifact.id, {
         status: 'failed',
         progress: 0,
-        error: error instanceof Error ? error.message : 'Story page retry failed.',
+        error: error instanceof Error ? error.message : 'Story stitch retry failed.',
+        metadata: {
+          ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+          storyFailureKind: 'audio-gate',
+          storyStage: 'audio gate still needs recovery',
+        },
       }, claim);
     });
-  }, [illustrationStoryFilm, lyria, updateCreativeArtifact]);
+  }, [illustrationStoryFilm, updateCreativeArtifact]);
 
   const downloadCreativeArtifact = useCallback(() => {
     const url = activeCreativeArtifactRef.current?.outputUrl;
@@ -3927,6 +4053,8 @@ export function SurrogateOracleImmersion() {
               onSeriesAssembleEpisode={assembleSeriesEpisode}
               onSeriesAssemble={assembleSeries}
               onStorySceneRetry={retryIllustrationStoryScene}
+              onStorySceneReplace={(pageNumber) => retryIllustrationStoryScene(pageNumber, 'replace')}
+              onStoryFilmRetry={retryIllustrationStoryFilm}
               savedSeriesCount={seriesHistory.length}
               onOpenSeriesHistory={() => setShowSeriesHistory(true)}
             />

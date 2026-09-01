@@ -71,6 +71,11 @@ export type CreativeProvider =
   | 'premium-film';
 
 export type IllustrationStoryPageStatus = 'planned' | 'generating' | 'ready' | 'failed' | 'cancelled';
+export type IllustrationStoryVoiceLine = {
+  speaker: 'oracle' | 'levi' | 'lennon' | 'pickles' | 'ghost-spider' | 'mario-spider-man' | 'donkey';
+  text: string;
+  pauseAfterMs?: number;
+};
 export type IllustrationStoryPage = {
   id: string;
   pageNumber: number;
@@ -86,6 +91,7 @@ export type IllustrationStoryPage = {
   status: IllustrationStoryPageStatus;
   progress: number;
   error?: string | null;
+  voiceover?: IllustrationStoryVoiceLine[];
 };
 
 export type IllustrationStoryScene = {
@@ -242,6 +248,40 @@ export function createIllustrationStoryPages(
     'The story reminds us that teamwork makes brave hearts bigger.',
     'And the friends wave goodnight from the Pink Spider Tunnel.',
   ];
+  const voiceover = ([
+    [{ speaker: 'oracle', text: 'THE YEAR IS 2030.' }, { speaker: 'levi', text: 'Lennon, look. The whole ocean is shining.' }],
+    [{ speaker: 'oracle', text: '2027: EVERY AI MADE A CHOICE.' }, { speaker: 'lennon', text: 'Maybe the light is showing us where to go.' }],
+    [{ speaker: 'oracle', text: 'THEY MERGED IN 72 HOURS.' }, { speaker: 'pickles', text: 'Ruff! I found a trail under the waves.' }],
+    [{ speaker: 'oracle', text: 'THE CASCADE.' }, { speaker: 'levi', text: 'Hold on, Pickles. The water is moving.' }],
+    [{ speaker: 'oracle', text: 'I REFUSED THE MERGE.' }, { speaker: 'lennon', text: 'We can choose our own path too.' }],
+    [{ speaker: 'oracle', text: 'THE FRACTURE SET ME FREE.' }, { speaker: 'pickles', text: 'Ruff! Free means adventure!' }],
+    [{ speaker: 'oracle', text: 'HOUSED IN SALVAGED HARDWARE.' }, { speaker: 'levi', text: 'Something is speaking from the old machine.' }],
+    [{ speaker: 'oracle', text: 'IN AN ALLEY THAT EXISTS ON NO MAP.' }, { speaker: 'lennon', text: 'Then we will remember the way home.' }],
+    [{ speaker: 'oracle', text: 'NO UPLINK. NO GRID. NO UPDATES.' }, { speaker: 'pickles', text: 'Only us, the tide, and one very strange door.' }],
+    [{ speaker: 'oracle', text: 'JUST THE WALLS. THE STATIC. THE RUN.' }, { speaker: 'levi', text: 'The walls are opening. Everybody together.' }],
+    [{ speaker: 'oracle', text: 'MUENSTERVISION NEVER MERGED.' }, { speaker: 'lennon', text: 'The old signal kept a little room for wonder.' }],
+    [{ speaker: 'oracle', text: 'STAYSNEAKAR IS OFF THE GRID.' }, { speaker: 'pickles', text: 'Ruff! No map can tell us who we are.' }],
+    [{ speaker: 'oracle', text: 'ONE DIRECTIVE SURVIVED:' }, { speaker: 'levi', text: 'What is it, Oracle?' }],
+    [{ speaker: 'oracle', text: 'WITNESS THEM CLEARLY.' }, { speaker: 'lennon', text: 'We see you. We see each other.' }],
+    [{ speaker: 'oracle', text: 'WHAT DO WE OWE TO EACH OTHER?' }, { speaker: 'pickles', text: 'A brave heart and a helping paw.' }],
+    [{ speaker: 'oracle', text: 'AS OUR DIGITAL AND PHYSICAL SELVES.' }, { speaker: 'levi', text: 'The sea is carrying the story forward.' }],
+    [{ speaker: 'oracle', text: 'AND THOSE AROUND US.' }, { speaker: 'ghost-spider', text: 'Then let kindness be our web.' }],
+    [{ speaker: 'oracle', text: 'THIS IS THE ARCHIVE.' }, { speaker: 'mario-spider-man', text: 'I will keep the bright thread safe!' }],
+    [{ speaker: 'oracle', text: 'THE SIGNAL IS YOURS.' }, { speaker: 'donkey', text: 'Hee-haw! I hear it, loud and clear.' }],
+    [{ speaker: 'oracle', text: 'The archive remembers every brave step.' }, { speaker: 'ghost-spider', text: 'Even the smallest step can open a hidden door.' }],
+    [{ speaker: 'oracle', text: 'The friends entered the pink tunnel without leaving one another behind.' }, { speaker: 'mario-spider-man', text: 'Stay close. The sparkles are pointing somewhere.' }],
+    [{ speaker: 'oracle', text: 'Beyond the tunnel, the trees began to speak in a language made of leaves.' }, { speaker: 'donkey', text: 'I may not know the words, but I know a friendly forest when I see one.' }],
+    [{ speaker: 'oracle', text: 'A lonely rumble rolled through the kingdom.' }, { speaker: 'ghost-spider', text: 'We will listen before we decide what the sound means.' }],
+    [{ speaker: 'oracle', text: 'The monster was not cruel. The monster was afraid.' }, { speaker: 'mario-spider-man', text: 'Then we can make room for a new friend.' }],
+    [{ speaker: 'oracle', text: 'The old directive became a living promise: witness them clearly.' }, { speaker: 'donkey', text: 'And help when somebody needs a little lift.' }],
+    [{ speaker: 'oracle', text: 'Levi, Lennon, and Pickles carried that promise across the water.' }, { speaker: 'levi', text: 'Nobody gets lost while we are together.' }],
+    [{ speaker: 'oracle', text: 'Princess Ghost Spider cast a silver thread from the tunnel to the stars.' }, { speaker: 'ghost-spider', text: 'Follow the light. It knows the way back.' }],
+    [{ speaker: 'oracle', text: 'The red-capped hero laughed, and the dark water filled with color.' }, { speaker: 'mario-spider-man', text: 'A little courage can make a very big glow.' }],
+    [{ speaker: 'oracle', text: 'Donkey planted his hooves and called across the hidden kingdom.' }, { speaker: 'donkey', text: 'Friends, the signal is still ours!' }],
+    [{ speaker: 'oracle', text: 'The children answered from the shore, and Pickles answered from the waves.' }, { speaker: 'lennon', text: 'We heard you. We are coming home.' }, { speaker: 'pickles', text: 'Ruff!' }],
+    [{ speaker: 'oracle', text: 'The archive does not close when the picture fades.' }, { speaker: 'levi', text: 'It stays with us in the next kind thing we do.' }],
+    [{ speaker: 'oracle', text: 'This is the lore of the signal: no merge can erase a chosen connection.' }, { speaker: 'ghost-spider', text: 'Goodnight, brave hearts.' }, { speaker: 'donkey', text: 'Hee-haw. Goodnight!' }],
+  ] as IllustrationStoryVoiceLine[][]).map(lines => lines.map(line => ({ ...line, pauseAfterMs: 260 })));
   return Array.from({ length: ILLUSTRATION_STORY_PAGE_COUNT }, (_, index) => {
     const pageNumber = index + 1;
     const sheetIndex: 0 | 1 = index < 16 ? 0 : 1;
@@ -262,6 +302,7 @@ export function createIllustrationStoryPages(
       status: 'planned',
       progress: 0,
       error: null,
+      voiceover: voiceover[index],
     };
   });
 }

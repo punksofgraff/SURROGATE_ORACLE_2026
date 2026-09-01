@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import type { IllustrationStoryPage } from '../lib/creativeProduction';
+import type { IllustrationStoryPage, IllustrationStoryVoiceLine } from '../lib/creativeProduction';
 
 export type IllustrationStoryFailureKind =
   | 'provider-safety'
@@ -129,13 +129,14 @@ async function createLockedPanelAssets(
   }
 }
 
-async function createNarrationAudio(script: string): Promise<StoryAsset> {
-  const { data, error } = await supabase.functions.invoke('oracle-filler-tts', {
-    body: {
-      prompt: `Read this as one warm, gentle bedtime story for a young child. Keep the pace calm, expressive, and clear. Do not add words, page labels, or commentary. ${script}`,
-    },
-  });
-  if (error) throw new Error(`Gemini narration could not be generated: ${error.message}`);
+async function createNarrationAudio(pages: IllustrationStoryPage[]): Promise<StoryAsset> {
+  const lines: IllustrationStoryVoiceLine[] = pages.flatMap(page => page.voiceover ?? [{
+    speaker: 'oracle' as const,
+    text: page.narration,
+    pauseAfterMs: 260,
+  }]);
+  const { data, error } = await supabase.functions.invoke('oracle-chirp-voiceover', { body: { lines } });
+  if (error) throw new Error(`Chirp lore voiceover could not be generated: ${error.message}`);
   if (data instanceof Blob && data.size) {
     return { base64: toBase64(new Uint8Array(await data.arrayBuffer())), mimeType: data.type || 'audio/wav' };
   }
@@ -145,7 +146,7 @@ async function createNarrationAudio(script: string): Promise<StoryAsset> {
   if (data instanceof Uint8Array && data.byteLength) {
     return { base64: toBase64(data), mimeType: 'audio/wav' };
   }
-  throw new Error('Gemini narration returned no playable audio.');
+    throw new Error('Chirp lore voiceover returned no playable audio.');
 }
 
 function isTerminal(status: IllustrationStoryFilmJob['status']): boolean {
@@ -222,7 +223,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     const [panels, music, narration] = await Promise.all([
       createLockedPanelAssets(sheetUrls, pages),
       urlToBase64(musicUrl),
-      createNarrationAudio(pages.map(page => page.narration).join(' ')),
+      createNarrationAudio(pages),
     ]);
     if (controller.signal.aborted) throw new Error('Story film production cancelled.');
     onProgress?.(6);
@@ -334,9 +335,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     if (controller.signal.aborted) throw new Error('Story film render cancelled.');
     onProgress?.(20);
 
-    const narration = await createNarrationAudio(
-      pages.map(page => `Page ${page.pageNumber}. ${page.narration}`).join(' '),
-    );
+    const narration = await createNarrationAudio(pages);
     if (controller.signal.aborted) throw new Error('Story film render cancelled.');
     onProgress?.(30);
 

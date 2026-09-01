@@ -298,6 +298,20 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
   }, [publish, sessionId]);
 
   useEffect(() => {
+    if (!sessionId) return;
+    void supabase.functions.invoke('oracle-story-film-job', {
+      body: { action: 'latest', sessionId },
+    }).then(({ data }) => {
+      if (data?.id) {
+        activeJobIdRef.current = data.id;
+        publish(data as IllustrationStoryFilmJob);
+      }
+    }).catch(() => {
+      // A missing server job should not interrupt the Oracle conversation.
+    });
+  }, [publish, sessionId]);
+
+  useEffect(() => {
     if (!job || isTerminal(job.status) || pollingRef.current) return;
     void waitForCompletion(job.id).catch(() => {
       // Keep the persisted server job recoverable; a later refresh or explicit

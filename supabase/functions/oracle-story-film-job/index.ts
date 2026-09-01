@@ -15,6 +15,7 @@ const corsHeaders = {
 };
 const PAGE_COUNT = 32;
 const FAL_MODEL = 'bytedance/seedance-2.5/image-to-video';
+const FAL_QUEUE_MODEL = 'bytedance/seedance-2.5';
 const FAL_TIMEOUT_MS = 20_000;
 const RUNPOD_TIMEOUT_MS = 12_000;
 
@@ -167,10 +168,10 @@ async function createFalScene(referenceUrl: string, prompt: string, sessionId: s
 }
 
 async function pollFalScene(requestId: string): Promise<{ status: StoryScene['status']; progress: number; output?: string; error?: string }> {
-  const status = await falJson(`/${FAL_MODEL}/requests/${encodeURIComponent(requestId)}/status`);
+  const status = await falJson(`/${FAL_QUEUE_MODEL}/requests/${encodeURIComponent(requestId)}/status`);
   const state = safeText(status.status, 24).toUpperCase();
   if (state === 'COMPLETED') {
-    const result = await falJson(`/${FAL_MODEL}/requests/${encodeURIComponent(requestId)}`);
+    const result = await falJson(`/${FAL_QUEUE_MODEL}/requests/${encodeURIComponent(requestId)}`);
     const video = result.video && typeof result.video === 'object'
       ? result.video as Record<string, unknown>
       : {};
@@ -189,7 +190,7 @@ async function pollFalScene(requestId: string): Promise<{ status: StoryScene['st
 }
 
 async function cancelFalScene(requestId: string): Promise<void> {
-  await falJson(`/${FAL_MODEL}/requests/${encodeURIComponent(requestId)}/cancel`, { method: 'PUT' });
+  await falJson(`/${FAL_QUEUE_MODEL}/requests/${encodeURIComponent(requestId)}/cancel`, { method: 'PUT' });
 }
 
 async function runpod(path: string, method: string, body?: unknown): Promise<Record<string, unknown>> {
@@ -361,7 +362,7 @@ async function pollStoryJob(
   const visualProgress = Math.round((readyCount / PAGE_COUNT) * 70);
   const nextScenes = JSON.stringify(changed) !== JSON.stringify(scenes) ? changed : scenes;
 
-  if (failedCount > 0) {
+  if (failedCount > 0 && readyCount + failedCount === PAGE_COUNT) {
     return updateJob(supabase, current.id, {
       story_scenes: nextScenes,
       status: 'failed',
@@ -395,7 +396,9 @@ async function pollStoryJob(
     story_scenes: nextScenes,
     status: 'generating',
     progress: Math.max(current.progress, 10 + visualProgress),
-    error_message: null,
+    error_message: failedCount
+      ? `${failedCount} page${failedCount === 1 ? '' : 's'} need a retry; remaining pages are still generating.`
+      : null,
   });
 }
 
@@ -414,6 +417,20 @@ Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
   const action = safeText(payload.action ?? url.searchParams.get('action') ?? 'status', 24).toLowerCase();
   const jobId = safeText(payload.jobId ?? url.searchParams.get('jobId'), 64);
+
+  if (action === 'latest') {
+    const sessionId = safeText(payload.sessionId ?? url.searchParams.get('sessionId'), 120);
+    if (!sessionId) return json({ error: 'sessionId is required.' }, 400);
+    const { data: latest, error: latestError } = await supabase.from('oracle_film_jobs')
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('job_type', 'illustration-story')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestError) return json({ error: 'Could not load the latest story film job.' }, 500);
+    return json(latest ? publicJob(latest as StoryJobRow) : { job: null });
+  }
 
   if (action === 'create') {
     const sessionId = safeText(payload.sessionId, 120);
@@ -557,6 +574,16 @@ Deno.serve(async (req: Request) => {
   if (error || !data) return json({ error: 'Story film job not found.' }, 404);
   let current = data as StoryJobRow;
   if (current.job_type !== 'illustration-story') return json({ error: 'Job is not an illustration story.' }, 400);
+
+  if (action === 'resume' && current.status === 'failed') {
+    const scenes = sceneList(current.story_scenes);
+    if (scenes.some(scene => ['queued', 'generating'].includes(scene.status))) {
+      current = await updateJob(supabase, current.id, {
+        status: 'generating',
+        error_message: null,
+      });
+    }
+  }
 
   if (action === 'cancel') {
     const scenes = sceneList(current.story_scenes);

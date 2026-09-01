@@ -5,8 +5,6 @@
  * base64 because a generated clip is short and this keeps the client contract
  * independent of storage bucket/public URL configuration.
  */
-import { distillMusicStyles } from './music-style.ts';
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -51,6 +49,47 @@ type AudioPayload = {
   mimeType?: unknown;
   type?: unknown;
 };
+
+type MusicStyle = { aliases: string[]; descriptor: string };
+const MUSIC_STYLES: MusicStyle[] = [
+  { aliases: ['brad mehldau', 'mehldau'], descriptor: 'exploratory modern jazz piano' },
+  { aliases: ['qwel'], descriptor: 'abstract spoken-word hip-hop rhythmic energy' },
+  { aliases: ['kurt rosenwinkel', 'rosenwinkel'], descriptor: 'angular lyrical electric-guitar harmony' },
+  { aliases: ['bryan blade', 'brian blade', 'blade'], descriptor: 'dynamic acoustic jazz drumming' },
+  { aliases: ['miles davis', 'miles'], descriptor: 'spacious modal-jazz trumpet phrasing' },
+  { aliases: ['thelonious monk', 'monk'], descriptor: 'angular, percussive piano-jazz phrasing' },
+  { aliases: ['herbie hancock', 'hancock'], descriptor: 'inventive electric-jazz funk keyboards' },
+  { aliases: ['j dilla', 'dilla'], descriptor: 'loose, swung sample-based hip-hop rhythm' },
+  { aliases: ['flying lotus', 'flylo'], descriptor: 'cosmic, fractured beat-driven electronica' },
+  { aliases: ['aphex twin', 'aphex'], descriptor: 'intricate, textural breakbeat electronica' },
+  { aliases: ['portishead'], descriptor: 'cinematic, nocturnal trip-hop atmosphere' },
+];
+
+function normalizeMusicText(value: string): string {
+  return value.toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function replaceMusicAlias(prompt: string, alias: string, replacement: string): string {
+  const escaped = normalizeMusicText(alias)
+    .split(' ')
+    .map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('[^a-zA-Z0-9]+');
+  return prompt.replace(new RegExp(`\\b${escaped}(?:['’]s)?(?:-?style|\\s+style)?\\b`, 'gi'), replacement);
+}
+
+function distillMusicStyles(prompt: string): { prompt: string } {
+  let distilled = prompt;
+  const normalized = normalizeMusicText(prompt);
+  for (const style of MUSIC_STYLES) {
+    for (const alias of style.aliases) {
+      const normalizedAlias = normalizeMusicText(alias);
+      if (normalized.includes(normalizedAlias)) {
+        distilled = replaceMusicAlias(distilled, alias, style.descriptor);
+      }
+    }
+  }
+  return { prompt: distilled };
+}
 
 function findAudioPayload(value: unknown, depth = 0): AudioPayload | null {
   if (!value || typeof value !== 'object' || depth > 8) return null;

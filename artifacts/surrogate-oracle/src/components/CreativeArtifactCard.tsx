@@ -121,6 +121,64 @@ function statusIcon(status: ArtifactStatus) {
   }
 }
 
+function StoryPizzaTracker({
+  artifact,
+  scenes,
+}: {
+  artifact: CreativeArtifact;
+  scenes: IllustrationStoryScene[];
+}) {
+  const references = scenes.filter(scene => Boolean(scene.referenceUrl)).length;
+  const animated = scenes.filter(scene => scene.status === 'ready').length;
+  const failed = scenes.filter(scene => scene.status === 'failed').length;
+  const stitching = artifact.status === 'generating'
+    && scenes.length === 32
+    && animated === 32;
+  const ready = artifact.status === 'ready' && Boolean(artifact.outputUrl);
+  const steps = [
+    { key: 'brief', label: 'Brief', value: 'cleared', complete: artifact.status !== 'draft', active: artifact.status === 'draft' },
+    { key: 'refs', label: 'Locked slices', value: `${references}/32`, complete: references === 32, active: references > 0 && references < 32 },
+    { key: 'bake', label: 'FAL oven', value: `${animated}/32`, complete: animated === 32, active: references === 32 && animated < 32 && !failed },
+    { key: 'finish', label: 'Stitch + audio', value: ready ? 'served' : stitching ? 'baking' : failed ? 'retry' : 'next', complete: ready, active: stitching },
+  ];
+  const progress = Math.round((references + animated + (ready ? 32 : 0)) / 96 * 100);
+
+  return (
+    <section className="creative-pizza-tracker" aria-label="Money Mite pizza tracker" aria-live="polite">
+      <div className="creative-pizza-tracker__header">
+        <div>
+          <span className="creative-pizza-tracker__eyebrow">Money Mite / pizza tracker</span>
+          <strong>
+            {ready ? 'The whole pie is served.' : failed ? `${failed} slice${failed === 1 ? '' : 's'} needs a retry.` : 'Your story is in the oven.'}
+          </strong>
+        </div>
+        <span className="creative-pizza-tracker__pie" aria-hidden="true">🍕</span>
+      </div>
+      <div className="creative-pizza-tracker__track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} aria-label="Story production progress">
+        <span style={{ width: `${progress}%` }} />
+      </div>
+      <ol className="creative-pizza-tracker__steps">
+        {steps.map(step => (
+          <li key={step.key} data-complete={step.complete || undefined} data-active={step.active || undefined}>
+            <span className="creative-pizza-tracker__dot" aria-hidden="true">{step.complete ? '✓' : step.active ? '•' : '○'}</span>
+            <span>
+              <strong>{step.label}</strong>
+              <small>{step.value}</small>
+            </span>
+          </li>
+        ))}
+      </ol>
+      <p className="creative-pizza-tracker__note">
+        {ready
+          ? 'MP4 is persisted and ready to preview or download.'
+          : failed
+            ? 'Tap a failed page below to retry only that slice. Completed slices stay saved.'
+            : 'Live state from the server job — no placeholder percentages.'}
+      </p>
+    </section>
+  );
+}
+
 function kindIcon(kind: unknown) {
   const value = String(kind ?? '').toLowerCase();
   if (value.includes('image') || value.includes('visual')) return <FileImage size={14} aria-hidden="true" />;
@@ -640,6 +698,10 @@ export function CreativeArtifactCard({
                 : 'Signal is moving. You can cancel without hiding the current state.'}
             </p>
           </div>
+        )}
+
+        {isIllustrationStory && (
+          <StoryPizzaTracker artifact={artifact} scenes={storyScenes} />
         )}
 
         {isIllustrationStory && storyPages.length > 0 && (

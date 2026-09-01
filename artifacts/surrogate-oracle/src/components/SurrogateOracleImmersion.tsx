@@ -1699,8 +1699,34 @@ export function SurrogateOracleImmersion() {
 
   useEffect(() => {
     const job = illustrationStoryFilm.job;
-    const artifact = activeCreativeArtifactRef.current;
-    if (!job || !artifact || artifact.metadata?.production !== 'illustration-story-premium') return;
+    if (!job) return;
+    let artifact = activeCreativeArtifactRef.current;
+    if (!artifact || artifact.metadata?.production !== 'illustration-story-premium') {
+      const restored = createCreativeDraft(
+        'Create a page-by-page story film from the two attached 4x4 illustration sheets featuring Levi, Lennon, Pickles, Princess Ghost Spider, Mario Spider-Man, and Donkey.',
+      );
+      if (restored.metadata?.production !== 'illustration-story-premium') return;
+      artifact = {
+        ...restored,
+        id: `story-artifact-${job.id}`,
+        requestId: `story-job-${job.id}`,
+        status: job.status === 'ready' ? 'ready' : job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
+        progress: job.progress,
+        outputUrl: job.finalMediaUrl,
+        outputLabel: job.finalMediaUrl ? '32-page premium story film · MP4' : undefined,
+        error: job.error,
+        metadata: {
+          ...(restored.metadata ?? {}),
+          storyScenes: job.scenes,
+          storyStage: job.status === 'stitching' ? 'server-stitching 32 animated scenes' : `FAL page animation ${job.scenes.filter(scene => scene.status === 'ready').length}/32`,
+        },
+      };
+      activeCreativeArtifactRef.current = artifact;
+      setCreativeArtifact(artifact);
+      setShowArtifactCard(true);
+      persistIllustrationStoryArtifact(artifact);
+      return;
+    }
     updateCreativeArtifact(artifact.id, {
       status: job.status === 'ready' ? 'ready' : job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
       progress: job.progress,
@@ -1719,7 +1745,7 @@ export function SurrogateOracleImmersion() {
             : `FAL page animation ${job.scenes.filter(scene => scene.status === 'ready').length}/32`,
       },
     });
-  }, [illustrationStoryFilm.job, updateCreativeArtifact]);
+  }, [illustrationStoryFilm.job, persistIllustrationStoryArtifact, updateCreativeArtifact]);
 
   const updateSeriesManifest = useCallback((
     artifactId: string,

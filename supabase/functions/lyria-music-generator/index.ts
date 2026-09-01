@@ -116,8 +116,8 @@ Deno.serve(async (req: Request) => {
 
   const requestId = crypto.randomUUID();
   const apiKeys = [
-    Deno.env.get('GOOGLE_GENERATIVE_AI_API_KEY'),
     Deno.env.get('GOOGLE_AI_API_KEY'),
+    Deno.env.get('GOOGLE_GENERATIVE_AI_API_KEY'),
     Deno.env.get('GEMINI_API_KEY'),
   ].filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index);
   if (!apiKeys.length) {
@@ -169,7 +169,10 @@ Deno.serve(async (req: Request) => {
         successfulApiKey = apiKey;
         break;
       }
-      if (![401, 403, 429].includes(upstream.status)) break;
+      // Google can return a policy/input 400 for one key while another
+      // configured project key remains valid. Treat all provider auth,
+      // quota, and input-policy responses as retryable across our key pool.
+      if (![400, 401, 403, 429].includes(upstream.status)) break;
       console.warn('[Lyria] provider key rejected, trying next key', {
         requestId,
         status: upstream.status,

@@ -44,6 +44,13 @@ export interface OracleRuntimeError {
   reason?: string;
 }
 
+export interface OracleCreativeTestBridge {
+  stage: (prompt: string) => void;
+  confirm: () => void;
+  cancel: () => void;
+  retry: () => void;
+}
+
 declare global {
   interface Window {
     /** Legacy Safari/old-WebKit AudioContext constructor. */
@@ -71,6 +78,8 @@ declare global {
     __oracle_completeLore?: () => void;
     /** Dev-only radio toggle for deterministic handoff regression checks. */
     __oracle_toggleRadio?: () => void;
+    /** Dev-only creative dispatch bridge for deterministic browser checks. */
+    __oracle_creative_test?: OracleCreativeTestBridge;
     oracleConversationRef?: RefObject<OracleConversationHandle | null>;
 
     /** Structured runtime evidence collected for smoke tests and preview diagnostics. */

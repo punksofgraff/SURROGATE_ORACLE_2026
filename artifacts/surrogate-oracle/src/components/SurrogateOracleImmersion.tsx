@@ -2376,6 +2376,20 @@ export function SurrogateOracleImmersion() {
     logStep(`CREATIVE DISPATCH RE-ARMED — ${artifact.kind}`, 'ok');
   }, [persistIllustrationStoryArtifact]);
 
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return;
+    if (!new URLSearchParams(window.location.search).has('creative-test')) return;
+    window.__oracle_creative_test = {
+      stage: handleCreativeRequest,
+      confirm: confirmCreativeArtifact,
+      cancel: cancelCreativeArtifact,
+      retry: retryCreativeArtifact,
+    };
+    return () => {
+      delete window.__oracle_creative_test;
+    };
+  }, [cancelCreativeArtifact, confirmCreativeArtifact, handleCreativeRequest, retryCreativeArtifact]);
+
   const retryIllustrationStoryScene = useCallback((pageNumber: number) => {
     const artifact = activeCreativeArtifactRef.current;
     if (artifact?.metadata?.production === 'illustration-story-proof') {

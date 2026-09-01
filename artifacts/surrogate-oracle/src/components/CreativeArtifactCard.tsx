@@ -595,6 +595,7 @@ export function CreativeArtifactCard({
     <section
       className="creative-artifact-card"
       data-status={status}
+      data-testid="creative-artifact-card"
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
@@ -624,7 +625,7 @@ export function CreativeArtifactCard({
 
       <div className="creative-artifact-card__body" id={descriptionId}>
         <div className="creative-artifact-card__state-row">
-          <div className="creative-artifact-card__state">
+          <div className="creative-artifact-card__state" data-testid="creative-artifact-status">
             {statusIcon(status)}
             <span>{statusLabel(status)}</span>
           </div>

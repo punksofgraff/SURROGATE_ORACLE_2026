@@ -26,6 +26,16 @@ includes `audio_stream_present: true`, `codec: h264`, and
 `pixel_format: yuv420p` so the Edge Function can apply its normal readiness
 verification.
 
+For the 32-page illustration story, the worker accepts
+`task: stitch_oracle_story` with exactly 32 ordered `scene_urls`, one
+`duration` per scene, and persisted `music_url` plus `narration_url`. It
+downloads and normalizes each FAL scene, concatenates them in page order,
+loops the Lyria track to the visual duration, muxes the Gemini narration, and
+uploads the final H.264/yuv420p MP4 to Supabase Storage. The response includes
+`final_media_url`, `audio_stream_present`, `duration_seconds`, `codec`, and
+`pixel_format`; the story Edge Function refuses to mark the job ready unless
+the audio stream and requested duration both validate.
+
 The model is intentionally capped at five seconds per chunk for the first
 benchmark. Increase the cap only after measuring VRAM and wall-clock behavior on
 the selected GPU.

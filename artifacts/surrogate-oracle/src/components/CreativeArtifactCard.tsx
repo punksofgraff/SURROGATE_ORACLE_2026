@@ -28,6 +28,7 @@ import {
   type CreativeEpisode,
   type CreativeMissingDetail,
   type CreativeSeriesHistoryEntry,
+  type IllustrationStoryScene,
   type SeriesRenderMode,
 } from '../lib/creativeProduction';
 import './CreativeArtifactCard.css';
@@ -50,6 +51,7 @@ export type CreativeArtifactCardProps = {
   onSeriesSceneRetry?: (episodeId: string, sceneId: string, mode: SeriesRenderMode) => void;
   onSeriesAssembleEpisode?: (episodeId: string) => void;
   onSeriesAssemble?: () => void;
+  onStorySceneRetry?: (pageNumber: number) => void;
   savedSeriesCount?: number;
   onOpenSeriesHistory?: () => void;
 };
@@ -257,6 +259,7 @@ export function CreativeArtifactCard({
   onSeriesSceneRetry,
   onSeriesAssembleEpisode,
   onSeriesAssemble,
+  onStorySceneRetry,
   savedSeriesCount = 0,
   onOpenSeriesHistory,
 }: CreativeArtifactCardProps) {
@@ -271,7 +274,10 @@ export function CreativeArtifactCard({
   const hasMetadata = Boolean(metadataRecord && Object.keys(metadataRecord).length);
   const series = artifact.seriesManifest;
   const storyPages = artifact.storyPages ?? [];
-  const isIllustrationStory = artifact.metadata?.production === 'illustration-story-proof';
+  const isIllustrationStory = artifact.metadata?.production === 'illustration-story-premium';
+  const storyScenes = Array.isArray(metadataRecord?.storyScenes)
+    ? metadataRecord.storyScenes as IllustrationStoryScene[]
+    : [];
   const isSeries = Boolean(series);
   const isDraft = status === 'draft';
   const followUpDetail = isDraft && !artifact.followUpCompleted ? missingDetails[0] : undefined;
@@ -647,15 +653,36 @@ export function CreativeArtifactCard({
               <span style={{ width: `${progress}%` }} />
             </div>
             <div className="creative-story-proof__pages">
-              {storyPages.map(page => (
-                <span key={page.id} title={`${page.title}: ${page.narration}`} data-state={progress >= (page.pageNumber / storyPages.length) * 100 ? 'complete' : 'planned'}>
-                  {String(page.pageNumber).padStart(2, '0')}
-                </span>
-              ))}
+              {storyPages.map(page => {
+                const scene = storyScenes.find(item => item.pageNumber === page.pageNumber);
+                const state = scene?.status ?? (progress >= (page.pageNumber / storyPages.length) * 100 ? 'ready' : 'planned');
+                return (
+                  <span
+                    key={page.id}
+                    title={`${page.title}: ${page.narration}${scene?.error ? ` — ${scene.error}` : ''}`}
+                    data-state={state}
+                  >
+                    {String(page.pageNumber).padStart(2, '0')}
+                    {['failed', 'cancelled'].includes(state) && onStorySceneRetry && (
+                      <button
+                        type="button"
+                        className="creative-story-proof__page-retry"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onStorySceneRetry(page.pageNumber);
+                        }}
+                        aria-label={`Retry story page ${page.pageNumber}`}
+                      >
+                        ↻
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
             </div>
             <p>
-              Two local 4×4 illustration sheets · {Math.round(storyPages.reduce((sum, page) => sum + page.durationSeconds, 0))} seconds ·
-              gentle zoom/fade transitions · Lyria backing music · child-friendly narration
+              32 locked panel references · {Math.round(storyPages.reduce((sum, page) => sum + page.durationSeconds, 0))} seconds ·
+              FAL motion per page · Lyria backing music · Gemini child-friendly narration
             </p>
           </div>
         )}

@@ -88,6 +88,82 @@ def make_chunk(image: Image.Image, prompt: str, seconds: int, seed: int, out: Pa
 
 def handler(job):
     inp = job["input"]
+    if inp.get("task") == "stitch_oracle_story":
+        scene_urls = inp.get("scene_urls", [])
+        durations = inp.get("durations", [])
+        music_url = inp.get("music_url")
+        narration_url = inp.get("narration_url")
+        if not isinstance(scene_urls, list) or len(scene_urls) != 32:
+            raise ValueError("stitch_oracle_story requires 32 scene_urls")
+        if not isinstance(durations, list) or len(durations) != len(scene_urls):
+            raise ValueError("stitch_oracle_story requires one duration per scene")
+        if not music_url or not narration_url:
+            raise ValueError("stitch_oracle_story requires music_url and narration_url")
+        with tempfile.TemporaryDirectory(prefix="oracle-story-") as tmp:
+            root = Path(tmp)
+            normalized = []
+            for index, (scene_url, duration) in enumerate(zip(scene_urls, durations)):
+                if not scene_url or float(duration) <= 0 or float(duration) > 10:
+                    raise ValueError("story scene input is invalid")
+                source = root / f"source-{index:02d}.mp4"
+                clip = root / f"scene-{index:02d}.mp4"
+                response = requests.get(scene_url, timeout=90)
+                response.raise_for_status()
+                source.write_bytes(response.content)
+                if not source.stat().st_size:
+                    raise ValueError(f"story scene {index + 1} was empty")
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", str(source), "-t", str(float(duration)),
+                    "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,"
+                           "pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+                    "-r", str(FRAME_RATE), "-an", "-c:v", "libx264",
+                    "-preset", "veryfast", "-movflags", "+faststart", str(clip),
+                ], check=True, capture_output=True)
+                normalized.append(clip)
+                yield {"progress": 8 + int((index + 1) / len(scene_urls) * 64), "status": "stitching"}
+
+            concat = root / "concat.txt"
+            concat.write_text("\n".join(f"file '{p}'" for p in normalized))
+            silent = root / "story-silent.mp4"
+            final = root / "oracle-story.mp4"
+            subprocess.run([
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(concat),
+                "-c", "copy", str(silent),
+            ], check=True, capture_output=True)
+
+            music = root / "music.mp3"
+            narration = root / "narration.wav"
+            music_response = requests.get(music_url, timeout=90)
+            music_response.raise_for_status()
+            narration_response = requests.get(narration_url, timeout=90)
+            narration_response.raise_for_status()
+            music.write_bytes(music_response.content)
+            narration.write_bytes(narration_response.content)
+            if not music.stat().st_size or not narration.stat().st_size:
+                raise ValueError("story soundtrack or narration was empty")
+
+            total_duration = sum(float(value) for value in durations)
+            subprocess.run([
+                "ffmpeg", "-y", "-i", str(silent),
+                "-stream_loop", "-1", "-i", str(music),
+                "-stream_loop", "-1", "-i", str(narration),
+                "-filter_complex",
+                "[1:a]volume=0.24[music];[2:a]volume=1.0[narration];"
+                "[music][narration]amix=inputs=2:duration=longest:dropout_transition=2[a]",
+                "-map", "0:v:0", "-map", "[a]", "-c:v", "copy",
+                "-c:a", "aac", "-b:a", "160k", "-t", str(total_duration),
+                "-movflags", "+faststart", str(final),
+            ], check=True, capture_output=True)
+            yield {"progress": 92, "status": "stitching"}
+            return {
+                "final_media_url": upload_mp4(final),
+                "audio_stream_present": True,
+                "codec": "h264",
+                "pixel_format": "yuv420p",
+                "duration_seconds": total_duration,
+                "scene_count": len(scene_urls),
+            }
+
     if inp.get("task") == "mux_oracle_film":
         video_url = inp.get("video_url")
         audio_url = inp.get("audio_url")

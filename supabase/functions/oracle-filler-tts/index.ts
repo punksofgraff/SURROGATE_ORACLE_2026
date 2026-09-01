@@ -12,7 +12,11 @@
  *     --project-ref $SUPABASE_PROJECT_REF --use-api --no-verify-jwt
  */
 
-const GOOGLE_AI_KEY  = Deno.env.get('GOOGLE_AI_KEY_FREE') ?? '';
+const GOOGLE_AI_KEY  = Deno.env.get('GOOGLE_AI_KEY_FREE')
+  ?? Deno.env.get('GOOGLE_AI_API_KEY')
+  ?? Deno.env.get('GOOGLE_GENERATIVE_AI_API_KEY')
+  ?? Deno.env.get('GEMINI_API_KEY')
+  ?? '';
 const TTS_MODEL      = 'gemini-2.5-flash-preview-tts';
 const DEFAULT_VOICE  = Deno.env.get('ORACLE_TTS_VOICE') ?? 'Sadaltager';
 const GEMINI_TTS_URL = `https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent`;

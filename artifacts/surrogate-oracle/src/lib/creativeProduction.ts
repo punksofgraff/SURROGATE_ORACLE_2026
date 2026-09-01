@@ -448,7 +448,9 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
         : classification.kind === 'episodic-series'
           ? 'Create series manifest'
           : 'Create draft',
-    confirmationCopy: missingCopy(classification.missingDetails),
+    confirmationCopy: illustrationStory && classification.missingDetails.length === 0
+      ? 'This starts the premium story lane: 32 locked panel references go to FAL as separate animated scenes, then the server stitches them with real Lyria music and Gemini narration into one persisted MP4.'
+      : missingCopy(classification.missingDetails),
     storyPages: illustrationStory ? createIllustrationStoryPages(clean, createdAt) : undefined,
     metadata: {
       confidence: classification.confidence,

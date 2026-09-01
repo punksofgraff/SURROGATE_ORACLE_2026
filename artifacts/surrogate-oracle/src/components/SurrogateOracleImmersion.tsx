@@ -14,7 +14,7 @@
  */
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Camera, CameraOff, Archive } from 'lucide-react';
+import { X, Camera, CameraOff, Archive, History } from 'lucide-react';
 
 // Components
 import { BackendControlPanel } from './BackendControlPanel';
@@ -78,7 +78,7 @@ import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { DocumentIntakeCard, type DocumentIntakeFile } from './DocumentIntakeCard';
 import { DocumentArchive } from './DocumentArchive';
 import { loadDocumentArchive, saveDocumentReadout, type ArchivedDocumentReadout } from '../lib/documentArchive';
-import CreativeArtifactCard from './CreativeArtifactCard';
+import CreativeArtifactCard, { CreativeSeriesHistoryShelf } from './CreativeArtifactCard';
 import {
   classifyCreativeRequest,
   captureCreativeDetail,
@@ -89,11 +89,16 @@ import {
   createIllustrationStoryPages,
   createSeriesAssemblyDataUrl,
   createSeriesManifest,
+  CREATIVE_SERIES_HISTORY_STORAGE_KEY,
+  loadCreativeSeriesHistory,
+  parseCreativeSeriesArtifact,
   refreshSeriesProgress,
+  saveCreativeSeriesHistory,
   updateSeriesScene,
   type CreativeArtifact,
   type CreativeDispatchClaim,
   type CreativeMissingDetail,
+  type CreativeSeriesHistoryEntry,
   type CreativeSeriesManifest,
   type SeriesRenderMode,
   isCreativeDispatchCurrent,
@@ -106,6 +111,14 @@ import { COST_NAMES } from '../data/archetypes';
 // Libs/Utils
 import { getAudioContext, playActivationSfx } from '../lib/oracleSfx';
 import { trackOracleEvent } from '../lib/analytics';
+
+function parseStoredJson(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
 import { getABVariant } from '../lib/ab-testing';
 import { requestDeviceOrientationPermission } from '../lib/browserCapabilities';
 import type { VisemeState } from '../lib/visemeDetector';
@@ -285,6 +298,8 @@ export function SurrogateOracleImmersion() {
   const [sessionCoins, setSessionCoins]     = useState(0);
   const [showArtifactCard, setShowArtifactCard] = useState(false);
   const [creativeArtifact, setCreativeArtifact] = useState<CreativeArtifact | null>(null);
+  const [seriesHistory, setSeriesHistory] = useState<CreativeSeriesHistoryEntry[]>(() => loadCreativeSeriesHistory());
+  const [showSeriesHistory, setShowSeriesHistory] = useState(false);
   const [seriesRenderMode, setSeriesRenderMode] = useState<SeriesRenderMode>('local');
   const [seriesIsRunning, setSeriesIsRunning] = useState(false);
   const [seriesRunningEpisodeId, setSeriesRunningEpisodeId] = useState<string | null>(null);
@@ -1563,30 +1578,77 @@ export function SurrogateOracleImmersion() {
 
   const persistSeriesArtifact = useCallback((artifact: CreativeArtifact | null) => {
     if (!artifact?.seriesManifest || typeof window === 'undefined') return;
-    localStorage.setItem(
-      `oracle_creative_series_${currentSessionId}`,
-      JSON.stringify(artifact),
-    );
+    try {
+      localStorage.setItem(
+        `oracle_creative_series_${currentSessionId}`,
+        JSON.stringify(artifact),
+      );
+    } catch {
+      // The history helper still keeps the in-memory board usable if storage
+      // is unavailable or full.
+    }
+    saveCreativeSeriesHistory(artifact);
   }, [currentSessionId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    try {
-      const stored = localStorage.getItem(`oracle_creative_series_${currentSessionId}`);
-      if (!stored) return;
-      const restored = JSON.parse(stored) as CreativeArtifact;
-      if (restored?.kind !== 'episodic-series' || !restored.seriesManifest) return;
-      const artifact = {
-        ...restored,
-        seriesManifest: refreshSeriesProgress(restored.seriesManifest),
-      };
-      activeCreativeArtifactRef.current = artifact;
-      setCreativeArtifact(artifact);
-      setShowArtifactCard(true);
-    } catch {
-      localStorage.removeItem(`oracle_creative_series_${currentSessionId}`);
+    const stored = localStorage.getItem(`oracle_creative_series_${currentSessionId}`);
+    const restored = stored ? parseCreativeSeriesArtifact(parseStoredJson(stored)) : null;
+    if (!stored) {
+      setSeriesHistory(loadCreativeSeriesHistory());
+      return;
     }
+    if (!restored) {
+      localStorage.removeItem(`oracle_creative_series_${currentSessionId}`);
+      setSeriesHistory(loadCreativeSeriesHistory());
+      return;
+    }
+    if (!restored.seriesManifest) return;
+    const artifact = {
+      ...restored,
+      seriesManifest: refreshSeriesProgress(restored.seriesManifest),
+    };
+    activeCreativeArtifactRef.current = artifact;
+    setCreativeArtifact(artifact);
+    setSeriesHistory(saveCreativeSeriesHistory(artifact));
+    setShowArtifactCard(true);
   }, [currentSessionId]);
+
+  useEffect(() => {
+    if (creativeArtifact?.seriesManifest) {
+      setSeriesHistory(loadCreativeSeriesHistory());
+    }
+  }, [creativeArtifact]);
+
+  useEffect(() => {
+    const handleSeriesHistoryStorage = (event: StorageEvent) => {
+      if (event.key === CREATIVE_SERIES_HISTORY_STORAGE_KEY) {
+        setSeriesHistory(loadCreativeSeriesHistory());
+      }
+    };
+    window.addEventListener('storage', handleSeriesHistoryStorage);
+    return () => window.removeEventListener('storage', handleSeriesHistoryStorage);
+  }, []);
+
+  const reopenSavedSeries = useCallback((entry: CreativeSeriesHistoryEntry) => {
+    const artifact = parseCreativeSeriesArtifact(entry.artifact);
+    if (!artifact) {
+      setSeriesHistory(loadCreativeSeriesHistory());
+      return;
+    }
+    creativeDispatchTokenRef.current += 1;
+    creativeProviderClaimRef.current = null;
+    creativeFilmJobClaimRef.current = null;
+    seriesRunRef.current = null;
+    setSeriesIsRunning(false);
+    setSeriesRunningEpisodeId(null);
+    activeCreativeArtifactRef.current = artifact;
+    setCreativeArtifact(artifact);
+    persistSeriesArtifact(artifact);
+    setShowSeriesHistory(false);
+    setShowArtifactCard(true);
+    logStep(`SERIES HISTORY REOPENED — ${artifact.seriesManifest?.title ?? 'saved manifest'}`, 'ok');
+  }, [persistSeriesArtifact]);
 
   const updateCreativeArtifact = useCallback((
     artifactId: string,
@@ -3479,10 +3541,21 @@ export function SurrogateOracleImmersion() {
               onSeriesSceneRetry={retrySeriesScene}
               onSeriesAssembleEpisode={assembleSeriesEpisode}
               onSeriesAssemble={assembleSeries}
+              savedSeriesCount={seriesHistory.length}
+              onOpenSeriesHistory={() => setShowSeriesHistory(true)}
             />
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showSeriesHistory && (
+        <CreativeSeriesHistoryShelf
+          entries={seriesHistory}
+          activeSeriesId={creativeArtifact?.seriesManifest?.seriesId}
+          onOpen={reopenSavedSeries}
+          onClose={() => setShowSeriesHistory(false)}
+        />
+      )}
 
       {isOracleMode && isMusicMode && (
         <div
@@ -3905,6 +3978,9 @@ export function SurrogateOracleImmersion() {
               <button onClick={() => { oracleConversationRef.current?.toggleTypeMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isTypeMode ? 'CLOSE PAD' : 'TYPE SIGNAL'}</button>
                <button onClick={() => { setShowDocumentArchive(true); setHamburgerOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>
                  <Archive size={14} /> READOUT ARCHIVE {documentArchive.length > 0 && `(${documentArchive.length})`}
+               </button>
+               <button onClick={() => { setShowSeriesHistory(true); setHamburgerOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00d9ff', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>
+                 <History size={14} /> SERIES HISTORY {seriesHistory.length > 0 && `(${seriesHistory.length})`}
                </button>
               <div style={{ padding: '10px 16px 6px', borderTop: '1px solid rgba(0,255,136,0.15)', color: 'rgba(0,255,136,0.55)', fontSize: '0.58rem', fontFamily: "'PhillySans', monospace", letterSpacing: '0.13em' }}>
                 ORACLE PERSONA

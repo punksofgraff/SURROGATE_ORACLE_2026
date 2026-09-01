@@ -159,6 +159,17 @@ export type CreativeArtifact = {
   storyPages?: IllustrationStoryPage[];
 };
 
+export type CreativeSeriesHistoryEntry = {
+  artifact: CreativeArtifact;
+  savedAt: string;
+};
+
+export const CREATIVE_SERIES_HISTORY_STORAGE_KEY = 'oracle_creative_series_history_v1';
+export const CREATIVE_SERIES_HISTORY_MAX_ENTRIES = 12;
+// Local production artifacts are intentionally retained for a useful working
+// window, but stale provider URLs should not remain discoverable forever.
+export const CREATIVE_SERIES_HISTORY_TTL_MS = 1000 * 60 * 60 * 24 * 90;
+
 export const ILLUSTRATION_STORY_PAGE_COUNT = 32;
 export const ILLUSTRATION_STORY_PAGE_DURATION_SECONDS = 3.75;
 
@@ -448,9 +459,10 @@ function episodeCountFor(prompt: string): number {
 export function createSeriesManifest(prompt: string, createdAt = new Date().toISOString()): CreativeSeriesManifest {
   const count = episodeCountFor(prompt);
   const seriesId = makeId('series');
+  const titleSeed = prompt.split(/\r?\n/, 1)[0]?.trim().slice(0, 72);
   return {
     seriesId,
-    title: 'Signal series manifest',
+    title: titleSeed ? `Signal series · ${titleSeed}` : 'Signal series manifest',
     prompt,
     status: 'planned',
     finalAssemblyUrl: null,
@@ -522,6 +534,208 @@ export function refreshSeriesProgress(manifest: CreativeSeriesManifest): Creativ
     episodes,
     status,
   };
+}
+
+const CREATIVE_ARTIFACT_STATUSES: CreativeArtifactStatus[] = [
+  'draft',
+  'queued',
+  'generating',
+  'ready',
+  'failed',
+  'cancelled',
+  'partial',
+];
+
+const CREATIVE_SERIES_STATUSES: CreativeSeriesManifest['status'][] = [
+  'planned',
+  'assembling',
+  'ready',
+  'partial',
+  'failed',
+  'cancelled',
+];
+
+const CREATIVE_SCENE_STATUSES: CreativeScene['status'][] = [
+  'planned',
+  'generating',
+  'ready',
+  'failed',
+  'cancelled',
+];
+
+const CREATIVE_EPISODE_STATUSES: CreativeEpisode['status'][] = [
+  'planned',
+  'generating',
+  'ready',
+  'failed',
+  'cancelled',
+  'partial',
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isFiniteProgress(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
+}
+
+function isOneOf<T extends string>(value: unknown, values: readonly T[]): value is T {
+  return typeof value === 'string' && values.includes(value as T);
+}
+
+function isCreativeScene(value: unknown): value is CreativeScene {
+  if (!isRecord(value)) return false;
+  return isNonEmptyString(value.id)
+    && isNonEmptyString(value.title)
+    && isNonEmptyString(value.brief)
+    && isOneOf(value.status, CREATIVE_SCENE_STATUSES)
+    && isFiniteProgress(value.progress);
+}
+
+function isCreativeEpisode(value: unknown): value is CreativeEpisode {
+  if (!isRecord(value)) return false;
+  return isNonEmptyString(value.id)
+    && typeof value.number === 'number'
+    && Number.isInteger(value.number)
+    && value.number > 0
+    && isNonEmptyString(value.title)
+    && isNonEmptyString(value.brief)
+    && isOneOf(value.status, CREATIVE_EPISODE_STATUSES)
+    && isFiniteProgress(value.progress)
+    && Array.isArray(value.scenes)
+    && value.scenes.length > 0
+    && value.scenes.every(isCreativeScene);
+}
+
+function isCreativeSeriesManifest(value: unknown): value is CreativeSeriesManifest {
+  if (!isRecord(value)) return false;
+  return isNonEmptyString(value.seriesId)
+    && isNonEmptyString(value.title)
+    && isNonEmptyString(value.prompt)
+    && isOneOf(value.status, CREATIVE_SERIES_STATUSES)
+    && Array.isArray(value.episodes)
+    && value.episodes.length > 0
+    && value.episodes.every(isCreativeEpisode);
+}
+
+export function isCreativeSeriesArtifact(value: unknown): value is CreativeArtifact {
+  if (!isRecord(value)) return false;
+  return isNonEmptyString(value.id)
+    && isNonEmptyString(value.requestId)
+    && value.kind === 'episodic-series'
+    && isNonEmptyString(value.title)
+    && isNonEmptyString(value.prompt)
+    && isNonEmptyString(value.createdAt)
+    && !Number.isNaN(Date.parse(value.createdAt))
+    && isOneOf(value.status, CREATIVE_ARTIFACT_STATUSES)
+    && isFiniteProgress(value.progress)
+    && isCreativeSeriesManifest(value.seriesManifest);
+}
+
+/**
+ * Validate and normalize a persisted series before it reaches the production
+ * card. Browser storage is user-editable and can contain partial writes from a
+ * crashed tab, so callers must not cast JSON directly to CreativeArtifact.
+ */
+export function parseCreativeSeriesArtifact(value: unknown): CreativeArtifact | null {
+  if (!isCreativeSeriesArtifact(value)) return null;
+  const seriesManifest = value.seriesManifest;
+  if (!seriesManifest) return null;
+  return {
+    ...value,
+    seriesManifest: refreshSeriesProgress(seriesManifest),
+  };
+}
+
+function getStorage(storage?: Storage): Storage | null {
+  if (storage) return storage;
+  return typeof localStorage !== 'undefined' ? localStorage : null;
+}
+
+function validSavedAt(value: unknown, now: number): string | null {
+  if (typeof value !== 'string') return null;
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp) || now - timestamp > CREATIVE_SERIES_HISTORY_TTL_MS) return null;
+  return new Date(timestamp).toISOString();
+}
+
+function historyEntriesFromUnknown(value: unknown, now: number): CreativeSeriesHistoryEntry[] {
+  const rawEntries = Array.isArray(value)
+    ? value
+    : isRecord(value) && value.version === 1 && Array.isArray(value.entries)
+      ? value.entries
+      : [];
+  const seenSeriesIds = new Set<string>();
+  const entries: CreativeSeriesHistoryEntry[] = [];
+
+  for (const rawEntry of rawEntries) {
+    if (!isRecord(rawEntry)) continue;
+    const artifact = parseCreativeSeriesArtifact(rawEntry.artifact);
+    const savedAt = validSavedAt(rawEntry.savedAt, now);
+    if (!artifact || !savedAt || seenSeriesIds.has(artifact.seriesManifest!.seriesId)) continue;
+    seenSeriesIds.add(artifact.seriesManifest!.seriesId);
+    entries.push({ artifact, savedAt });
+  }
+
+  return entries
+    .sort((left, right) => Date.parse(right.savedAt) - Date.parse(left.savedAt))
+    .slice(0, CREATIVE_SERIES_HISTORY_MAX_ENTRIES);
+}
+
+export function loadCreativeSeriesHistory(
+  storage?: Storage,
+  now = Date.now(),
+): CreativeSeriesHistoryEntry[] {
+  const target = getStorage(storage);
+  if (!target) return [];
+  try {
+    const raw = target.getItem(CREATIVE_SERIES_HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    const entries = historyEntriesFromUnknown(parsed, now);
+    // Rewrite the cleaned envelope so corrupt or expired records are skipped
+    // permanently instead of being retried on every render.
+    target.setItem(
+      CREATIVE_SERIES_HISTORY_STORAGE_KEY,
+      JSON.stringify({ version: 1, entries }),
+    );
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+export function saveCreativeSeriesHistory(
+  artifact: CreativeArtifact,
+  storage?: Storage,
+  savedAt = new Date().toISOString(),
+): CreativeSeriesHistoryEntry[] {
+  const target = getStorage(storage);
+  const normalized = parseCreativeSeriesArtifact(artifact);
+  if (!target || !normalized || Number.isNaN(Date.parse(savedAt))) {
+    return target ? loadCreativeSeriesHistory(target) : [];
+  }
+
+  const existing = loadCreativeSeriesHistory(target);
+  const next = [
+    { artifact: normalized, savedAt: new Date(Date.parse(savedAt)).toISOString() },
+    ...existing.filter(entry => entry.artifact.seriesManifest?.seriesId !== normalized.seriesManifest?.seriesId),
+  ].slice(0, CREATIVE_SERIES_HISTORY_MAX_ENTRIES);
+
+  try {
+    target.setItem(
+      CREATIVE_SERIES_HISTORY_STORAGE_KEY,
+      JSON.stringify({ version: 1, entries: next }),
+    );
+    return next;
+  } catch {
+    return existing;
+  }
 }
 
 export function updateSeriesScene(

@@ -9,6 +9,7 @@ import {
   FileImage,
   FileText,
   FileVideo,
+  History,
   LoaderCircle,
   OctagonX,
   Pause,
@@ -26,6 +27,7 @@ import {
   type CreativeArtifact,
   type CreativeEpisode,
   type CreativeMissingDetail,
+  type CreativeSeriesHistoryEntry,
   type SeriesRenderMode,
 } from '../lib/creativeProduction';
 import './CreativeArtifactCard.css';
@@ -48,6 +50,8 @@ export type CreativeArtifactCardProps = {
   onSeriesSceneRetry?: (episodeId: string, sceneId: string, mode: SeriesRenderMode) => void;
   onSeriesAssembleEpisode?: (episodeId: string) => void;
   onSeriesAssemble?: () => void;
+  savedSeriesCount?: number;
+  onOpenSeriesHistory?: () => void;
 };
 
 type ArtifactStatus = CreativeArtifact['status'];
@@ -136,6 +140,78 @@ function formatCreatedAt(value: unknown): string {
   }).format(date);
 }
 
+function historyStatusLabel(entry: CreativeSeriesHistoryEntry): string {
+  const status = entry.artifact.status;
+  if (status === 'ready') return 'Ready';
+  if (status === 'partial') return 'Partial';
+  if (status === 'generating' || status === 'queued') return 'In production';
+  if (status === 'failed') return 'Needs retry';
+  if (status === 'cancelled') return 'Paused';
+  return statusLabel(status);
+}
+
+export function CreativeSeriesHistoryShelf({
+  entries,
+  activeSeriesId,
+  onOpen,
+  onClose,
+}: {
+  entries: CreativeSeriesHistoryEntry[];
+  activeSeriesId?: string | null;
+  onOpen: (entry: CreativeSeriesHistoryEntry) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="creative-series-history-overlay" role="dialog" aria-modal="true" aria-labelledby="creative-series-history-title">
+      <div className="creative-series-history">
+        <header className="creative-series-history__header">
+          <div>
+            <span className="creative-series-history__eyebrow"><History size={15} aria-hidden="true" /> PRODUCTION HISTORY</span>
+            <h2 id="creative-series-history-title">Saved series</h2>
+            <p>Reopen any saved manifest. Other series stay safely on the shelf.</p>
+          </div>
+          <button type="button" className="creative-series-history__close" onClick={onClose} aria-label="Close production history">
+            <X size={17} aria-hidden="true" />
+          </button>
+        </header>
+
+        {entries.length === 0 ? (
+          <div className="creative-series-history__empty">
+            <History size={28} aria-hidden="true" />
+            <strong>NO SERIES SAVED YET</strong>
+            <span>Confirmed episodic productions will appear here while their scene work is in progress.</span>
+          </div>
+        ) : (
+          <div className="creative-series-history__list">
+            {entries.map((entry) => {
+              const manifest = entry.artifact.seriesManifest;
+              if (!manifest) return null;
+              const progress = Math.max(0, Math.min(100, Number(entry.artifact.progress) || 0));
+              const isActive = manifest.seriesId === activeSeriesId;
+              return (
+                <button
+                  type="button"
+                  className={`creative-series-history__entry${isActive ? ' is-active' : ''}`}
+                  key={manifest.seriesId}
+                  onClick={() => onOpen(entry)}
+                >
+                  <span className="creative-series-history__entry-icon"><Layers3 size={17} aria-hidden="true" /></span>
+                  <span className="creative-series-history__entry-copy">
+                    <strong>{manifest.title}</strong>
+                    <small>{manifest.episodes.length} episodes · {progress}% complete · {historyStatusLabel(entry)}</small>
+                    <small>Last known {formatCreatedAt(entry.savedAt)}</small>
+                  </span>
+                  <span className="creative-series-history__entry-arrow">{isActive ? 'OPEN' : 'REOPEN'} <span aria-hidden="true">›</span></span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function formatMetadataValue(value: unknown): string {
   if (value === null || value === undefined || value === '') return '—';
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
@@ -181,6 +257,8 @@ export function CreativeArtifactCard({
   onSeriesSceneRetry,
   onSeriesAssembleEpisode,
   onSeriesAssemble,
+  savedSeriesCount = 0,
+  onOpenSeriesHistory,
 }: CreativeArtifactCardProps) {
   const titleId = useId();
   const descriptionId = useId();
@@ -288,6 +366,16 @@ export function CreativeArtifactCard({
             {series.status === 'assembling' ? 'Assembling' : series.status}
           </span>
         </div>
+        {savedSeriesCount > 0 && (
+          <button
+            type="button"
+            className="creative-series__history-button"
+            onClick={onOpenSeriesHistory}
+          >
+            <History size={13} aria-hidden="true" />
+            HISTORY · {savedSeriesCount}
+          </button>
+        )}
 
         <div className="creative-series__toolbar">
           <div className="creative-series__mode" role="group" aria-label="Series render lane">

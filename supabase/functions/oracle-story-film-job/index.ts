@@ -28,6 +28,7 @@ type StoryScene = {
   seed: number;
   prompt: string;
   referenceUrl: string | null;
+  referenceAudioUrl: string | null;
   falRequestId: string | null;
   status: 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled';
   progress: number;
@@ -36,6 +37,18 @@ type StoryScene = {
   error: string | null;
   failureKind?: 'provider-safety' | 'provider' | 'submission' | null;
   recovery?: 'retry' | 'replace' | null;
+};
+
+type CharacterVoiceTrackInput = {
+  speaker: string;
+  public_url?: string;
+  publicUrl?: string;
+  storage_path?: string;
+  source_voice?: string;
+  voice_presentation?: string;
+  octave_shift?: number;
+  tuning_cents?: number;
+  duration_seconds?: number;
 };
 
 type StoryFailureKind = 'provider-safety' | 'provider' | 'submission' | 'audio-gate' | null;
@@ -132,6 +145,7 @@ function publicJob(row: StoryJobRow) {
       progress: scene.progress,
       jobId: scene.jobId,
       outputUrl: scene.outputUrl,
+      referenceAudioUrl: scene.referenceAudioUrl ?? null,
       error: scene.error,
       failureKind: scene.failureKind ?? null,
       recovery: scene.recovery ?? null,
@@ -159,6 +173,51 @@ function publicJob(row: StoryJobRow) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+const CHARACTER_SPEAKERS = new Set([
+  'levi',
+  'lennon',
+  'pickles',
+  'ghost-spider',
+  'mario-spider-man',
+  'donkey',
+]);
+
+function readCharacterVoiceTracks(value: unknown): CharacterVoiceTrackInput[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const track = entry as CharacterVoiceTrackInput;
+    const speaker = safeText(track.speaker, 40);
+    const publicUrl = safeUrl(track.public_url ?? track.publicUrl);
+    if (!CHARACTER_SPEAKERS.has(speaker) || !publicUrl) return [];
+    return [{
+      speaker,
+      public_url: publicUrl,
+      storage_path: safeText(track.storage_path, 300),
+      source_voice: safeText(track.source_voice, 80),
+      voice_presentation: safeText(track.voice_presentation, 40),
+      octave_shift: Number(track.octave_shift) || 0,
+      tuning_cents: Number(track.tuning_cents) || 0,
+      duration_seconds: Number(track.duration_seconds) || 0,
+    }];
+  });
+}
+
+function characterAudioForPage(
+  page: Record<string, unknown>,
+  tracks: CharacterVoiceTrackInput[],
+): string | null {
+  const bySpeaker = new Map(tracks.map(track => [track.speaker, track.public_url!]));
+  const lines = Array.isArray(page.voiceover) ? page.voiceover : [];
+  for (const entry of lines) {
+    if (!entry || typeof entry !== 'object') continue;
+    const speaker = safeText((entry as Record<string, unknown>).speaker, 40);
+    const url = bySpeaker.get(speaker);
+    if (url) return url;
+  }
+  return null;
 }
 
 async function falFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -546,13 +605,14 @@ Deno.serve(async (req: Request) => {
     const sessionId = safeText(payload.sessionId, 120);
     const pages = Array.isArray(payload.pages) ? payload.pages as Record<string, unknown>[] : [];
     const panels = Array.isArray(payload.panels) ? payload.panels as Record<string, unknown>[] : [];
+    const characterVoiceTracks = readCharacterVoiceTracks(payload.characterVoiceTracks);
     const musicBase64 = payload.musicBase64;
     const narrationBase64 = payload.narrationBase64;
     if (!sessionId || pages.length !== PAGE_COUNT || panels.length !== PAGE_COUNT) {
       return json({ error: 'sessionId plus exactly 32 pages and 32 locked panel references are required.' }, 400);
     }
     if (typeof musicBase64 !== 'string' || typeof narrationBase64 !== 'string') {
-      return json({ error: 'Premium story production requires real Lyria music and Gemini narration audio.' }, 400);
+      return json({ error: 'Premium story production requires real Lyria music and narration audio.' }, 400);
     }
 
     const totalDuration = pages.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
@@ -580,7 +640,8 @@ Deno.serve(async (req: Request) => {
         sourceAssets: 'two immutable 4x4 illustration sheets',
         referencePolicy: 'one persisted panel image per page',
         visualProvider: 'fal-seedance-2.5-image-to-video',
-        audioPolicy: 'Lyria soundtrack plus Gemini child-friendly narration',
+        audioPolicy: 'Lyria soundtrack plus validated lore narration',
+        characterVoiceTracks,
       },
     }).select('*').single();
     if (insertError || !inserted) return json({ error: 'Could not create the story film job.', detail: insertError?.message }, 500);
@@ -623,6 +684,7 @@ Deno.serve(async (req: Request) => {
               seed,
               prompt: storyPrompt(page),
               referenceUrl,
+              referenceAudioUrl: characterAudioForPage(page, characterVoiceTracks),
               falRequestId: requestId,
               status: 'generating' as const,
               progress: 8,
@@ -644,6 +706,7 @@ Deno.serve(async (req: Request) => {
               seed: 730_000 + index,
               prompt: storyPrompt(page),
               referenceUrl,
+                referenceAudioUrl: characterAudioForPage(page, characterVoiceTracks),
               falRequestId: null,
               status: 'failed' as const,
               progress: 0,

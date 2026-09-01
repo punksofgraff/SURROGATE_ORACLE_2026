@@ -17,6 +17,7 @@ export type IllustrationStorySceneState = {
   durationSeconds: number;
   seed: number;
   referenceUrl?: string | null;
+  referenceAudioUrl?: string | null;
   status: 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled';
   progress: number;
   jobId?: string | null;
@@ -35,6 +36,7 @@ export type IllustrationStoryFilmJob = {
   chunkCount: number;
   pageCount: number;
   scenes: IllustrationStorySceneState[];
+  characterVoiceTracks?: IllustrationStoryCharacterTrack[];
   finalMediaUrl: string | null;
   error: string | null;
   failureKind: IllustrationStoryFailureKind;
@@ -59,7 +61,26 @@ export type IllustrationStoryFilmResult = {
   narrationAvailable: boolean;
 };
 
+export type IllustrationStoryCharacterTrack = {
+  speaker: Exclude<IllustrationStoryVoiceLine['speaker'], 'oracle'>;
+  source_voice: string;
+  voice_presentation: 'young-masculine' | 'young-feminine' | 'young-neutral';
+  octave_shift: number;
+  tuning_cents: number;
+  transcript: string;
+  duration_seconds: number;
+  sample_rate_hz: number;
+  public_url: string;
+  storage_path: string;
+  track_key: string;
+  status: 'ready';
+};
+
 type StoryAsset = { base64: string; mimeType: string };
+type NarrationBundle = {
+  narration: StoryAsset;
+  characterTracks: IllustrationStoryCharacterTrack[];
+};
 type StoryJobListener = (job: IllustrationStoryFilmJob) => void;
 
 function toBase64(bytes: Uint8Array): string {
@@ -129,24 +150,47 @@ async function createLockedPanelAssets(
   }
 }
 
-async function createNarrationAudio(pages: IllustrationStoryPage[]): Promise<StoryAsset> {
+async function createNarrationAudio(
+  pages: IllustrationStoryPage[],
+  sessionId: string,
+): Promise<NarrationBundle> {
   const lines: IllustrationStoryVoiceLine[] = pages.flatMap(page => page.voiceover ?? [{
     speaker: 'oracle' as const,
     text: page.narration,
     pauseAfterMs: 260,
   }]);
-  const { data, error } = await supabase.functions.invoke('oracle-chirp-voiceover', { body: { lines } });
-  if (error) throw new Error(`Chirp lore voiceover could not be generated: ${error.message}`);
+  const characterLines = lines.filter((line): line is Exclude<IllustrationStoryVoiceLine, { speaker: 'oracle' }> => line.speaker !== 'oracle');
+  const [narrationResponse, characterResponse] = await Promise.all([
+    supabase.functions.invoke('oracle-chirp-voiceover', { body: { lines } }),
+    characterLines.length
+      ? supabase.functions.invoke('oracle-character-voice-tracks', {
+        body: { sessionId, storyKey: 'illustration-story', lines: characterLines },
+      })
+      : Promise.resolve({ data: { tracks: [] }, error: null }),
+  ]);
+  if (narrationResponse.error) {
+    throw new Error(`Chirp lore voiceover could not be generated: ${narrationResponse.error.message}`);
+  }
+  if (characterResponse.error) {
+    throw new Error(`Character voice tracks could not be generated: ${characterResponse.error.message}`);
+  }
+  const data = narrationResponse.data;
+  let narration: StoryAsset | null = null;
   if (data instanceof Blob && data.size) {
-    return { base64: toBase64(new Uint8Array(await data.arrayBuffer())), mimeType: data.type || 'audio/wav' };
+    narration = { base64: toBase64(new Uint8Array(await data.arrayBuffer())), mimeType: data.type || 'audio/wav' };
+  } else if (data instanceof ArrayBuffer && data.byteLength) {
+    narration = { base64: toBase64(new Uint8Array(data)), mimeType: 'audio/wav' };
+  } else if (data instanceof Uint8Array && data.byteLength) {
+    narration = { base64: toBase64(data), mimeType: 'audio/wav' };
   }
-  if (data instanceof ArrayBuffer && data.byteLength) {
-    return { base64: toBase64(new Uint8Array(data)), mimeType: 'audio/wav' };
+  if (!narration) throw new Error('Chirp lore voiceover returned no playable audio.');
+  const tracks = Array.isArray(characterResponse.data?.tracks)
+    ? characterResponse.data.tracks as IllustrationStoryCharacterTrack[]
+    : [];
+  if (tracks.length !== new Set(characterLines.map(line => line.speaker)).size) {
+    throw new Error('Character voice track response was incomplete.');
   }
-  if (data instanceof Uint8Array && data.byteLength) {
-    return { base64: toBase64(data), mimeType: 'audio/wav' };
-  }
-    throw new Error('Chirp lore voiceover returned no playable audio.');
+  return { narration, characterTracks: tracks };
 }
 
 function isTerminal(status: IllustrationStoryFilmJob['status']): boolean {
@@ -220,10 +264,10 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     onProgress?.(2);
 
     if (pages.length !== 32) throw new Error('Premium story production requires exactly 32 pages.');
-    const [panels, music, narration] = await Promise.all([
+    const [panels, music, narrationBundle] = await Promise.all([
       createLockedPanelAssets(sheetUrls, pages),
       urlToBase64(musicUrl),
-      createNarrationAudio(pages),
+      createNarrationAudio(pages, sessionId ?? 'anonymous-story-session'),
     ]);
     if (controller.signal.aborted) throw new Error('Story film production cancelled.');
     onProgress?.(6);
@@ -236,8 +280,9 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
         panels,
         musicBase64: music.base64,
         musicMimeType: music.mimeType,
-        narrationBase64: narration.base64,
-        narrationMimeType: narration.mimeType,
+        narrationBase64: narrationBundle.narration.base64,
+        narrationMimeType: narrationBundle.narration.mimeType,
+        characterVoiceTracks: narrationBundle.characterTracks,
       },
     });
     if (error) throw new Error(`Premium story job could not start: ${error.message}`);
@@ -335,14 +380,20 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     if (controller.signal.aborted) throw new Error('Story film render cancelled.');
     onProgress?.(20);
 
-    const narration = await createNarrationAudio(pages);
+    const narrationBundle = await createNarrationAudio(pages, sessionId ?? 'anonymous-story-session');
     if (controller.signal.aborted) throw new Error('Story film render cancelled.');
     onProgress?.(30);
 
     const response = await fetch(`${import.meta.env.BASE_URL}api/illustration-story-stitch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sheets: [sheetOne, sheetTwo], music, narration, pages }),
+       body: JSON.stringify({
+         sheets: [sheetOne, sheetTwo],
+         music,
+         narration: narrationBundle.narration,
+         characterVoiceTracks: narrationBundle.characterTracks,
+         pages,
+       }),
       signal: controller.signal,
     });
     if (!response.ok) {

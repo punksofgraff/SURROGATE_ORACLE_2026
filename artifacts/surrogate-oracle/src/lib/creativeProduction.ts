@@ -144,6 +144,115 @@ export type IllustrationStorySoundEffect = {
   pageNumber?: number;
   volume?: number;
 };
+
+export type IllustrationStoryShotTreatment =
+  | 'shoreline-reveal'
+  | 'wave-splash'
+  | 'underwater-drift'
+  | 'comic-reaction'
+  | 'tunnel-pull'
+  | 'threshold-crossing'
+  | 'coral-welcome'
+  | 'creature-approach'
+  | 'impact-shake'
+  | 'rescue-rush'
+  | 'group-release'
+  | 'moonrise-float'
+  | 'bedtime-settle'
+  | 'portal-glide'
+  | 'hero-entrance'
+  | 'cave-collapse'
+  | 'forest-breath'
+  | 'monster-reveal'
+  | 'listening-hold'
+  | 'teamwork-montage'
+  | 'kindness-bloom'
+  | 'signal-farewell';
+
+export type IllustrationStorySoundCue =
+  | 'none'
+  | 'shore'
+  | 'splash'
+  | 'water'
+  | 'sparkle'
+  | 'impact'
+  | 'portal'
+  | 'creature'
+  | 'release'
+  | 'night'
+  | 'settle'
+  | 'web'
+  | 'forest'
+  | 'growl'
+  | 'kindness'
+  | 'farewell';
+
+export type IllustrationStoryShotPlan = {
+  treatment: IllustrationStoryShotTreatment;
+  subjectFocus: string;
+  actionBeat: string;
+  environmentBeat: string;
+  cameraMove: string;
+  performanceCue: 'subject-performance' | 'environment-performance' | 'reaction-performance' | 'group-performance';
+  soundCue: IllustrationStorySoundCue;
+  soundOffsetSeconds: number;
+  lipSyncMode: 'line-timed' | 'reaction-hold' | 'none';
+  focusX: number;
+  focusY: number;
+};
+
+const ILLUSTRATION_STORY_SHOT_BEATS: IllustrationStoryShotPlan[] = [
+  ['shoreline-reveal', 'Levi, Lennon, and Pickles on the shore', 'Levi lifts his hand toward the shining water while Lennon turns to follow his gaze.', 'The ocean sparkle travels left to right behind them.', 'low lateral reveal from the sand into the bright horizon', 'group-performance', 'shore', 0.25, 'line-timed'],
+  ['wave-splash', 'Levi and Lennon at the waterline', 'Lennon points toward the hidden light and Levi leans into the next step.', 'A band of reflected light rolls across the waves.', 'motivated push toward the glint, then a held reaction frame', 'subject-performance', 'water', 1.1, 'line-timed'],
+  ['underwater-drift', 'Pickles leading the underwater trail', 'Pickles paddles forward as the children follow and look around.', 'Fish and bubbles drift upward at different depths.', 'submerged tracking move that follows Pickles through the blue', 'environment-performance', 'water', 0.4, 'line-timed'],
+  ['comic-reaction', 'Pickles and the oversized flip-flops', 'Pickles glances from the flip-flops to the children as the joke lands.', 'The tide gives the props a small, comic bob.', 'quick rack-like reframing from prop to Pickles reaction', 'reaction-performance', 'sparkle', 0.65, 'reaction-hold'],
+  ['wave-splash', 'Pickles bursting through the wave', 'Pickles leaps up and the children brace against the spray.', 'The splash expands from the center into the foreground.', 'fast rise with a brief impact settle at the top of the splash', 'group-performance', 'splash', 0.12, 'line-timed'],
+  ['tunnel-pull', 'The three friends entering the underwater tunnel', 'The friends swim toward the glowing opening, pulled by its light.', 'The tunnel glow pulses outward through the coral.', 'forward tunnel pull with a gentle roll into the threshold', 'group-performance', 'portal', 1.45, 'none'],
+  ['threshold-crossing', 'Levi, Lennon, and Pickles at the tunnel mouth', 'Levi crosses first and turns back so the others can stay together.', 'The tunnel rim shimmers as the group passes through.', 'cross-axis move from the dark edge into the blue interior', 'group-performance', 'portal', 0.85, 'line-timed'],
+  ['coral-welcome', 'The friends arriving in the hidden kingdom', 'The children slow down and look up as the kingdom opens around them.', 'Jellyfish and fish make a slow welcoming current.', 'wide arc that reveals the environment after the entrance', 'environment-performance', 'sparkle', 0.55, 'line-timed'],
+  ['creature-approach', 'The golden sea turtle greeting the group', 'The turtle swims toward the friends and Levi reaches out carefully.', 'A trail of bubbles follows the turtle into the frame.', 'soft approach that hands focus from the turtle to Levi', 'subject-performance', 'creature', 0.7, 'line-timed'],
+  ['impact-shake', 'The whale shadow and the startled friends', 'The friends recoil together when the giant shadow crosses the water.', 'The whole underwater field gives one controlled tremor.', 'short shock displacement followed by a held wide reveal', 'reaction-performance', 'impact', 0.18, 'reaction-hold'],
+  ['rescue-rush', 'The whale asking for help', 'The whale turns toward the friends while they move closer to listen.', 'The whale wake sweeps across the lower frame.', 'sideways rush that decelerates into the whale eye line', 'subject-performance', 'water', 0.8, 'line-timed'],
+  ['rescue-rush', 'Pickles finding the missing piece', 'Pickles darts toward the clue and the children turn to follow.', 'Loose bubbles and seaweed whip briefly in the wake.', 'whip-pan to the clue, then a fast settle on Pickles', 'subject-performance', 'sparkle', 0.35, 'line-timed'],
+  ['group-release', 'The friends freeing the whale', 'The group pulls together and the whale surges free of the tangle.', 'The rescue wake clears the water and sends fish outward.', 'compressed push-in that opens into a celebratory wide', 'group-performance', 'release', 0.62, 'line-timed'],
+  ['creature-approach', 'The sea turtle sharing its secret', 'The turtle leans close while the friends gather in a quiet semicircle.', 'Tiny particles drift around the shell like a soft halo.', 'slow conversational orbit with a gentle foreground parallax', 'reaction-performance', 'sparkle', 0.9, 'line-timed'],
+  ['moonrise-float', 'The friends floating together at moonrise', 'The friends lift their faces toward the moon and settle into the promise.', 'Moonlight stretches across the water in a moving path.', 'upward float from the group to the moonlit sky', 'environment-performance', 'night', 0.45, 'line-timed'],
+  ['bedtime-settle', 'Levi, Lennon, and Pickles asleep', 'The room settles around the sleeping friends as the last wave fades.', 'The lamp glow breathes softly and the window darkens toward night.', 'quiet pullback that leaves the room in a warm final hold', 'environment-performance', 'settle', 1.5, 'none'],
+  ['portal-glide', 'The pink spider tunnel title world', 'The camera glides into the tunnel as the magical route wakes up.', 'Pink web lines and stars shimmer in a spiral toward the center.', 'centerline glide through the tunnel with a slight vertical lift', 'environment-performance', 'portal', 0.55, 'none'],
+  ['portal-glide', 'The castle beyond the tunnel', 'The view arrives at the castle and holds long enough for the world to register.', 'Silver spiders descend and floor reflections travel toward camera.', 'reveal arc from tunnel wall to the distant castle', 'environment-performance', 'sparkle', 0.75, 'none'],
+  ['hero-entrance', 'Ghost Spider, Mario Spider-Man, and Donkey', 'The three friends enter with separate gestures and converge on the adventure.', 'Pink light streaks behind their entrance.', 'three-step lateral entrance ending in a shared hero frame', 'group-performance', 'web', 0.3, 'line-timed'],
+  ['cave-collapse', 'The shadow at the Pink Spider Tunnel entrance', 'The friends look toward the opening as the first rocks fall.', 'Pebbles and pink dust descend from the ceiling.', 'drop with the falling debris, then snap back to the group', 'environment-performance', 'impact', 0.2, 'reaction-hold'],
+  ['listening-hold', 'Ghost Spider, Mario, and Donkey making a plan', 'Ghost Spider gestures for quiet and the others lean in to listen.', 'The tunnel glow steadies while dust hangs in the air.', 'small inward circle that resolves on the listening faces', 'reaction-performance', 'settle', 1.1, 'line-timed'],
+  ['threshold-crossing', 'The friends opening the mysterious door', 'The group reaches the door and Ghost Spider touches the glowing spider mark.', 'Light leaks through the door seam and grows across the rocks.', 'push along the hand gesture into the opening seam', 'group-performance', 'portal', 1.05, 'line-timed'],
+  ['forest-breath', 'The talking trees and the small adventurers', 'The friends step into the forest and the nearest tree bends to greet them.', 'Leaves, mushrooms, and the river move in separate slow rhythms.', 'wide breathing sway that reveals the forest scale', 'environment-performance', 'forest', 0.4, 'line-timed'],
+  ['monster-reveal', 'The purple monster emerging from the bushes', 'The monster rises behind the friends and they turn together toward the growl.', 'Bushes part and a wave of shadow rolls through the leaves.', 'fast reverse reveal from the friends to the monster silhouette', 'reaction-performance', 'growl', 0.15, 'reaction-hold'],
+  ['listening-hold', 'Ghost Spider asking the monster what is wrong', 'Ghost Spider lowers her hands and holds a patient listening pose.', 'The monster fur and nearby leaves calm as tension releases.', 'slow handoff from the monster to Ghost Spider face', 'reaction-performance', 'settle', 1.25, 'line-timed'],
+  ['teamwork-montage', 'The friends helping the monster', 'Small acts of help pass across the group: a lift, a web, and a shared push.', 'The forest brightens in successive pockets around each action.', 'three-beat editorial sweep across the existing mini-scenes', 'group-performance', 'kindness', 0.35, 'line-timed'],
+  ['kindness-bloom', 'The monster smiling with the friends', 'The monster shoulders lower and the friends step closer into a circle.', 'The flower and forest color lift around the new friendship.', 'slow circular bloom from the monster to the full group', 'group-performance', 'kindness', 0.8, 'line-timed'],
+  ['portal-glide', 'The friends crossing the canyon together', 'The group moves as one across the stepping stones and web bridge.', 'The canyon depth shifts behind their crossing.', 'diagonal tracking move that keeps the group connected', 'group-performance', 'water', 0.65, 'none'],
+  ['teamwork-montage', 'The small helpful actions in the forest', 'Each friend completes one practical task and looks to the next helper.', 'Leaves and water answer every movement with a small echo.', 'rhythmic reframing across the existing mini-scenes', 'group-performance', 'forest', 0.3, 'line-timed'],
+  ['kindness-bloom', 'The monster and Princess Ghost Spider', 'The monster bows its head and Ghost Spider offers the final reassuring gesture.', 'The flower opens toward them as the background glow warms.', 'gentle push through the flower foreground to the embrace', 'reaction-performance', 'kindness', 0.9, 'line-timed'],
+  ['signal-farewell', 'The full group in the bright forest', 'The friends wave and the monster answers with a broad, relieved smile.', 'The forest sparkles settle into a shared warm pulse.', 'wide orbit that resolves on the whole reunited group', 'group-performance', 'farewell', 0.7, 'line-timed'],
+  ['signal-farewell', 'The friends waving from the Pink Spider Tunnel', 'Each friend gives a distinct goodbye gesture before the tunnel glow closes.', 'The tunnel web lights recede toward a single pink point.', 'slow pullback through the tunnel to a final centered frame', 'group-performance', 'farewell', 1.1, 'line-timed'],
+].map(([treatment, subjectFocus, actionBeat, environmentBeat, cameraMove, performanceCue, soundCue, soundOffsetSeconds, lipSyncMode]) => ({
+  treatment: treatment as IllustrationStoryShotTreatment,
+  subjectFocus: String(subjectFocus),
+  actionBeat: String(actionBeat),
+  environmentBeat: String(environmentBeat),
+  cameraMove: String(cameraMove),
+  performanceCue: performanceCue as IllustrationStoryShotPlan['performanceCue'],
+  soundCue: soundCue as IllustrationStorySoundCue,
+  soundOffsetSeconds: Number(soundOffsetSeconds),
+  lipSyncMode: lipSyncMode as IllustrationStoryShotPlan['lipSyncMode'],
+  focusX: 0.5,
+  focusY: 0.5,
+}));
+
+export function createIllustrationStoryShotPlan(pageNumber: number): IllustrationStoryShotPlan {
+  const plan = ILLUSTRATION_STORY_SHOT_BEATS[pageNumber - 1];
+  if (!plan) throw new Error(`Illustration story shot plan is missing page ${pageNumber}.`);
+  return { ...plan };
+}
 export type IllustrationStoryPage = {
   id: string;
   pageNumber: number;
@@ -162,6 +271,7 @@ export type IllustrationStoryPage = {
   voiceover?: IllustrationStoryVoiceLine[];
   soundEffects?: IllustrationStorySoundEffect[];
   sfx?: IllustrationStorySoundEffect[];
+  shotPlan: IllustrationStoryShotPlan;
 };
 
 export type IllustrationStoryScene = {
@@ -374,6 +484,7 @@ export function createIllustrationStoryPages(
       progress: 0,
       error: null,
       voiceover: voiceover[index],
+      shotPlan: createIllustrationStoryShotPlan(pageNumber),
     };
   });
 }
@@ -595,19 +706,20 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
           ? 'Create series manifest'
           : 'Create draft',
     confirmationCopy: illustrationStory && classification.missingDetails.length === 0
-      ? 'This starts the free local story lane: the original 32 panels stay in order while local FFmpeg assembles motion, Lyria backing music, and the existing narration/voice mix into a validated widescreen MP4.'
+      ? 'This starts the free local studio lane: all 32 original panels stay in order while authored shot treatments create staged movement, Lyria backs the edit, and the narration/voice mix is held for a manual watch-and-listen approval.'
       : missingCopy(classification.missingDetails),
     storyPages: illustrationStory ? createIllustrationStoryPages(clean, createdAt) : undefined,
     metadata: {
       confidence: classification.confidence,
       missingDetails: classification.missingDetails,
       ...(illustrationStory ? {
-        production: 'illustration-story-proof',
+        production: 'illustration-story-studio',
         storyLane: 'local' as IllustrationStoryLane,
         falModelSlug: null,
       storyModelSlug: null,
         pageCount: ILLUSTRATION_STORY_PAGE_COUNT,
         pageDurationSeconds: ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,
+        shotPlan: '32 authored per-panel performance treatments',
         targetDurationSeconds: ILLUSTRATION_STORY_PAGE_COUNT * ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,
         storyOne: ILLUSTRATION_STORY_NAMES[0],
         storyTwo: ILLUSTRATION_STORY_NAMES[1],

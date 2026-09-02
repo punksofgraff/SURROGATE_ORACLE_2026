@@ -59,6 +59,8 @@ export type CreativeArtifactCardProps = {
   onStorySceneReplace?: (pageNumber: number) => void;
   onStoryFilmRetry?: () => void;
   onStoryLaneChange?: (lane: IllustrationStoryLane, modelSlug: string | null) => void;
+  onStoryReviewApprove?: () => void;
+  onStoryReviewReject?: () => void;
   savedSeriesCount?: number;
   onOpenSeriesHistory?: () => void;
 };
@@ -353,6 +355,8 @@ export function CreativeArtifactCard({
   onStorySceneReplace,
   onStoryFilmRetry,
   onStoryLaneChange,
+  onStoryReviewApprove,
+  onStoryReviewReject,
   savedSeriesCount = 0,
   onOpenSeriesHistory,
 }: CreativeArtifactCardProps) {
@@ -367,7 +371,7 @@ export function CreativeArtifactCard({
   const hasMetadata = Boolean(metadataRecord && Object.keys(metadataRecord).length);
   const series = artifact.seriesManifest;
   const storyPages = artifact.storyPages ?? [];
-  const isIllustrationStory = ['illustration-story-premium', 'illustration-story-proof'].includes(
+  const isIllustrationStory = ['illustration-story-studio', 'illustration-story-premium', 'illustration-story-proof'].includes(
     String(artifact.metadata?.production),
   );
   const storyScenes: IllustrationStoryScene[] = Array.isArray(metadataRecord?.storyScenes)
@@ -390,6 +394,10 @@ export function CreativeArtifactCard({
   const isWorking = status === 'queued' || status === 'generating';
   const isRecoverable = status === 'failed' || status === 'cancelled' || status === 'partial';
   const storyFailureKind = metadataRecord?.storyFailureKind;
+  const studioReview = metadataRecord?.studioReview as { status?: string; reviewedAt?: string } | undefined;
+  const requiresStudioReview = isIllustrationStory
+    && hasOutput
+    && studioReview?.status !== 'approved';
   const storyHasScenes = isIllustrationStory && storyScenes.length > 0;
   const storyAudioGateFailed = storyHasScenes
     && (storyFailureKind === 'audio-gate' || storyFailureKind === 'gemini-audio');
@@ -699,9 +707,11 @@ export function CreativeArtifactCard({
         <div className="creative-artifact-card__state-row">
           <div className="creative-artifact-card__state" data-testid="creative-artifact-status">
             {statusIcon(status)}
-            <span>{statusLabel(status)}</span>
+            <span>{requiresStudioReview ? 'Unreviewed studio render' : statusLabel(status)}</span>
           </div>
-          <div className="creative-artifact-card__state-note">{statusNote(status)}</div>
+          <div className="creative-artifact-card__state-note">
+            {requiresStudioReview ? 'watch + listen before approval' : statusNote(status)}
+          </div>
         </div>
 
         <div>
@@ -993,8 +1003,8 @@ export function CreativeArtifactCard({
             )}
             <p>
               32 locked panel references · {Math.round(storyPages.reduce((sum, page) => sum + page.durationSeconds, 0))} seconds ·
-              {artifact.metadata?.production === 'illustration-story-proof'
-                ? 'gentle local pan/zoom motion ·'
+              {['illustration-story-proof', 'illustration-story-studio'].includes(String(artifact.metadata?.production))
+                ? 'authored per-panel studio treatment ·'
                 : 'FAL motion per page ·'}
               {' '}Lyria backing music · optional Gemini child-friendly narration
             </p>
@@ -1031,6 +1041,40 @@ export function CreativeArtifactCard({
             <div className="creative-artifact-card__output-meta">
               <span>{artifact.outputLabel ?? 'Partial creative artifact'}</span>
               <span>{artifact.providerLabel}</span>
+            </div>
+          </div>
+        )}
+
+        {requiresStudioReview && (
+          <div className="creative-story-review" role="group" aria-label="Studio episode review gate">
+            <div className="creative-story-review__heading">
+              <Eye size={15} aria-hidden="true" />
+              <strong>Studio review required</strong>
+            </div>
+            <p>
+              Watch the complete 32-page render with sound. Approve only if the source artwork stays intact,
+              the shot actions read on screen, and narration, character voices, music, and cues remain intelligible.
+              Reject it if it plays like a slideshow or has an audio problem.
+            </p>
+            <div className="creative-story-review__actions">
+              <button
+                type="button"
+                className="creative-artifact-card__button creative-artifact-card__button--primary"
+                onClick={onStoryReviewApprove}
+                disabled={!onStoryReviewApprove}
+              >
+                <Check size={14} aria-hidden="true" />
+                I WATCHED + LISTENED — APPROVE
+              </button>
+              <button
+                type="button"
+                className="creative-artifact-card__button"
+                onClick={onStoryReviewReject}
+                disabled={!onStoryReviewReject}
+              >
+                <X size={14} aria-hidden="true" />
+                REJECT AS UNREVIEWED / SLIDESHOW
+              </button>
             </div>
           </div>
         )}

@@ -80,6 +80,19 @@ type StoryPageRequest = {
   durationSeconds: number;
   soundEffects?: StorySoundEffectRequest[];
   sfx?: StorySoundEffectRequest[];
+  shotPlan?: {
+    treatment?: string;
+    subjectFocus?: string;
+    actionBeat?: string;
+    environmentBeat?: string;
+    cameraMove?: string;
+    performanceCue?: string;
+    soundCue?: string;
+    soundOffsetSeconds?: number;
+    lipSyncMode?: string;
+    focusX?: number;
+    focusY?: number;
+  };
 };
 
 type StoryCharacterTrackRequest = {
@@ -233,6 +246,196 @@ async function runFfmpeg(args: string[]): Promise<void> {
   await execFileAsync('ffmpeg', ['-hide_banner', '-loglevel', 'error', ...args], { maxBuffer: 2 * 1024 * 1024 });
 }
 
+function storyPerformanceFilter(page: StoryPageRequest): string {
+  const plan = page.shotPlan;
+  if (!plan?.treatment || !plan.actionBeat || !plan.environmentBeat || !plan.cameraMove || !plan.performanceCue) {
+    throw new Error(`Story page ${page.pageNumber} has no authored performance plan.`);
+  }
+  const phase = (page.pageNumber * 0.73).toFixed(3);
+  const centerX = `(iw-1280)/2`;
+  const centerY = `(ih-720)/2`;
+  const cameraByTreatment: Record<string, { x: string; y: string; stage: string }> = {
+    'shoreline-reveal': {
+      x: `${centerX}+760*sin(2*PI*(t+${phase})/${page.durationSeconds})`,
+      y: `${centerY}+34*cos(2*PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'wave-splash': {
+      x: `${centerX}+190*sin(2*PI*(t+${phase})/${page.durationSeconds})`,
+      y: `${centerY}-90*sin(PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'underwater-drift': {
+      x: `${centerX}+520*sin(2*PI*(t+${phase})/${page.durationSeconds})`,
+      y: `${centerY}+170*cos(2*PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'comic-reaction': {
+      x: `${centerX}+if(lt(t,${page.durationSeconds / 2}),-260+520*t/${page.durationSeconds / 2},260-520*(t-${page.durationSeconds / 2})/${page.durationSeconds / 2})`,
+      y: `${centerY}+24*sin(2*PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'tunnel-pull': {
+      x: `${centerX}+260*sin(PI*(t+${phase})/${page.durationSeconds})`,
+      y: `${centerY}+180*sin(PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'threshold-crossing': {
+      x: `${centerX}-520+1040*t/${page.durationSeconds}`,
+      y: `${centerY}+70*sin(2*PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'coral-welcome': {
+      x: `${centerX}+360*sin(PI*(t+${phase})/${page.durationSeconds})`,
+      y: `${centerY}-120*sin(PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'creature-approach': {
+      x: `${centerX}+150*sin(2*PI*(t+${phase})/${page.durationSeconds})`,
+      y: `${centerY}+80*cos(PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'impact-shake': {
+      x: `${centerX}+if(lt(t,0.42),115*cos(38*t),36*sin(18*t)*exp(-1.8*(t-0.42)))`,
+      y: `${centerY}+if(lt(t,0.42),70*sin(42*t),22*cos(16*t)*exp(-1.8*(t-0.42)))`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'rescue-rush': {
+      x: `${centerX}-760+1520*t/${page.durationSeconds}`,
+      y: `${centerY}+55*sin(4*PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'group-release': {
+      x: `${centerX}+420*sin(PI*(t+${phase})/${page.durationSeconds})`,
+      y: `${centerY}+110*cos(PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'moonrise-float': {
+      x: `${centerX}+130*sin(PI*(t+${phase})/${page.durationSeconds})`,
+      y: `${centerY}-300*t/${page.durationSeconds}`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'bedtime-settle': {
+      x: `${centerX}+if(lt(t,${page.durationSeconds / 2}),-180+360*t/${page.durationSeconds / 2},180-360*(t-${page.durationSeconds / 2})/${page.durationSeconds / 2})`,
+      y: `${centerY}+20*sin(2*PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'portal-glide': {
+      x: `${centerX}+300*sin(PI*(t+${phase})/${page.durationSeconds})`,
+      y: `${centerY}+260*sin(PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'hero-entrance': {
+      x: `${centerX}-820+1640*t/${page.durationSeconds}`,
+      y: `${centerY}+35*sin(6*PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'cave-collapse': {
+      x: `${centerX}+if(lt(t,0.6),120*sin(30*t),80*sin(11*t)*exp(-1.6*(t-0.6)))`,
+      y: `${centerY}+if(lt(t,0.6),-120*t/0.6,34*cos(14*t)*exp(-1.4*(t-0.6)))`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'forest-breath': {
+      x: `${centerX}+280*sin(2*PI*(t+${phase})/${page.durationSeconds})`,
+      y: `${centerY}+100*sin(2*PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'monster-reveal': {
+      x: `${centerX}+if(lt(t,${page.durationSeconds * 0.38}),-460+920*t/${page.durationSeconds * 0.38},460-920*(t-${page.durationSeconds * 0.38})/${page.durationSeconds * 0.62})`,
+      y: `${centerY}+80*cos(PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'listening-hold': {
+      x: `${centerX}+80*sin(PI*(t+${phase})/${page.durationSeconds})`,
+      y: `${centerY}+38*cos(PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'teamwork-montage': {
+      x: `${centerX}+if(lt(t,${page.durationSeconds / 3}),-500+1500*t/(${page.durationSeconds}/3),if(lt(t,${page.durationSeconds * 2 / 3}),500-1000*(t-${page.durationSeconds / 3})/(${page.durationSeconds}/3),-500+1000*(t-${page.durationSeconds * 2 / 3})/(${page.durationSeconds}/3)))`,
+      y: `${centerY}+55*sin(6*PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'kindness-bloom': {
+      x: `${centerX}+170*sin(PI*(t+${phase})/${page.durationSeconds})`,
+      y: `${centerY}+90*sin(PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+    'signal-farewell': {
+      x: `${centerX}+440*sin(PI*(t+${phase})/${page.durationSeconds})`,
+      y: `${centerY}+180*cos(PI*(t+${phase})/${page.durationSeconds})`,
+      stage: 'scale=3840:2160:force_original_aspect_ratio=increase,crop=3840:2160',
+    },
+  };
+  const camera = cameraByTreatment[plan.treatment] ?? cameraByTreatment['listening-hold'];
+  const fadeOutStart = Math.max(0.1, Number(page.durationSeconds) - 0.22);
+  const panel = `crop=iw/4:ih/4:${page.column}*iw/4:${page.row}*ih/4`;
+  return [
+    panel,
+    camera.stage,
+    `crop=1280:720:x='${camera.x}':y='${camera.y}'`,
+    'setsar=1',
+    'fps=24',
+    'format=yuv420p',
+    'fade=t=in:st=0:d=0.22',
+    `fade=t=out:st=${fadeOutStart}:d=0.22`,
+  ].join(',');
+}
+
+type AuthoredStoryEffect = { file: string; startSeconds: number; volume: number };
+
+function authoredCueFilter(cue: string, duration: number): string {
+  const safeDuration = Math.max(0.16, Math.min(1.2, duration));
+  switch (cue) {
+    case 'splash':
+      return `anoisesrc=color=white:amplitude=0.2:duration=${safeDuration},lowpass=f=2600,afade=t=out:st=${Math.max(0.05, safeDuration - 0.25)}:d=0.25`;
+    case 'impact':
+      return `sine=frequency=82:duration=${safeDuration},afade=t=out:st=${Math.max(0.05, safeDuration - 0.3)}:d=0.3`;
+    case 'portal':
+      return `sine=frequency=330:duration=${safeDuration}, vibrato=f=5:d=0.3,afade=t=out:st=${Math.max(0.05, safeDuration - 0.35)}:d=0.35`;
+    case 'sparkle':
+    case 'web':
+      return `sine=frequency=880:duration=${safeDuration},afade=t=out:st=${Math.max(0.05, safeDuration - 0.28)}:d=0.28`;
+    case 'growl':
+      return `sine=frequency=96:duration=${safeDuration},lowpass=f=900,afade=t=out:st=${Math.max(0.05, safeDuration - 0.3)}:d=0.3`;
+    case 'release':
+    case 'farewell':
+      return `sine=frequency=523.25:duration=${safeDuration},afade=t=out:st=${Math.max(0.05, safeDuration - 0.4)}:d=0.4`;
+    case 'shore':
+    case 'water':
+    case 'forest':
+      return `anoisesrc=color=brown:amplitude=0.045:duration=${safeDuration},lowpass=f=1400,afade=t=out:st=${Math.max(0.05, safeDuration - 0.3)}:d=0.3`;
+    case 'night':
+    case 'settle':
+    case 'kindness':
+      return `sine=frequency=220:duration=${safeDuration},afade=t=out:st=${Math.max(0.05, safeDuration - 0.45)}:d=0.45`;
+    default:
+      return '';
+  }
+}
+
+async function createAuthoredStoryEffects(
+  pages: StoryPageRequest[],
+  dir: string,
+): Promise<AuthoredStoryEffect[]> {
+  let storyOffset = 0;
+  const effects: AuthoredStoryEffect[] = [];
+  for (const page of pages) {
+    const cue = page.shotPlan?.soundCue ?? 'none';
+    const filter = authoredCueFilter(cue, cue === 'impact' || cue === 'splash' ? 0.55 : 0.8);
+    if (filter) {
+      const file = path.join(dir, `authored-${String(page.pageNumber).padStart(2, '0')}-${cue}.wav`);
+      await runFfmpeg(['-y', '-f', 'lavfi', '-i', filter, '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', file]);
+      effects.push({
+        file,
+        startSeconds: storyOffset + Math.max(0, Number(page.shotPlan?.soundOffsetSeconds) || 0),
+        volume: cue === 'impact' || cue === 'growl' ? 0.2 : 0.12,
+      });
+    }
+    storyOffset += Number(page.durationSeconds);
+  }
+  return effects;
+}
+
 async function hasAudioStream(file: string): Promise<boolean> {
   const { stdout } = await execFileAsync('ffprobe', [
     '-v', 'error',
@@ -284,11 +487,18 @@ async function stitchIllustrationStory(body: any): Promise<{
     && page.sheetIndex === (index < 16 ? 0 : 1)
     && page.row === Math.floor((index % 16) / 4)
     && page.column === index % 4);
-  if (!orderedPages || !pages.every(page => Number.isInteger(page.pageNumber) && page.sheetIndex >= 0 && page.sheetIndex <= 1
+  const hasPerformancePlan = pages.every(page => Boolean(
+    page.shotPlan?.treatment
+      && page.shotPlan.actionBeat
+      && page.shotPlan.environmentBeat
+      && page.shotPlan.cameraMove
+      && page.shotPlan.performanceCue,
+  ));
+  if (!orderedPages || !hasPerformancePlan || !pages.every(page => Number.isInteger(page.pageNumber) && page.sheetIndex >= 0 && page.sheetIndex <= 1
     && page.row >= 0 && page.row < 4 && page.column >= 0 && page.column < 4
     && Number(page.durationSeconds) > 0 && Number(page.durationSeconds) <= 10)
     || duration < 100 || duration > 180) {
-    throw new Error('Story pages must be contiguous 01–32 in sheet order with valid 4×4 coordinates and timing.');
+    throw new Error('Story pages must be contiguous 01–32 in sheet order with a non-generic performance plan and valid 4×4 timing.');
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-story-'));
   try {
@@ -348,9 +558,7 @@ async function stitchIllustrationStory(body: any): Promise<{
       }
     } else for (const page of pages) {
       const clipFile = path.join(dir, `page-${String(page.pageNumber).padStart(2, '0')}.mp4`);
-      const fadeOutStart = Math.max(0.1, Number(page.durationSeconds) - 0.22);
-      const crop = `crop=iw/4:ih/4:${page.column}*iw/4:${page.row}*ih/4`;
-      const visual = `${crop},scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,zoompan=z='min(zoom+0.0007,1.06)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1280x720:fps=24,fade=t=in:st=0:d=0.22,fade=t=out:st=${fadeOutStart}:d=0.22`;
+      const visual = storyPerformanceFilter(page);
       await runFfmpeg([
         '-y', '-loop', '1', '-i', sheetFiles[page.sheetIndex],
         '-vf', visual, '-t', String(page.durationSeconds), '-r', '24',
@@ -380,10 +588,12 @@ async function stitchIllustrationStory(body: any): Promise<{
       characterFiles.push({ file, track });
     }
     const soundEffects = await discoverStorySoundEffects(body, pages, dir);
+    const authoredSoundEffects = await createAuthoredStoryEffects(pages, dir);
     const audioArgs: string[] = ['-y', '-i', silentFile, '-stream_loop', '-1', '-i', musicFile];
     if (narrationFile) audioArgs.push('-i', narrationFile);
     characterFiles.forEach(({ file }) => audioArgs.push('-i', file));
     soundEffects.forEach(effect => audioArgs.push('-i', effect.file));
+    authoredSoundEffects.forEach(effect => audioArgs.push('-i', effect.file));
     const audioLabels = usingRemoteScenes ? ['[native]', '[music]'] : ['[music]'];
     const filters = usingRemoteScenes
       ? ['[0:a]volume=0.34[native]', '[1:a]volume=0.28[music]']
@@ -435,6 +645,15 @@ async function stitchIllustrationStory(body: any): Promise<{
       audioLabels.push(`[${label}]`);
       nextInput += 1;
     });
+    authoredSoundEffects.forEach((effect, index) => {
+      const label = `authored${index}`;
+      const delayMs = Math.round(effect.startSeconds * 1000);
+      filters.push(
+        `[${nextInput}:a]asetpts=PTS-STARTPTS,adelay=${delayMs}|${delayMs},volume=${effect.volume.toFixed(3)}[${label}]`,
+      );
+      audioLabels.push(`[${label}]`);
+      nextInput += 1;
+    });
     filters.push(`${audioLabels.join('')}amix=inputs=${audioLabels.length}:duration=longest:dropout_transition=2[a]`);
     await runFfmpeg([
       ...audioArgs,
@@ -445,7 +664,7 @@ async function stitchIllustrationStory(body: any): Promise<{
     return {
       bytes: fs.readFileSync(finalFile),
       narrationAvailable: Boolean(narrationFile),
-      soundEffectsMixed: soundEffects.length,
+      soundEffectsMixed: soundEffects.length + authoredSoundEffects.length,
       characterTimingApplied: timingApplied,
       ...validation,
     };

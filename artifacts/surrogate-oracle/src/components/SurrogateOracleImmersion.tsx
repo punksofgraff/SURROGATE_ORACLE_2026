@@ -126,17 +126,21 @@ function parseStoredJson(value: string): unknown {
 }
 
 function isIllustrationStoryProduction(value: unknown): boolean {
-  return ['illustration-story-premium', 'illustration-story-proof'].includes(String(value));
+  return ['illustration-story-studio', 'illustration-story-premium', 'illustration-story-proof'].includes(String(value));
 }
 
 function isFalIllustrationStoryArtifact(artifact: CreativeArtifact | null): boolean {
   return artifact?.metadata?.production === 'illustration-story-premium'
-    || (artifact?.metadata?.production === 'illustration-story-proof' && artifact.metadata?.storyLane === 'fal');
+    || (['illustration-story-studio', 'illustration-story-proof'].includes(String(artifact?.metadata?.production))
+      && artifact?.metadata?.storyLane === 'fal');
 }
 
 function isMiniMaxIllustrationStoryArtifact(artifact: CreativeArtifact | null): boolean {
-  return artifact?.metadata?.production === 'illustration-story-proof'
-    && artifact.metadata?.storyLane === 'minimax';
+  return Boolean(
+    artifact
+    && ['illustration-story-studio', 'illustration-story-proof'].includes(String(artifact.metadata?.production))
+    && artifact.metadata?.storyLane === 'minimax',
+  );
 }
 
 function isHostedIllustrationStoryArtifact(artifact: CreativeArtifact | null): boolean {
@@ -1775,10 +1779,10 @@ export function SurrogateOracleImmersion() {
         ...restored,
         id: `story-artifact-${job.id}`,
         requestId: `story-job-${job.id}`,
-         status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
+        status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
         progress: job.progress,
         outputUrl: job.finalMediaUrl,
-         outputLabel: job.finalMediaUrl ? '32-page story film · MP4' : undefined,
+        outputLabel: job.finalMediaUrl ? 'Unreviewed 32-page studio render · MP4' : undefined,
         error: job.error,
         metadata: {
           ...(restored.metadata ?? {}),
@@ -1797,10 +1801,10 @@ export function SurrogateOracleImmersion() {
       return;
     }
     updateCreativeArtifact(artifact.id, {
-       status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : job.finalMediaUrl ? 'ready' : 'generating',
+        status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : job.finalMediaUrl ? 'partial' : 'generating',
       progress: job.progress,
        outputUrl: job.finalMediaUrl ?? (job.status === 'ready' ? null : artifact.outputUrl),
-       outputLabel: job.finalMediaUrl ? '32-page story film · MP4' : artifact.outputLabel,
+        outputLabel: job.finalMediaUrl ? 'Unreviewed 32-page studio render · MP4' : artifact.outputLabel,
       error: job.error,
        provider: job.provider === 'retired-fal' ? 'premium-film' : 'fal-film',
        providerLabel: job.provider === 'retired-fal'
@@ -1811,10 +1815,10 @@ export function SurrogateOracleImmersion() {
         storyScenes: job.scenes,
         storyFailureKind: job.failureKind,
         audioGate: job.audioGate,
-         storyStage: job.status === 'ready' && !job.finalMediaUrl
+          storyStage: job.status === 'ready' && !job.finalMediaUrl
            ? 'visual scenes ready · local FFmpeg assembly pending'
-          : job.status === 'ready'
-            ? 'complete'
+           : job.status === 'ready' && job.finalMediaUrl
+             ? 'rendered; studio watch + listen approval required'
             : `${job.scenes.filter(scene => scene.status === 'ready').length}/32 pages ready · ${job.scenes.filter(scene => scene.status === 'failed').length} page recovery item(s)`,
       },
     });
@@ -1874,10 +1878,10 @@ export function SurrogateOracleImmersion() {
         status: activeCreativeArtifactRef.current?.status ?? null,
       })) return;
       updateCreativeArtifact(artifact.id, {
-        status: 'ready',
+        status: 'partial',
         progress: 100,
         outputUrl: result.url,
-        outputLabel: `32-page narrated story film · ${Math.round(result.durationSeconds)}s MP4`,
+        outputLabel: `Unreviewed 32-page narrated studio render · ${Math.round(result.durationSeconds)}s MP4`,
           provider: job.provider === 'minimax' ? 'minimax-film' : 'fal-film',
           providerLabel: job.provider === 'minimax'
             ? `MiniMax H3 / ${job.modelSlug ?? 'native-audio model'} · local assembly`
@@ -1885,7 +1889,8 @@ export function SurrogateOracleImmersion() {
         error: null,
         metadata: {
           ...(activeCreativeArtifactRef.current?.metadata ?? {}),
-          storyStage: 'complete',
+          storyStage: 'rendered; studio watch + listen approval required',
+          studioReview: { status: 'unreviewed', required: 'watch-and-listen' },
           storyFailureKind: null,
           audioGate: { musicReady: true, narrationReady: true, verified: true, passed: true },
           pageCount: result.pageCount,
@@ -2069,7 +2074,7 @@ export function SurrogateOracleImmersion() {
     }
 
     if (artifact.kind === 'film') {
-      const isLocalIllustrationStory = artifact.metadata?.production === 'illustration-story-proof'
+      const isLocalIllustrationStory = ['illustration-story-studio', 'illustration-story-proof'].includes(String(artifact.metadata?.production))
         && artifact.metadata?.storyLane !== 'fal'
         && artifact.metadata?.storyLane !== 'minimax';
       const isIllustrationStory = isHostedIllustrationStoryArtifact(artifact);
@@ -2127,15 +2132,16 @@ export function SurrogateOracleImmersion() {
             );
             if (!isCurrent()) return;
             updateCreativeArtifact(artifact.id, {
-              status: 'ready',
+              status: 'partial',
               progress: 100,
               outputUrl: result.url,
-              outputLabel: `32-page ${result.narrationAvailable ? 'narrated' : 'music-backed'} story film · ${Math.round(result.durationSeconds)}s MP4`,
+              outputLabel: `Unreviewed 32-page ${result.narrationAvailable ? 'narrated' : 'music-backed'} studio render · ${Math.round(result.durationSeconds)}s MP4`,
               provider: 'browser-film',
               providerLabel: 'FFmpeg story stitch lane',
               metadata: {
                 ...(activeCreativeArtifactRef.current?.metadata ?? {}),
-                storyStage: 'complete',
+                storyStage: 'rendered; studio watch + listen approval required',
+                studioReview: { status: 'unreviewed', required: 'watch-and-listen' },
                 pageCount: result.pageCount,
                 totalDurationSeconds: result.durationSeconds,
                 ffmpegStitch: 'complete',
@@ -2150,7 +2156,7 @@ export function SurrogateOracleImmersion() {
                 100,
               ),
             }, claim);
-            logStep('ILLUSTRATION STORY READY — 32 PAGES / MP4 / LYRIA + NARRATION', 'ok');
+             logStep('ILLUSTRATION STORY RENDERED — STUDIO REVIEW REQUIRED', 'ok');
           } catch (error) {
             if (!isCurrent()) return;
             const storyPagesAfterFailure = updateIllustrationStoryPages(
@@ -2245,7 +2251,8 @@ export function SurrogateOracleImmersion() {
                        : `${hostedProvider === 'minimax' ? 'MiniMax H3' : 'FAL'} page animation ${readyScenes}/32`,
                     storyScenes: job.scenes,
                       storyFailureKind: job.failureKind,
-                      audioGate: job.audioGate,
+             audioGate: job.audioGate,
+             ...(job.finalMediaUrl ? { studioReview: { status: 'unreviewed', required: 'watch-and-listen' } } : {}),
                     currentPage: job.scenes.find(scene => ['queued', 'generating'].includes(scene.status))?.pageNumber ?? readyScenes,
                   },
                 }, claim);
@@ -2253,17 +2260,18 @@ export function SurrogateOracleImmersion() {
             );
             if (!isCurrent()) return;
             updateCreativeArtifact(artifact.id, {
-              status: 'ready',
+              status: 'partial',
               progress: 100,
               outputUrl: result.url,
-              outputLabel: `32-page narrated story film · ${Math.round(result.durationSeconds)}s MP4`,
+              outputLabel: `Unreviewed 32-page narrated studio render · ${Math.round(result.durationSeconds)}s MP4`,
                provider: hostedProvider === 'minimax' ? 'minimax-film' : 'fal-film',
                providerLabel: hostedProvider === 'minimax'
                  ? `MiniMax H3 / ${illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)?.label ?? 'native-audio model'} · local assembly`
                  : `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
               metadata: {
                 ...(activeCreativeArtifactRef.current?.metadata ?? {}),
-                storyStage: 'complete',
+                storyStage: 'rendered; studio watch + listen approval required',
+                studioReview: { status: 'unreviewed', required: 'watch-and-listen' },
                   storyFailureKind: null,
                   audioGate: { musicReady: true, narrationReady: true, verified: true, passed: true },
                 pageCount: result.pageCount,
@@ -2275,7 +2283,7 @@ export function SurrogateOracleImmersion() {
                   visualGeneration: `32 scenes via ${hostedModel.label}`,
               },
             });
-            logStep('ILLUSTRATION STORY READY — 32 PAGES / MP4 / LYRIA + NARRATION', 'ok');
+            logStep('ILLUSTRATION STORY RENDERED — STUDIO REVIEW REQUIRED', 'ok');
           } catch (error) {
             if (!isCurrent()) return;
             const failureKind = activeCreativeArtifactRef.current?.metadata?.storyFailureKind
@@ -2635,7 +2643,8 @@ export function SurrogateOracleImmersion() {
 
   const retryIllustrationStoryScene = useCallback((pageNumber: number, mode: 'retry' | 'replace' = 'retry') => {
     const artifact = activeCreativeArtifactRef.current;
-    if (artifact?.metadata?.production === 'illustration-story-proof'
+    if (!artifact) return;
+    if (['illustration-story-studio', 'illustration-story-proof'].includes(String(artifact.metadata?.production))
       && artifact.metadata?.storyLane !== 'fal'
       && artifact.metadata?.storyLane !== 'minimax') {
       const token = creativeDispatchTokenRef.current + 1;
@@ -2690,10 +2699,10 @@ export function SurrogateOracleImmersion() {
             status: activeCreativeArtifactRef.current?.status ?? null,
           })) return;
           updateCreativeArtifact(artifact.id, {
-            status: 'ready',
+            status: 'partial',
             progress: 100,
             outputUrl: result.url,
-            outputLabel: `32-page ${result.narrationAvailable ? 'narrated' : 'music-backed'} story film · ${Math.round(result.durationSeconds)}s MP4`,
+            outputLabel: `Unreviewed 32-page ${result.narrationAvailable ? 'narrated' : 'music-backed'} studio render · ${Math.round(result.durationSeconds)}s MP4`,
             provider: 'browser-film',
             providerLabel: 'FFmpeg story stitch lane',
             error: null,
@@ -2703,7 +2712,8 @@ export function SurrogateOracleImmersion() {
             ),
             metadata: {
               ...(activeCreativeArtifactRef.current?.metadata ?? {}),
-              storyStage: 'complete',
+              storyStage: 'rendered; studio watch + listen approval required',
+              studioReview: { status: 'unreviewed', required: 'watch-and-listen' },
               totalDurationSeconds: result.durationSeconds,
               ffmpegStitch: 'complete',
             },
@@ -2728,7 +2738,7 @@ export function SurrogateOracleImmersion() {
       return;
     }
     if (!artifact || !isIllustrationStoryProduction(artifact.metadata?.production)
-      || (artifact.metadata?.production === 'illustration-story-proof'
+      || (['illustration-story-studio', 'illustration-story-proof'].includes(String(artifact.metadata?.production))
         && artifact.metadata?.storyLane !== 'fal'
         && artifact.metadata?.storyLane !== 'minimax')) return;
     const token = creativeDispatchTokenRef.current + 1;
@@ -2861,10 +2871,10 @@ export function SurrogateOracleImmersion() {
       ).then(result => {
         if (!isCurrent()) return;
         updateCreativeArtifact(artifact.id, {
-          status: 'ready',
+          status: 'partial',
           progress: 100,
           outputUrl: result.url,
-          outputLabel: `32-page narrated story film · ${Math.round(result.durationSeconds)}s MP4`,
+          outputLabel: `Unreviewed 32-page narrated studio render · ${Math.round(result.durationSeconds)}s MP4`,
           provider: illustrationStoryFilm.job?.provider === 'minimax' ? 'minimax-film' : 'fal-film',
           providerLabel: illustrationStoryFilm.job?.provider === 'minimax'
             ? `MiniMax H3 / ${illustrationStoryFilm.job?.modelSlug ?? 'native-audio model'} · local assembly`
@@ -2872,7 +2882,8 @@ export function SurrogateOracleImmersion() {
           error: null,
           metadata: {
             ...(activeCreativeArtifactRef.current?.metadata ?? {}),
-            storyStage: 'complete',
+            storyStage: 'rendered; studio watch + listen approval required',
+            studioReview: { status: 'unreviewed', required: 'watch-and-listen' },
             storyFailureKind: null,
             audioGate: { musicReady: true, narrationReady: true, verified: true, passed: true },
             pageCount: result.pageCount,
@@ -2883,7 +2894,7 @@ export function SurrogateOracleImmersion() {
             sourceAssets: '32 persisted FAL scene URLs',
           },
         }, claim);
-        logStep('ILLUSTRATION STORY REASSEMBLED — 32 PAGES / MP4 / PERSISTED AUDIO', 'ok');
+        logStep('ILLUSTRATION STORY REASSEMBLED — STUDIO REVIEW REQUIRED', 'ok');
       }).catch(error => {
         if (!isCurrent()) return;
         const detail = error instanceof Error ? error.message : 'Persisted FAL story assets could not be assembled.';
@@ -3217,6 +3228,45 @@ export function SurrogateOracleImmersion() {
   const oraclePreviewVisible = scenePhase === 'dormant' || scenePhase === 'awakened';
   const titleText    = useTypewriter('SURROGATE:ORACLE', awakened, 60);
   const subtitleText = useTypewriter('SNEAKAR XR Anthropology AI', awakened && titleText.length >= 16, 35);
+
+  const approveIllustrationStoryReview = useCallback(() => {
+    const artifact = activeCreativeArtifactRef.current;
+    if (!artifact?.outputUrl || !isIllustrationStoryProduction(artifact.metadata?.production)) return;
+    updateCreativeArtifact(artifact.id, {
+      status: 'ready',
+      metadata: {
+        ...(artifact.metadata ?? {}),
+        studioReview: {
+          status: 'approved',
+          reviewedAt: new Date().toISOString(),
+          method: 'manual-watch-and-listen',
+        },
+        storyStage: 'approved studio animation',
+      },
+    });
+    logStep('ILLUSTRATION STORY APPROVED — MANUAL WATCH + LISTEN COMPLETE', 'ok');
+  }, [updateCreativeArtifact]);
+
+  const rejectIllustrationStoryReview = useCallback(() => {
+    const artifact = activeCreativeArtifactRef.current;
+    if (!artifact || !isIllustrationStoryProduction(artifact.metadata?.production)) return;
+    updateCreativeArtifact(artifact.id, {
+      status: 'partial',
+      outputUrl: null,
+      outputLabel: undefined,
+      error: 'Studio review rejected this render. It must not be presented as a finished premium episode.',
+      metadata: {
+        ...(artifact.metadata ?? {}),
+        studioReview: {
+          status: 'rejected',
+          reviewedAt: new Date().toISOString(),
+          method: 'manual-watch-and-listen',
+        },
+        storyStage: 'review rejected — regenerate or revise the shot plan',
+      },
+    });
+    logStep('ILLUSTRATION STORY REVIEW REJECTED — NOT A FINISHED EPISODE', 'warn');
+  }, [updateCreativeArtifact]);
 
   return (
     <div
@@ -4356,6 +4406,8 @@ export function SurrogateOracleImmersion() {
               onStorySceneReplace={(pageNumber) => retryIllustrationStoryScene(pageNumber, 'replace')}
               onStoryFilmRetry={retryIllustrationStoryFilm}
               onStoryLaneChange={chooseIllustrationStoryLane}
+              onStoryReviewApprove={approveIllustrationStoryReview}
+              onStoryReviewReject={rejectIllustrationStoryReview}
               savedSeriesCount={seriesHistory.length}
               onOpenSeriesHistory={() => setShowSeriesHistory(true)}
             />

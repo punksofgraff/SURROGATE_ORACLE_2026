@@ -35,6 +35,19 @@ function pages() {
     row: Math.floor((index % 16) / 4),
     column: index % 4,
     durationSeconds: PAGE_DURATION_SECONDS,
+    shotPlan: {
+      treatment: ['shoreline-reveal', 'wave-splash', 'underwater-drift', 'portal-glide', 'forest-breath', 'kindness-bloom'][index % 6],
+      subjectFocus: `test subject ${index + 1}`,
+      actionBeat: `authored action beat ${index + 1}`,
+      environmentBeat: `authored environment beat ${index + 1}`,
+      cameraMove: `authored camera move ${index + 1}`,
+      performanceCue: index % 3 === 0 ? 'group-performance' : 'environment-performance',
+      soundCue: ['shore', 'splash', 'water', 'portal', 'forest', 'kindness'][index % 6],
+      soundOffsetSeconds: 0.25,
+      lipSyncMode: index % 2 === 0 ? 'line-timed' : 'none',
+      focusX: 0.5,
+      focusY: 0.5,
+    },
   }));
 }
 
@@ -239,7 +252,10 @@ async function main() {
     assert.equal(response.headers.get('content-type'), 'video/mp4');
     assert.equal(response.headers.get('x-story-page-count'), String(PAGE_COUNT));
     assert.equal(response.headers.get('x-story-audio'), 'present');
-    assert.equal(Number(response.headers.get('x-story-duration')), EXPECTED_DURATION_SECONDS);
+    assert.ok(
+      Math.abs(Number(response.headers.get('x-story-duration')) - EXPECTED_DURATION_SECONDS) <= 0.75,
+      'stitch response duration must remain within the production validation tolerance',
+    );
     assert.ok(bytes.subarray(4, 8).toString('ascii') === 'ftyp', 'stitch response must be an MP4');
 
     const finalFile = join(dir, 'final-story.mp4');

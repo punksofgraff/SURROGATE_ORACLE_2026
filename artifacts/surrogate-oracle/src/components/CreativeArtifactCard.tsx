@@ -1,7 +1,9 @@
 import { useEffect, useId, useState } from 'react';
 import {
   AlertTriangle,
+  AudioLines,
   Check,
+  CircleAlert,
   Clock3,
   Download,
   Eye,
@@ -10,6 +12,7 @@ import {
   FileText,
   FileVideo,
   History,
+  Image as ImageIcon,
   LoaderCircle,
   OctagonX,
   Pause,
@@ -17,6 +20,7 @@ import {
   Layers3,
   PackageCheck,
   RefreshCw,
+  ScanLine,
   ShieldCheck,
   Sparkles,
   X,
@@ -168,21 +172,21 @@ function StoryPizzaTracker({
   const progress = Math.round((references + animated + (ready ? 32 : 0)) / 96 * 100);
 
   return (
-    <section className="creative-pizza-tracker" aria-label="Money Mite pizza tracker" aria-live="polite">
+    <section className="creative-pizza-tracker" aria-label="Story production stages" aria-live="polite">
       <div className="creative-pizza-tracker__header">
         <div>
-          <span className="creative-pizza-tracker__eyebrow">Money Mite / pizza tracker</span>
+          <span className="creative-pizza-tracker__eyebrow">Production / live ledger</span>
           <strong>
             {ready
-              ? 'The whole pie is served.'
+               ? 'The complete story is assembled.'
               : blocked
                 ? `${blocked} slice${blocked === 1 ? '' : 's'} blocked by provider safety review.`
                 : failed
                   ? `${failed} slice${failed === 1 ? '' : 's'} needs a retry.`
-                  : 'Your story is in the oven.'}
+                   : 'Your story is moving through the studio.'}
           </strong>
         </div>
-        <span className="creative-pizza-tracker__pie" aria-hidden="true">🍕</span>
+      <Layers3 className="creative-pizza-tracker__pie" size={22} aria-hidden="true" />
       </div>
       <div className="creative-pizza-tracker__track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} aria-label="Story production progress">
         <span style={{ width: `${progress}%` }} />
@@ -209,6 +213,314 @@ function StoryPizzaTracker({
                  ? `${pending} page${pending === 1 ? '' : 's'} still in visual production.`
             : 'Live state from the server job — no placeholder percentages.'}
       </p>
+    </section>
+  );
+}
+
+function StoryReviewWorkspace({
+  artifact,
+  pages,
+  scenes,
+  progress,
+  outputUrl,
+  requiresReview,
+  audioGateFailed,
+  onSceneRetry,
+  onSceneReplace,
+  onFilmRetry,
+  onApprove,
+  onReject,
+}: {
+  artifact: CreativeArtifact;
+  pages: NonNullable<CreativeArtifact['storyPages']>;
+  scenes: IllustrationStoryScene[];
+  progress: number;
+  outputUrl?: string | null;
+  requiresReview: boolean;
+  audioGateFailed: boolean;
+  onSceneRetry?: (pageNumber: number) => void;
+  onSceneReplace?: (pageNumber: number) => void;
+  onFilmRetry?: () => void;
+  onApprove?: () => void;
+  onReject?: () => void;
+}) {
+  const readyScenes = scenes.filter(scene => scene.status === 'ready').length;
+  const sourceAsset = pages.find(page => Boolean(page.sourceAsset))?.sourceAsset;
+  const metadata = artifact.metadata as Record<string, unknown> | undefined;
+  const audioGate = metadata?.audioGate as Record<string, unknown> | undefined;
+  const audioPassed = audioGate?.passed === true;
+  const audioVerified = audioGate?.verified === true;
+  const audioState = audioPassed ? 'validated' : audioVerified ? 'checked · needs attention' : 'not surfaced';
+  const narrationCuePages = pages.filter(page => Boolean(page.voiceover?.length)).length;
+  const soundCuePages = pages.filter(page => Boolean((page.soundEffects ?? page.sfx)?.length)).length;
+  const stage = formatMetadataValue(metadata?.storyStage ?? 'panel plan ready');
+  const evidenceState = outputUrl ? 'rendered evidence available' : 'rendered evidence pending';
+  const studioReview = metadata?.studioReview as { status?: string } | undefined;
+  const reviewGateLabel = studioReview?.status === 'approved'
+    ? 'Review cleared'
+    : outputUrl
+      ? 'Review gate open'
+      : 'Awaiting render';
+  const reviewGateClass = studioReview?.status === 'approved'
+    ? ' is-cleared'
+    : requiresReview
+      ? ' is-open'
+      : '';
+
+  return (
+    <section
+      className="creative-story-review-workspace"
+      aria-label="Illustration story review workspace"
+      data-testid="story-review-workspace"
+    >
+      <div className="creative-story-review-workspace__header">
+        <div>
+          <span className="creative-story-review-workspace__kicker">
+            <ScanLine size={14} aria-hidden="true" />
+            SURROGATE:ORACLE / STORY REVIEW
+          </span>
+          <h3>Open kitchen review</h3>
+          <p>Source artwork, motion evidence, shot direction, and sound provenance in one calm pass.</p>
+        </div>
+        <div className="creative-story-review-workspace__header-meta">
+          <span className="creative-story-review-workspace__stage">{stage}</span>
+          <span className={`creative-story-review-workspace__gate${reviewGateClass}`}>
+            {reviewGateLabel}
+          </span>
+        </div>
+      </div>
+
+      <div className="creative-story-review-workspace__evidence">
+        <article className="creative-story-evidence-card creative-story-evidence-card--source">
+          <div className="creative-story-evidence-card__topline">
+            <span><ImageIcon size={14} aria-hidden="true" /> Source artwork</span>
+            <small>Original / locked</small>
+          </div>
+          <div className="creative-story-source-frame">
+            {sourceAsset ? (
+              <img src={sourceAsset} alt="Original illustration source sheet" data-testid="img-story-source-artwork" />
+            ) : (
+              <div className="creative-story-source-frame__empty">
+                <ImageIcon size={22} aria-hidden="true" />
+                <span>Source artwork is not surfaced yet.</span>
+              </div>
+            )}
+            <span className="creative-story-source-frame__badge">REFERENCE ONLY</span>
+          </div>
+          <p>Compare the rendered motion against the original panel language. The source image is never replaced by the render.</p>
+        </article>
+
+        <article className="creative-story-evidence-card creative-story-evidence-card--render">
+          <div className="creative-story-evidence-card__topline">
+            <span><FileVideo size={14} aria-hidden="true" /> Rendered evidence</span>
+            <small>{evidenceState}</small>
+          </div>
+          <div className="creative-story-render-frame">
+            {outputUrl ? (
+              <>
+                <video
+                  src={outputUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  aria-label="Rendered story film evidence"
+                  data-testid="video-story-render-evidence"
+                />
+              </>
+            ) : (
+              <div className="creative-story-render-frame__empty">
+                <FileVideo size={24} aria-hidden="true" />
+                <strong>Rendered film not available</strong>
+                <span>Playback evidence will appear here when the assembled output is returned.</span>
+              </div>
+            )}
+          </div>
+          <div className="creative-story-evidence-card__meta">
+            <span>{pages.length} panels</span>
+            <span>{Math.round(pages.reduce((sum, page) => sum + page.durationSeconds, 0))} sec planned</span>
+            <span>{artifact.providerLabel}</span>
+          </div>
+        </article>
+      </div>
+
+      <div className="creative-story-review-workspace__signals">
+        <div className="creative-story-signal">
+          <span className="creative-story-signal__icon"><Layers3 size={15} aria-hidden="true" /></span>
+          <span><strong>Panel continuity</strong><small>{readyScenes}/{pages.length} rendered from locked references</small></span>
+        </div>
+        <div className="creative-story-signal">
+          <span className="creative-story-signal__icon"><Eye size={15} aria-hidden="true" /></span>
+          <span><strong>Shot direction</strong><small>Per-panel treatment and camera beats are available in the source plan</small></span>
+        </div>
+        <div className={`creative-story-signal${audioGateFailed ? ' is-alert' : ''}`}>
+          <span className="creative-story-signal__icon"><AudioLines size={15} aria-hidden="true" /></span>
+          <span><strong>Sound provenance</strong><small>{audioGateFailed ? 'Audio gate reported a failure' : `${narrationCuePages}/${pages.length} narration cue sets · ${soundCuePages}/${pages.length} SFX cue sets · ${audioState}`}</small></span>
+        </div>
+      </div>
+
+      <div className="creative-story-direction">
+        <div className="creative-story-direction__header">
+          <div>
+            <span className="creative-story-panel-map__label"><ScanLine size={12} aria-hidden="true" /> Shot direction</span>
+            <strong>Per-panel treatments attached to the review</strong>
+          </div>
+          <span>{pages.length} direction plans</span>
+        </div>
+        <div className="creative-story-direction__grid">
+          {pages.map(page => {
+            const shotPlan = page.shotPlan;
+            return (
+              <div className="creative-story-direction__row" key={page.id}>
+                <span className="creative-story-direction__page">P{String(page.pageNumber).padStart(2, '0')}</span>
+                {shotPlan ? (
+                  <>
+                    <span className="creative-story-direction__treatment">
+                      <strong>{shotPlan.treatment.replaceAll('-', ' ')}</strong>
+                      <small>{shotPlan.cameraMove}</small>
+                    </span>
+                    <span className="creative-story-direction__cue">{shotPlan.soundCue} · {shotPlan.performanceCue.replaceAll('-', ' ')}</span>
+                  </>
+                ) : (
+                  <span className="creative-story-direction__unavailable">Direction plan not surfaced for this panel.</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="creative-story-panel-map">
+        <div className="creative-story-panel-map__header">
+          <div>
+            <span className="creative-story-panel-map__label">Panel map</span>
+            <strong>{pages.length} locked moments</strong>
+          </div>
+          <span className="creative-story-panel-map__count">{readyScenes}/{pages.length} rendered · {progress}% job signal</span>
+        </div>
+        <div className="creative-story-panel-map__grid" aria-label="Story panel statuses">
+          {pages.map(page => {
+            const scene = scenes.find(item => item.pageNumber === page.pageNumber);
+            const state = scene?.status ?? 'planned';
+            const canRecover = ['failed', 'cancelled'].includes(state);
+            return (
+              <div
+                className="creative-story-panel-map__cell"
+                data-state={state}
+                key={page.id}
+                title={`${page.title}: ${page.narration}${scene?.error ? ` — ${scene.error}` : ''}`}
+                data-testid={`story-panel-${page.pageNumber}`}
+              >
+                <span>{String(page.pageNumber).padStart(2, '0')}</span>
+                <i aria-hidden="true" />
+                {canRecover && (
+                  <div className="creative-story-panel-map__cell-actions">
+                    {onSceneRetry && (
+                      <button
+                        type="button"
+                        onClick={() => onSceneRetry(page.pageNumber)}
+                        aria-label={`Retry story page ${page.pageNumber}`}
+                        data-testid={`button-retry-story-page-${page.pageNumber}`}
+                      >
+                        <RefreshCw size={11} aria-hidden="true" />
+                      </button>
+                    )}
+                    {scene?.failureKind === 'provider-safety' && onSceneReplace && (
+                      <button
+                        type="button"
+                        onClick={() => onSceneReplace(page.pageNumber)}
+                        aria-label={`Use a safe replacement for story page ${page.pageNumber}`}
+                        data-testid={`button-replace-story-page-${page.pageNumber}`}
+                      >
+                        <CircleAlert size={11} aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {scenes.some(scene => scene.failureKind === 'provider-safety') && (
+        <div className="creative-story-review-workspace__notice creative-story-review-workspace__notice--recovery" role="alert">
+          <CircleAlert size={16} aria-hidden="true" />
+          <div>
+            <strong>Provider safety block · page-level recovery</strong>
+            <p>Only the affected illustration was blocked. Completed pages, narration, soundtrack, and the original source remain available.</p>
+            <div className="creative-story-review-workspace__recovery-list">
+              {scenes.filter(scene => scene.failureKind === 'provider-safety').map(scene => (
+                <div key={scene.pageNumber}>
+                  <span>Page {String(scene.pageNumber).padStart(2, '0')}{scene.error ? ` · ${scene.error}` : ''}</span>
+                  <span>
+                    {onSceneRetry && (
+                      <button
+                        type="button"
+                        onClick={() => onSceneRetry(scene.pageNumber)}
+                        data-testid={`button-retry-story-page-recovery-${scene.pageNumber}`}
+                      >
+                        Retry page
+                      </button>
+                    )}
+                    {onSceneReplace && (
+                      <button
+                        type="button"
+                        onClick={() => onSceneReplace(scene.pageNumber)}
+                        data-testid={`button-replace-story-page-recovery-${scene.pageNumber}`}
+                      >
+                        Safe replacement
+                      </button>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {audioGateFailed && (
+        <div className="creative-story-review-workspace__notice creative-story-review-workspace__notice--audio" role="alert">
+          <AudioLines size={16} aria-hidden="true" />
+          <div>
+            <strong>Audio gate needs attention · pages remain saved</strong>
+            <p>The narration, soundtrack, and final audio validation did not pass. Retry the stitch without regenerating successful pages.</p>
+            {onFilmRetry && <button type="button" onClick={onFilmRetry}><RefreshCw size={12} aria-hidden="true" /> Retry stitch + audio gate</button>}
+          </div>
+        </div>
+      )}
+
+      {requiresReview && (
+        <div className="creative-story-review-gate" role="group" aria-label="Studio episode review gate">
+          <div className="creative-story-review-gate__copy">
+            <span className="creative-story-review-gate__eyebrow"><Eye size={14} aria-hidden="true" /> Human review gate</span>
+            <strong>Watch the render. Listen for the provenance.</strong>
+            <p>Approve only after the source artwork stays intact, the shot actions read on screen, and narration, character voices, music, and cues remain intelligible.</p>
+          </div>
+          <div className="creative-story-review-gate__actions">
+            <button
+              type="button"
+              className="creative-artifact-card__button creative-artifact-card__button--primary"
+              onClick={onApprove}
+              disabled={!onApprove}
+              data-testid="button-approve-story-review"
+            >
+              <Check size={14} aria-hidden="true" />
+              Approve after review
+            </button>
+            <button
+              type="button"
+              className="creative-artifact-card__button"
+              onClick={onReject}
+              disabled={!onReject}
+              data-testid="button-reject-story-review"
+            >
+              <X size={14} aria-hidden="true" />
+              Send back as unreviewed
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -388,6 +700,7 @@ export function CreativeArtifactCard({
       progress: page.progress,
       error: page.error,
     } as IllustrationStoryScene));
+  const hasStoryReviewSurface = isIllustrationStory && storyPages.length > 0;
   const isSeries = Boolean(series);
   const isDraft = status === 'draft';
   const followUpDetail = isDraft && !artifact.followUpCompleted ? missingDetails[0] : undefined;
@@ -675,6 +988,7 @@ export function CreativeArtifactCard({
     <section
       className="creative-artifact-card"
       data-status={status}
+      data-story={isIllustrationStory || undefined}
       data-testid="creative-artifact-card"
       role="dialog"
       aria-modal="true"
@@ -911,107 +1225,24 @@ export function CreativeArtifactCard({
           <StoryPizzaTracker artifact={artifact} scenes={storyScenes} />
         )}
 
-        {isIllustrationStory && storyPages.length > 0 && (
-          <div className="creative-story-proof" aria-label="Illustration story production">
-            <div className="creative-story-proof__heading">
-              <Layers3 size={15} aria-hidden="true" />
-              <strong>Illustration story / {storyPages.length} pages</strong>
-              <span>{formatMetadataValue(metadataRecord?.storyStage ?? 'page plan ready')}</span>
-            </div>
-            <div className="creative-story-proof__track" aria-hidden="true">
-              <span style={{ width: `${progress}%` }} />
-            </div>
-            <div className="creative-story-proof__pages">
-              {storyPages.map(page => {
-                const scene = storyScenes.find(item => item.pageNumber === page.pageNumber);
-                const state = scene?.status ?? (progress >= (page.pageNumber / storyPages.length) * 100 ? 'ready' : 'planned');
-                return (
-                  <span
-                    key={page.id}
-                    title={`${page.title}: ${page.narration}${scene?.error ? ` — ${scene.error}` : ''}`}
-                    data-state={state}
-                  >
-                    {String(page.pageNumber).padStart(2, '0')}
-                    {['failed', 'cancelled'].includes(state) && onStorySceneRetry && (
-                      <span className="creative-story-proof__page-actions">
-                        <button
-                          type="button"
-                          className="creative-story-proof__page-retry"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onStorySceneRetry(page.pageNumber);
-                          }}
-                          aria-label={`Retry story page ${page.pageNumber}`}
-                        >
-                          ↻
-                        </button>
-                        {scene?.failureKind === 'provider-safety' && onStorySceneReplace && (
-                          <button
-                            type="button"
-                            className="creative-story-proof__page-replace"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onStorySceneReplace(page.pageNumber);
-                            }}
-                            aria-label={`Use a safe replacement for story page ${page.pageNumber}`}
-                          >
-                            ⇄
-                          </button>
-                        )}
-                      </span>
-                    )}
-                  </span>
-                );
-              })}
-            </div>
-            {storyScenes.some(scene => scene.failureKind === 'provider-safety') && (
-              <div className="creative-story-proof__recovery" role="alert">
-                <strong>Provider safety block — page only</strong>
-                <p>
-                  FAL rejected the affected illustration for a likeness or safety policy. This does not mean the Gemini key,
-                  narration, soundtrack, or the rest of the film failed.
-                </p>
-                {storyScenes
-                  .filter(scene => scene.failureKind === 'provider-safety')
-                  .map(scene => (
-                    <div className="creative-story-proof__recovery-row" key={scene.pageNumber}>
-                      <span>Page {String(scene.pageNumber).padStart(2, '0')}: {scene.error}</span>
-                      <span className="creative-story-proof__recovery-actions">
-                        {onStorySceneRetry && (
-                          <button type="button" onClick={() => onStorySceneRetry(scene.pageNumber)}>
-                            RETRY PAGE
-                          </button>
-                        )}
-                        {onStorySceneReplace && (
-                          <button type="button" onClick={() => onStorySceneReplace(scene.pageNumber)}>
-                            SAFE REPLACEMENT
-                          </button>
-                        )}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            )}
-            {storyAudioGateFailed && (
-              <div className="creative-story-proof__audio-gate" role="alert">
-                <strong>Audio gate failed — pages remain saved</strong>
-                <p>
-                  The film will not be marked ready until the Gemini narration, Lyria soundtrack, and final audio validation pass.
-                  Retry the stitch and audio gate without regenerating any successful page.
-                </p>
-              </div>
-            )}
-            <p>
-              32 locked panel references · {Math.round(storyPages.reduce((sum, page) => sum + page.durationSeconds, 0))} seconds ·
-              {['illustration-story-proof', 'illustration-story-studio'].includes(String(artifact.metadata?.production))
-                ? 'authored per-panel studio treatment ·'
-                : 'FAL motion per page ·'}
-              {' '}Lyria backing music · optional Gemini child-friendly narration
-            </p>
-          </div>
+        {hasStoryReviewSurface && (
+          <StoryReviewWorkspace
+            artifact={artifact}
+            pages={storyPages}
+            scenes={storyScenes}
+            progress={progress}
+            outputUrl={outputUrl}
+            requiresReview={requiresStudioReview}
+            audioGateFailed={storyAudioGateFailed}
+            onSceneRetry={onStorySceneRetry}
+            onSceneReplace={onStorySceneReplace}
+            onFilmRetry={onStoryFilmRetry}
+            onApprove={onStoryReviewApprove}
+            onReject={onStoryReviewReject}
+          />
         )}
 
-        {status === 'ready' && !isSeries && (
+        {status === 'ready' && !isSeries && !hasStoryReviewSurface && (
           <div className="creative-artifact-card__output">
             <span className="creative-artifact-card__output-label">Output signal</span>
             {renderOutput() ?? (
@@ -1028,7 +1259,7 @@ export function CreativeArtifactCard({
           </div>
         )}
 
-        {status === 'partial' && !isSeries && (
+        {status === 'partial' && !isSeries && !hasStoryReviewSurface && (
           <div className="creative-artifact-card__output">
             <span className="creative-artifact-card__output-label">Recovered output</span>
             {renderOutput() ?? (
@@ -1041,40 +1272,6 @@ export function CreativeArtifactCard({
             <div className="creative-artifact-card__output-meta">
               <span>{artifact.outputLabel ?? 'Partial creative artifact'}</span>
               <span>{artifact.providerLabel}</span>
-            </div>
-          </div>
-        )}
-
-        {requiresStudioReview && (
-          <div className="creative-story-review" role="group" aria-label="Studio episode review gate">
-            <div className="creative-story-review__heading">
-              <Eye size={15} aria-hidden="true" />
-              <strong>Studio review required</strong>
-            </div>
-            <p>
-              Watch the complete 32-page render with sound. Approve only if the source artwork stays intact,
-              the shot actions read on screen, and narration, character voices, music, and cues remain intelligible.
-              Reject it if it plays like a slideshow or has an audio problem.
-            </p>
-            <div className="creative-story-review__actions">
-              <button
-                type="button"
-                className="creative-artifact-card__button creative-artifact-card__button--primary"
-                onClick={onStoryReviewApprove}
-                disabled={!onStoryReviewApprove}
-              >
-                <Check size={14} aria-hidden="true" />
-                I WATCHED + LISTENED — APPROVE
-              </button>
-              <button
-                type="button"
-                className="creative-artifact-card__button"
-                onClick={onStoryReviewReject}
-                disabled={!onStoryReviewReject}
-              >
-                <X size={14} aria-hidden="true" />
-                REJECT AS UNREVIEWED / SLIDESHOW
-              </button>
             </div>
           </div>
         )}
@@ -1092,7 +1289,7 @@ export function CreativeArtifactCard({
           </div>
         )}
 
-        {hasMetadata && (
+        {hasMetadata && !isIllustrationStory && (
           <div className="creative-artifact-card__metadata" aria-label="Artifact metadata">
             {metadataEntries.map(([key, value]) => (
               <div key={key}>{key}: {formatMetadataValue(value)}</div>
@@ -1115,7 +1312,7 @@ export function CreativeArtifactCard({
               Retry dispatch
             </button>
           )}
-          {storyAudioGateFailed && onStoryFilmRetry && (
+          {storyAudioGateFailed && onStoryFilmRetry && !hasStoryReviewSurface && (
             <button type="button" className="creative-artifact-card__button creative-artifact-card__button--purple" onClick={onStoryFilmRetry}>
               <RefreshCw size={14} aria-hidden="true" />
               Retry stitch + audio gate

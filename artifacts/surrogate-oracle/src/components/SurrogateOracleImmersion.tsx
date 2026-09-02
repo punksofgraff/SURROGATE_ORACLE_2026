@@ -1754,18 +1754,18 @@ export function SurrogateOracleImmersion() {
         ...restored,
         id: `story-artifact-${job.id}`,
         requestId: `story-job-${job.id}`,
-        status: job.status === 'ready' ? 'ready' : job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
+         status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
         progress: job.progress,
         outputUrl: job.finalMediaUrl,
-        outputLabel: job.finalMediaUrl ? '32-page premium story film · MP4' : undefined,
+         outputLabel: job.finalMediaUrl ? '32-page story film · MP4' : undefined,
         error: job.error,
         metadata: {
           ...(restored.metadata ?? {}),
           storyScenes: job.scenes,
           storyFailureKind: job.failureKind,
           audioGate: job.audioGate,
-          storyStage: job.status === 'stitching'
-            ? 'server-stitching 32 animated scenes'
+           storyStage: job.status === 'ready'
+             ? 'visual scenes ready · local FFmpeg assembly pending'
             : `${job.scenes.filter(scene => scene.status === 'ready').length}/32 pages ready · ${job.scenes.filter(scene => scene.status === 'failed').length} page recovery item(s)`,
         },
       };
@@ -1776,20 +1776,22 @@ export function SurrogateOracleImmersion() {
       return;
     }
     updateCreativeArtifact(artifact.id, {
-      status: job.status === 'ready' ? 'ready' : job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
+       status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : job.finalMediaUrl ? 'ready' : 'generating',
       progress: job.progress,
-      outputUrl: job.finalMediaUrl,
-      outputLabel: job.finalMediaUrl ? '32-page premium story film · MP4' : undefined,
+       outputUrl: job.finalMediaUrl ?? artifact.outputUrl,
+       outputLabel: job.finalMediaUrl ? '32-page story film · MP4' : artifact.outputLabel,
       error: job.error,
-      provider: 'premium-film',
-      providerLabel: 'Premium FAL / server stitch',
+       provider: job.provider === 'retired-fal' ? 'premium-film' : 'fal-film',
+       providerLabel: job.provider === 'retired-fal'
+         ? 'Historical FAL job · retry disabled'
+         : `FAL / ${job.modelSlug ?? 'approved model'} · local assembly`,
       metadata: {
         ...(artifact.metadata ?? {}),
         storyScenes: job.scenes,
         storyFailureKind: job.failureKind,
         audioGate: job.audioGate,
-        storyStage: job.status === 'stitching'
-          ? 'server-stitching 32 animated scenes'
+         storyStage: job.status === 'ready' && !job.finalMediaUrl
+           ? 'visual scenes ready · local FFmpeg assembly pending'
           : job.status === 'ready'
             ? 'complete'
             : `${job.scenes.filter(scene => scene.status === 'ready').length}/32 pages ready · ${job.scenes.filter(scene => scene.status === 'failed').length} page recovery item(s)`,
@@ -2041,8 +2043,8 @@ export function SurrogateOracleImmersion() {
             updateCreativeArtifact(artifact.id, {
               status: 'generating',
               progress: 2,
-              provider: 'premium-film',
-              providerLabel: 'Premium FAL / server stitch',
+              provider: 'fal-film',
+              providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
               outputLabel: undefined,
               metadata: {
                 ...(artifact.metadata ?? {}),
@@ -2057,23 +2059,26 @@ export function SurrogateOracleImmersion() {
             const pages = artifact.storyPages?.length
               ? artifact.storyPages
               : createIllustrationStoryPages(artifact.prompt, artifact.createdAt);
+            const falModel = illustrationStoryFalModel(artifact.metadata?.falModelSlug);
+            if (!falModel) throw new Error('Choose an approved FAL model before confirming the hosted story lane.');
             const result = await illustrationStoryFilm.renderStory(
               [storySheetOneUrl, storySheetTwoUrl],
               pages,
               musicUrl,
+              falModel,
               progress => {
                 if (isCurrent()) updateCreativeArtifact(artifact.id, {
                   status: 'generating',
                   progress,
-                  provider: 'premium-film',
-                  providerLabel: 'Premium FAL / server stitch',
+                   provider: 'fal-film',
+                   providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
                   metadata: {
                     ...(activeCreativeArtifactRef.current?.metadata ?? {}),
                     storyStage: progress < 6
                       ? 'preparing locked panel references and narration'
                       : progress < 78
                         ? 'animating 32 locked pages with FAL'
-                        : 'server-stitching and audio validation',
+                         : 'local FFmpeg assembly and audio validation',
                     currentPage: Math.min(32, Math.max(1, Math.ceil((progress / 100) * 32))),
                   },
                 }, claim);
@@ -2084,11 +2089,13 @@ export function SurrogateOracleImmersion() {
                 updateCreativeArtifact(artifact.id, {
                   status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
                   progress: job.progress,
-                  provider: 'premium-film',
-                  providerLabel: 'Premium FAL / server stitch',
+                   provider: 'fal-film',
+                   providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
                   metadata: {
                     ...(activeCreativeArtifactRef.current?.metadata ?? {}),
-                    storyStage: job.status === 'stitching' ? 'server-stitching 32 animated scenes' : `FAL page animation ${readyScenes}/32`,
+                     storyStage: job.status === 'ready'
+                       ? '32 visual scenes ready · local FFmpeg assembly'
+                       : `FAL page animation ${readyScenes}/32`,
                     storyScenes: job.scenes,
                       storyFailureKind: job.failureKind,
                       audioGate: job.audioGate,
@@ -2103,8 +2110,8 @@ export function SurrogateOracleImmersion() {
               progress: 100,
               outputUrl: result.url,
               outputLabel: `32-page narrated story film · ${Math.round(result.durationSeconds)}s MP4`,
-              provider: 'premium-film',
-              providerLabel: 'Premium FAL / server stitch',
+               provider: 'fal-film',
+               providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
               metadata: {
                 ...(activeCreativeArtifactRef.current?.metadata ?? {}),
                 storyStage: 'complete',
@@ -2116,7 +2123,7 @@ export function SurrogateOracleImmersion() {
                 soundtrack: 'Lyria instrumental anchor',
                 narration: 'Gemini child-friendly narration',
                 sourceAssets: '32 persisted locked panel references from two immutable 4x4 illustration sheets',
-                visualGeneration: '32 FAL image-to-video scenes',
+                 visualGeneration: `32 scenes via ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved FAL model'}`,
               },
             });
             logStep('ILLUSTRATION STORY READY — 32 PAGES / MP4 / LYRIA + NARRATION', 'ok');
@@ -2127,8 +2134,8 @@ export function SurrogateOracleImmersion() {
             updateCreativeArtifact(artifact.id, {
               status: 'failed',
               progress: 0,
-              provider: 'premium-film',
-              providerLabel: 'Premium FAL / server stitch',
+               provider: 'fal-film',
+               providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
               error: error instanceof Error ? error.message : 'Illustration story film failed.',
               metadata: {
                 ...(activeCreativeArtifactRef.current?.metadata ?? {}),
@@ -2439,7 +2446,7 @@ export function SurrogateOracleImmersion() {
     creativeProviderClaimRef.current = null;
     creativeFilmJobClaimRef.current = null;
     if (artifact.kind === 'film') void oracleFilm.cancelFilm();
-    if (['illustration-story-premium', 'illustration-story-proof'].includes(String(artifact.metadata?.production))) {
+    if (isIllustrationStoryProduction(artifact.metadata?.production)) {
       void illustrationStoryFilm.cancel();
     }
     if (artifact.kind === 'music') exitMusicMode();
@@ -2477,7 +2484,7 @@ export function SurrogateOracleImmersion() {
 
   const retryIllustrationStoryScene = useCallback((pageNumber: number, mode: 'retry' | 'replace' = 'retry') => {
     const artifact = activeCreativeArtifactRef.current;
-    if (artifact?.metadata?.production === 'illustration-story-proof') {
+    if (artifact?.metadata?.production === 'illustration-story-proof' && artifact.metadata?.storyLane !== 'fal') {
       const token = creativeDispatchTokenRef.current + 1;
       creativeDispatchTokenRef.current = token;
       const claim: CreativeDispatchClaim = { artifactId: artifact.id, token };
@@ -2567,7 +2574,8 @@ export function SurrogateOracleImmersion() {
       })();
       return;
     }
-    if (!artifact || artifact.metadata?.production !== 'illustration-story-premium') return;
+    if (!artifact || !isIllustrationStoryProduction(artifact.metadata?.production)
+      || (artifact.metadata?.production === 'illustration-story-proof' && artifact.metadata?.storyLane !== 'fal')) return;
     const token = creativeDispatchTokenRef.current + 1;
     creativeDispatchTokenRef.current = token;
     const claim: CreativeDispatchClaim = { artifactId: artifact.id, token };
@@ -2577,7 +2585,7 @@ export function SurrogateOracleImmersion() {
       progress: Math.max(8, artifact.progress),
       error: null,
       provider: 'premium-film',
-      providerLabel: 'Premium FAL / server stitch',
+      providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'historical model'} · local assembly`,
       metadata: {
         ...(artifact.metadata ?? {}),
         storyStage: `${mode === 'replace' ? 'using safe replacement for' : 'retrying'} page ${String(pageNumber).padStart(2, '0')}`,
@@ -2605,7 +2613,7 @@ export function SurrogateOracleImmersion() {
             ...(activeCreativeArtifactRef.current?.metadata ?? {}),
             storyScenes: nextJob.scenes,
             storyStage: nextJob.status === 'stitching'
-              ? 'server-stitching 32 animated scenes'
+              ? 'local FFmpeg assembly after 32 scenes'
               : `${mode === 'replace' ? 'using safe replacement for' : 'retrying'} FAL page`,
             storyFailureKind: nextJob.failureKind,
             audioGate: nextJob.audioGate,
@@ -2627,7 +2635,7 @@ export function SurrogateOracleImmersion() {
         status: nextJob.status === 'ready' ? 'ready' : nextJob.status === 'cancelled' ? 'cancelled' : 'failed',
         progress: nextJob.progress,
         outputUrl: nextJob.finalMediaUrl,
-        outputLabel: nextJob.finalMediaUrl ? '32-page premium story film · MP4' : undefined,
+        outputLabel: nextJob.finalMediaUrl ? '32-page historical story film · MP4' : undefined,
         error: nextJob.error,
         metadata: {
           ...(activeCreativeArtifactRef.current?.metadata ?? {}),
@@ -2670,7 +2678,7 @@ export function SurrogateOracleImmersion() {
       progress: Math.max(78, artifact.progress),
       error: null,
       provider: 'premium-film',
-      providerLabel: 'Premium FAL / server stitch',
+      providerLabel: 'Historical FAL job · retry disabled',
       metadata: {
         ...(artifact.metadata ?? {}),
         storyStage: 'retrying stitch + audio gate without regenerating pages',
@@ -2702,7 +2710,7 @@ export function SurrogateOracleImmersion() {
             storyScenes: nextJob.scenes,
             storyFailureKind: nextJob.failureKind,
             audioGate: nextJob.audioGate,
-            storyStage: nextJob.status === 'stitching' ? 'server-stitching and audio validation' : 'retrying stitch + audio gate',
+            storyStage: nextJob.status === 'stitching' ? 'historical server assembly' : 'retrying historical stitch + audio gate',
           },
         }, claim);
       },
@@ -2752,7 +2760,7 @@ export function SurrogateOracleImmersion() {
     const artifact = activeCreativeArtifactRef.current;
     const anchor = document.createElement('a');
     anchor.href = url;
-    const isStoryFilm = ['illustration-story-premium', 'illustration-story-proof'].includes(String(artifact?.metadata?.production));
+    const isStoryFilm = isIllustrationStoryProduction(artifact?.metadata?.production);
     anchor.download = `${(artifact?.title ?? 'creative-artifact').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'creative-artifact'}.${artifact?.kind === 'image' ? 'svg' : artifact?.kind === 'music' ? 'mp3' : artifact?.kind === 'film' ? (isStoryFilm ? 'mp4' : 'webm') : artifact?.kind === 'episodic-series' ? 'json' : 'txt'}`;
     anchor.click();
   }, []);
@@ -2769,7 +2777,7 @@ export function SurrogateOracleImmersion() {
       // Return the seeker to the live conversation while the long render runs.
       // When it completes, let the Oracle know before resurfacing the result card.
       oracleConversationRef.current?.sendTextMessage(
-        `[FILM READY — The Seedance Oracle film has finished materializing. Tell the Seeker their beach-bar transmission is ready to watch. Do not invent a URL or claim details you cannot see; simply acknowledge the completed visual artifact and invite them to open it.]`,
+        `[FILM READY — The illustrated Oracle story film has finished materializing. Tell the Seeker their transmission is ready to watch. Do not invent a URL or claim details you cannot see; simply acknowledge the completed visual artifact and invite them to open it.]`,
         true,
       );
       setShowPortraitCard(true);
@@ -3607,8 +3615,8 @@ export function SurrogateOracleImmersion() {
                             : oracleFilm.job.provider === 'comfy'
                               ? 'SEEDANCE MATERIALIZING · YOU CAN KEEP TALKING'
                                : oracleFilm.job.provider === 'fal'
-                                 ? 'FAL SEEDANCE VISUAL · LYRIA MUX PENDING'
-                                 : 'RUNPOD GPU MATERIALIZING'}
+                                 ? 'HOSTED VISUAL · LYRIA MUX PENDING'
+                                 : 'GPU FALLBACK MATERIALIZING'}
                       </span>
                       <progress max="100" value={oracleFilm.job.progress} />
                       <button type="button" onClick={() => void oracleFilm.cancelFilm()}>CANCEL FILM</button>
@@ -3621,7 +3629,7 @@ export function SurrogateOracleImmersion() {
                          {oracleFilm.job.provider === 'browser'
                            ? 'FREE LOCAL RENDER · WEBM'
                            : oracleFilm.job.provider === 'fal'
-                             ? 'FAL SEEDANCE 2.5 + LYRIA · MP4'
+                             ? 'HOSTED VISUAL + LYRIA · MP4'
                              : 'GPU RENDER · MP4'}
                       </span>
                       <a
@@ -4116,6 +4124,7 @@ export function SurrogateOracleImmersion() {
               onStorySceneRetry={retryIllustrationStoryScene}
               onStorySceneReplace={(pageNumber) => retryIllustrationStoryScene(pageNumber, 'replace')}
               onStoryFilmRetry={retryIllustrationStoryFilm}
+              onStoryLaneChange={chooseIllustrationStoryLane}
               savedSeriesCount={seriesHistory.length}
               onOpenSeriesHistory={() => setShowSeriesHistory(true)}
             />

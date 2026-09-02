@@ -149,8 +149,8 @@ function StoryPizzaTracker({
     { key: 'refs', label: 'Locked slices', value: `${references}/32`, complete: references === 32, active: references > 0 && references < 32 },
     {
       key: 'bake',
-      label: 'FAL oven',
-      value: blocked ? `${animated}/32 · ${blocked} blocked` : `${animated}/32${pending ? ` · ${pending} in oven` : ''}`,
+       label: 'Visual motion',
+       value: blocked ? `${animated}/32 · ${blocked} blocked` : `${animated}/32${pending ? ` · ${pending} in progress` : ''}`,
       complete: animated === 32,
       active: references === 32 && animated < 32 && pending > 0,
     },
@@ -203,7 +203,7 @@ function StoryPizzaTracker({
             : failed
               ? 'Retry only the affected page below. Completed slices stay saved.'
               : pending
-                ? `${pending} page${pending === 1 ? '' : 's'} still in the FAL oven.`
+                 ? `${pending} page${pending === 1 ? '' : 's'} still in visual production.`
             : 'Live state from the server job — no placeholder percentages.'}
       </p>
     </section>
@@ -406,12 +406,16 @@ export function CreativeArtifactCard({
     : ILLUSTRATION_STORY_FAL_MODELS[0]?.slug ?? null;
   const [storyLane, setStoryLane] = useState<IllustrationStoryLane>(initialStoryLane);
   const [storyModelSlug, setStoryModelSlug] = useState<string | null>(initialStoryModel);
-  const { recommendations, summary, isAdvising, advise } = useIllustrationStoryModelAdvisor();
+  const { models, recommendations, summary, isAdvising, advise, loadCatalog } = useIllustrationStoryModelAdvisor();
 
   useEffect(() => {
     setStoryLane(initialStoryLane);
     setStoryModelSlug(initialStoryModel);
   }, [artifact.id, initialStoryLane, initialStoryModel]);
+
+  useEffect(() => {
+    if (isIllustrationStory) void loadCatalog();
+  }, [isIllustrationStory, loadCatalog]);
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -745,7 +749,7 @@ export function CreativeArtifactCard({
                   <button
                     type="button"
                     className={`creative-story-choice__option${storyLane === 'fal' ? ' is-selected' : ''}`}
-                    onClick={() => chooseStoryLane('fal', storyModelSlug ?? ILLUSTRATION_STORY_FAL_MODELS[0]?.slug ?? null)}
+                    onClick={() => chooseStoryLane('fal', storyModelSlug ?? models[0]?.slug ?? null)}
                   >
                     <strong>FAL / EXPLICIT</strong>
                     <span>Hosted motion from still anchors. Requires the model and budget confirmation below.</span>
@@ -759,12 +763,12 @@ export function CreativeArtifactCard({
                       value={storyModelSlug ?? ''}
                       onChange={(event) => chooseStoryLane('fal', event.target.value || null)}
                     >
-                      {ILLUSTRATION_STORY_FAL_MODELS.map(model => (
+                      {models.map(model => (
                         <option value={model.slug} key={model.slug}>{model.label} · {model.costLabel}</option>
                       ))}
                     </select>
                     {storyModelSlug && (() => {
-                      const model = ILLUSTRATION_STORY_FAL_MODELS.find(item => item.slug === storyModelSlug);
+                      const model = models.find(item => item.slug === storyModelSlug);
                       return model ? <small>{model.description} Estimated scene wait: about {Math.ceil(model.expectedSeconds / 60)} minutes.</small> : null;
                     })()}
                     <button
@@ -803,7 +807,7 @@ export function CreativeArtifactCard({
             </div>
             <p className="creative-artifact-card__confirmation-copy">
               {isIllustrationStory && storyLane === 'fal'
-                ? `This explicitly confirms ${ILLUSTRATION_STORY_FAL_MODELS.find(model => model.slug === storyModelSlug)?.label ?? 'the selected approved FAL model'} for 32 visual scenes. The final narration, voices, music, and FFmpeg assembly stay local.`
+                ? `This explicitly confirms ${models.find(model => model.slug === storyModelSlug)?.label ?? 'the selected approved FAL model'} for 32 visual scenes. The final narration, voices, music, and FFmpeg assembly stay local.`
                 : artifact.confirmationCopy
                 ?? (artifact.requiresConfirmation
                   ? 'Money Mite will send this brief into the production lane only after you clear it.'

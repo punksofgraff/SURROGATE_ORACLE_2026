@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   createIllustrationStoryPages,
   isCreativeDispatchCurrent,
   isCreativeFilmJobCurrent,
   updateIllustrationStoryPages,
 } from '../src/lib/creativeProduction.ts';
+
+const storyJobSource = fs.readFileSync(new URL('../../../supabase/functions/oracle-story-film-job/index.ts', import.meta.url), 'utf8');
+const storyHookSource = fs.readFileSync(new URL('../src/hooks/useIllustrationStoryFilm.ts', import.meta.url), 'utf8');
 
 const runtime = (artifactId, token, status = 'generating') => ({
   artifactId,
@@ -113,5 +117,19 @@ assert.equal(inFlightPages.filter(page => page.status === 'ready').length, 12, '
 assert.equal(inFlightPages.find(page => page.status === 'generating')?.pageNumber, 13, 'one active panel should be visible during stitching');
 const failedPages = updateIllustrationStoryPages(inFlightPages, 58, 'stitch failed');
 assert.equal(failedPages.find(page => page.status === 'failed')?.pageNumber, 13, 'the active panel should retain a retryable failure');
+
+// Provider boundary: local rendering never invokes the hosted story job, while
+// the hosted lane must carry explicit confirmation and an approved model slug.
+const localStoryStart = storyHookSource.indexOf('const renderLocalStory');
+const localStoryEnd = storyHookSource.indexOf('const cancel =', localStoryStart);
+const localStoryBody = storyHookSource.slice(localStoryStart, localStoryEnd);
+assert.equal(localStoryBody.includes("oracle-story-film-job"), false, 'local story rendering must make no hosted video call');
+assert.equal(storyJobSource.includes("if (!confirmed)"), true, 'hosted story requests require explicit confirmation');
+assert.equal(storyJobSource.includes("if (!model)"), true, 'hosted story requests reject unapproved model slugs');
+assert.equal(storyJobSource.includes('model_slug: model.slug'), true, 'the selected model slug must be persisted');
+assert.equal(storyJobSource.includes('assembly: \'local-ffmpeg\''), true, 'new hosted jobs must hand visuals to local assembly');
+assert.equal(storyJobSource.includes('runpod('), false, 'FAL story jobs must not call RunPod');
+assert.equal(storyJobSource.includes('This historical Seedance job is readable but cannot be retried'), true, 'historical Seedance jobs must not auto-retry');
+assert.equal(storyJobSource.includes('return json({ provider: \'fal\', models: falStoryModels()'), false, 'catalog reads must not submit hosted jobs');
 
 console.log('creative dispatch contract passed (new brief, cancel, retry, film races, and story panel order)');

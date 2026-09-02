@@ -16,7 +16,6 @@ const PAGE_COUNT = 32;
 const LEGACY_SEEDANCE_MODEL = 'bytedance/seedance-2.5/image-to-video';
 const LEGACY_SEEDANCE_QUEUE_MODEL = 'bytedance/seedance-2.5';
 const FAL_TIMEOUT_MS = 20_000;
-const RUNPOD_TIMEOUT_MS = 12_000;
 
 type FalStoryModel = {
   slug: string;
@@ -126,6 +125,8 @@ type StoryJobRow = {
   chunks: unknown;
   story_scenes: unknown;
   story_manifest: unknown;
+  provider: string | null;
+  model_slug: string | null;
   runpod_job_id: string | null;
   final_media_url: string | null;
   narration_url: string | null;
@@ -183,7 +184,7 @@ function publicJob(row: StoryJobRow) {
   const manifest = row.story_manifest && typeof row.story_manifest === 'object'
     ? row.story_manifest as Record<string, unknown>
     : {};
-  const manifestModelSlug = safeText(manifest.modelSlug ?? manifest.visualProvider, 180);
+  const manifestModelSlug = safeText(row.model_slug ?? manifest.modelSlug ?? manifest.visualProvider, 180);
   const sceneModelSlug = safeText(scenes.find(scene => scene.modelSlug)?.modelSlug, 180);
   const modelSlug = manifestModelSlug || sceneModelSlug || null;
   const retired = Boolean(modelSlug && isRetiredModel(modelSlug));
@@ -195,7 +196,7 @@ function publicJob(row: StoryJobRow) {
   const audioReady = Boolean(row.music_url && row.narration_url);
   return {
     id: row.id,
-    provider: retired ? 'retired-fal' : 'fal',
+    provider: retired ? 'retired-fal' : (row.provider || 'fal'),
     modelSlug,
     kind: 'illustration-story',
     status: row.status,
@@ -325,7 +326,7 @@ function falErrorDetail(value: Record<string, unknown>): string {
 
 async function falFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const key = Deno.env.get('FAL_API_KEY');
-  if (!key) throw new Error('FAL is not configured. Add FAL_API_KEY before starting this premium story.');
+  if (!key) throw new Error('FAL is not configured. Add FAL_API_KEY before starting this hosted story.');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FAL_TIMEOUT_MS);
   try {
@@ -411,31 +412,6 @@ async function cancelFalScene(modelSlug: string, requestId: string): Promise<voi
   await falJson(`/${queueModel}/requests/${encodeURIComponent(requestId)}/cancel`, { method: 'PUT' });
 }
 
-async function runpod(path: string, method: string, body?: unknown): Promise<Record<string, unknown>> {
-  const key = Deno.env.get('RUNPOD_API_KEY');
-  const endpoint = Deno.env.get('RUNPOD_ENDPOINT_ID');
-  if (!key || !endpoint) {
-    throw new Error('RunPod story stitcher is not configured. Add RUNPOD_ENDPOINT_ID before starting this premium story.');
-  }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), RUNPOD_TIMEOUT_MS);
-  try {
-    const response = await fetch(`https://api.runpod.ai/v2/${endpoint}/${path}`, {
-      method,
-      signal: controller.signal,
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    const raw = await response.text();
-    let data: Record<string, unknown> = {};
-    try { data = JSON.parse(raw); } catch { /* handled below */ }
-    if (!response.ok) throw new Error(`RunPod ${response.status}: ${safeText(data.error ?? raw, 240)}`);
-    return data;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function uploadAsset(
   supabase: ReturnType<typeof createClient>,
   path: string,
@@ -494,8 +470,8 @@ function sceneModelSlug(scene: StoryScene, manifest: unknown): string {
     const value = safeText((manifest as Record<string, unknown>).modelSlug ?? (manifest as Record<string, unknown>).visualProvider, 180);
     if (value) return value;
   }
-  // Old rows did not persist the model slug. This is only for readable,
-  // already-created Seedance jobs; new submissions cannot use this path.
+  // Old rows did not persist the model slug. This fallback only identifies
+  // readable, historical rows; new submissions cannot use this path.
   return LEGACY_SEEDANCE_MODEL;
 }
 async function updateJob(
@@ -517,69 +493,9 @@ async function pollStoryJob(
   current: StoryJobRow,
 ): Promise<StoryJobRow> {
   if (current.runpod_job_id?.startsWith('story-mux:')) {
-    const remoteId = current.runpod_job_id.slice('story-mux:'.length);
-    const remote = await runpod(`status/${encodeURIComponent(remoteId)}`, 'GET');
-    const remoteStatus = safeText(remote.status, 24).toLowerCase();
-    const output = remote.output && typeof remote.output === 'object'
-      ? remote.output as Record<string, unknown>
-      : {};
-    const finalUrl = safeUrl(output.final_media_url ?? output.finalMediaUrl ?? output.video_url, 4000);
-    if (remoteStatus === 'completed' && finalUrl) {
-      const audioPresent = output.audio_stream_present === true;
-      const renderedDuration = Number(output.duration_seconds);
-      const requestedDuration = sceneList(current.story_scenes)
-        .reduce((sum, scene) => sum + Number(scene.durationSeconds || 0), 0);
-      const durationMatches = Number.isFinite(renderedDuration)
-        && Math.abs(renderedDuration - requestedDuration) <= 1;
-      if (!audioPresent || !durationMatches) {
-        return updateJob(supabase, current.id, {
-          status: 'failed',
-          progress: current.progress,
-          final_media_url: null,
-          error_message: `Story output failed the final media gate (audio=${audioPresent}, duration=${Number.isFinite(renderedDuration) ? renderedDuration : 'unknown'}s).`,
-          story_manifest: {
-            ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
-            audioVerification: {
-              audioStreamPresent: audioPresent,
-              outputDurationSeconds: Number.isFinite(renderedDuration) ? renderedDuration : null,
-              requestedDurationSeconds: requestedDuration,
-              durationMatch: durationMatches,
-            },
-            failureKind: 'audio-gate',
-          },
-        });
-      }
-      return updateJob(supabase, current.id, {
-        status: 'ready',
-        progress: 100,
-        final_media_url: finalUrl,
-        error_message: null,
-        story_manifest: {
-          ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
-          audioVerification: {
-            audioStreamPresent: audioPresent,
-            outputDurationSeconds: renderedDuration,
-            requestedDurationSeconds: requestedDuration,
-            durationMatch: true,
-          },
-          failureKind: null,
-        },
-      });
-    }
-    if (remoteStatus === 'failed') {
-      return updateJob(supabase, current.id, {
-        status: 'failed',
-        error_message: safeText(remote.error, 300) || 'Server-side story stitching failed.',
-        story_manifest: {
-          ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
-          failureKind: 'provider',
-        },
-      });
-    }
-    return updateJob(supabase, current.id, {
-      status: 'stitching',
-      progress: Math.max(current.progress, Number(remote.progress) || 82),
-    });
+    // Historical rows may still carry a retired server job id. Keep their
+    // persisted state readable, but never resume or poll that provider.
+    return current;
   }
 
   const scenes = sceneList(current.story_scenes);
@@ -769,6 +685,8 @@ Deno.serve(async (req: Request) => {
       session_id: sessionId,
       portrait_url: 'story://locked-panel-reference',
       job_type: 'illustration-story',
+       provider: 'fal',
+       model_slug: model.slug,
       status: 'queued',
       progress: 1,
       chunk_count: PAGE_COUNT,
@@ -924,6 +842,27 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  if (action === 'cancel') {
+    const scenes = sceneList(current.story_scenes);
+    await Promise.all(scenes.map(async scene => {
+      if (scene.falRequestId && ['queued', 'generating'].includes(scene.status)) {
+        try {
+          await cancelFalScene(sceneModelSlug(scene, current.story_manifest), scene.falRequestId);
+        } catch {
+          // Persist cancellation even if FAL has already closed the request.
+        }
+      }
+    }));
+    current = await updateJob(supabase, current.id, {
+      status: 'cancelled',
+      story_scenes: scenes.map(scene => ['queued', 'generating'].includes(scene.status)
+        ? { ...scene, status: 'cancelled', progress: 0, error: null }
+        : scene),
+      error_message: null,
+    });
+    return json(publicJob(current));
+  }
+
   if (action === 'retry-stitch') {
     const modelSlug = sceneModelSlug(sceneList(current.story_scenes)[0] ?? {} as StoryScene, current.story_manifest);
     if (isRetiredModel(modelSlug)) {
@@ -941,9 +880,6 @@ Deno.serve(async (req: Request) => {
          try { await cancelFalScene(sceneModelSlug(scene, current.story_manifest), scene.falRequestId); } catch { /* local state remains authoritative */ }
       }
     }));
-    if (current.runpod_job_id?.startsWith('story-mux:')) {
-      try { await runpod(`cancel/${encodeURIComponent(current.runpod_job_id.slice('story-mux:'.length))}`, 'POST'); } catch { /* close local state */ }
-    }
     current = await updateJob(supabase, current.id, {
       status: 'cancelled',
       story_scenes: scenes.map(scene => ['queued', 'generating'].includes(scene.status)

@@ -1,6 +1,9 @@
 import { useCallback, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import type { IllustrationStoryModelOption } from '../lib/creativeProduction';
+import {
+  ILLUSTRATION_STORY_FAL_MODELS,
+  type IllustrationStoryModelOption,
+} from '../lib/creativeProduction';
 
 export type StoryModelRecommendation = IllustrationStoryModelOption & {
   reason: string;
@@ -8,6 +11,7 @@ export type StoryModelRecommendation = IllustrationStoryModelOption & {
 };
 
 export function useIllustrationStoryModelAdvisor() {
+  const [models, setModels] = useState<IllustrationStoryModelOption[]>(ILLUSTRATION_STORY_FAL_MODELS);
   const [recommendations, setRecommendations] = useState<StoryModelRecommendation[]>([]);
   const [summary, setSummary] = useState('');
   const [isAdvising, setIsAdvising] = useState(false);
@@ -31,5 +35,15 @@ export function useIllustrationStoryModelAdvisor() {
     }
   }, []);
 
-  return { recommendations, summary, isAdvising, advise };
+  const loadCatalog = useCallback(async () => {
+    const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
+      body: { action: 'catalog' },
+    });
+    if (error || !Array.isArray(data?.models) || data.models.length === 0) return ILLUSTRATION_STORY_FAL_MODELS;
+    const next = data.models as IllustrationStoryModelOption[];
+    setModels(next);
+    return next;
+  }, []);
+
+  return { models, recommendations, summary, isAdvising, advise, loadCatalog };
 }

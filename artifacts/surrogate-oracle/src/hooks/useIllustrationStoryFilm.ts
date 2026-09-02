@@ -294,7 +294,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     }
     throw lastError instanceof Error
       ? lastError
-      : new Error('Premium story film timed out. Completed scenes remain available for retry.');
+       : new Error('FAL story film timed out. Completed scenes remain available for explicit page retry.');
   }, [poll]);
 
   const renderStory = useCallback(async (

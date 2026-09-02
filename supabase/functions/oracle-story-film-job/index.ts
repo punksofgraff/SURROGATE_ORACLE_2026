@@ -1,8 +1,8 @@
 /**
- * Server-owned optional FAL story-film job.
+ * Server-owned optional hosted story-film job.
  *
  * A story is not a still-image render. Every page gets its own durable panel
- * reference, approved FAL request, and recoverable output. Visual clips are
+ * reference, approved hosted request, and recoverable output. Visual clips are
  * persisted here; final audio assembly remains on the local FFmpeg lane.
  */
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -26,6 +26,16 @@ type FalStoryModel = {
   resolution: '480p' | '720p';
 };
 
+type MiniMaxStoryModel = {
+  provider: 'minimax';
+  slug: 'MiniMax-H3';
+  label: string;
+  description: string;
+  costLabel: string;
+  expectedSeconds: number;
+  resolution: '768P' | '2K';
+};
+
 const DEFAULT_FAL_STORY_MODELS: FalStoryModel[] = [
   {
     slug: 'fal-ai/wan-i2v',
@@ -42,6 +52,18 @@ const DEFAULT_FAL_STORY_MODELS: FalStoryModel[] = [
     costLabel: 'Higher-cost premium scene',
     expectedSeconds: 180,
     resolution: '720p',
+  },
+];
+
+const DEFAULT_MINIMAX_STORY_MODELS: MiniMaxStoryModel[] = [
+  {
+    provider: 'minimax',
+    slug: 'MiniMax-H3',
+    label: 'MiniMax H3 · 768P native audio',
+    description: 'Reference-to-video animation with native stereo ambience and movement audio.',
+    costLabel: 'Hosted H3 scene',
+    expectedSeconds: 120,
+    resolution: '768P',
   },
 ];
 
@@ -81,6 +103,10 @@ function falStoryModel(slug: unknown): FalStoryModel | null {
   return falStoryModels().find(model => model.slug === clean) ?? null;
 }
 
+function minimaxStoryModel(slug: unknown): MiniMaxStoryModel | null {
+  return DEFAULT_MINIMAX_STORY_MODELS.find(model => model.slug === safeText(slug, 180)) ?? null;
+}
+
 type StoryScene = {
   pageNumber: number;
   sheetIndex: 0 | 1;
@@ -91,6 +117,7 @@ type StoryScene = {
   prompt: string;
   referenceUrl: string | null;
   modelSlug: string | null;
+  provider?: 'fal' | 'minimax';
   referenceAudioUrl: string | null;
   falRequestId: string | null;
   status: 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled';
@@ -202,6 +229,7 @@ function publicJob(row: StoryJobRow) {
   const sceneModelSlug = safeText(scenes.find(scene => scene.modelSlug)?.modelSlug, 180);
   const modelSlug = manifestModelSlug || sceneModelSlug || null;
   const retired = Boolean(modelSlug && isRetiredModel(modelSlug));
+  const provider = retired ? 'retired-fal' : (row.provider || (scenes.find(scene => scene.provider)?.provider ?? 'fal'));
   const audioVerification = manifest.audioVerification && typeof manifest.audioVerification === 'object'
     ? manifest.audioVerification as Record<string, unknown>
     : {};
@@ -210,7 +238,7 @@ function publicJob(row: StoryJobRow) {
   const audioReady = Boolean(row.music_url && row.narration_url);
   return {
     id: row.id,
-    provider: retired ? 'retired-fal' : (row.provider || 'fal'),
+    provider,
     modelSlug,
     kind: 'illustration-story',
     status: row.status,
@@ -226,6 +254,7 @@ function publicJob(row: StoryJobRow) {
       seed: scene.seed,
       referenceUrl: scene.referenceUrl,
        modelSlug: scene.modelSlug ?? modelSlug,
+       provider: scene.provider ?? (provider === 'minimax' ? 'minimax' : 'fal'),
       status: scene.status,
       progress: scene.progress,
       jobId: scene.jobId,
@@ -480,6 +509,76 @@ async function createFalScene(
   return requestId;
 }
 
+async function minimaxFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const key = Deno.env.get('MINIMAX_API_KEY');
+  if (!key) throw new Error('MiniMax H3 is not configured. Add MINIMAX_API_KEY before starting this hosted story.');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FAL_TIMEOUT_MS);
+  try {
+    const headers = new Headers(init.headers);
+    headers.set('Authorization', `Bearer ${key}`);
+    headers.set('Content-Type', 'application/json');
+    return await fetch(`https://api.minimax.io${path}`, { ...init, headers, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function minimaxJson(path: string, init: RequestInit = {}): Promise<Record<string, unknown>> {
+  const response = await minimaxFetch(path, init);
+  const raw = await response.text();
+  let data: Record<string, unknown> = {};
+  try { data = JSON.parse(raw); } catch { /* use the short raw message below */ }
+  if (!response.ok) {
+    const detail = errorDetail(data.error) || errorDetail(data) || safeText(raw, 240);
+    if (response.status === 402) {
+      throw new Error('MiniMax H3 rejected this request because the configured account is not entitled to video generation. No H3 task was created; enable H3 access on the MiniMax account before retrying.');
+    }
+    throw new Error(`MiniMax H3 ${response.status}: ${detail}`);
+  }
+  return data;
+}
+
+async function createMiniMaxScene(
+  model: MiniMaxStoryModel,
+  referenceUrl: string,
+  prompt: string,
+  referenceAudioUrl: string | null,
+  durationSeconds: number,
+): Promise<string> {
+  // MiniMax H3 accepts five to fifteen seconds; the local stitcher trims each
+  // provider clip to the story page duration after download.
+  const duration = Math.max(5, Math.min(15, Math.round(durationSeconds)));
+  const content: Array<Record<string, unknown>> = [
+    { type: 'text', text: providerStoryLanguage(prompt) },
+    {
+      type: 'image_url',
+      role: 'reference_image',
+      image_url: { url: referenceUrl },
+    },
+  ];
+  if (referenceAudioUrl) {
+    content.push({
+      type: 'audio_url',
+      role: 'reference_audio',
+      audio_url: { url: referenceAudioUrl },
+    });
+  }
+  const data = await minimaxJson('/v2/video_generation', {
+    method: 'POST',
+    body: JSON.stringify({
+      model: model.slug,
+      content,
+      resolution: model.resolution,
+      duration,
+      ratio: '16:9',
+    }),
+  });
+  const taskId = safeText(data.task_id, 180);
+  if (!taskId) throw new Error('MiniMax H3 did not return a task id for this story page.');
+  return taskId;
+}
+
 async function pollFalScene(modelSlug: string, requestId: string): Promise<{ status: StoryScene['status']; progress: number; output?: string; error?: string }> {
   const queueModel = modelSlug === LEGACY_SEEDANCE_MODEL ? LEGACY_SEEDANCE_QUEUE_MODEL : modelSlug;
   const status = await falJson(`/${queueModel}/requests/${encodeURIComponent(requestId)}/status`);
@@ -503,9 +602,37 @@ async function pollFalScene(modelSlug: string, requestId: string): Promise<{ sta
   return { status: state === 'IN_QUEUE' ? 'queued' : 'generating', progress: state === 'IN_QUEUE' ? 8 : 38 };
 }
 
+async function pollMiniMaxScene(taskId: string): Promise<{ status: StoryScene['status']; progress: number; output?: string; error?: string }> {
+  const data = await minimaxJson(`/v2/query/video_generation/${encodeURIComponent(taskId)}`);
+  const task = data.task && typeof data.task === 'object'
+    ? data.task as Record<string, unknown>
+    : {};
+  const state = safeText(task.status, 24).toLowerCase();
+  if (state === 'succeeded') {
+    const content = task.content && typeof task.content === 'object'
+      ? task.content as Record<string, unknown>
+      : {};
+    const output = safeUrl(content.url, 4000);
+    return output
+      ? { status: 'ready', progress: 100, output }
+      : { status: 'failed', progress: 0, error: 'MiniMax H3 completed without a video URL.' };
+  }
+  if (state === 'failed') {
+    return { status: 'failed', progress: 0, error: errorDetail(task.error) || errorDetail(data.error) || 'MiniMax H3 page animation failed.' };
+  }
+  if (state === 'cancelled' || state === 'canceled') {
+    return { status: 'cancelled', progress: 0, error: 'MiniMax H3 page animation was cancelled.' };
+  }
+  return { status: state === 'queued' ? 'queued' : 'generating', progress: state === 'queued' ? 8 : 38 };
+}
+
 async function cancelFalScene(modelSlug: string, requestId: string): Promise<void> {
   const queueModel = modelSlug === LEGACY_SEEDANCE_MODEL ? LEGACY_SEEDANCE_QUEUE_MODEL : modelSlug;
   await falJson(`/${queueModel}/requests/${encodeURIComponent(requestId)}/cancel`, { method: 'PUT' });
+}
+
+async function cancelMiniMaxScene(taskId: string): Promise<void> {
+  await minimaxJson(`/v2/video_generation/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
 }
 
 async function uploadAsset(
@@ -550,6 +677,19 @@ function storyPrompt(page: Record<string, unknown>): string {
   ].join(' ');
 }
 
+function miniMaxStoryPrompt(page: Record<string, unknown>): string {
+  const narration = providerStoryLanguage(safeText(page.narration, 600));
+  const pageNumber = Number(page.pageNumber);
+  return [
+    'Use the supplied illustration panel as the exact visual source of truth for this animated story shot.',
+    'Animate the depicted characters visibly acting inside the existing composition: expressions, blinking, breathing, purposeful gestures, props, and environmental movement should develop over time.',
+    'Preserve the artwork, characters, costumes, colors, relationships, setting, linework, proportions, and storybook style. Do not redraw, replace, reinterpret, or morph the characters.',
+    'Use a restrained motivated camera move only to support the subject performance. Do not turn the shot into a still-image slideshow or a camera-only zoom.',
+    'Generate subtle native stereo ambience and synchronized movement sound for the depicted action. Do not generate dialogue or on-screen text; keep mouths closed unless the panel clearly depicts speaking.',
+    `This is story page ${pageNumber} of 32. Story beat: ${narration}`,
+  ].join(' ');
+}
+
 function replacementStoryPrompt(scene: StoryScene): string {
   return [
     'Create a gentle, child-friendly 5-second animated storybook page using the supplied illustration only as a broad color, layout, and movement reference.',
@@ -569,6 +709,16 @@ function sceneModelSlug(scene: StoryScene, manifest: unknown): string {
   // Old rows did not persist the model slug. This fallback only identifies
   // readable, historical rows; new submissions cannot use this path.
   return LEGACY_SEEDANCE_MODEL;
+}
+
+function sceneProvider(scene: StoryScene, manifest: unknown): 'fal' | 'minimax' {
+  if (scene.provider === 'minimax') return 'minimax';
+  if (scene.provider === 'fal') return 'fal';
+  if (manifest && typeof manifest === 'object') {
+    const value = safeText((manifest as Record<string, unknown>).provider, 40).toLowerCase();
+    if (value === 'minimax') return 'minimax';
+  }
+  return 'fal';
 }
 async function updateJob(
   supabase: ReturnType<typeof createClient>,
@@ -596,9 +746,11 @@ async function pollStoryJob(
 
   const scenes = sceneList(current.story_scenes);
   const changed = await Promise.all(scenes.map(async (scene) => {
-    if (!scene.falRequestId || !['queued', 'generating'].includes(scene.status)) return scene;
+     if (!scene.falRequestId || !['queued', 'generating'].includes(scene.status)) return scene;
     try {
-       const next = await pollFalScene(sceneModelSlug(scene, current.story_manifest), scene.falRequestId);
+       const next = sceneProvider(scene, current.story_manifest) === 'minimax'
+         ? await pollMiniMaxScene(scene.falRequestId)
+         : await pollFalScene(sceneModelSlug(scene, current.story_manifest), scene.falRequestId);
       if (next.status === 'ready' && next.output) {
         const stableUrl = await persistRemoteScene(supabase, current.id, scene.pageNumber, next.output);
         return {
@@ -612,15 +764,23 @@ async function pollStoryJob(
         };
       }
       if (next.status === 'failed') {
-        const failure = sceneFailure(scene.pageNumber, next.error ?? '', 'FAL page animation failed.');
+         const failure = sceneFailure(
+           scene.pageNumber,
+           next.error ?? '',
+           sceneProvider(scene, current.story_manifest) === 'minimax'
+             ? 'MiniMax H3 page animation failed.'
+             : 'FAL page animation failed.',
+         );
         return { ...scene, status: 'failed' as const, progress: 0, error: failure.error, failureKind: failure.failureKind };
       }
       return { ...scene, status: next.status, progress: next.progress, error: null };
     } catch (error) {
-      const failure = sceneFailure(
+       const failure = sceneFailure(
         scene.pageNumber,
         error instanceof Error ? error.message : '',
-        'FAL page retrieval failed.',
+         sceneProvider(scene, current.story_manifest) === 'minimax'
+           ? 'MiniMax H3 page retrieval failed.'
+           : 'FAL page retrieval failed.',
       );
       return {
         ...scene,
@@ -719,14 +879,25 @@ Deno.serve(async (req: Request) => {
 
   if (action === 'catalog') {
     return json({
-      provider: 'fal',
-      models: falStoryModels().map(({ slug, label, description, costLabel, expectedSeconds }) => ({
-        slug,
-        label,
-        description,
-        costLabel,
-        expectedSeconds,
-      })),
+      provider: 'hosted-story',
+      models: [
+        ...falStoryModels().map(({ slug, label, description, costLabel, expectedSeconds }) => ({
+          provider: 'fal',
+          slug,
+          label,
+          description,
+          costLabel,
+          expectedSeconds,
+        })),
+        ...DEFAULT_MINIMAX_STORY_MODELS.map(({ provider, slug, label, description, costLabel, expectedSeconds }) => ({
+          provider,
+          slug,
+          label,
+          description,
+          costLabel,
+          expectedSeconds,
+        })),
+      ],
     });
   }
 
@@ -746,7 +917,14 @@ Deno.serve(async (req: Request) => {
 
   if (action === 'create') {
     const sessionId = safeText(payload.sessionId, 120);
-    const model = falStoryModel(payload.modelSlug);
+    const requestedProvider = safeText(payload.provider, 40).toLowerCase();
+    const falModel = falStoryModel(payload.modelSlug);
+    const miniMaxModel = minimaxStoryModel(payload.modelSlug);
+    const provider: 'fal' | 'minimax' = requestedProvider === 'minimax'
+      || (!requestedProvider && Boolean(miniMaxModel))
+      ? 'minimax'
+      : 'fal';
+    const model = provider === 'minimax' ? miniMaxModel : falModel;
     const confirmed = payload.confirmed === true;
     const pages = Array.isArray(payload.pages) ? payload.pages as Record<string, unknown>[] : [];
     const panels = Array.isArray(payload.panels) ? payload.panels as Record<string, unknown>[] : [];
@@ -754,16 +932,16 @@ Deno.serve(async (req: Request) => {
     const musicBase64 = payload.musicBase64;
     const narrationBase64 = payload.narrationBase64;
     if (!confirmed) {
-      return json({ error: 'A Seeker confirmation is required before any hosted FAL story request.' }, 400);
+      return json({ error: 'A Seeker confirmation is required before any hosted story request.' }, 400);
     }
     if (!model) {
-      return json({ error: 'That FAL story model is not approved. Choose a model from the current catalog.' }, 400);
+      return json({ error: 'That hosted story model is not approved. Choose a model from the current catalog.' }, 400);
     }
     if (!sessionId || pages.length !== PAGE_COUNT || panels.length !== PAGE_COUNT) {
       return json({ error: 'sessionId plus exactly 32 pages and 32 locked panel references are required.' }, 400);
     }
     if (typeof musicBase64 !== 'string' || typeof narrationBase64 !== 'string') {
-      return json({ error: 'FAL story production requires real Lyria music and narration audio.' }, 400);
+      return json({ error: 'Hosted story production requires real Lyria music and narration audio.' }, 400);
     }
 
     const totalDuration = pages.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
@@ -781,7 +959,7 @@ Deno.serve(async (req: Request) => {
       session_id: sessionId,
       portrait_url: 'story://locked-panel-reference',
       job_type: 'illustration-story',
-       provider: 'fal',
+        provider,
        model_slug: model.slug,
       status: 'queued',
       progress: 1,
@@ -792,9 +970,9 @@ Deno.serve(async (req: Request) => {
         totalDurationSeconds: totalDuration,
         sourceAssets: 'two immutable 4x4 illustration sheets',
         referencePolicy: 'one persisted panel image per page',
-         visualProvider: model.slug,
+          visualProvider: model.slug,
          modelSlug: model.slug,
-         provider: 'fal',
+          provider,
          confirmation: 'explicit',
         audioPolicy: 'Lyria soundtrack plus validated lore narration',
         characterVoiceTracks,
@@ -827,8 +1005,19 @@ Deno.serve(async (req: Request) => {
               panelBytes,
               mimeType,
             );
-            const seed = 730_000 + index;
-             const requestId = await createFalScene(model, referenceUrl, storyPrompt(page), sessionId, seed);
+             const seed = 730_000 + index;
+             const prompt = provider === 'minimax'
+               ? miniMaxStoryPrompt(page)
+               : storyPrompt(page);
+             const requestId = provider === 'minimax'
+               ? await createMiniMaxScene(
+                 model as MiniMaxStoryModel,
+                 referenceUrl,
+                 prompt,
+                 characterAudioForPage(page, characterVoiceTracks),
+                 Number(page.durationSeconds),
+               )
+               : await createFalScene(model as FalStoryModel, referenceUrl, prompt, sessionId, seed);
             return {
               pageNumber: index + 1,
               sheetIndex: Number(page.sheetIndex) as 0 | 1,
@@ -836,14 +1025,15 @@ Deno.serve(async (req: Request) => {
               column: Number(page.column),
               durationSeconds: Number(page.durationSeconds),
               seed,
-               modelSlug: model.slug,
-              prompt: storyPrompt(page),
+                modelSlug: model.slug,
+                provider,
+               prompt,
               referenceUrl,
               referenceAudioUrl: characterAudioForPage(page, characterVoiceTracks),
               falRequestId: requestId,
               status: 'generating' as const,
               progress: 8,
-              jobId: `fal:${requestId}`,
+              jobId: `${provider}:${requestId}`,
               outputUrl: null,
               error: null,
               failureKind: null,
@@ -851,7 +1041,13 @@ Deno.serve(async (req: Request) => {
             };
           } catch (error) {
             const detail = error instanceof Error ? error.message : '';
-            const failure = sceneFailure(index + 1, detail, 'Could not submit this page to FAL.');
+             const failure = sceneFailure(
+               index + 1,
+               detail,
+               provider === 'minimax'
+                 ? 'Could not submit this page to MiniMax H3.'
+                 : 'Could not submit this page to FAL.',
+             );
             return {
               pageNumber: index + 1,
               sheetIndex: Number(page.sheetIndex) as 0 | 1,
@@ -859,8 +1055,9 @@ Deno.serve(async (req: Request) => {
               column: Number(page.column),
               durationSeconds: Number(page.durationSeconds),
               seed: 730_000 + index,
-               modelSlug: model.slug,
-              prompt: storyPrompt(page),
+                modelSlug: model.slug,
+                provider,
+               prompt: provider === 'minimax' ? miniMaxStoryPrompt(page) : storyPrompt(page),
               referenceUrl,
                 referenceAudioUrl: characterAudioForPage(page, characterVoiceTracks),
               falRequestId: null,
@@ -944,9 +1141,13 @@ Deno.serve(async (req: Request) => {
     await Promise.all(scenes.map(async scene => {
       if (scene.falRequestId && ['queued', 'generating'].includes(scene.status)) {
         try {
-          await cancelFalScene(sceneModelSlug(scene, current.story_manifest), scene.falRequestId);
+          if (sceneProvider(scene, current.story_manifest) === 'minimax') {
+            await cancelMiniMaxScene(scene.falRequestId);
+          } else {
+            await cancelFalScene(sceneModelSlug(scene, current.story_manifest), scene.falRequestId);
+          }
         } catch {
-          // Persist cancellation even if FAL has already closed the request.
+          // Persist cancellation even if the provider has already closed the request.
         }
       }
     }));
@@ -974,7 +1175,13 @@ Deno.serve(async (req: Request) => {
       && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl));
     await Promise.all(scenes.map(async scene => {
        if (scene.falRequestId && ['queued', 'generating'].includes(scene.status)) {
-         try { await cancelFalScene(sceneModelSlug(scene, current.story_manifest), scene.falRequestId); } catch { /* local state remains authoritative */ }
+          try {
+            if (sceneProvider(scene, current.story_manifest) === 'minimax') {
+              await cancelMiniMaxScene(scene.falRequestId);
+            } else {
+              await cancelFalScene(sceneModelSlug(scene, current.story_manifest), scene.falRequestId);
+            }
+          } catch { /* local state remains authoritative */ }
       }
     }));
     current = await updateJob(supabase, current.id, {
@@ -1001,23 +1208,33 @@ Deno.serve(async (req: Request) => {
         retired: true,
       }, 409);
     }
-    const model = falStoryModel(modelSlug);
-    if (!model) return json({ error: 'The saved FAL model is no longer approved; start a new story with the current catalog.' }, 409);
+    const provider = sceneProvider(scene, current.story_manifest);
+    const model = provider === 'minimax' ? minimaxStoryModel(modelSlug) : falStoryModel(modelSlug);
+    if (!model) return json({ error: 'The saved hosted story model is no longer approved; start a new story with the current catalog.' }, 409);
     const isReplacement = action === 'replace';
     try {
       const nextPrompt = isReplacement ? replacementStoryPrompt(scene) : scene.prompt;
       const nextSeed = isReplacement ? scene.seed + 500_000 : scene.seed;
-       const requestId = await createFalScene(model, scene.referenceUrl, nextPrompt, current.session_id, nextSeed);
+       const requestId = provider === 'minimax'
+         ? await createMiniMaxScene(
+           model as MiniMaxStoryModel,
+           scene.referenceUrl,
+           nextPrompt,
+           scene.referenceAudioUrl,
+           Number(scene.durationSeconds),
+         )
+         : await createFalScene(model as FalStoryModel, scene.referenceUrl, nextPrompt, current.session_id, nextSeed);
       const nextScenes = scenes.map(item => item.pageNumber === pageNumber
         ? {
           ...item,
           prompt: nextPrompt,
           seed: nextSeed,
            modelSlug,
+            provider,
           falRequestId: requestId,
           status: 'generating' as const,
           progress: 8,
-          jobId: `fal:${requestId}`,
+          jobId: `${provider}:${requestId}`,
           outputUrl: null,
           error: null,
           failureKind: null,

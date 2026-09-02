@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   ILLUSTRATION_STORY_FAL_MODELS,
+  ILLUSTRATION_STORY_MINIMAX_MODELS,
   type IllustrationStoryModelOption,
 } from '../lib/creativeProduction';
 
@@ -11,7 +12,10 @@ export type StoryModelRecommendation = IllustrationStoryModelOption & {
 };
 
 export function useIllustrationStoryModelAdvisor() {
-  const [models, setModels] = useState<IllustrationStoryModelOption[]>(ILLUSTRATION_STORY_FAL_MODELS);
+  const [models, setModels] = useState<IllustrationStoryModelOption[]>([
+    ...ILLUSTRATION_STORY_FAL_MODELS,
+    ...ILLUSTRATION_STORY_MINIMAX_MODELS,
+  ]);
   const [recommendations, setRecommendations] = useState<StoryModelRecommendation[]>([]);
   const [summary, setSummary] = useState('');
   const [isAdvising, setIsAdvising] = useState(false);
@@ -23,7 +27,7 @@ export function useIllustrationStoryModelAdvisor() {
         body: { brief },
       });
       if (error) throw error;
-      if (!data?.success) throw new Error(data?.error ?? 'Co-pilot could not advise on the FAL lane.');
+      if (!data?.success) throw new Error(data?.error ?? 'Co-pilot could not advise on the hosted story lane.');
       const next = Array.isArray(data.recommendations)
         ? data.recommendations as StoryModelRecommendation[]
         : [];
@@ -39,7 +43,9 @@ export function useIllustrationStoryModelAdvisor() {
     const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
       body: { action: 'catalog' },
     });
-    if (error || !Array.isArray(data?.models) || data.models.length === 0) return ILLUSTRATION_STORY_FAL_MODELS;
+     if (error || !Array.isArray(data?.models) || data.models.length === 0) {
+       return [...ILLUSTRATION_STORY_FAL_MODELS, ...ILLUSTRATION_STORY_MINIMAX_MODELS];
+     }
     const next = data.models as IllustrationStoryModelOption[];
     setModels(next);
     return next;

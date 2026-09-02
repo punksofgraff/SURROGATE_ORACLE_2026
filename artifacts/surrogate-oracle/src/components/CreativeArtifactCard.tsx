@@ -29,6 +29,7 @@ import {
   type CreativeMissingDetail,
   type CreativeSeriesHistoryEntry,
   ILLUSTRATION_STORY_FAL_MODELS,
+  ILLUSTRATION_STORY_MINIMAX_MODELS,
   type IllustrationStoryLane,
   type IllustrationStoryScene,
   type SeriesRenderMode,
@@ -400,13 +401,24 @@ export function CreativeArtifactCard({
     ? Object.entries(metadataRecord ?? {}).slice(0, 4)
     : [];
   const [followUpAnswer, setFollowUpAnswer] = useState('');
-  const initialStoryLane: IllustrationStoryLane = metadataRecord?.storyLane === 'fal' ? 'fal' : 'local';
-  const initialStoryModel = typeof metadataRecord?.falModelSlug === 'string'
-    ? metadataRecord.falModelSlug
-    : ILLUSTRATION_STORY_FAL_MODELS[0]?.slug ?? null;
+  const initialStoryLane: IllustrationStoryLane = metadataRecord?.storyLane === 'fal'
+    ? 'fal'
+    : metadataRecord?.storyLane === 'minimax'
+      ? 'minimax'
+      : 'local';
+  const initialStoryModel = initialStoryLane === 'minimax'
+    ? (typeof metadataRecord?.storyModelSlug === 'string'
+      ? metadataRecord.storyModelSlug
+      : ILLUSTRATION_STORY_MINIMAX_MODELS[0]?.slug ?? null)
+    : initialStoryLane === 'fal'
+      ? (typeof metadataRecord?.falModelSlug === 'string'
+        ? metadataRecord.falModelSlug
+        : ILLUSTRATION_STORY_FAL_MODELS[0]?.slug ?? null)
+      : null;
   const [storyLane, setStoryLane] = useState<IllustrationStoryLane>(initialStoryLane);
   const [storyModelSlug, setStoryModelSlug] = useState<string | null>(initialStoryModel);
   const { models, recommendations, summary, isAdvising, advise, loadCatalog } = useIllustrationStoryModelAdvisor();
+  const laneModels = models.filter(model => (model.provider ?? 'fal') === storyLane);
 
   useEffect(() => {
     setStoryLane(initialStoryLane);
@@ -749,10 +761,28 @@ export function CreativeArtifactCard({
                   <button
                     type="button"
                     className={`creative-story-choice__option${storyLane === 'fal' ? ' is-selected' : ''}`}
-                    onClick={() => chooseStoryLane('fal', storyModelSlug ?? models[0]?.slug ?? null)}
+                    onClick={() => chooseStoryLane(
+                      'fal',
+                      models.find(model => model.slug === storyModelSlug && (model.provider ?? 'fal') === 'fal')?.slug
+                        ?? ILLUSTRATION_STORY_FAL_MODELS[0]?.slug
+                        ?? null,
+                    )}
                   >
                     <strong>FAL / EXPLICIT</strong>
                     <span>Hosted motion from still anchors. Requires the model and budget confirmation below.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`creative-story-choice__option${storyLane === 'minimax' ? ' is-selected' : ''}`}
+                    onClick={() => chooseStoryLane(
+                      'minimax',
+                      models.find(model => model.slug === storyModelSlug && model.provider === 'minimax')?.slug
+                        ?? ILLUSTRATION_STORY_MINIMAX_MODELS[0]?.slug
+                        ?? null,
+                    )}
+                  >
+                    <strong>MINIMAX H3 / EXPLICIT</strong>
+                    <span>Reference-to-video motion with native stereo audio, followed by local FFmpeg assembly.</span>
                   </button>
                 </div>
                 {storyLane === 'fal' && (
@@ -763,12 +793,12 @@ export function CreativeArtifactCard({
                       value={storyModelSlug ?? ''}
                       onChange={(event) => chooseStoryLane('fal', event.target.value || null)}
                     >
-                      {models.map(model => (
+                      {models.filter(model => (model.provider ?? 'fal') === 'fal').map(model => (
                         <option value={model.slug} key={model.slug}>{model.label} · {model.costLabel}</option>
                       ))}
                     </select>
                     {storyModelSlug && (() => {
-                      const model = models.find(item => item.slug === storyModelSlug);
+                      const model = models.find(item => item.slug === storyModelSlug && (item.provider ?? 'fal') === 'fal');
                       return model ? <small>{model.description} Estimated scene wait: about {Math.ceil(model.expectedSeconds / 60)} minutes.</small> : null;
                     })()}
                     <button
@@ -794,9 +824,31 @@ export function CreativeArtifactCard({
                     {summary && <small className="creative-story-choice__summary">{summary}</small>}
                   </div>
                 )}
+                {storyLane === 'minimax' && (
+                  <div className="creative-story-choice__fal">
+                    <label htmlFor={`${descriptionId}-minimax-model`}>Approved MiniMax model</label>
+                    <select
+                      id={`${descriptionId}-minimax-model`}
+                      value={storyModelSlug ?? ''}
+                      onChange={(event) => chooseStoryLane('minimax', event.target.value || null)}
+                    >
+                      {laneModels.map(model => (
+                        <option value={model.slug} key={model.slug}>{model.label}</option>
+                      ))}
+                    </select>
+                    {laneModels.find(model => model.slug === storyModelSlug)?.description && (
+                      <small>{laneModels.find(model => model.slug === storyModelSlug)?.description} Estimated scene wait: about {Math.ceil((laneModels.find(model => model.slug === storyModelSlug)?.expectedSeconds ?? 120) / 60)} minutes.</small>
+                    )}
+                  </div>
+                )}
                 {storyLane === 'fal' && (
                   <p className="creative-story-choice__warning">
                     FAL is metered. Nothing is submitted until you press the confirmation button, and failed pages are never retried automatically.
+                  </p>
+                )}
+                {storyLane === 'minimax' && (
+                  <p className="creative-story-choice__warning">
+                    MiniMax H3 is an explicit hosted lane. Nothing is submitted until you press confirmation, and failed pages are never retried automatically.
                   </p>
                 )}
               </div>
@@ -807,7 +859,9 @@ export function CreativeArtifactCard({
             </div>
             <p className="creative-artifact-card__confirmation-copy">
               {isIllustrationStory && storyLane === 'fal'
-                ? `This explicitly confirms ${models.find(model => model.slug === storyModelSlug)?.label ?? 'the selected approved FAL model'} for 32 visual scenes. The final narration, voices, music, and FFmpeg assembly stay local.`
+                ? `This explicitly confirms ${models.find(model => model.slug === storyModelSlug && (model.provider ?? 'fal') === 'fal')?.label ?? 'the selected approved FAL model'} for 32 visual scenes. The final narration, voices, music, and FFmpeg assembly stay local.`
+                : isIllustrationStory && storyLane === 'minimax'
+                  ? `This explicitly confirms MiniMax H3 for 32 reference-to-video scenes with native stereo audio. The final narration, character tracks, music, and FFmpeg assembly stay local.`
                 : artifact.confirmationCopy
                 ?? (artifact.requiresConfirmation
                   ? 'Money Mite will send this brief into the production lane only after you clear it.'

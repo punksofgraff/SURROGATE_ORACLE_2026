@@ -35,7 +35,7 @@ export type IllustrationStorySceneState = {
 
 export type IllustrationStoryFilmJob = {
   id: string;
-  provider: 'fal' | 'retired-fal';
+  provider: 'fal' | 'minimax' | 'retired-fal';
   modelSlug?: string | null;
   kind: 'illustration-story';
   status: 'queued' | 'generating' | 'stitching' | 'ready' | 'failed' | 'cancelled';
@@ -330,7 +330,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     }
     throw lastError instanceof Error
       ? lastError
-       : new Error('FAL story film timed out. Completed scenes remain available for explicit page retry.');
+       : new Error('Hosted story film timed out. Completed scenes remain available for explicit page retry.');
   }, [poll]);
 
   const renderStory = useCallback(async (
@@ -346,7 +346,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     abortRef.current = controller;
     onProgress?.(2);
 
-    if (pages.length !== 32) throw new Error('FAL story production requires exactly 32 pages.');
+    if (pages.length !== 32) throw new Error('Hosted story production requires exactly 32 pages.');
     const [panels, music, narrationBundle] = await Promise.all([
       createLockedPanelAssets(sheetUrls, pages),
       urlToBase64(musicUrl),
@@ -359,7 +359,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       body: {
         action: 'create',
         sessionId: sessionId ?? 'anonymous-story-session',
-         provider: 'fal',
+          provider: model.provider ?? 'fal',
          modelSlug: model.slug,
          confirmed: true,
         pages,
@@ -371,8 +371,8 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
         characterVoiceTracks: narrationBundle.characterTracks,
       },
     });
-    if (error) throw new Error(`FAL story job could not start: ${error.message}`);
-    if (!data?.id) throw new Error(data?.error || 'FAL story job returned no id.');
+    if (error) throw new Error(`Hosted story job could not start: ${error.message}`);
+    if (!data?.id) throw new Error(data?.error || 'Hosted story job returned no id.');
     activeJobIdRef.current = data.id;
     const initial = data as IllustrationStoryFilmJob;
     publish(initial, onJob);
@@ -385,10 +385,10 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
         onJob?.(next);
       });
     if (!complete) {
-       throw new Error('FAL story film status was lost; the saved server job remains recoverable.');
+       throw new Error('Hosted story film status was lost; the saved server job remains recoverable.');
     }
     if (complete.status !== 'ready') {
-      throw new Error(complete.error || 'FAL story film did not produce 32 playable visual scenes.');
+       throw new Error(complete.error || 'Hosted story film did not produce 32 playable visual scenes.');
     }
     if (complete.finalMediaUrl) {
       onProgress?.(100);
@@ -405,7 +405,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       .map(scene => scene.outputUrl)
       .filter((url): url is string => Boolean(url));
     if (sceneUrls.length !== pages.length) {
-      throw new Error('FAL returned an incomplete visual scene set.');
+       throw new Error('Hosted provider returned an incomplete visual scene set.');
     }
     onProgress?.(82);
     const stitchResponse = await fetch(`${import.meta.env.BASE_URL}api/illustration-story-stitch`, {
@@ -486,17 +486,17 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     const current = jobRef.current;
     if (!current) throw new Error('There is no saved FAL story film job to recover.');
     if (current.provider === 'retired-fal') {
-      throw new Error('This historical FAL job cannot be locally recovered; start a new story with an approved FAL model.');
+      throw new Error('This historical FAL job cannot be locally recovered; start a new story with an approved hosted model.');
     }
-    if (pages.length !== 32) throw new Error('FAL story recovery requires exactly 32 saved pages.');
+    if (pages.length !== 32) throw new Error('Hosted story recovery requires exactly 32 saved pages.');
     if (!current.musicUrl || !current.narrationUrl) {
-      throw new Error('Persisted FAL audio is unavailable or expired (music and narration are required).');
+      throw new Error('Persisted story audio is unavailable or expired (music and narration are required).');
     }
     const orderedScenes = [...current.scenes].sort((a, b) => a.pageNumber - b.pageNumber);
     if (orderedScenes.length !== pages.length || orderedScenes.some((scene, index) =>
       scene.pageNumber !== index + 1 || scene.status !== 'ready' || !scene.outputUrl
     )) {
-      throw new Error('Persisted FAL scenes are incomplete or expired; no new scene request was submitted.');
+      throw new Error('Persisted hosted scenes are incomplete or expired; no new scene request was submitted.');
     }
     if (controller.signal.aborted) throw new Error('Story film recovery cancelled.');
     onProgress?.(82);

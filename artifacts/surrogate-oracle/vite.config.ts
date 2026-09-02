@@ -233,6 +233,17 @@ async function runFfmpeg(args: string[]): Promise<void> {
   await execFileAsync('ffmpeg', ['-hide_banner', '-loglevel', 'error', ...args], { maxBuffer: 2 * 1024 * 1024 });
 }
 
+async function hasAudioStream(file: string): Promise<boolean> {
+  const { stdout } = await execFileAsync('ffprobe', [
+    '-v', 'error',
+    '-select_streams', 'a:0',
+    '-show_entries', 'stream=codec_type',
+    '-of', 'csv=p=0',
+    file,
+  ], { maxBuffer: 64 * 1024 });
+  return stdout.trim().length > 0;
+}
+
 async function validateStoryFilm(file: string, expectedDuration: number): Promise<{ durationSeconds: number; audioTrackPresent: boolean }> {
   const { stdout } = await execFileAsync('ffprobe', [
     '-v', 'error',
@@ -266,7 +277,7 @@ async function stitchIllustrationStory(body: any): Promise<{
   const pages = Array.isArray(body?.pages) ? body.pages as StoryPageRequest[] : [];
   const usingRemoteScenes = sceneUrls.length === 32;
   if ((!usingRemoteScenes && sheets.length !== 2) || pages.length !== 32) {
-    throw new Error('Story assembly requires either 32 FAL scene URLs or two sheets, plus 32 pages.');
+    throw new Error('Story assembly requires either 32 hosted scene URLs or two sheets, plus 32 pages.');
   }
   const duration = pages.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
   const orderedPages = pages.every((page, index) => page.pageNumber === index + 1
@@ -309,15 +320,30 @@ async function stitchIllustrationStory(body: any): Promise<{
     if (usingRemoteScenes) {
       for (const [index, page] of pages.entries()) {
         const remoteFile = path.join(dir, `remote-${String(page.pageNumber).padStart(2, '0')}.mp4`);
-        fs.writeFileSync(remoteFile, await downloadRemoteAsset(sceneUrls[index], `FAL scene ${page.pageNumber}`));
+        fs.writeFileSync(remoteFile, await downloadRemoteAsset(sceneUrls[index], `Hosted scene ${page.pageNumber}`));
         const clipFile = path.join(dir, `page-${String(page.pageNumber).padStart(2, '0')}.mp4`);
         const fadeOutStart = Math.max(0.1, Number(page.durationSeconds) - 0.22);
         const visual = `scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p,fade=t=in:st=0:d=0.22,fade=t=out:st=${fadeOutStart}:d=0.22`;
-        await runFfmpeg([
-          '-y', '-i', remoteFile,
-          '-vf', visual, '-t', String(page.durationSeconds),
-          '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', clipFile,
-        ]);
+        const remoteHasAudio = await hasAudioStream(remoteFile);
+        const clipArgs = ['-y', '-i', remoteFile];
+        if (!remoteHasAudio) {
+          clipArgs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000');
+        }
+        clipArgs.push(
+          '-vf', visual,
+          '-t', String(page.durationSeconds),
+          '-map', '0:v:0',
+          '-map', remoteHasAudio ? '0:a:0' : '1:a:0',
+          '-c:v', 'libx264',
+          '-preset', 'veryfast',
+          '-pix_fmt', 'yuv420p',
+          '-c:a', 'aac',
+          '-ar', '48000',
+          '-ac', '2',
+          '-b:a', '96k',
+          clipFile,
+        );
+        await runFfmpeg(clipArgs);
         clipFiles.push(clipFile);
       }
     } else for (const page of pages) {
@@ -358,8 +384,10 @@ async function stitchIllustrationStory(body: any): Promise<{
     if (narrationFile) audioArgs.push('-i', narrationFile);
     characterFiles.forEach(({ file }) => audioArgs.push('-i', file));
     soundEffects.forEach(effect => audioArgs.push('-i', effect.file));
-    const audioLabels = ['[music]'];
-    const filters = ['[1:a]volume=0.28[music]'];
+    const audioLabels = usingRemoteScenes ? ['[native]', '[music]'] : ['[music]'];
+    const filters = usingRemoteScenes
+      ? ['[0:a]volume=0.34[native]', '[1:a]volume=0.28[music]']
+      : ['[1:a]volume=0.28[music]'];
     if (narrationFile) {
       filters.push('[2:a]volume=1.0[narration]');
       audioLabels.push('[narration]');

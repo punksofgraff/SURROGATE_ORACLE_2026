@@ -129,6 +129,9 @@ assert.equal(storyJobSource.includes("if (!model)"), true, 'hosted story request
 assert.equal(storyJobSource.includes('model_slug: model.slug'), true, 'the selected model slug must be persisted');
 assert.equal(storyJobSource.includes('assembly: \'local-ffmpeg\''), true, 'new hosted jobs must hand visuals to local assembly');
 assert.equal(storyJobSource.includes('runpod('), false, 'FAL story jobs must not call RunPod');
+assert.equal(storyJobSource.includes('MiniMax-H3'), true, 'the hosted catalog must include the MiniMax H3 lane');
+assert.equal(storyJobSource.includes('pollMiniMaxScene'), true, 'MiniMax scenes must use their own task polling contract');
+assert.equal(storyJobSource.includes('provider === \'minimax\''), true, 'MiniMax dispatch must remain provider-explicit');
 assert.equal(storyJobSource.includes('This historical Seedance job is readable but cannot be retried'), true, 'historical Seedance jobs must not auto-retry');
 assert.equal(storyJobSource.includes('return json({ provider: \'fal\', models: falStoryModels()'), false, 'catalog reads must not submit hosted jobs');
 

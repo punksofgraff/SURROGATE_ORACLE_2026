@@ -69,9 +69,10 @@ export type CreativeProvider =
   | 'lyria'
   | 'browser-film'
   | 'premium-film'
-  | 'fal-film';
+  | 'fal-film'
+  | 'minimax-film';
 
-export type IllustrationStoryLane = 'local' | 'fal';
+export type IllustrationStoryLane = 'local' | 'fal' | 'minimax';
 
 export type IllustrationStoryModelOption = {
   slug: string;
@@ -79,6 +80,7 @@ export type IllustrationStoryModelOption = {
   description: string;
   costLabel: string;
   expectedSeconds: number;
+  provider?: 'fal' | 'minimax';
 };
 
 // Display-safe defaults. The edge function remains authoritative and can
@@ -90,6 +92,7 @@ export const ILLUSTRATION_STORY_FAL_MODELS: IllustrationStoryModelOption[] = [
     description: 'Lowest-cost short motion from each locked still anchor.',
     costLabel: '$0.20 / scene at 480p',
     expectedSeconds: 60,
+    provider: 'fal',
   },
   {
     slug: 'fal-ai/wan-pro/image-to-video',
@@ -97,11 +100,27 @@ export const ILLUSTRATION_STORY_FAL_MODELS: IllustrationStoryModelOption[] = [
     description: 'Higher-fidelity motion for a deliberately premium pass.',
     costLabel: 'Higher-cost premium scene',
     expectedSeconds: 180,
+    provider: 'fal',
+  },
+];
+
+export const ILLUSTRATION_STORY_MINIMAX_MODELS: IllustrationStoryModelOption[] = [
+  {
+    slug: 'MiniMax-H3',
+    label: 'MiniMax H3 · 768P native audio',
+    description: 'Reference-to-video animation with native stereo ambience and motion audio.',
+    costLabel: 'Hosted H3 scene',
+    expectedSeconds: 120,
+    provider: 'minimax',
   },
 ];
 
 export function illustrationStoryFalModel(slug: unknown): IllustrationStoryModelOption | null {
   return ILLUSTRATION_STORY_FAL_MODELS.find(model => model.slug === slug) ?? null;
+}
+
+export function illustrationStoryMiniMaxModel(slug: unknown): IllustrationStoryModelOption | null {
+  return ILLUSTRATION_STORY_MINIMAX_MODELS.find(model => model.slug === slug) ?? null;
 }
 
 export type IllustrationStoryPageStatus = 'planned' | 'generating' | 'ready' | 'failed' | 'cancelled';
@@ -586,6 +605,7 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
         production: 'illustration-story-proof',
         storyLane: 'local' as IllustrationStoryLane,
         falModelSlug: null,
+      storyModelSlug: null,
         pageCount: ILLUSTRATION_STORY_PAGE_COUNT,
         pageDurationSeconds: ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,
         targetDurationSeconds: ILLUSTRATION_STORY_PAGE_COUNT * ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,

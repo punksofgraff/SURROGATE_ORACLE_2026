@@ -103,6 +103,7 @@ import {
   type CreativeSeriesHistoryEntry,
   type CreativeSeriesManifest,
   illustrationStoryFalModel,
+  illustrationStoryMiniMaxModel,
   type IllustrationStoryLane,
   type SeriesRenderMode,
   isCreativeDispatchCurrent,
@@ -131,6 +132,15 @@ function isIllustrationStoryProduction(value: unknown): boolean {
 function isFalIllustrationStoryArtifact(artifact: CreativeArtifact | null): boolean {
   return artifact?.metadata?.production === 'illustration-story-premium'
     || (artifact?.metadata?.production === 'illustration-story-proof' && artifact.metadata?.storyLane === 'fal');
+}
+
+function isMiniMaxIllustrationStoryArtifact(artifact: CreativeArtifact | null): boolean {
+  return artifact?.metadata?.production === 'illustration-story-proof'
+    && artifact.metadata?.storyLane === 'minimax';
+}
+
+function isHostedIllustrationStoryArtifact(artifact: CreativeArtifact | null): boolean {
+  return isFalIllustrationStoryArtifact(artifact) || isMiniMaxIllustrationStoryArtifact(artifact);
 }
 
 function storyFailureKindForError(error: unknown): 'gemini-audio' | 'audio-gate' | 'provider' {
@@ -1816,8 +1826,8 @@ export function SurrogateOracleImmersion() {
     if (
       !job
       || !artifact
-      || !isFalIllustrationStoryArtifact(artifact)
-      || job.provider !== 'fal'
+      || !isHostedIllustrationStoryArtifact(artifact)
+      || !['fal', 'minimax'].includes(job.provider)
       || job.status !== 'ready'
       || job.finalMediaUrl
       || !artifact.storyPages?.length
@@ -1836,8 +1846,10 @@ export function SurrogateOracleImmersion() {
       outputUrl: null,
       outputLabel: undefined,
       error: null,
-      provider: 'fal-film',
-      providerLabel: `FAL / ${job.modelSlug ?? 'approved model'} · local assembly`,
+      provider: job.provider === 'minimax' ? 'minimax-film' : 'fal-film',
+      providerLabel: job.provider === 'minimax'
+        ? `MiniMax H3 / ${job.modelSlug ?? 'native-audio model'} · local assembly`
+        : `FAL / ${job.modelSlug ?? 'approved model'} · local assembly`,
       metadata: {
         ...(artifact.metadata ?? {}),
         storyStage: 'recovering persisted FAL scenes and audio with local FFmpeg',
@@ -1866,8 +1878,10 @@ export function SurrogateOracleImmersion() {
         progress: 100,
         outputUrl: result.url,
         outputLabel: `32-page narrated story film · ${Math.round(result.durationSeconds)}s MP4`,
-        provider: 'fal-film',
-        providerLabel: `FAL / ${job.modelSlug ?? 'approved model'} · local assembly`,
+          provider: job.provider === 'minimax' ? 'minimax-film' : 'fal-film',
+          providerLabel: job.provider === 'minimax'
+            ? `MiniMax H3 / ${job.modelSlug ?? 'native-audio model'} · local assembly`
+            : `FAL / ${job.modelSlug ?? 'approved model'} · local assembly`,
         error: null,
         metadata: {
           ...(activeCreativeArtifactRef.current?.metadata ?? {}),
@@ -1948,19 +1962,36 @@ export function SurrogateOracleImmersion() {
   const chooseIllustrationStoryLane = useCallback((lane: IllustrationStoryLane, modelSlug: string | null) => {
     const artifact = activeCreativeArtifactRef.current;
     if (!artifact || artifact.status !== 'draft' || !isIllustrationStoryProduction(artifact.metadata?.production)) return;
-    const selectedModel = lane === 'fal' ? illustrationStoryFalModel(modelSlug) : null;
+    const selectedModel = lane === 'fal'
+      ? illustrationStoryFalModel(modelSlug)
+      : lane === 'minimax'
+        ? illustrationStoryMiniMaxModel(modelSlug)
+        : null;
+    const isHosted = lane === 'fal' || lane === 'minimax';
+    const laneLabel = lane === 'minimax'
+      ? `MiniMax H3 / ${selectedModel?.label ?? 'native-audio model'}`
+      : lane === 'fal'
+        ? `FAL / ${selectedModel?.label ?? 'approved model'}`
+        : 'Free local FFmpeg story lane';
     const next: CreativeArtifact = {
       ...artifact,
-      provider: lane === 'fal' ? 'fal-film' : 'browser-film',
-      providerLabel: lane === 'fal' ? `FAL / ${selectedModel?.label ?? 'approved model'}` : 'Free local FFmpeg story lane',
-      confirmationLabel: lane === 'fal' ? 'Confirm metered FAL story' : 'Confirm local story film',
-      confirmationCopy: lane === 'fal'
+      provider: lane === 'minimax' ? 'minimax-film' : lane === 'fal' ? 'fal-film' : 'browser-film',
+      providerLabel: laneLabel,
+      confirmationLabel: lane === 'minimax'
+        ? 'Confirm MiniMax H3 story'
+        : lane === 'fal'
+          ? 'Confirm metered FAL story'
+          : 'Confirm local story film',
+      confirmationCopy: lane === 'minimax'
+        ? 'This explicitly confirms MiniMax H3 reference-to-video for 32 visual scenes with native stereo audio. Narration, character tracks, Lyria music, and final FFmpeg assembly stay local.'
+        : lane === 'fal'
         ? `This explicitly confirms ${selectedModel?.label ?? 'an approved FAL model'} for 32 visual scenes. FAL is metered; narration, voices, Lyria music, and final FFmpeg assembly stay local.`
         : 'This starts the free local story lane: the original 32 panels stay in order while local FFmpeg assembles motion, Lyria backing music, and the existing narration/voice mix into a validated widescreen MP4.',
       metadata: {
         ...(artifact.metadata ?? {}),
         storyLane: lane,
         falModelSlug: selectedModel?.slug ?? null,
+        storyModelSlug: isHosted ? selectedModel?.slug ?? null : null,
       },
     };
     activeCreativeArtifactRef.current = next;
@@ -2039,9 +2070,9 @@ export function SurrogateOracleImmersion() {
 
     if (artifact.kind === 'film') {
       const isLocalIllustrationStory = artifact.metadata?.production === 'illustration-story-proof'
-        && artifact.metadata?.storyLane !== 'fal';
-      const isIllustrationStory = artifact.metadata?.production === 'illustration-story-premium'
-        || (artifact.metadata?.production === 'illustration-story-proof' && artifact.metadata?.storyLane === 'fal');
+        && artifact.metadata?.storyLane !== 'fal'
+        && artifact.metadata?.storyLane !== 'minimax';
+      const isIllustrationStory = isHostedIllustrationStoryArtifact(artifact);
       if (isLocalIllustrationStory) {
         void (async () => {
           try {
@@ -2146,12 +2177,15 @@ export function SurrogateOracleImmersion() {
       }
       if (isIllustrationStory) {
         void (async () => {
+          const hostedProvider = artifact.metadata?.storyLane === 'minimax' ? 'minimax' : 'fal';
           try {
             updateCreativeArtifact(artifact.id, {
               status: 'generating',
               progress: 2,
-              provider: 'fal-film',
-              providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
+              provider: artifact.metadata?.storyLane === 'minimax' ? 'minimax-film' : 'fal-film',
+              providerLabel: artifact.metadata?.storyLane === 'minimax'
+                ? `MiniMax H3 / ${illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)?.label ?? 'native-audio model'} · local assembly`
+                : `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
               outputLabel: undefined,
               metadata: {
                 ...(artifact.metadata ?? {}),
@@ -2166,25 +2200,29 @@ export function SurrogateOracleImmersion() {
             const pages = artifact.storyPages?.length
               ? artifact.storyPages
               : createIllustrationStoryPages(artifact.prompt, artifact.createdAt);
-            const falModel = illustrationStoryFalModel(artifact.metadata?.falModelSlug);
-            if (!falModel) throw new Error('Choose an approved FAL model before confirming the hosted story lane.');
+            const hostedModel = hostedProvider === 'minimax'
+              ? illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)
+              : illustrationStoryFalModel(artifact.metadata?.falModelSlug);
+            if (!hostedModel) throw new Error(`Choose an approved ${hostedProvider === 'minimax' ? 'MiniMax H3' : 'FAL'} model before confirming the hosted story lane.`);
             const result = await illustrationStoryFilm.renderStory(
               [storySheetOneUrl, storySheetTwoUrl],
               pages,
               musicUrl,
-              falModel,
+              hostedModel,
               progress => {
                 if (isCurrent()) updateCreativeArtifact(artifact.id, {
                   status: 'generating',
                   progress,
-                   provider: 'fal-film',
-                   providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
+                   provider: hostedProvider === 'minimax' ? 'minimax-film' : 'fal-film',
+                   providerLabel: hostedProvider === 'minimax'
+                     ? `MiniMax H3 / ${illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)?.label ?? 'native-audio model'} · local assembly`
+                     : `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
                   metadata: {
                     ...(activeCreativeArtifactRef.current?.metadata ?? {}),
                     storyStage: progress < 6
                       ? 'preparing locked panel references and narration'
                       : progress < 78
-                        ? 'animating 32 locked pages with FAL'
+                         ? `animating 32 locked pages with ${hostedProvider === 'minimax' ? 'MiniMax H3' : 'FAL'}`
                          : 'local FFmpeg assembly and audio validation',
                     currentPage: Math.min(32, Math.max(1, Math.ceil((progress / 100) * 32))),
                   },
@@ -2196,13 +2234,15 @@ export function SurrogateOracleImmersion() {
                 updateCreativeArtifact(artifact.id, {
                   status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
                   progress: job.progress,
-                   provider: 'fal-film',
-                   providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
+                    provider: hostedProvider === 'minimax' ? 'minimax-film' : 'fal-film',
+                    providerLabel: hostedProvider === 'minimax'
+                      ? `MiniMax H3 / ${illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)?.label ?? 'native-audio model'} · local assembly`
+                      : `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
                   metadata: {
                     ...(activeCreativeArtifactRef.current?.metadata ?? {}),
                      storyStage: job.status === 'ready'
                        ? '32 visual scenes ready · local FFmpeg assembly'
-                       : `FAL page animation ${readyScenes}/32`,
+                       : `${hostedProvider === 'minimax' ? 'MiniMax H3' : 'FAL'} page animation ${readyScenes}/32`,
                     storyScenes: job.scenes,
                       storyFailureKind: job.failureKind,
                       audioGate: job.audioGate,
@@ -2217,8 +2257,10 @@ export function SurrogateOracleImmersion() {
               progress: 100,
               outputUrl: result.url,
               outputLabel: `32-page narrated story film · ${Math.round(result.durationSeconds)}s MP4`,
-               provider: 'fal-film',
-               providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
+               provider: hostedProvider === 'minimax' ? 'minimax-film' : 'fal-film',
+               providerLabel: hostedProvider === 'minimax'
+                 ? `MiniMax H3 / ${illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)?.label ?? 'native-audio model'} · local assembly`
+                 : `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
               metadata: {
                 ...(activeCreativeArtifactRef.current?.metadata ?? {}),
                 storyStage: 'complete',
@@ -2230,7 +2272,7 @@ export function SurrogateOracleImmersion() {
                 soundtrack: 'Lyria instrumental anchor',
                 narration: 'Gemini child-friendly narration',
                 sourceAssets: '32 persisted locked panel references from two immutable 4x4 illustration sheets',
-                 visualGeneration: `32 scenes via ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved FAL model'}`,
+                  visualGeneration: `32 scenes via ${hostedModel.label}`,
               },
             });
             logStep('ILLUSTRATION STORY READY — 32 PAGES / MP4 / LYRIA + NARRATION', 'ok');
@@ -2241,8 +2283,10 @@ export function SurrogateOracleImmersion() {
             updateCreativeArtifact(artifact.id, {
               status: 'failed',
               progress: 0,
-               provider: 'fal-film',
-               providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
+                provider: hostedProvider === 'minimax' ? 'minimax-film' : 'fal-film',
+                providerLabel: hostedProvider === 'minimax'
+                  ? `MiniMax H3 / ${illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)?.label ?? 'native-audio model'} · local assembly`
+                  : `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
               error: error instanceof Error ? error.message : 'Illustration story film failed.',
               metadata: {
                 ...(activeCreativeArtifactRef.current?.metadata ?? {}),
@@ -2591,7 +2635,9 @@ export function SurrogateOracleImmersion() {
 
   const retryIllustrationStoryScene = useCallback((pageNumber: number, mode: 'retry' | 'replace' = 'retry') => {
     const artifact = activeCreativeArtifactRef.current;
-    if (artifact?.metadata?.production === 'illustration-story-proof' && artifact.metadata?.storyLane !== 'fal') {
+    if (artifact?.metadata?.production === 'illustration-story-proof'
+      && artifact.metadata?.storyLane !== 'fal'
+      && artifact.metadata?.storyLane !== 'minimax') {
       const token = creativeDispatchTokenRef.current + 1;
       creativeDispatchTokenRef.current = token;
       const claim: CreativeDispatchClaim = { artifactId: artifact.id, token };
@@ -2682,7 +2728,9 @@ export function SurrogateOracleImmersion() {
       return;
     }
     if (!artifact || !isIllustrationStoryProduction(artifact.metadata?.production)
-      || (artifact.metadata?.production === 'illustration-story-proof' && artifact.metadata?.storyLane !== 'fal')) return;
+      || (artifact.metadata?.production === 'illustration-story-proof'
+        && artifact.metadata?.storyLane !== 'fal'
+        && artifact.metadata?.storyLane !== 'minimax')) return;
     const token = creativeDispatchTokenRef.current + 1;
     creativeDispatchTokenRef.current = token;
     const claim: CreativeDispatchClaim = { artifactId: artifact.id, token };
@@ -2691,8 +2739,10 @@ export function SurrogateOracleImmersion() {
       status: 'generating',
       progress: Math.max(8, artifact.progress),
       error: null,
-      provider: 'premium-film',
-      providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'historical model'} · local assembly`,
+      provider: artifact.metadata?.storyLane === 'minimax' ? 'minimax-film' : 'premium-film',
+      providerLabel: artifact.metadata?.storyLane === 'minimax'
+        ? `MiniMax H3 / ${illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)?.label ?? 'native-audio model'} · local assembly`
+        : `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'historical model'} · local assembly`,
       metadata: {
         ...(artifact.metadata ?? {}),
         storyStage: `${mode === 'replace' ? 'using safe replacement for' : 'retrying'} page ${String(pageNumber).padStart(2, '0')}`,
@@ -2775,7 +2825,7 @@ export function SurrogateOracleImmersion() {
 
   const retryIllustrationStoryFilm = useCallback(() => {
     const artifact = activeCreativeArtifactRef.current;
-    if (!artifact || !isFalIllustrationStoryArtifact(artifact)) return;
+    if (!artifact || !isHostedIllustrationStoryArtifact(artifact)) return;
     const token = creativeDispatchTokenRef.current + 1;
     creativeDispatchTokenRef.current = token;
     const claim: CreativeDispatchClaim = { artifactId: artifact.id, token };
@@ -2786,15 +2836,17 @@ export function SurrogateOracleImmersion() {
       status: activeCreativeArtifactRef.current?.status ?? null,
     });
 
-    if (illustrationStoryFilm.job?.provider === 'fal') {
+    if (illustrationStoryFilm.job?.provider === 'fal' || illustrationStoryFilm.job?.provider === 'minimax') {
       updateCreativeArtifact(artifact.id, {
         status: 'generating',
         progress: Math.max(82, artifact.progress),
         outputUrl: null,
         outputLabel: undefined,
         error: null,
-        provider: 'fal-film',
-        providerLabel: `FAL / ${illustrationStoryFilm.job.modelSlug ?? 'approved model'} · local assembly`,
+        provider: illustrationStoryFilm.job.provider === 'minimax' ? 'minimax-film' : 'fal-film',
+        providerLabel: illustrationStoryFilm.job.provider === 'minimax'
+          ? `MiniMax H3 / ${illustrationStoryFilm.job.modelSlug ?? 'native-audio model'} · local assembly`
+          : `FAL / ${illustrationStoryFilm.job.modelSlug ?? 'approved model'} · local assembly`,
         metadata: {
           ...(artifact.metadata ?? {}),
           storyStage: 'retrying local assembly from persisted FAL scenes and audio',
@@ -2813,8 +2865,10 @@ export function SurrogateOracleImmersion() {
           progress: 100,
           outputUrl: result.url,
           outputLabel: `32-page narrated story film · ${Math.round(result.durationSeconds)}s MP4`,
-          provider: 'fal-film',
-          providerLabel: `FAL / ${illustrationStoryFilm.job?.modelSlug ?? 'approved model'} · local assembly`,
+          provider: illustrationStoryFilm.job?.provider === 'minimax' ? 'minimax-film' : 'fal-film',
+          providerLabel: illustrationStoryFilm.job?.provider === 'minimax'
+            ? `MiniMax H3 / ${illustrationStoryFilm.job?.modelSlug ?? 'native-audio model'} · local assembly`
+            : `FAL / ${illustrationStoryFilm.job?.modelSlug ?? 'approved model'} · local assembly`,
           error: null,
           metadata: {
             ...(activeCreativeArtifactRef.current?.metadata ?? {}),

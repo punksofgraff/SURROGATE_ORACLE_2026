@@ -330,6 +330,9 @@ async function persistTrack(
 ): Promise<TrackRow> {
   const config = CHARACTER_VOICES[speaker];
   const processed = pitchShiftPreservingDuration(source.pcm, config.octaveShift, config.tuningCents);
+  if (!processed.length || processed.length > SAMPLE_RATE * 120) {
+    throw new Error(`Post-processed ${speaker} audio has an unusable duration.`);
+  }
   const wav = wavFromPcm(processed);
   const contentSha = await sha256(wav);
   const safeTrackKey = trackKey.replace(/[^a-zA-Z0-9:_-]/g, '_');
@@ -382,6 +385,9 @@ Deno.serve(async (req: Request) => {
     ? body.storyKey.trim().slice(0, 160)
     : 'illustration-story';
   if (!sessionId) return json({ error: 'sessionId is required.' }, 400);
+  if (!Deno.env.get('SUPABASE_URL') || !Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')) {
+    return json({ error: 'Character voice storage is not configured.' }, 503);
+  }
 
   try {
     const lines = readLines(body.lines);

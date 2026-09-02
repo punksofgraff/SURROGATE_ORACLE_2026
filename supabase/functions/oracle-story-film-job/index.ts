@@ -153,6 +153,9 @@ function publicJob(row: StoryJobRow) {
     finalMediaUrl: row.final_media_url,
     narrationUrl: row.narration_url,
     musicUrl: row.music_url,
+    characterVoiceTracks: Array.isArray(manifest.characterVoiceTracks)
+      ? manifest.characterVoiceTracks
+      : [],
     error: row.error_message,
     failureKind: typeof manifest.failureKind === 'string' ? manifest.failureKind : null,
     audioGate: {
@@ -218,6 +221,36 @@ function characterAudioForPage(
     if (url) return url;
   }
   return null;
+}
+
+function sceneFailure(
+  pageNumber: number,
+  detail: string,
+  fallback: string,
+): { error: string; failureKind: NonNullable<StoryScene['failureKind']> } {
+  const cleanDetail = detail || fallback;
+  if (isProviderSafetyBlock(cleanDetail)) {
+    return {
+      failureKind: 'provider-safety',
+      error: `Page ${pageNumber} was blocked by FAL's provider safety policy${detail ? `: ${detail}` : '.'} This is a page-level block; the other pages are unchanged. Retry or replace this page.`,
+    };
+  }
+  return {
+    failureKind: 'provider',
+    error: `Page ${pageNumber} failed in FAL${detail ? `: ${detail}` : `: ${fallback}`}. Retry this page without restarting successful scenes.`,
+  };
+}
+
+function isProviderSafetyBlock(detail: string): boolean {
+  return /\b(?:safety|safe(?:ty)?[-\s]?checker|moderation|likeness|identity|celebrity|face(?:[-\s]?(?:recognition|matching))?|content.{0,18}(?:blocked|flagged|policy)|blocked.{0,18}(?:content|policy|safety|likeness))\b/i.test(detail);
+}
+
+function falErrorDetail(value: Record<string, unknown>): string {
+  for (const key of ['error', 'detail', 'message', 'reason', 'failure_reason']) {
+    const detail = errorDetail(value[key]);
+    if (detail) return detail;
+  }
+  return '';
 }
 
 async function falFetch(path: string, init: RequestInit = {}): Promise<Response> {
@@ -652,10 +685,7 @@ Deno.serve(async (req: Request) => {
       const narrationBytes = decodeBase64(narrationBase64);
       const musicUrl = await uploadAsset(supabase, `films/${row.id}/audio/lyria.mp3`, musicBytes, 'audio/mpeg');
       const narrationUrl = await uploadAsset(supabase, `films/${row.id}/audio/narration.wav`, narrationBytes, 'audio/wav');
-    const scenes = sceneList(current.story_scenes);
-
-    const everyPageReady = scenes.length === PAGE_COUNT
-      && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl));
+      const scenes: StoryScene[] = [];
 
       for (let batchStart = 0; batchStart < PAGE_COUNT; batchStart += 4) {
         const batch = pages.slice(batchStart, batchStart + 4).map(async (page, offset) => {
@@ -809,12 +839,14 @@ Deno.serve(async (req: Request) => {
   if (action === 'retry' || action === 'replace') {
     const pageNumber = Number(payload.pageNumber);
     const scenes = sceneList(current.story_scenes);
-
-    const everyPageReady = scenes.length === PAGE_COUNT
-      && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl));
     const scene = scenes.find(item => item.pageNumber === pageNumber);
-
+    if (!scene || !scene.referenceUrl) {
+      return json({ error: 'That story page has no persisted panel reference to retry.' }, 400);
+    }
     const isReplacement = action === 'replace';
+    try {
+      const nextPrompt = isReplacement ? replacementStoryPrompt(scene) : scene.prompt;
+      const nextSeed = isReplacement ? scene.seed + 500_000 : scene.seed;
       const requestId = await createFalScene(scene.referenceUrl, nextPrompt, current.session_id, nextSeed);
       const nextScenes = scenes.map(item => item.pageNumber === pageNumber
         ? {
@@ -882,49 +914,3 @@ Deno.serve(async (req: Request) => {
   }
   return json(publicJob(current));
 });
-
-      const stitchId = typeof stitch.id === 'string' ? stitch.id : '';
-
-      const stitch = await runpod('run', 'POST', {
-        input: {
-          task: 'stitch_oracle_story',
-          scene_urls: scenes.map(scene => scene.outputUrl),
-          durations: scenes.map(scene => scene.durationSeconds),
-          music_url: current.music_url,
-          narration_url: current.narration_url,
-        },
-      });
-
-      const nextPrompt = isReplacement ? replacementStoryPrompt(scene) : scene.prompt;
-
-function sceneFailure(
-  pageNumber: number,
-  detail: string,
-  fallback: string,
-): { error: string; failureKind: NonNullable<StoryScene['failureKind']> } {
-  const cleanDetail = detail || fallback;
-  if (isProviderSafetyBlock(cleanDetail)) {
-    return {
-      failureKind: 'provider-safety',
-      error: `Page ${pageNumber} was blocked by FAL's provider safety policy${detail ? `: ${detail}` : '.'} This is a page-level block; the other pages are unchanged. Retry or replace this page.`,
-    };
-  }
-  return {
-    failureKind: 'provider',
-    error: `Page ${pageNumber} failed in FAL${detail ? `: ${detail}` : `: ${fallback}`}. Retry this page without restarting successful scenes.`,
-  };
-}
-
-      const nextSeed = isReplacement ? scene.seed + 500_000 : scene.seed;
-
-function isProviderSafetyBlock(detail: string): boolean {
-  return /\b(?:safety|safe(?:ty)?[-\s]?checker|moderation|likeness|identity|celebrity|face(?:[-\s]?(?:recognition|matching))?|content.{0,18}(?:blocked|flagged|policy)|blocked.{0,18}(?:content|policy|safety|likeness))\b/i.test(detail);
-}
-
-function falErrorDetail(value: Record<string, unknown>): string {
-  for (const key of ['error', 'detail', 'message', 'reason', 'failure_reason']) {
-    const detail = errorDetail(value[key]);
-    if (detail) return detail;
-  }
-  return '';
-}

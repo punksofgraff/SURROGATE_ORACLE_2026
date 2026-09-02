@@ -459,7 +459,8 @@ Deno.serve(async (req: Request) => {
   // portraits bucket; on upload failure we fall through to Pollinations rather
   // than persist a URL that will go blank.
   const replicateToken = Deno.env.get('REPLICATE_API_TOKEN') ?? Deno.env.get('REPLICATE_API_KEY');
-  if (replicateToken && !portraitUrl) {
+  const replicatePaidFallbackEnabled = Deno.env.get('ALLOW_REPLICATE_PAID_FALLBACK') === 'true';
+  if (replicatePaidFallbackEnabled && replicateToken && !portraitUrl) {
     try {
       console.log('🎨 Trying Replicate flux-schnell…');
       const r = await fetch('https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions', {

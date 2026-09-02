@@ -80,6 +80,11 @@ type StoryPageRequest = {
   durationSeconds: number;
 };
 
+type StoryCharacterTrackRequest = {
+  public_url?: string;
+  publicUrl?: string;
+};
+
 function decodeDataAsset(asset: unknown): { bytes: Buffer; mimeType: string } {
   if (!asset || typeof asset !== 'object') throw new Error('Story asset is missing.');
   const record = asset as { base64?: unknown; mimeType?: unknown };
@@ -90,6 +95,17 @@ function decodeDataAsset(asset: unknown): { bytes: Buffer; mimeType: string } {
     bytes: Buffer.from(record.base64, 'base64'),
     mimeType: typeof record.mimeType === 'string' ? record.mimeType : 'application/octet-stream',
   };
+}
+
+async function downloadRemoteAsset(url: unknown, label: string, maxBytes = 80_000_000): Promise<Buffer> {
+  if (typeof url !== 'string' || !/^https:\/\//i.test(url)) {
+    throw new Error(`${label} must be an HTTPS URL.`);
+  }
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${label} could not be downloaded (${response.status}).`);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (!bytes.length || bytes.length > maxBytes) throw new Error(`${label} is empty or too large.`);
+  return bytes;
 }
 
 async function runFfmpeg(args: string[]): Promise<void> {
@@ -123,8 +139,12 @@ async function stitchIllustrationStory(body: any): Promise<{
   audioTrackPresent: boolean;
 }> {
   const sheets = Array.isArray(body?.sheets) ? body.sheets : [];
+  const sceneUrls = Array.isArray(body?.sceneUrls) ? body.sceneUrls : [];
   const pages = Array.isArray(body?.pages) ? body.pages as StoryPageRequest[] : [];
-  if (sheets.length !== 2 || pages.length !== 32) throw new Error('A story proof requires two sheets and 32 pages.');
+  const usingRemoteScenes = sceneUrls.length === 32;
+  if ((!usingRemoteScenes && sheets.length !== 2) || pages.length !== 32) {
+    throw new Error('Story assembly requires either 32 FAL scene URLs or two sheets, plus 32 pages.');
+  }
   const duration = pages.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
   const orderedPages = pages.every((page, index) => page.pageNumber === index + 1
     && page.sheetIndex === (index < 16 ? 0 : 1)
@@ -138,7 +158,7 @@ async function stitchIllustrationStory(body: any): Promise<{
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-story-'));
   try {
-    const sheetFiles = sheets.map((asset: unknown, index: number) => {
+    const sheetFiles = usingRemoteScenes ? [] : sheets.map((asset: unknown, index: number) => {
       const decoded = decodeDataAsset(asset);
       const file = path.join(dir, `sheet-${index}.png`);
       fs.writeFileSync(file, decoded.bytes);
@@ -154,7 +174,21 @@ async function stitchIllustrationStory(body: any): Promise<{
     if (narration && narrationFile) fs.writeFileSync(narrationFile, narration.bytes);
 
     const clipFiles: string[] = [];
-    for (const page of pages) {
+    if (usingRemoteScenes) {
+      for (const [index, page] of pages.entries()) {
+        const remoteFile = path.join(dir, `remote-${String(page.pageNumber).padStart(2, '0')}.mp4`);
+        fs.writeFileSync(remoteFile, await downloadRemoteAsset(sceneUrls[index], `FAL scene ${page.pageNumber}`));
+        const clipFile = path.join(dir, `page-${String(page.pageNumber).padStart(2, '0')}.mp4`);
+        const fadeOutStart = Math.max(0.1, Number(page.durationSeconds) - 0.22);
+        const visual = `scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p,fade=t=in:st=0:d=0.22,fade=t=out:st=${fadeOutStart}:d=0.22`;
+        await runFfmpeg([
+          '-y', '-i', remoteFile,
+          '-vf', visual, '-t', String(page.durationSeconds),
+          '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', clipFile,
+        ]);
+        clipFiles.push(clipFile);
+      }
+    } else for (const page of pages) {
       const clipFile = path.join(dir, `page-${String(page.pageNumber).padStart(2, '0')}.mp4`);
       const fadeOutStart = Math.max(0.1, Number(page.durationSeconds) - 0.22);
       const crop = `crop=iw/4:ih/4:${page.column}*iw/4:${page.row}*ih/4`;
@@ -176,18 +210,38 @@ async function stitchIllustrationStory(body: any): Promise<{
     await runFfmpeg(['-y', '-f', 'concat', '-safe', '0', '-i', concatFile, '-c', 'copy', silentFile]);
 
     const finalFile = path.join(dir, 'surrogate-story.mp4');
-    if (narrationFile) {
-      await runFfmpeg([
-        '-y', '-i', silentFile, '-stream_loop', '-1', '-i', musicFile, '-i', narrationFile,
-        '-filter_complex', '[1:a]volume=0.28[music];[2:a]volume=1.0[narration];[music][narration]amix=inputs=2:duration=longest:dropout_transition=2[a]',
-        '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-t', String(duration), finalFile,
-      ]);
-    } else {
-      await runFfmpeg([
-        '-y', '-i', silentFile, '-stream_loop', '-1', '-i', musicFile,
-        '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-t', String(duration), finalFile,
-      ]);
+    const characterTracks = Array.isArray(body?.characterVoiceTracks)
+      ? body.characterVoiceTracks as StoryCharacterTrackRequest[]
+      : [];
+    const characterFiles: string[] = [];
+    for (const [index, track] of characterTracks.entries()) {
+      const url = track?.public_url ?? track?.publicUrl;
+      if (!url) continue;
+      const file = path.join(dir, `character-${index}.wav`);
+      fs.writeFileSync(file, await downloadRemoteAsset(url, `Character track ${index + 1}`, 30_000_000));
+      characterFiles.push(file);
     }
+    const audioArgs: string[] = ['-y', '-i', silentFile, '-stream_loop', '-1', '-i', musicFile];
+    if (narrationFile) audioArgs.push('-i', narrationFile);
+    characterFiles.forEach(file => audioArgs.push('-i', file));
+    const audioLabels = ['[music]'];
+    const filters = ['[1:a]volume=0.28[music]'];
+    if (narrationFile) {
+      filters.push('[2:a]volume=1.0[narration]');
+      audioLabels.push('[narration]');
+    }
+    const characterStart = narrationFile ? 3 : 2;
+    characterFiles.forEach((_, index) => {
+      const label = `character${index}`;
+      filters.push(`[${characterStart + index}:a]volume=0.78[${label}]`);
+      audioLabels.push(`[${label}]`);
+    });
+    filters.push(`${audioLabels.join('')}amix=inputs=${audioLabels.length}:duration=longest:dropout_transition=2[a]`);
+    await runFfmpeg([
+      ...audioArgs,
+      '-filter_complex', filters.join(';'),
+      '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-t', String(duration), finalFile,
+    ]);
     const validation = await validateStoryFilm(finalFile, duration);
     return {
       bytes: fs.readFileSync(finalFile),

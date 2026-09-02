@@ -1,10 +1,9 @@
 /**
- * Server-owned premium story-film job.
+ * Server-owned optional FAL story-film job.
  *
  * A story is not a still-image render. Every page gets its own durable panel
- * reference, FAL Seedance request, and recoverable output. RunPod only receives
- * stable scene URLs after all visual scenes complete, then stitches and muxes
- * the persisted Lyria and Gemini narration tracks into the final MP4.
+ * reference, approved FAL request, and recoverable output. Visual clips are
+ * persisted here; final audio assembly remains on the local FFmpeg lane.
  */
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -14,10 +13,74 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, x-client-info',
 };
 const PAGE_COUNT = 32;
-const FAL_MODEL = 'bytedance/seedance-2.5/image-to-video';
-const FAL_QUEUE_MODEL = 'bytedance/seedance-2.5';
+const LEGACY_SEEDANCE_MODEL = 'bytedance/seedance-2.5/image-to-video';
+const LEGACY_SEEDANCE_QUEUE_MODEL = 'bytedance/seedance-2.5';
 const FAL_TIMEOUT_MS = 20_000;
 const RUNPOD_TIMEOUT_MS = 12_000;
+
+type FalStoryModel = {
+  slug: string;
+  label: string;
+  description: string;
+  costLabel: string;
+  expectedSeconds: number;
+  resolution: '480p' | '720p';
+};
+
+const DEFAULT_FAL_STORY_MODELS: FalStoryModel[] = [
+  {
+    slug: 'fal-ai/wan-i2v',
+    label: 'Wan 2.1 I2V · 480p',
+    description: 'Lowest-cost short motion from each locked still anchor.',
+    costLabel: '$0.20 / scene at 480p',
+    expectedSeconds: 60,
+    resolution: '480p',
+  },
+  {
+    slug: 'fal-ai/wan-pro/image-to-video',
+    label: 'Wan Pro I2V',
+    description: 'Higher-fidelity motion for a deliberately premium pass.',
+    costLabel: 'Higher-cost premium scene',
+    expectedSeconds: 180,
+    resolution: '720p',
+  },
+];
+
+function falStoryModels(): FalStoryModel[] {
+  const raw = Deno.env.get('FAL_STORY_MODEL_CATALOG');
+  if (!raw) return DEFAULT_FAL_STORY_MODELS;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return DEFAULT_FAL_STORY_MODELS;
+    const safe = parsed.flatMap(item => {
+      if (!item || typeof item !== 'object') return [];
+      const model = item as Record<string, unknown>;
+      const slug = safeText(model.slug, 180);
+      const resolution = model.resolution === '720p' ? '720p' : '480p';
+      if (!slug || isRetiredModel(slug)) return [];
+      return [{
+        slug,
+        label: safeText(model.label, 100) || slug,
+        description: safeText(model.description, 240) || 'Approved FAL image-to-video model.',
+        costLabel: safeText(model.costLabel, 100) || 'Cost varies by FAL',
+        expectedSeconds: Math.max(30, Math.min(900, Number(model.expectedSeconds) || 120)),
+        resolution,
+      } satisfies FalStoryModel];
+    });
+    return safe.length ? safe : DEFAULT_FAL_STORY_MODELS;
+  } catch {
+    return DEFAULT_FAL_STORY_MODELS;
+  }
+}
+
+function isRetiredModel(slug: string): boolean {
+  return /seedance/i.test(slug);
+}
+
+function falStoryModel(slug: unknown): FalStoryModel | null {
+  const clean = safeText(slug, 180);
+  return falStoryModels().find(model => model.slug === clean) ?? null;
+}
 
 type StoryScene = {
   pageNumber: number;
@@ -28,6 +91,7 @@ type StoryScene = {
   seed: number;
   prompt: string;
   referenceUrl: string | null;
+  modelSlug: string | null;
   referenceAudioUrl: string | null;
   falRequestId: string | null;
   status: 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled';
@@ -119,6 +183,10 @@ function publicJob(row: StoryJobRow) {
   const manifest = row.story_manifest && typeof row.story_manifest === 'object'
     ? row.story_manifest as Record<string, unknown>
     : {};
+  const manifestModelSlug = safeText(manifest.modelSlug ?? manifest.visualProvider, 180);
+  const sceneModelSlug = safeText(scenes.find(scene => scene.modelSlug)?.modelSlug, 180);
+  const modelSlug = manifestModelSlug || sceneModelSlug || null;
+  const retired = Boolean(modelSlug && isRetiredModel(modelSlug));
   const audioVerification = manifest.audioVerification && typeof manifest.audioVerification === 'object'
     ? manifest.audioVerification as Record<string, unknown>
     : {};
@@ -127,7 +195,8 @@ function publicJob(row: StoryJobRow) {
   const audioReady = Boolean(row.music_url && row.narration_url);
   return {
     id: row.id,
-    provider: 'fal',
+    provider: retired ? 'retired-fal' : 'fal',
+    modelSlug,
     kind: 'illustration-story',
     status: row.status,
     progress: row.progress,
@@ -141,6 +210,7 @@ function publicJob(row: StoryJobRow) {
       durationSeconds: scene.durationSeconds,
       seed: scene.seed,
       referenceUrl: scene.referenceUrl,
+       modelSlug: scene.modelSlug ?? modelSlug,
       status: scene.status,
       progress: scene.progress,
       jobId: scene.jobId,
@@ -287,16 +357,23 @@ function providerStoryLanguage(value: string): string {
     .replace(/\bMario\b/gi, 'a cheerful red-capped adventurer');
 }
 
-async function createFalScene(referenceUrl: string, prompt: string, sessionId: string, seed: number): Promise<string> {
-  const data = await falJson(`/${FAL_MODEL}`, {
+async function createFalScene(
+  model: FalStoryModel,
+  referenceUrl: string,
+  prompt: string,
+  sessionId: string,
+  seed: number,
+): Promise<string> {
+  const data = await falJson(`/${model.slug}`, {
     method: 'POST',
     body: JSON.stringify({
       prompt: providerStoryLanguage(prompt),
       image_url: referenceUrl,
-      resolution: '480p',
-      duration: '5',
-      generate_audio: false,
-      bitrate_mode: 'standard',
+      resolution: model.resolution,
+      num_frames: 81,
+      frames_per_second: 16,
+      aspect_ratio: '16:9',
+      enable_safety_checker: true,
       seed,
       end_user_id: sessionId,
     }),
@@ -306,11 +383,12 @@ async function createFalScene(referenceUrl: string, prompt: string, sessionId: s
   return requestId;
 }
 
-async function pollFalScene(requestId: string): Promise<{ status: StoryScene['status']; progress: number; output?: string; error?: string }> {
-  const status = await falJson(`/${FAL_QUEUE_MODEL}/requests/${encodeURIComponent(requestId)}/status`);
+async function pollFalScene(modelSlug: string, requestId: string): Promise<{ status: StoryScene['status']; progress: number; output?: string; error?: string }> {
+  const queueModel = modelSlug === LEGACY_SEEDANCE_MODEL ? LEGACY_SEEDANCE_QUEUE_MODEL : modelSlug;
+  const status = await falJson(`/${queueModel}/requests/${encodeURIComponent(requestId)}/status`);
   const state = safeText(status.status, 24).toUpperCase();
   if (state === 'COMPLETED') {
-    const result = await falJson(`/${FAL_QUEUE_MODEL}/requests/${encodeURIComponent(requestId)}`);
+    const result = await falJson(`/${queueModel}/requests/${encodeURIComponent(requestId)}`);
     const video = result.video && typeof result.video === 'object'
       ? result.video as Record<string, unknown>
       : {};
@@ -328,8 +406,9 @@ async function pollFalScene(requestId: string): Promise<{ status: StoryScene['st
   return { status: state === 'IN_QUEUE' ? 'queued' : 'generating', progress: state === 'IN_QUEUE' ? 8 : 38 };
 }
 
-async function cancelFalScene(requestId: string): Promise<void> {
-  await falJson(`/${FAL_QUEUE_MODEL}/requests/${encodeURIComponent(requestId)}/cancel`, { method: 'PUT' });
+async function cancelFalScene(modelSlug: string, requestId: string): Promise<void> {
+  const queueModel = modelSlug === LEGACY_SEEDANCE_MODEL ? LEGACY_SEEDANCE_QUEUE_MODEL : modelSlug;
+  await falJson(`/${queueModel}/requests/${encodeURIComponent(requestId)}/cancel`, { method: 'PUT' });
 }
 
 async function runpod(path: string, method: string, body?: unknown): Promise<Record<string, unknown>> {
@@ -407,6 +486,17 @@ function replacementStoryPrompt(scene: StoryScene): string {
     'No text, logos, photorealism, audio, face matching, or identity-preserving transformation.',
     `This is a safe replacement for story page ${scene.pageNumber} of ${PAGE_COUNT}.`,
   ].join(' ');
+}
+
+function sceneModelSlug(scene: StoryScene, manifest: unknown): string {
+  if (scene.modelSlug) return scene.modelSlug;
+  if (manifest && typeof manifest === 'object') {
+    const value = safeText((manifest as Record<string, unknown>).modelSlug ?? (manifest as Record<string, unknown>).visualProvider, 180);
+    if (value) return value;
+  }
+  // Old rows did not persist the model slug. This is only for readable,
+  // already-created Seedance jobs; new submissions cannot use this path.
+  return LEGACY_SEEDANCE_MODEL;
 }
 async function updateJob(
   supabase: ReturnType<typeof createClient>,
@@ -496,7 +586,7 @@ async function pollStoryJob(
   const changed = await Promise.all(scenes.map(async (scene) => {
     if (!scene.falRequestId || !['queued', 'generating'].includes(scene.status)) return scene;
     try {
-      const next = await pollFalScene(scene.falRequestId);
+       const next = await pollFalScene(sceneModelSlug(scene, current.story_manifest), scene.falRequestId);
       if (next.status === 'ready' && next.output) {
         const stableUrl = await persistRemoteScene(supabase, current.id, scene.pageNumber, next.output);
         return {
@@ -551,7 +641,7 @@ async function pollStoryJob(
     });
   }
 
-  if (readyCount === PAGE_COUNT && changed.every(scene => scene.outputUrl)) {
+   if (readyCount === PAGE_COUNT && changed.every(scene => scene.outputUrl)) {
     if (!current.music_url || !current.narration_url) {
       return updateJob(supabase, current.id, {
         story_scenes: changed,
@@ -564,25 +654,20 @@ async function pollStoryJob(
         },
       });
     }
-    const stitch = await runpod('run', 'POST', {
-      input: {
-        task: 'stitch_oracle_story',
-        scene_urls: changed.map(scene => scene.outputUrl),
-        durations: changed.map(scene => scene.durationSeconds),
-        music_url: current.music_url,
-        narration_url: current.narration_url,
-      },
-    });
-    const stitchId = typeof stitch.id === 'string' ? stitch.id : '';
-    if (!stitchId) throw new Error('RunPod did not return the story stitch job id.');
     return updateJob(supabase, current.id, {
       story_scenes: changed,
-      status: 'stitching',
-      progress: 78,
-      runpod_job_id: `story-mux:${stitchId}`,
+       status: 'ready',
+       progress: 100,
+       // The final MP4 is deliberately assembled by the local FFmpeg lane.
+       // Keep this null so a browser cannot mistake visual completion for a
+       // validated final deliverable.
+       final_media_url: null,
+       runpod_job_id: null,
       error_message: null,
       story_manifest: {
         ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
+         visualsReady: true,
+         assembly: 'local-ffmpeg',
         failureKind: null,
       },
     });
@@ -620,6 +705,19 @@ Deno.serve(async (req: Request) => {
   const action = safeText(payload.action ?? url.searchParams.get('action') ?? 'status', 24).toLowerCase();
   const jobId = safeText(payload.jobId ?? url.searchParams.get('jobId'), 64);
 
+  if (action === 'catalog') {
+    return json({
+      provider: 'fal',
+      models: falStoryModels().map(({ slug, label, description, costLabel, expectedSeconds }) => ({
+        slug,
+        label,
+        description,
+        costLabel,
+        expectedSeconds,
+      })),
+    });
+  }
+
   if (action === 'latest') {
     const sessionId = safeText(payload.sessionId, 120);
     if (!sessionId) return json({ error: 'sessionId is required.' }, 400);
@@ -636,16 +734,24 @@ Deno.serve(async (req: Request) => {
 
   if (action === 'create') {
     const sessionId = safeText(payload.sessionId, 120);
+    const model = falStoryModel(payload.modelSlug);
+    const confirmed = payload.confirmed === true;
     const pages = Array.isArray(payload.pages) ? payload.pages as Record<string, unknown>[] : [];
     const panels = Array.isArray(payload.panels) ? payload.panels as Record<string, unknown>[] : [];
     const characterVoiceTracks = readCharacterVoiceTracks(payload.characterVoiceTracks);
     const musicBase64 = payload.musicBase64;
     const narrationBase64 = payload.narrationBase64;
+    if (!confirmed) {
+      return json({ error: 'A Seeker confirmation is required before any hosted FAL story request.' }, 400);
+    }
+    if (!model) {
+      return json({ error: 'That FAL story model is not approved. Choose a model from the current catalog.' }, 400);
+    }
     if (!sessionId || pages.length !== PAGE_COUNT || panels.length !== PAGE_COUNT) {
       return json({ error: 'sessionId plus exactly 32 pages and 32 locked panel references are required.' }, 400);
     }
     if (typeof musicBase64 !== 'string' || typeof narrationBase64 !== 'string') {
-      return json({ error: 'Premium story production requires real Lyria music and narration audio.' }, 400);
+      return json({ error: 'FAL story production requires real Lyria music and narration audio.' }, 400);
     }
 
     const totalDuration = pages.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
@@ -672,7 +778,10 @@ Deno.serve(async (req: Request) => {
         totalDurationSeconds: totalDuration,
         sourceAssets: 'two immutable 4x4 illustration sheets',
         referencePolicy: 'one persisted panel image per page',
-        visualProvider: 'fal-seedance-2.5-image-to-video',
+         visualProvider: model.slug,
+         modelSlug: model.slug,
+         provider: 'fal',
+         confirmation: 'explicit',
         audioPolicy: 'Lyria soundtrack plus validated lore narration',
         characterVoiceTracks,
       },
@@ -704,7 +813,7 @@ Deno.serve(async (req: Request) => {
               mimeType,
             );
             const seed = 730_000 + index;
-            const requestId = await createFalScene(referenceUrl, storyPrompt(page), sessionId, seed);
+             const requestId = await createFalScene(model, referenceUrl, storyPrompt(page), sessionId, seed);
             return {
               pageNumber: index + 1,
               sheetIndex: Number(page.sheetIndex) as 0 | 1,
@@ -712,6 +821,7 @@ Deno.serve(async (req: Request) => {
               column: Number(page.column),
               durationSeconds: Number(page.durationSeconds),
               seed,
+               modelSlug: model.slug,
               prompt: storyPrompt(page),
               referenceUrl,
               referenceAudioUrl: characterAudioForPage(page, characterVoiceTracks),
@@ -734,6 +844,7 @@ Deno.serve(async (req: Request) => {
               column: Number(page.column),
               durationSeconds: Number(page.durationSeconds),
               seed: 730_000 + index,
+               modelSlug: model.slug,
               prompt: storyPrompt(page),
               referenceUrl,
                 referenceAudioUrl: characterAudioForPage(page, characterVoiceTracks),
@@ -782,7 +893,7 @@ Deno.serve(async (req: Request) => {
       const failed = await updateJob(supabase, row.id, {
         status: 'failed',
         progress: 0,
-        error_message: error instanceof Error ? error.message : 'Premium story setup failed.',
+         error_message: error instanceof Error ? error.message : 'FAL story setup failed.',
         story_manifest: {
           ...(row.story_manifest && typeof row.story_manifest === 'object' ? row.story_manifest : {}),
           failureKind: /\b(?:gemini|narration|lyria|soundtrack|audio)\b/i.test(error instanceof Error ? error.message : '')
@@ -814,13 +925,20 @@ Deno.serve(async (req: Request) => {
   }
 
   if (action === 'retry-stitch') {
+    const modelSlug = sceneModelSlug(sceneList(current.story_scenes)[0] ?? {} as StoryScene, current.story_manifest);
+    if (isRetiredModel(modelSlug)) {
+      return json({
+        error: 'This historical Seedance job is readable but cannot be retried. Start a new story and explicitly choose an approved FAL model.',
+        retired: true,
+      }, 409);
+    }
     const scenes = sceneList(current.story_scenes);
 
     const everyPageReady = scenes.length === PAGE_COUNT
       && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl));
     await Promise.all(scenes.map(async scene => {
-      if (scene.falRequestId && ['queued', 'generating'].includes(scene.status)) {
-        try { await cancelFalScene(scene.falRequestId); } catch { /* local state remains authoritative */ }
+       if (scene.falRequestId && ['queued', 'generating'].includes(scene.status)) {
+         try { await cancelFalScene(sceneModelSlug(scene, current.story_manifest), scene.falRequestId); } catch { /* local state remains authoritative */ }
       }
     }));
     if (current.runpod_job_id?.startsWith('story-mux:')) {
@@ -843,16 +961,26 @@ Deno.serve(async (req: Request) => {
     if (!scene || !scene.referenceUrl) {
       return json({ error: 'That story page has no persisted panel reference to retry.' }, 400);
     }
+    const modelSlug = sceneModelSlug(scene, current.story_manifest);
+    if (isRetiredModel(modelSlug)) {
+      return json({
+        error: 'This historical Seedance page is readable but cannot be retried automatically. Start a new story with an approved FAL model.',
+        retired: true,
+      }, 409);
+    }
+    const model = falStoryModel(modelSlug);
+    if (!model) return json({ error: 'The saved FAL model is no longer approved; start a new story with the current catalog.' }, 409);
     const isReplacement = action === 'replace';
     try {
       const nextPrompt = isReplacement ? replacementStoryPrompt(scene) : scene.prompt;
       const nextSeed = isReplacement ? scene.seed + 500_000 : scene.seed;
-      const requestId = await createFalScene(scene.referenceUrl, nextPrompt, current.session_id, nextSeed);
+       const requestId = await createFalScene(model, scene.referenceUrl, nextPrompt, current.session_id, nextSeed);
       const nextScenes = scenes.map(item => item.pageNumber === pageNumber
         ? {
           ...item,
           prompt: nextPrompt,
           seed: nextSeed,
+           modelSlug,
           falRequestId: requestId,
           status: 'generating' as const,
           progress: 8,

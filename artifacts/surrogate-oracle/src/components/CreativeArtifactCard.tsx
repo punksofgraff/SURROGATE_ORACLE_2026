@@ -28,9 +28,12 @@ import {
   type CreativeEpisode,
   type CreativeMissingDetail,
   type CreativeSeriesHistoryEntry,
+  ILLUSTRATION_STORY_FAL_MODELS,
+  type IllustrationStoryLane,
   type IllustrationStoryScene,
   type SeriesRenderMode,
 } from '../lib/creativeProduction';
+import { useIllustrationStoryModelAdvisor } from '../hooks/useIllustrationStoryModelAdvisor';
 import './CreativeArtifactCard.css';
 
 export type CreativeArtifactCardProps = {
@@ -54,6 +57,7 @@ export type CreativeArtifactCardProps = {
   onStorySceneRetry?: (pageNumber: number) => void;
   onStorySceneReplace?: (pageNumber: number) => void;
   onStoryFilmRetry?: () => void;
+  onStoryLaneChange?: (lane: IllustrationStoryLane, modelSlug: string | null) => void;
   savedSeriesCount?: number;
   onOpenSeriesHistory?: () => void;
 };
@@ -347,6 +351,7 @@ export function CreativeArtifactCard({
   onStorySceneRetry,
   onStorySceneReplace,
   onStoryFilmRetry,
+  onStoryLaneChange,
   savedSeriesCount = 0,
   onOpenSeriesHistory,
 }: CreativeArtifactCardProps) {
@@ -395,6 +400,18 @@ export function CreativeArtifactCard({
     ? Object.entries(metadataRecord ?? {}).slice(0, 4)
     : [];
   const [followUpAnswer, setFollowUpAnswer] = useState('');
+  const initialStoryLane: IllustrationStoryLane = metadataRecord?.storyLane === 'fal' ? 'fal' : 'local';
+  const initialStoryModel = typeof metadataRecord?.falModelSlug === 'string'
+    ? metadataRecord.falModelSlug
+    : ILLUSTRATION_STORY_FAL_MODELS[0]?.slug ?? null;
+  const [storyLane, setStoryLane] = useState<IllustrationStoryLane>(initialStoryLane);
+  const [storyModelSlug, setStoryModelSlug] = useState<string | null>(initialStoryModel);
+  const { recommendations, summary, isAdvising, advise } = useIllustrationStoryModelAdvisor();
+
+  useEffect(() => {
+    setStoryLane(initialStoryLane);
+    setStoryModelSlug(initialStoryModel);
+  }, [artifact.id, initialStoryLane, initialStoryModel]);
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -413,6 +430,12 @@ export function CreativeArtifactCard({
     if (!followUpDetail || !followUpAnswer.trim()) return;
     onFollowUpSubmit?.(followUpDetail, followUpAnswer.trim());
     setFollowUpAnswer('');
+  };
+
+  const chooseStoryLane = (lane: IllustrationStoryLane, modelSlug: string | null) => {
+    setStoryLane(lane);
+    setStoryModelSlug(modelSlug);
+    onStoryLaneChange?.(lane, modelSlug);
   };
 
   const renderOutput = () => {
@@ -707,15 +730,84 @@ export function CreativeArtifactCard({
 
         {isDraft && (
           <div className="creative-artifact-card__confirmation" role="status">
+            {isIllustrationStory && artifact.followUpCompleted && (
+              <div className="creative-story-choice" role="group" aria-label="Story visual lane">
+                <div className="creative-story-choice__heading">Choose the visual lane</div>
+                <div className="creative-story-choice__options">
+                  <button
+                    type="button"
+                    className={`creative-story-choice__option${storyLane === 'local' ? ' is-selected' : ''}`}
+                    onClick={() => chooseStoryLane('local', null)}
+                  >
+                    <strong>LOCAL / FREE</strong>
+                    <span>Original panels + local FFmpeg motion. Default; no hosted video charge.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`creative-story-choice__option${storyLane === 'fal' ? ' is-selected' : ''}`}
+                    onClick={() => chooseStoryLane('fal', storyModelSlug ?? ILLUSTRATION_STORY_FAL_MODELS[0]?.slug ?? null)}
+                  >
+                    <strong>FAL / EXPLICIT</strong>
+                    <span>Hosted motion from still anchors. Requires the model and budget confirmation below.</span>
+                  </button>
+                </div>
+                {storyLane === 'fal' && (
+                  <div className="creative-story-choice__fal">
+                    <label htmlFor={`${descriptionId}-fal-model`}>Approved FAL model</label>
+                    <select
+                      id={`${descriptionId}-fal-model`}
+                      value={storyModelSlug ?? ''}
+                      onChange={(event) => chooseStoryLane('fal', event.target.value || null)}
+                    >
+                      {ILLUSTRATION_STORY_FAL_MODELS.map(model => (
+                        <option value={model.slug} key={model.slug}>{model.label} · {model.costLabel}</option>
+                      ))}
+                    </select>
+                    {storyModelSlug && (() => {
+                      const model = ILLUSTRATION_STORY_FAL_MODELS.find(item => item.slug === storyModelSlug);
+                      return model ? <small>{model.description} Estimated scene wait: about {Math.ceil(model.expectedSeconds / 60)} minutes.</small> : null;
+                    })()}
+                    <button
+                      type="button"
+                      className="creative-story-choice__advisor"
+                      disabled={isAdvising}
+                      onClick={() => { void advise(artifact.prompt); }}
+                    >
+                      <Sparkles size={13} aria-hidden="true" />
+                      {isAdvising ? 'CO-PILOT IS COMPARING…' : 'ASK CO-PILOT FOR A MODEL RECOMMENDATION'}
+                    </button>
+                    {recommendations.map(recommendation => (
+                      <button
+                        type="button"
+                        className="creative-story-choice__recommendation"
+                        key={recommendation.slug}
+                        onClick={() => chooseStoryLane('fal', recommendation.slug)}
+                      >
+                        <strong>USE {recommendation.label}</strong>
+                        <span>{recommendation.reason}</span>
+                      </button>
+                    ))}
+                    {summary && <small className="creative-story-choice__summary">{summary}</small>}
+                  </div>
+                )}
+                {storyLane === 'fal' && (
+                  <p className="creative-story-choice__warning">
+                    FAL is metered. Nothing is submitted until you press the confirmation button, and failed pages are never retried automatically.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="creative-artifact-card__confirmation-heading">
               <ShieldCheck size={15} aria-hidden="true" />
               <span>{artifact.requiresConfirmation ? 'Confirmation required' : 'Ready to dispatch'}</span>
             </div>
             <p className="creative-artifact-card__confirmation-copy">
-              {artifact.confirmationCopy
+              {isIllustrationStory && storyLane === 'fal'
+                ? `This explicitly confirms ${ILLUSTRATION_STORY_FAL_MODELS.find(model => model.slug === storyModelSlug)?.label ?? 'the selected approved FAL model'} for 32 visual scenes. The final narration, voices, music, and FFmpeg assembly stay local.`
+                : artifact.confirmationCopy
                 ?? (artifact.requiresConfirmation
                   ? 'Money Mite will send this brief into the production lane only after you clear it.'
-                  : 'The brief is staged. Clear it when you are ready to start production.')}
+                   : 'The brief is staged. Clear it when you are ready to start production.')}
             </p>
           </div>
         )}

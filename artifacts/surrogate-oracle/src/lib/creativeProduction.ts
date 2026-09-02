@@ -68,7 +68,41 @@ export type CreativeProvider =
   | 'local-series-manifest'
   | 'lyria'
   | 'browser-film'
-  | 'premium-film';
+  | 'premium-film'
+  | 'fal-film';
+
+export type IllustrationStoryLane = 'local' | 'fal';
+
+export type IllustrationStoryModelOption = {
+  slug: string;
+  label: string;
+  description: string;
+  costLabel: string;
+  expectedSeconds: number;
+};
+
+// Display-safe defaults. The edge function remains authoritative and can
+// narrow/replace this catalog with FAL_STORY_MODEL_CATALOG.
+export const ILLUSTRATION_STORY_FAL_MODELS: IllustrationStoryModelOption[] = [
+  {
+    slug: 'fal-ai/wan-i2v',
+    label: 'Wan 2.1 I2V · 480p',
+    description: 'Lowest-cost short motion from each locked still anchor.',
+    costLabel: '$0.20 / scene at 480p',
+    expectedSeconds: 60,
+  },
+  {
+    slug: 'fal-ai/wan-pro/image-to-video',
+    label: 'Wan Pro I2V',
+    description: 'Higher-fidelity motion for a deliberately premium pass.',
+    costLabel: 'Higher-cost premium scene',
+    expectedSeconds: 180,
+  },
+];
+
+export function illustrationStoryFalModel(slug: unknown): IllustrationStoryModelOption | null {
+  return ILLUSTRATION_STORY_FAL_MODELS.find(model => model.slug === slug) ?? null;
+}
 
 export type IllustrationStoryPageStatus = 'planned' | 'generating' | 'ready' | 'failed' | 'cancelled';
 export type IllustrationStoryVoiceLine = {
@@ -102,6 +136,7 @@ export type IllustrationStoryScene = {
   durationSeconds: number;
   seed: number;
   referenceUrl?: string | null;
+  modelSlug?: string | null;
   status: 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled';
   progress: number;
   jobId?: string | null;
@@ -515,7 +550,7 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
     createdAt,
     requiresConfirmation: classification.requiresConfirmation,
     confirmationLabel: illustrationStory
-      ? 'Confirm 32-page story film'
+      ? 'Confirm local story film'
       : classification.kind === 'music'
       ? 'Confirm music generation'
       : classification.kind === 'film'
@@ -524,7 +559,7 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
           ? 'Create series manifest'
           : 'Create draft',
     confirmationCopy: illustrationStory && classification.missingDetails.length === 0
-      ? 'This starts the premium story lane: 32 locked panel references go to FAL as separate animated scenes, then the server stitches them with real Lyria music and Gemini narration into one persisted MP4.'
+      ? 'This starts the free local story lane: the original 32 panels stay in order while local FFmpeg assembles motion, Lyria backing music, and the existing narration/voice mix into a validated widescreen MP4.'
       : missingCopy(classification.missingDetails),
     storyPages: illustrationStory ? createIllustrationStoryPages(clean, createdAt) : undefined,
     metadata: {
@@ -532,6 +567,8 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
       missingDetails: classification.missingDetails,
       ...(illustrationStory ? {
         production: 'illustration-story-proof',
+        storyLane: 'local' as IllustrationStoryLane,
+        falModelSlug: null,
         pageCount: ILLUSTRATION_STORY_PAGE_COUNT,
         pageDurationSeconds: ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,
         targetDurationSeconds: ILLUSTRATION_STORY_PAGE_COUNT * ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,

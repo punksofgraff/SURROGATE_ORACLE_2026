@@ -102,6 +102,8 @@ import {
   type CreativeMissingDetail,
   type CreativeSeriesHistoryEntry,
   type CreativeSeriesManifest,
+  illustrationStoryFalModel,
+  type IllustrationStoryLane,
   type SeriesRenderMode,
   isCreativeDispatchCurrent,
   isCreativeFilmJobCurrent,
@@ -120,6 +122,10 @@ function parseStoredJson(value: string): unknown {
   } catch {
     return null;
   }
+}
+
+function isIllustrationStoryProduction(value: unknown): boolean {
+  return ['illustration-story-premium', 'illustration-story-proof'].includes(String(value));
 }
 
 function storyFailureKindForError(error: unknown): 'gemini-audio' | 'audio-gate' | 'provider' {
@@ -1631,7 +1637,7 @@ export function SurrogateOracleImmersion() {
   const persistIllustrationStoryArtifact = useCallback((artifact: CreativeArtifact | null) => {
     if (
       !artifact
-      || !['illustration-story-premium', 'illustration-story-proof'].includes(String(artifact.metadata?.production))
+       || !isIllustrationStoryProduction(artifact.metadata?.production)
       || typeof window === 'undefined'
     ) return;
     try {
@@ -1645,7 +1651,7 @@ export function SurrogateOracleImmersion() {
     if (typeof window === 'undefined') return;
     const storedStory = localStorage.getItem(`oracle_creative_story_${currentSessionId}`);
     const restoredStory = storedStory ? parseStoredJson(storedStory) as CreativeArtifact | null : null;
-    if (['illustration-story-premium', 'illustration-story-proof'].includes(String(restoredStory?.metadata?.production))) {
+    if (isIllustrationStoryProduction(restoredStory?.metadata?.production)) {
       activeCreativeArtifactRef.current = restoredStory;
       setCreativeArtifact(restoredStory);
       setShowArtifactCard(true);
@@ -1739,11 +1745,11 @@ export function SurrogateOracleImmersion() {
     const job = illustrationStoryFilm.job;
     if (!job) return;
     let artifact = activeCreativeArtifactRef.current;
-    if (!artifact || artifact.metadata?.production !== 'illustration-story-premium') {
+    if (!artifact || !isIllustrationStoryProduction(artifact.metadata?.production)) {
       const restored = createCreativeDraft(
         'Create a page-by-page story film from the two attached 4x4 illustration sheets featuring Levi, Lennon, Pickles, Princess Ghost Spider, Mario Spider-Man, and Donkey.',
       );
-      if (restored.metadata?.production !== 'illustration-story-premium') return;
+      if (!isIllustrationStoryProduction(restored.metadata?.production)) return;
       artifact = {
         ...restored,
         id: `story-artifact-${job.id}`,
@@ -1830,6 +1836,29 @@ export function SurrogateOracleImmersion() {
     });
   }, [persistSeriesArtifact]);
 
+  const chooseIllustrationStoryLane = useCallback((lane: IllustrationStoryLane, modelSlug: string | null) => {
+    const artifact = activeCreativeArtifactRef.current;
+    if (!artifact || artifact.status !== 'draft' || !isIllustrationStoryProduction(artifact.metadata?.production)) return;
+    const selectedModel = lane === 'fal' ? illustrationStoryFalModel(modelSlug) : null;
+    const next: CreativeArtifact = {
+      ...artifact,
+      provider: lane === 'fal' ? 'fal-film' : 'browser-film',
+      providerLabel: lane === 'fal' ? `FAL / ${selectedModel?.label ?? 'approved model'}` : 'Free local FFmpeg story lane',
+      confirmationLabel: lane === 'fal' ? 'Confirm metered FAL story' : 'Confirm local story film',
+      confirmationCopy: lane === 'fal'
+        ? `This explicitly confirms ${selectedModel?.label ?? 'an approved FAL model'} for 32 visual scenes. FAL is metered; narration, voices, Lyria music, and final FFmpeg assembly stay local.`
+        : 'This starts the free local story lane: the original 32 panels stay in order while local FFmpeg assembles motion, Lyria backing music, and the existing narration/voice mix into a validated widescreen MP4.',
+      metadata: {
+        ...(artifact.metadata ?? {}),
+        storyLane: lane,
+        falModelSlug: selectedModel?.slug ?? null,
+      },
+    };
+    activeCreativeArtifactRef.current = next;
+    setCreativeArtifact(next);
+    persistIllustrationStoryArtifact(next);
+  }, [persistIllustrationStoryArtifact]);
+
   const handleCreativeRequest = useCallback((prompt: string) => {
     const artifact = createCreativeDraft(prompt);
     activeCreativeArtifactRef.current = artifact;
@@ -1900,8 +1929,10 @@ export function SurrogateOracleImmersion() {
     }
 
     if (artifact.kind === 'film') {
-      const isLocalIllustrationStory = artifact.metadata?.production === 'illustration-story-proof';
-      const isIllustrationStory = artifact.metadata?.production === 'illustration-story-premium';
+      const isLocalIllustrationStory = artifact.metadata?.production === 'illustration-story-proof'
+        && artifact.metadata?.storyLane !== 'fal';
+      const isIllustrationStory = artifact.metadata?.production === 'illustration-story-premium'
+        || (artifact.metadata?.production === 'illustration-story-proof' && artifact.metadata?.storyLane === 'fal');
       if (isLocalIllustrationStory) {
         void (async () => {
           try {

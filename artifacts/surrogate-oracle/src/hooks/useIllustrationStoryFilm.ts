@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import type { IllustrationStoryPage, IllustrationStoryVoiceLine } from '../lib/creativeProduction';
+import type {
+  IllustrationStoryModelOption,
+  IllustrationStoryPage,
+  IllustrationStoryVoiceLine,
+} from '../lib/creativeProduction';
 
 export type IllustrationStoryFailureKind =
   | 'provider-safety'
@@ -17,6 +21,7 @@ export type IllustrationStorySceneState = {
   durationSeconds: number;
   seed: number;
   referenceUrl?: string | null;
+  modelSlug?: string | null;
   referenceAudioUrl?: string | null;
   status: 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled';
   progress: number;
@@ -29,7 +34,8 @@ export type IllustrationStorySceneState = {
 
 export type IllustrationStoryFilmJob = {
   id: string;
-  provider: 'fal';
+  provider: 'fal' | 'retired-fal';
+  modelSlug?: string | null;
   kind: 'illustration-story';
   status: 'queued' | 'generating' | 'stitching' | 'ready' | 'failed' | 'cancelled';
   progress: number;
@@ -82,6 +88,14 @@ type NarrationBundle = {
   characterTracks: IllustrationStoryCharacterTrack[];
 };
 type StoryJobListener = (job: IllustrationStoryFilmJob) => void;
+type LocalStitchInput = {
+  sceneUrls?: string[];
+  sheets?: StoryAsset[];
+  music: StoryAsset;
+  narration: StoryAsset;
+  characterVoiceTracks: IllustrationStoryCharacterTrack[];
+  pages: IllustrationStoryPage[];
+};
 
 function toBase64(bytes: Uint8Array): string {
   let binary = '';
@@ -197,6 +211,38 @@ function isTerminal(status: IllustrationStoryFilmJob['status']): boolean {
   return ['ready', 'failed', 'cancelled'].includes(status);
 }
 
+async function readLocalStitchResponse(
+  response: Response,
+  pages: IllustrationStoryPage[],
+  onProgress: ((progress: number) => void) | undefined,
+  localObjectUrlRef: React.MutableRefObject<string | null>,
+): Promise<IllustrationStoryFilmResult> {
+  const validatedPageCount = Number(response.headers.get('X-Story-Page-Count'));
+  const validatedDuration = Number(response.headers.get('X-Story-Duration'));
+  if (validatedPageCount !== pages.length) throw new Error('Story film validation failed: page count mismatch.');
+  if (
+    !Number.isFinite(validatedDuration)
+    || Math.abs(validatedDuration - pages.reduce((sum, page) => sum + page.durationSeconds, 0)) > 0.75
+  ) {
+    throw new Error('Story film validation failed: duration mismatch.');
+  }
+  if (response.headers.get('X-Story-Audio') !== 'present') {
+    throw new Error('Story film validation failed: audio track missing.');
+  }
+  const blob = await response.blob();
+  if (!blob.size) throw new Error('FFmpeg returned an empty story film.');
+  if (localObjectUrlRef.current) URL.revokeObjectURL(localObjectUrlRef.current);
+  localObjectUrlRef.current = URL.createObjectURL(blob);
+  onProgress?.(100);
+  return {
+    url: localObjectUrlRef.current,
+    mediaType: 'video/mp4',
+    pageCount: pages.length,
+    durationSeconds: validatedDuration,
+    narrationAvailable: response.headers.get('X-Story-Narration') === 'available',
+  };
+}
+
 export function useIllustrationStoryFilm(sessionId?: string | null) {
   const [job, setJob] = useState<IllustrationStoryFilmJob | null>(null);
   const jobRef = useRef<IllustrationStoryFilmJob | null>(null);
@@ -255,6 +301,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     sheetUrls: [string, string],
     pages: IllustrationStoryPage[],
     musicUrl: string,
+    model: IllustrationStoryModelOption,
     onProgress?: (progress: number) => void,
     onJob?: StoryJobListener,
   ): Promise<IllustrationStoryFilmResult> => {
@@ -263,7 +310,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     abortRef.current = controller;
     onProgress?.(2);
 
-    if (pages.length !== 32) throw new Error('Premium story production requires exactly 32 pages.');
+    if (pages.length !== 32) throw new Error('FAL story production requires exactly 32 pages.');
     const [panels, music, narrationBundle] = await Promise.all([
       createLockedPanelAssets(sheetUrls, pages),
       urlToBase64(musicUrl),
@@ -276,6 +323,9 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       body: {
         action: 'create',
         sessionId: sessionId ?? 'anonymous-story-session',
+         provider: 'fal',
+         modelSlug: model.slug,
+         confirmed: true,
         pages,
         panels,
         musicBase64: music.base64,
@@ -285,8 +335,8 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
         characterVoiceTracks: narrationBundle.characterTracks,
       },
     });
-    if (error) throw new Error(`Premium story job could not start: ${error.message}`);
-    if (!data?.id) throw new Error(data?.error || 'Premium story job returned no id.');
+    if (error) throw new Error(`FAL story job could not start: ${error.message}`);
+    if (!data?.id) throw new Error(data?.error || 'FAL story job returned no id.');
     activeJobIdRef.current = data.id;
     const initial = data as IllustrationStoryFilmJob;
     publish(initial, onJob);
@@ -299,19 +349,47 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
         onJob?.(next);
       });
     if (!complete) {
-      throw new Error('Premium story film status was lost; the saved server job remains recoverable.');
+       throw new Error('FAL story film status was lost; the saved server job remains recoverable.');
     }
-    if (complete.status !== 'ready' || !complete.finalMediaUrl) {
-      throw new Error(complete.error || 'Premium story film did not produce a playable MP4.');
+    if (complete.status !== 'ready') {
+      throw new Error(complete.error || 'FAL story film did not produce 32 playable visual scenes.');
     }
-    onProgress?.(100);
-    return {
-      url: complete.finalMediaUrl,
-      mediaType: 'video/mp4',
-      pageCount: complete.pageCount,
-      durationSeconds: pages.reduce((sum, page) => sum + page.durationSeconds, 0),
-      narrationAvailable: true,
-    };
+    if (complete.finalMediaUrl) {
+      onProgress?.(100);
+      return {
+        url: complete.finalMediaUrl,
+        mediaType: 'video/mp4',
+        pageCount: complete.pageCount,
+        durationSeconds: pages.reduce((sum, page) => sum + page.durationSeconds, 0),
+        narrationAvailable: true,
+      };
+    }
+    const sceneUrls = complete.scenes
+      .sort((a, b) => a.pageNumber - b.pageNumber)
+      .map(scene => scene.outputUrl)
+      .filter((url): url is string => Boolean(url));
+    if (sceneUrls.length !== pages.length) {
+      throw new Error('FAL returned an incomplete visual scene set.');
+    }
+    onProgress?.(82);
+    const stitchResponse = await fetch(`${import.meta.env.BASE_URL}api/illustration-story-stitch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sceneUrls,
+        music,
+        narration: narrationBundle.narration,
+        characterVoiceTracks: narrationBundle.characterTracks,
+        pages,
+      } satisfies LocalStitchInput),
+      signal: controller.signal,
+    });
+    if (!stitchResponse.ok) {
+      let detail = '';
+      try { detail = (await stitchResponse.json()).error ?? ''; } catch { /* keep status */ }
+      throw new Error(detail || `Local FFmpeg story assembly failed (${stitchResponse.status}).`);
+    }
+    return readLocalStitchResponse(stitchResponse, pages, onProgress, localObjectUrlRef);
   }, [publish, sessionId, waitForCompletion]);
 
   const retryScene = useCallback(async (
@@ -347,7 +425,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     onJob?: StoryJobListener,
   ) => {
     const currentId = activeJobIdRef.current ?? jobRef.current?.id;
-    if (!currentId) throw new Error('There is no saved story film job to stitch.');
+    if (!currentId) throw new Error('There is no saved story film job to assemble.');
     const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
       body: { action: 'retry-stitch', jobId: currentId },
     });
@@ -387,13 +465,13 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     const response = await fetch(`${import.meta.env.BASE_URL}api/illustration-story-stitch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-       body: JSON.stringify({
+         body: JSON.stringify({
          sheets: [sheetOne, sheetTwo],
          music,
          narration: narrationBundle.narration,
          characterVoiceTracks: narrationBundle.characterTracks,
          pages,
-       }),
+       } satisfies LocalStitchInput),
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -401,30 +479,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       try { detail = (await response.json()).error ?? ''; } catch { /* keep status */ }
       throw new Error(detail || `FFmpeg story stitch failed (${response.status}).`);
     }
-    const validatedPageCount = Number(response.headers.get('X-Story-Page-Count'));
-    const validatedDuration = Number(response.headers.get('X-Story-Duration'));
-    if (validatedPageCount !== pages.length) throw new Error('Story film validation failed: page count mismatch.');
-    if (
-      !Number.isFinite(validatedDuration)
-      || Math.abs(validatedDuration - pages.reduce((sum, page) => sum + page.durationSeconds, 0)) > 0.75
-    ) {
-      throw new Error('Story film validation failed: duration mismatch.');
-    }
-    if (response.headers.get('X-Story-Audio') !== 'present') {
-      throw new Error('Story film validation failed: audio track missing.');
-    }
-    const blob = await response.blob();
-    if (!blob.size) throw new Error('FFmpeg returned an empty story film.');
-    if (localObjectUrlRef.current) URL.revokeObjectURL(localObjectUrlRef.current);
-    localObjectUrlRef.current = URL.createObjectURL(blob);
-    onProgress?.(100);
-    return {
-      url: localObjectUrlRef.current,
-      mediaType: 'video/mp4',
-      pageCount: pages.length,
-      durationSeconds: validatedDuration,
-      narrationAvailable: response.headers.get('X-Story-Narration') === 'available',
-    };
+    return readLocalStitchResponse(response, pages, onProgress, localObjectUrlRef);
   }, []);
 
   const cancel = useCallback(async () => {

@@ -73,6 +73,7 @@ import { useOracleFilm } from '../hooks/useOracleFilm';
 import { useIllustrationStoryFilm, type IllustrationStoryFilmJob } from '../hooks/useIllustrationStoryFilm';
 import storySheetOneUrl from '@assets/567AA27C-1D47-49A5-ABA9-7197F053B021_1788204328509.png';
 import storySheetTwoUrl from '@assets/A2388D28-67B5-4258-9D55-CB618DC165D1_1788204328509.png';
+import oracleReferenceImageUrl from '@assets/IMG_1067_1788314330444.jpeg';
 import WalletGateCard from './WalletGateCard';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { DocumentIntakeCard, type DocumentIntakeFile } from './DocumentIntakeCard';
@@ -359,6 +360,8 @@ export function SurrogateOracleImmersion() {
   const [loreStarted, setLoreStarted]       = useState(false);
   const [holdTooltip, setHoldTooltip]       = useState<{ title: string; body: string } | null>(null);
   const [hamburgerOpen, setHamburgerOpen]   = useState(false);
+  const [showReferenceImage, setShowReferenceImage] = useState(false);
+  const referenceImageCloseRef = useRef<HTMLButtonElement>(null);
   const [isTypeMode, setIsTypeMode]         = useState(false);
   const [personaMode, setPersonaMode]       = useState<OraclePersonaMode>('deep');
   const [mintUrl, setMintUrl]               = useState<string | null>(null);
@@ -370,6 +373,28 @@ export function SurrogateOracleImmersion() {
   // Ghost transmissions — Oracle-voiced phrases from the ghost_phrase column,
   // fetched once at mount via op:'fragments'. Raw session content never arrives here.
   const [alleyFragments, setAlleyFragments]   = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!showReferenceImage) return;
+
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setShowReferenceImage(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    referenceImageCloseRef.current?.focus();
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      previouslyFocused?.focus();
+    };
+  }, [showReferenceImage]);
 
   // ── Refs ────────────────────────────────────────────────────────────────
   const visemeStateRef = useRef<VisemeState>(SILENCE_VISEME_STATE);
@@ -4496,6 +4521,13 @@ export function SurrogateOracleImmersion() {
                <button onClick={() => { setShowSeriesHistory(true); setHamburgerOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00d9ff', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>
                  <History size={14} /> SERIES HISTORY {seriesHistory.length > 0 && `(${seriesHistory.length})`}
                </button>
+               <button
+                 className="oracle-reference-menu-button"
+                 onClick={() => { setShowReferenceImage(true); setHamburgerOpen(false); }}
+                 style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00d9ff', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left', whiteSpace: 'nowrap' }}
+               >
+                 ◈ REFERENCE IMAGE
+               </button>
               <div style={{ padding: '10px 16px 6px', borderTop: '1px solid rgba(0,255,136,0.15)', color: 'rgba(0,255,136,0.55)', fontSize: '0.58rem', fontFamily: "'PhillySans', monospace", letterSpacing: '0.13em' }}>
                 ORACLE PERSONA
               </div>
@@ -4515,6 +4547,59 @@ export function SurrogateOracleImmersion() {
           </AnimatePresence>
         </div>
       )}
+
+      <AnimatePresence>
+        {showReferenceImage && (
+          <motion.div
+            className="oracle-reference-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            role="presentation"
+            onClick={(event) => {
+              if (event.target === event.currentTarget) setShowReferenceImage(false);
+            }}
+          >
+            <motion.div
+              className="oracle-reference-dialog"
+              initial={{ opacity: 0, scale: 0.96, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 12 }}
+              transition={{ type: 'spring', damping: 26, stiffness: 220 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="oracle-reference-title"
+              aria-describedby="oracle-reference-description"
+            >
+              <div className="oracle-reference-header">
+                <div>
+                  <div className="oracle-reference-kicker">FIELD REFERENCE // MOBILE CAPTURE</div>
+                  <h2 id="oracle-reference-title">ORACLE SIGNAL</h2>
+                </div>
+                <button
+                  ref={referenceImageCloseRef}
+                  type="button"
+                  className="oracle-reference-close"
+                  onClick={() => setShowReferenceImage(false)}
+                  aria-label="Close reference image"
+                >
+                  <X size={18} aria-hidden="true" />
+                </button>
+              </div>
+              <div className="oracle-reference-image-frame">
+                <img
+                  className="oracle-reference-image"
+                  src={oracleReferenceImageUrl}
+                  alt="Mobile screenshot of the SURROGATE Oracle interface with the green avatar and burger menu visible."
+                />
+              </div>
+              <p id="oracle-reference-description" className="oracle-reference-description">
+                SUPPLIED CAPTURE // VISUAL REFERENCE
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {debugMode && (
         <BackendControlPanel

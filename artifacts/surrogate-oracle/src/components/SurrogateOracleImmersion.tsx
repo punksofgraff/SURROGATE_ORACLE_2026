@@ -128,6 +128,11 @@ function isIllustrationStoryProduction(value: unknown): boolean {
   return ['illustration-story-premium', 'illustration-story-proof'].includes(String(value));
 }
 
+function isFalIllustrationStoryArtifact(artifact: CreativeArtifact | null): boolean {
+  return artifact?.metadata?.production === 'illustration-story-premium'
+    || (artifact?.metadata?.production === 'illustration-story-proof' && artifact.metadata?.storyLane === 'fal');
+}
+
 function storyFailureKindForError(error: unknown): 'gemini-audio' | 'audio-gate' | 'provider' {
   const message = error instanceof Error ? error.message : String(error ?? '');
   if (/\b(?:stitch|audio gate|audio validation|final media gate|mux)\b/i.test(message)) return 'audio-gate';
@@ -464,6 +469,7 @@ export function SurrogateOracleImmersion() {
   // than merely to whichever artifact happens to have the same React state.
   const creativeProviderClaimRef = useRef<CreativeDispatchClaim | null>(null);
   const creativeFilmJobClaimRef = useRef<{ claim: CreativeDispatchClaim; jobId: string } | null>(null);
+  const storyRecoveryJobRef = useRef<string | null>(null);
   const seriesRunRef = useRef<{
     token: number;
     episodeId: string;
@@ -1651,9 +1657,14 @@ export function SurrogateOracleImmersion() {
     if (typeof window === 'undefined') return;
     const storedStory = localStorage.getItem(`oracle_creative_story_${currentSessionId}`);
     const restoredStory = storedStory ? parseStoredJson(storedStory) as CreativeArtifact | null : null;
-    if (isIllustrationStoryProduction(restoredStory?.metadata?.production)) {
-      activeCreativeArtifactRef.current = restoredStory;
-      setCreativeArtifact(restoredStory);
+    if (restoredStory && isIllustrationStoryProduction(restoredStory.metadata?.production)) {
+      // Object URLs are scoped to the previous document and cannot survive a
+      // refresh. Let the persisted FAL job rebuild the MP4 instead.
+      const refreshedStory = restoredStory.outputUrl?.startsWith('blob:')
+        ? { ...restoredStory, outputUrl: null, outputLabel: undefined }
+        : restoredStory;
+      activeCreativeArtifactRef.current = refreshedStory;
+      setCreativeArtifact(refreshedStory);
       setShowArtifactCard(true);
       return;
     }
@@ -1778,7 +1789,7 @@ export function SurrogateOracleImmersion() {
     updateCreativeArtifact(artifact.id, {
        status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : job.finalMediaUrl ? 'ready' : 'generating',
       progress: job.progress,
-       outputUrl: job.finalMediaUrl ?? artifact.outputUrl,
+       outputUrl: job.finalMediaUrl ?? (job.status === 'ready' ? null : artifact.outputUrl),
        outputLabel: job.finalMediaUrl ? '32-page story film · MP4' : artifact.outputLabel,
       error: job.error,
        provider: job.provider === 'retired-fal' ? 'premium-film' : 'fal-film',
@@ -1798,6 +1809,102 @@ export function SurrogateOracleImmersion() {
       },
     });
   }, [illustrationStoryFilm.job, persistIllustrationStoryArtifact, updateCreativeArtifact]);
+
+  useEffect(() => {
+    const job = illustrationStoryFilm.job;
+    const artifact = activeCreativeArtifactRef.current;
+    if (
+      !job
+      || !artifact
+      || !isFalIllustrationStoryArtifact(artifact)
+      || job.provider !== 'fal'
+      || job.status !== 'ready'
+      || job.finalMediaUrl
+      || !artifact.storyPages?.length
+      || creativeProviderClaimRef.current?.artifactId === artifact.id
+      || storyRecoveryJobRef.current === job.id
+    ) return;
+
+    storyRecoveryJobRef.current = job.id;
+    const token = creativeDispatchTokenRef.current + 1;
+    creativeDispatchTokenRef.current = token;
+    const claim: CreativeDispatchClaim = { artifactId: artifact.id, token };
+    creativeProviderClaimRef.current = claim;
+    updateCreativeArtifact(artifact.id, {
+      status: 'generating',
+      progress: Math.max(82, job.progress),
+      outputUrl: null,
+      outputLabel: undefined,
+      error: null,
+      provider: 'fal-film',
+      providerLabel: `FAL / ${job.modelSlug ?? 'approved model'} · local assembly`,
+      metadata: {
+        ...(artifact.metadata ?? {}),
+        storyStage: 'recovering persisted FAL scenes and audio with local FFmpeg',
+        storyFailureKind: null,
+      },
+    }, claim);
+
+    void illustrationStoryFilm.recoverAssembly(
+      artifact.storyPages,
+      progress => {
+        if (!isCreativeDispatchCurrent(claim, {
+          artifactId: activeCreativeArtifactRef.current?.id ?? null,
+          token: creativeDispatchTokenRef.current,
+          status: activeCreativeArtifactRef.current?.status ?? null,
+        })) return;
+        updateCreativeArtifact(artifact.id, { status: 'generating', progress }, claim);
+      },
+    ).then(result => {
+      if (!isCreativeDispatchCurrent(claim, {
+        artifactId: activeCreativeArtifactRef.current?.id ?? null,
+        token: creativeDispatchTokenRef.current,
+        status: activeCreativeArtifactRef.current?.status ?? null,
+      })) return;
+      updateCreativeArtifact(artifact.id, {
+        status: 'ready',
+        progress: 100,
+        outputUrl: result.url,
+        outputLabel: `32-page narrated story film · ${Math.round(result.durationSeconds)}s MP4`,
+        provider: 'fal-film',
+        providerLabel: `FAL / ${job.modelSlug ?? 'approved model'} · local assembly`,
+        error: null,
+        metadata: {
+          ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+          storyStage: 'complete',
+          storyFailureKind: null,
+          audioGate: { musicReady: true, narrationReady: true, verified: true, passed: true },
+          pageCount: result.pageCount,
+          totalDurationSeconds: result.durationSeconds,
+          ffmpegStitch: 'complete',
+          soundtrack: 'persisted Lyria instrumental anchor',
+          narration: 'persisted Gemini child-friendly narration',
+          sourceAssets: '32 persisted FAL scene URLs',
+        },
+      }, claim);
+      logStep('ILLUSTRATION STORY RECOVERED — 32 PAGES / MP4 / PERSISTED AUDIO', 'ok');
+    }).catch(error => {
+      if (!isCreativeDispatchCurrent(claim, {
+        artifactId: activeCreativeArtifactRef.current?.id ?? null,
+        token: creativeDispatchTokenRef.current,
+        status: activeCreativeArtifactRef.current?.status ?? null,
+      })) return;
+      const detail = error instanceof Error ? error.message : 'Persisted FAL story assets could not be assembled.';
+      updateCreativeArtifact(artifact.id, {
+        status: 'partial',
+        progress: 0,
+        outputUrl: null,
+        outputLabel: undefined,
+        error: `FAL story recovery unavailable: ${detail} No new paid FAL request was submitted.`,
+        metadata: {
+          ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+          storyFailureKind: 'audio-gate',
+          storyStage: 'recovery unavailable — persisted FAL scene or audio asset is missing or expired',
+        },
+      }, claim);
+      logStep('ILLUSTRATION STORY RECOVERY UNAVAILABLE — NO NEW FAL REQUEST', 'warn');
+    });
+  }, [creativeArtifact, illustrationStoryFilm, updateCreativeArtifact]);
 
   const updateSeriesManifest = useCallback((
     artifactId: string,
@@ -2668,11 +2775,81 @@ export function SurrogateOracleImmersion() {
 
   const retryIllustrationStoryFilm = useCallback(() => {
     const artifact = activeCreativeArtifactRef.current;
-    if (artifact?.metadata?.production !== 'illustration-story-premium') return;
+    if (!artifact || !isFalIllustrationStoryArtifact(artifact)) return;
     const token = creativeDispatchTokenRef.current + 1;
     creativeDispatchTokenRef.current = token;
     const claim: CreativeDispatchClaim = { artifactId: artifact.id, token };
     creativeProviderClaimRef.current = claim;
+    const isCurrent = () => isCreativeDispatchCurrent(claim, {
+      artifactId: activeCreativeArtifactRef.current?.id ?? null,
+      token: creativeDispatchTokenRef.current,
+      status: activeCreativeArtifactRef.current?.status ?? null,
+    });
+
+    if (illustrationStoryFilm.job?.provider === 'fal') {
+      updateCreativeArtifact(artifact.id, {
+        status: 'generating',
+        progress: Math.max(82, artifact.progress),
+        outputUrl: null,
+        outputLabel: undefined,
+        error: null,
+        provider: 'fal-film',
+        providerLabel: `FAL / ${illustrationStoryFilm.job.modelSlug ?? 'approved model'} · local assembly`,
+        metadata: {
+          ...(artifact.metadata ?? {}),
+          storyStage: 'retrying local assembly from persisted FAL scenes and audio',
+          storyFailureKind: null,
+        },
+      }, claim);
+      void illustrationStoryFilm.recoverAssembly(
+        artifact.storyPages ?? [],
+        progress => {
+          if (isCurrent()) updateCreativeArtifact(artifact.id, { status: 'generating', progress }, claim);
+        },
+      ).then(result => {
+        if (!isCurrent()) return;
+        updateCreativeArtifact(artifact.id, {
+          status: 'ready',
+          progress: 100,
+          outputUrl: result.url,
+          outputLabel: `32-page narrated story film · ${Math.round(result.durationSeconds)}s MP4`,
+          provider: 'fal-film',
+          providerLabel: `FAL / ${illustrationStoryFilm.job?.modelSlug ?? 'approved model'} · local assembly`,
+          error: null,
+          metadata: {
+            ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+            storyStage: 'complete',
+            storyFailureKind: null,
+            audioGate: { musicReady: true, narrationReady: true, verified: true, passed: true },
+            pageCount: result.pageCount,
+            totalDurationSeconds: result.durationSeconds,
+            ffmpegStitch: 'complete',
+            soundtrack: 'persisted Lyria instrumental anchor',
+            narration: 'persisted Gemini child-friendly narration',
+            sourceAssets: '32 persisted FAL scene URLs',
+          },
+        }, claim);
+        logStep('ILLUSTRATION STORY REASSEMBLED — 32 PAGES / MP4 / PERSISTED AUDIO', 'ok');
+      }).catch(error => {
+        if (!isCurrent()) return;
+        const detail = error instanceof Error ? error.message : 'Persisted FAL story assets could not be assembled.';
+        updateCreativeArtifact(artifact.id, {
+          status: 'partial',
+          progress: 0,
+          outputUrl: null,
+          outputLabel: undefined,
+          error: `FAL story recovery unavailable: ${detail} No new paid FAL request was submitted.`,
+          metadata: {
+            ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+            storyFailureKind: 'audio-gate',
+            storyStage: 'recovery unavailable — persisted FAL scene or audio asset is missing or expired',
+          },
+        }, claim);
+        logStep('ILLUSTRATION STORY RECOVERY UNAVAILABLE — NO NEW FAL REQUEST', 'warn');
+      });
+      return;
+    }
+
     updateCreativeArtifact(artifact.id, {
       status: 'generating',
       progress: Math.max(78, artifact.progress),

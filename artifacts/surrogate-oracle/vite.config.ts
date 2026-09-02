@@ -164,10 +164,19 @@ async function stitchIllustrationStory(body: any): Promise<{
       fs.writeFileSync(file, decoded.bytes);
       return file;
     });
-    const music = decodeDataAsset(body.music);
+    const music = body.music
+      ? decodeDataAsset(body.music)
+      : typeof body.musicUrl === 'string'
+        ? { bytes: await downloadRemoteAsset(body.musicUrl, 'Persisted Lyria soundtrack', 40_000_000), mimeType: 'audio/mpeg' }
+        : null;
+    if (!music) throw new Error('Story assembly requires a Lyria soundtrack or persisted music URL.');
     const musicFile = path.join(dir, `music${music.mimeType.includes('wav') ? '.wav' : '.mp3'}`);
     fs.writeFileSync(musicFile, music.bytes);
-    const narration = body.narration ? decodeDataAsset(body.narration) : null;
+    const narration = body.narration
+      ? decodeDataAsset(body.narration)
+      : typeof body.narrationUrl === 'string'
+        ? { bytes: await downloadRemoteAsset(body.narrationUrl, 'Persisted story narration', 40_000_000), mimeType: 'audio/wav' }
+        : null;
     const narrationFile = narration
       ? path.join(dir, narration.mimeType.includes('wav') ? 'narration.wav' : 'narration.mp3')
       : null;

@@ -44,6 +44,8 @@ export type IllustrationStoryFilmJob = {
   scenes: IllustrationStorySceneState[];
   characterVoiceTracks?: IllustrationStoryCharacterTrack[];
   finalMediaUrl: string | null;
+  narrationUrl?: string | null;
+  musicUrl?: string | null;
   error: string | null;
   failureKind: IllustrationStoryFailureKind;
   audioGate?: {
@@ -91,8 +93,10 @@ type StoryJobListener = (job: IllustrationStoryFilmJob) => void;
 type LocalStitchInput = {
   sceneUrls?: string[];
   sheets?: StoryAsset[];
-  music: StoryAsset;
-  narration: StoryAsset;
+  music?: StoryAsset;
+  musicUrl?: string;
+  narration?: StoryAsset;
+  narrationUrl?: string;
   characterVoiceTracks: IllustrationStoryCharacterTrack[];
   pages: IllustrationStoryPage[];
 };
@@ -439,6 +443,55 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     });
   }, [publish, waitForCompletion]);
 
+  const recoverAssembly = useCallback(async (
+    pages: IllustrationStoryPage[],
+    onProgress?: (progress: number) => void,
+    onJob?: StoryJobListener,
+  ): Promise<IllustrationStoryFilmResult> => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const current = jobRef.current;
+    if (!current) throw new Error('There is no saved FAL story film job to recover.');
+    if (current.provider === 'retired-fal') {
+      throw new Error('This historical FAL job cannot be locally recovered; start a new story with an approved FAL model.');
+    }
+    if (pages.length !== 32) throw new Error('FAL story recovery requires exactly 32 saved pages.');
+    if (!current.musicUrl || !current.narrationUrl) {
+      throw new Error('Persisted FAL audio is unavailable or expired (music and narration are required).');
+    }
+    const orderedScenes = [...current.scenes].sort((a, b) => a.pageNumber - b.pageNumber);
+    if (orderedScenes.length !== pages.length || orderedScenes.some((scene, index) =>
+      scene.pageNumber !== index + 1 || scene.status !== 'ready' || !scene.outputUrl
+    )) {
+      throw new Error('Persisted FAL scenes are incomplete or expired; no new scene request was submitted.');
+    }
+    if (controller.signal.aborted) throw new Error('Story film recovery cancelled.');
+    onProgress?.(82);
+
+    const stitchResponse = await fetch(`${import.meta.env.BASE_URL}api/illustration-story-stitch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sceneUrls: orderedScenes
+          .map(scene => scene.outputUrl)
+          .filter((url): url is string => Boolean(url)),
+        musicUrl: current.musicUrl,
+        narrationUrl: current.narrationUrl,
+        characterVoiceTracks: current.characterVoiceTracks ?? [],
+        pages,
+      } satisfies LocalStitchInput),
+      signal: controller.signal,
+    });
+    if (!stitchResponse.ok) {
+      let detail = '';
+      try { detail = (await stitchResponse.json()).error ?? ''; } catch { /* keep status */ }
+      throw new Error(detail || `Local FFmpeg story recovery failed (${stitchResponse.status}).`);
+    }
+    onJob?.(current);
+    return readLocalStitchResponse(stitchResponse, pages, onProgress, localObjectUrlRef);
+  }, []);
+
   const renderLocalStory = useCallback(async (
     sheetUrls: [string, string],
     pages: IllustrationStoryPage[],
@@ -540,5 +593,5 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     if (localObjectUrlRef.current) URL.revokeObjectURL(localObjectUrlRef.current);
   }, []);
 
-  return { job, renderStory, renderLocalStory, retryScene, replaceScene, retryAssembly, cancel };
+  return { job, renderStory, renderLocalStory, retryScene, replaceScene, retryAssembly, recoverAssembly, cancel };
 }

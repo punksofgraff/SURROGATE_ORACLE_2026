@@ -361,6 +361,7 @@ export function SurrogateOracleImmersion() {
   const [holdTooltip, setHoldTooltip]       = useState<{ title: string; body: string } | null>(null);
   const [hamburgerOpen, setHamburgerOpen]   = useState(false);
   const [showReferenceImage, setShowReferenceImage] = useState(false);
+  const referenceImageTriggerRef = useRef<HTMLButtonElement>(null);
   const referenceImageCloseRef = useRef<HTMLButtonElement>(null);
   const [isTypeMode, setIsTypeMode]         = useState(false);
   const [personaMode, setPersonaMode]       = useState<OraclePersonaMode>('deep');
@@ -392,7 +393,11 @@ export function SurrogateOracleImmersion() {
 
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      previouslyFocused?.focus();
+      if (referenceImageTriggerRef.current) {
+        referenceImageTriggerRef.current.focus();
+      } else {
+        previouslyFocused?.focus();
+      }
     };
   }, [showReferenceImage]);
 
@@ -4501,6 +4506,7 @@ export function SurrogateOracleImmersion() {
       {isOracleMode && (
         <div style={{ position: 'fixed', top: '14px', right: '14px', zIndex: 100 }}>
           <button
+            ref={referenceImageTriggerRef}
             onClick={() => setHamburgerOpen(!hamburgerOpen)}
             className="oracle-hamburger"
             aria-label={hamburgerOpen ? 'Close Oracle menu' : 'Open Oracle menu'}

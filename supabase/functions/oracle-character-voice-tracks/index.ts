@@ -248,14 +248,14 @@ function concatPcm(chunks: Int16Array[]): Int16Array {
   return output;
 }
 
-async function synthesize(line: VoiceLine, key: string): Promise<Int16Array> {
-  const voice = CHARACTER_VOICES[line.speaker];
+async function synthesizeText(speaker: Speaker, text: string, key: string): Promise<Int16Array> {
+  const voice = CHARACTER_VOICES[speaker];
   if (!VOICE_CATALOG.has(voice.voiceName)) throw new Error(`Unsupported character voice: ${voice.voiceName}`);
   const response = await fetch(`${TTS_URL}?key=${encodeURIComponent(key)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: line.text }] }],
+      contents: [{ parts: [{ text }] }],
       generationConfig: {
         responseModalities: ['AUDIO'],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice.voiceName } } },
@@ -273,18 +273,18 @@ async function synthesize(line: VoiceLine, key: string): Promise<Int16Array> {
   const inline = (data as { candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { data?: string; mimeType?: string } }> } }> })
     ?.candidates?.[0]?.content?.parts?.find(part => Boolean(part.inlineData?.data))?.inlineData;
   if (!inline?.data) {
-    throw new Error(`Gemini character TTS returned no audio for ${line.speaker}: ${line.text.slice(0, 80)}`);
+    throw new Error(`Gemini character TTS returned no audio for ${speaker}: ${text.slice(0, 80)}`);
   }
   return pcmFromBytes(readPcmChunk(decodeBase64(inline.data)));
 }
 
 async function synthesizeSpeaker(lines: VoiceLine[], key: string): Promise<{ pcm: Int16Array; transcript: string }> {
-  const chunks: Int16Array[] = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    chunks.push(await synthesize(lines[index], key));
-    if (index < lines.length - 1) chunks.push(silence(lines[index].pauseAfterMs));
-  }
-  return { pcm: concatPcm(chunks), transcript: lines.map(line => line.text).join(' ') };
+  const speaker = lines[0].speaker;
+  // One request per character keeps the whole story inside Edge Function
+  // execution limits and lets Gemini make the pauses between that character's
+  // lines naturally. The original line text remains the durable transcript.
+  const text = lines.map(line => line.text).join('\n\n');
+  return { pcm: await synthesizeText(speaker, text, key), transcript: lines.map(line => line.text).join(' ') };
 }
 
 function groupBySpeaker(lines: VoiceLine[]): Map<Speaker, VoiceLine[]> {

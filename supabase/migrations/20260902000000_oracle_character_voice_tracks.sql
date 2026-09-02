@@ -13,6 +13,10 @@ create table if not exists public.oracle_character_voice_tracks (
   transcript text not null,
   duration_seconds double precision not null,
   sample_rate_hz integer not null,
+  -- Keeps the optional Rhubarb JSON contract and story-timeline line cues
+  -- alongside the audio so local assembly can place speech deterministically.
+  timing_metadata jsonb not null default '{}'::jsonb,
+  rhubarb_url text,
   content_sha256 text not null,
   storage_path text not null,
   public_url text not null,

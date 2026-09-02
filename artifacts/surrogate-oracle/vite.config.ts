@@ -78,11 +78,43 @@ type StoryPageRequest = {
   row: number;
   column: number;
   durationSeconds: number;
+  soundEffects?: StorySoundEffectRequest[];
+  sfx?: StorySoundEffectRequest[];
 };
 
 type StoryCharacterTrackRequest = {
   public_url?: string;
   publicUrl?: string;
+  start_seconds?: number;
+  startSeconds?: number;
+  offsetSeconds?: number;
+  timing_metadata?: {
+    lineCues?: Array<{
+      start?: string | number;
+      end?: string | number;
+      pageOffsetSeconds?: number;
+    }>;
+  };
+  timingMetadata?: StoryCharacterTrackRequest['timing_metadata'];
+  rhubarb?: StoryCharacterTrackRequest['timing_metadata'];
+};
+
+type StorySoundEffectRequest = {
+  url?: string;
+  public_url?: string;
+  publicUrl?: string;
+  assetUrl?: string;
+  audioUrl?: string;
+  path?: string;
+  assetPath?: string;
+  base64?: string;
+  mimeType?: string;
+  pageNumber?: number;
+  offsetSeconds?: number;
+  offsetMs?: number;
+  pageOffsetSeconds?: number;
+  startSeconds?: number;
+  volume?: number;
 };
 
 function decodeDataAsset(asset: unknown): { bytes: Buffer; mimeType: string } {
@@ -106,6 +138,95 @@ async function downloadRemoteAsset(url: unknown, label: string, maxBytes = 80_00
   const bytes = Buffer.from(await response.arrayBuffer());
   if (!bytes.length || bytes.length > maxBytes) throw new Error(`${label} is empty or too large.`);
   return bytes;
+}
+
+function finiteNonNegative(value: unknown, fallback = 0): number {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : fallback;
+}
+
+function safeVolume(value: unknown, fallback = 0.65): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(4, number)) : fallback;
+}
+
+function effectInputUrl(effect: StorySoundEffectRequest): string | null {
+  const value = effect.url ?? effect.public_url ?? effect.publicUrl ?? effect.assetUrl ?? effect.audioUrl;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function localStoryAssetPath(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim() || /^https?:\/\//i.test(value)) return null;
+  const relative = value.trim().replace(/^\/+/, '').replace(/^public\//i, '');
+  if (!relative || relative.includes('..') || !/^[a-zA-Z0-9._/-]+$/.test(relative)) return null;
+  const publicRoot = path.resolve(import.meta.dirname, 'public');
+  const resolved = path.resolve(publicRoot, relative);
+  if (!resolved.startsWith(`${publicRoot}${path.sep}`) || !fs.existsSync(resolved)) return null;
+  return resolved;
+}
+
+async function discoverStorySoundEffects(
+  body: any,
+  pages: StoryPageRequest[],
+  dir: string,
+): Promise<Array<{ file: string; startSeconds: number; volume: number }>> {
+  const pageStarts = new Map<number, number>();
+  let storyOffset = 0;
+  pages.forEach(page => {
+    pageStarts.set(page.pageNumber, storyOffset);
+    storyOffset += Number(page.durationSeconds);
+  });
+  const entries: Array<{ effect: StorySoundEffectRequest; pageRelative: boolean }> = [];
+  const addEntries = (value: unknown, pageNumber?: number, pageRelative = false) => {
+    if (!Array.isArray(value)) return;
+    value.forEach(raw => {
+      if (!raw || typeof raw !== 'object') return;
+      const effect = { ...(raw as StorySoundEffectRequest) };
+      if (pageNumber !== undefined && effect.pageNumber === undefined) effect.pageNumber = pageNumber;
+      entries.push({ effect, pageRelative: pageRelative || effect.pageNumber !== undefined });
+    });
+  };
+  addEntries(body?.soundEffects);
+  addEntries(body?.sfx);
+  addEntries(body?.sfxAssets);
+  pages.forEach(page => {
+    addEntries(page.soundEffects, page.pageNumber, true);
+    addEntries(page.sfx, page.pageNumber, true);
+  });
+
+  const seen = new Set<string>();
+  const discovered: Array<{ file: string; startSeconds: number; volume: number }> = [];
+  for (const [index, { effect, pageRelative }] of entries.entries()) {
+    const pageNumber = Number(effect.pageNumber);
+    const pageStart = pageStarts.get(pageNumber) ?? 0;
+    const hasOffsetMs = effect.offsetMs !== undefined;
+    const relativeOffset = hasOffsetMs
+      ? finiteNonNegative(effect.offsetMs) / 1000
+      : finiteNonNegative(effect.pageOffsetSeconds ?? effect.offsetSeconds);
+    const startSeconds = effect.startSeconds !== undefined
+      ? finiteNonNegative(effect.startSeconds)
+      : pageRelative || Number.isInteger(pageNumber)
+        ? pageStart + relativeOffset
+        : relativeOffset;
+    const url = effectInputUrl(effect);
+    const dedupeKey = `${url ?? effect.path ?? effect.assetPath ?? effect.base64 ?? ''}:${startSeconds.toFixed(3)}`;
+    if (!url && !effect.path && !effect.assetPath && typeof effect.base64 !== 'string') continue;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    const mimeType = typeof effect.mimeType === 'string' ? effect.mimeType : 'audio/mpeg';
+    const extension = mimeType.includes('wav') ? 'wav' : mimeType.includes('ogg') ? 'ogg' : 'mp3';
+    const file = path.join(dir, `sfx-${index}.${extension}`);
+    const localPath = localStoryAssetPath(url ?? effect.path ?? effect.assetPath);
+    if (typeof effect.base64 === 'string') {
+      fs.writeFileSync(file, decodeDataAsset({ base64: effect.base64, mimeType }).bytes);
+    } else if (localPath) {
+      fs.copyFileSync(localPath, file);
+    } else {
+      fs.writeFileSync(file, await downloadRemoteAsset(url, `Story sound effect ${index + 1}`, 30_000_000));
+    }
+    discovered.push({ file, startSeconds, volume: safeVolume(effect.volume) });
+  }
+  return discovered;
 }
 
 async function runFfmpeg(args: string[]): Promise<void> {
@@ -137,6 +258,8 @@ async function stitchIllustrationStory(body: any): Promise<{
   narrationAvailable: boolean;
   durationSeconds: number;
   audioTrackPresent: boolean;
+  soundEffectsMixed: number;
+  characterTimingApplied: number;
 }> {
   const sheets = Array.isArray(body?.sheets) ? body.sheets : [];
   const sceneUrls = Array.isArray(body?.sceneUrls) ? body.sceneUrls : [];
@@ -222,28 +345,67 @@ async function stitchIllustrationStory(body: any): Promise<{
     const characterTracks = Array.isArray(body?.characterVoiceTracks)
       ? body.characterVoiceTracks as StoryCharacterTrackRequest[]
       : [];
-    const characterFiles: string[] = [];
+    const characterFiles: Array<{ file: string; track: StoryCharacterTrackRequest }> = [];
     for (const [index, track] of characterTracks.entries()) {
       const url = track?.public_url ?? track?.publicUrl;
       if (!url) continue;
       const file = path.join(dir, `character-${index}.wav`);
       fs.writeFileSync(file, await downloadRemoteAsset(url, `Character track ${index + 1}`, 30_000_000));
-      characterFiles.push(file);
+      characterFiles.push({ file, track });
     }
+    const soundEffects = await discoverStorySoundEffects(body, pages, dir);
     const audioArgs: string[] = ['-y', '-i', silentFile, '-stream_loop', '-1', '-i', musicFile];
     if (narrationFile) audioArgs.push('-i', narrationFile);
-    characterFiles.forEach(file => audioArgs.push('-i', file));
+    characterFiles.forEach(({ file }) => audioArgs.push('-i', file));
+    soundEffects.forEach(effect => audioArgs.push('-i', effect.file));
     const audioLabels = ['[music]'];
     const filters = ['[1:a]volume=0.28[music]'];
     if (narrationFile) {
       filters.push('[2:a]volume=1.0[narration]');
       audioLabels.push('[narration]');
     }
-    const characterStart = narrationFile ? 3 : 2;
-    characterFiles.forEach((_, index) => {
-      const label = `character${index}`;
-      filters.push(`[${characterStart + index}:a]volume=0.78[${label}]`);
+    let nextInput = narrationFile ? 3 : 2;
+    let timingApplied = 0;
+    characterFiles.forEach(({ track }, index) => {
+      const timing = track?.timing_metadata ?? track?.timingMetadata ?? track?.rhubarb;
+      const lineCues = Array.isArray(timing?.lineCues) ? timing.lineCues : [];
+      const usableCues = lineCues.flatMap(cue => {
+        const start = finiteNonNegative(cue.start, -1);
+        const end = finiteNonNegative(cue.end, -1);
+        if (start < 0 || end <= start) return [];
+        return [{
+          start,
+          end,
+          pageOffsetSeconds: finiteNonNegative(cue.pageOffsetSeconds),
+        }];
+      });
+      if (usableCues.length) {
+        usableCues.forEach((cue, cueIndex) => {
+          const label = `character${index}_${cueIndex}`;
+          const delayMs = Math.round(cue.pageOffsetSeconds * 1000);
+          filters.push(
+            `[${nextInput}:a]atrim=start=${cue.start.toFixed(3)}:end=${cue.end.toFixed(3)},asetpts=PTS-STARTPTS,adelay=${delayMs}|${delayMs},volume=0.78[${label}]`,
+          );
+          audioLabels.push(`[${label}]`);
+        });
+        timingApplied += 1;
+      } else {
+        const startSeconds = finiteNonNegative(track?.start_seconds ?? track?.startSeconds ?? track?.offsetSeconds);
+        const label = `character${index}`;
+        const delayMs = Math.round(startSeconds * 1000);
+        filters.push(`[${nextInput}:a]adelay=${delayMs}|${delayMs},volume=0.78[${label}]`);
+        audioLabels.push(`[${label}]`);
+      }
+      nextInput += 1;
+    });
+    soundEffects.forEach((effect, index) => {
+      const label = `sfx${index}`;
+      const delayMs = Math.round(effect.startSeconds * 1000);
+      filters.push(
+        `[${nextInput}:a]asetpts=PTS-STARTPTS,adelay=${delayMs}|${delayMs},volume=${effect.volume.toFixed(3)}[${label}]`,
+      );
       audioLabels.push(`[${label}]`);
+      nextInput += 1;
     });
     filters.push(`${audioLabels.join('')}amix=inputs=${audioLabels.length}:duration=longest:dropout_transition=2[a]`);
     await runFfmpeg([
@@ -255,6 +417,8 @@ async function stitchIllustrationStory(body: any): Promise<{
     return {
       bytes: fs.readFileSync(finalFile),
       narrationAvailable: Boolean(narrationFile),
+      soundEffectsMixed: soundEffects.length,
+      characterTimingApplied: timingApplied,
       ...validation,
     };
   } finally {
@@ -288,6 +452,8 @@ function illustrationStoryStitchPlugin() {
               'X-Story-Narration': result.narrationAvailable ? 'available' : 'unavailable',
               'X-Story-Duration': String(result.durationSeconds),
               'X-Story-Audio': result.audioTrackPresent ? 'present' : 'missing',
+            'X-Story-SFX': String(result.soundEffectsMixed),
+            'X-Story-Character-Timing': String(result.characterTimingApplied),
             });
             res.end(result.bytes);
           } catch (error) {

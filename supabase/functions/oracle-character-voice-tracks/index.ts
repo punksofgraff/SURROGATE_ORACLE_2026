@@ -40,7 +40,13 @@ const CORS_HEADERS = {
 };
 
 type Speaker = 'levi' | 'lennon' | 'pickles' | 'ghost-spider' | 'mario-spider-man' | 'donkey';
-type VoiceLine = { speaker: Speaker; text: string; pauseAfterMs: number };
+type VoiceLine = {
+  speaker: Speaker;
+  text: string;
+  pauseAfterMs: number;
+  pageNumber: number | null;
+  pageOffsetSeconds: number;
+};
 type VoiceConfig = {
   voiceName: string;
   presentation: 'young-masculine' | 'young-feminine' | 'young-neutral';
@@ -60,6 +66,8 @@ type TrackRow = {
   transcript: string;
   duration_seconds: number;
   sample_rate_hz: number;
+  timing_metadata: RhubarbTimingMetadata;
+  rhubarb_url: string | null;
   content_sha256: string;
   storage_path: string;
   public_url: string;
@@ -67,6 +75,24 @@ type TrackRow = {
   model: string;
   status: 'generating' | 'ready' | 'failed';
   error_message: string | null;
+};
+
+type RhubarbMouthCue = { start: string; end: string; value: string };
+type RhubarbLineCue = {
+  start: string;
+  end: string;
+  pageNumber: number | null;
+  pageOffsetSeconds: number;
+};
+type RhubarbTimingMetadata = {
+  metadata: {
+    soundFile: string;
+    duration: number;
+  };
+  mouthCues: RhubarbMouthCue[];
+  lineCues: RhubarbLineCue[];
+  format: 'rhubarb';
+  version: '1.0';
 };
 
 // Gemini's prebuilt catalog is intentionally kept explicit. This prevents an
@@ -99,6 +125,11 @@ function clampPause(value: unknown): number {
   return Math.max(100, Math.min(1_500, Number(value) || 300));
 }
 
+function finiteNonNegative(value: unknown, fallback = 0): number {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : fallback;
+}
+
 function readLines(value: unknown): VoiceLine[] {
   if (!Array.isArray(value) || value.length < 1 || value.length > MAX_LINES) {
     throw new Error(`Expected 1-${MAX_LINES} character voice lines.`);
@@ -116,6 +147,12 @@ function readLines(value: unknown): VoiceLine[] {
       speaker: speaker as Speaker,
       text,
       pauseAfterMs: clampPause(record.pauseAfterMs),
+      pageNumber: Number.isInteger(Number(record.pageNumber))
+        && Number(record.pageNumber) >= 1
+        && Number(record.pageNumber) <= 32
+        ? Number(record.pageNumber)
+        : null,
+      pageOffsetSeconds: finiteNonNegative(record.pageOffsetSeconds),
     };
   });
   if (totalChars > MAX_TOTAL_CHARS) throw new Error('Character voice script is too long.');
@@ -123,6 +160,59 @@ function readLines(value: unknown): VoiceLine[] {
     throw new Error('Too many character speakers in one track request.');
   }
   return lines;
+}
+
+function secondsText(value: number): string {
+  return Math.max(0, value).toFixed(3);
+}
+
+function readRhubarbMouthCues(value: unknown): RhubarbMouthCue[] {
+  const record = value && typeof value === 'object' ? value as Record<string, unknown> : null;
+  if (!record || !Array.isArray(record.mouthCues)) return [];
+  return record.mouthCues.flatMap(entry => {
+    if (!entry || typeof entry !== 'object') return [];
+    const cue = entry as Record<string, unknown>;
+    const start = finiteNonNegative(cue.start, -1);
+    const end = finiteNonNegative(cue.end, -1);
+    const value = typeof cue.value === 'string' ? cue.value.trim().slice(0, 2) : '';
+    if (start < 0 || end <= start || !/^[A-Z@]$/.test(value)) return [];
+    return [{ start: secondsText(start), end: secondsText(end), value }];
+  });
+}
+
+function buildTimingMetadata(
+  lines: VoiceLine[],
+  duration: number,
+  soundFile: string,
+  mouthCues: RhubarbMouthCue[] = [],
+): RhubarbTimingMetadata {
+  const totalWeight = Math.max(1, lines.reduce((sum, line) => sum + Math.max(1, line.text.length), 0));
+  let cursor = 0;
+  const lineCues = lines.map(line => {
+    const lineDuration = duration * Math.max(1, line.text.length) / totalWeight;
+    const cue = {
+      start: secondsText(cursor),
+      end: secondsText(Math.min(duration, cursor + lineDuration)),
+      pageNumber: line.pageNumber,
+      pageOffsetSeconds: line.pageOffsetSeconds,
+    };
+    cursor += lineDuration;
+    return cue;
+  });
+  const boundedMouthCues = mouthCues.flatMap(cue => {
+    const start = finiteNonNegative(cue.start, -1);
+    const end = Math.min(duration, finiteNonNegative(cue.end, -1));
+    return start >= 0 && end > start
+      ? [{ ...cue, start: secondsText(start), end: secondsText(end) }]
+      : [];
+  });
+  return {
+    metadata: { soundFile, duration },
+    mouthCues: boundedMouthCues,
+    lineCues,
+    format: 'rhubarb',
+    version: '1.0',
+  };
 }
 
 function decodeBase64(value: string): Uint8Array {
@@ -278,13 +368,22 @@ async function synthesizeText(speaker: Speaker, text: string, key: string): Prom
   return pcmFromBytes(readPcmChunk(decodeBase64(inline.data)));
 }
 
-async function synthesizeSpeaker(lines: VoiceLine[], key: string): Promise<{ pcm: Int16Array; transcript: string }> {
+async function synthesizeSpeaker(
+  lines: VoiceLine[],
+  key: string,
+  mouthCues: RhubarbMouthCue[] = [],
+): Promise<{ pcm: Int16Array; transcript: string; timingMetadata: RhubarbTimingMetadata }> {
   const speaker = lines[0].speaker;
   // One request per character keeps the whole story inside Edge Function
   // execution limits and lets Gemini make the pauses between that character's
   // lines naturally. The original line text remains the durable transcript.
   const text = lines.map(line => line.text).join('\n\n');
-  return { pcm: await synthesizeText(speaker, text, key), transcript: lines.map(line => line.text).join(' ') };
+  const pcm = await synthesizeText(speaker, text, key);
+  return {
+    pcm,
+    transcript: lines.map(line => line.text).join(' '),
+    timingMetadata: buildTimingMetadata(lines, pcm.length / SAMPLE_RATE, `${speaker}.wav`, mouthCues),
+  };
 }
 
 function groupBySpeaker(lines: VoiceLine[]): Map<Speaker, VoiceLine[]> {
@@ -326,7 +425,7 @@ async function persistTrack(
   sessionId: string,
   storyKey: string,
   speaker: Speaker,
-  source: { pcm: Int16Array; transcript: string },
+  source: { pcm: Int16Array; transcript: string; timingMetadata: RhubarbTimingMetadata },
 ): Promise<TrackRow> {
   const config = CHARACTER_VOICES[speaker];
   const processed = pitchShiftPreservingDuration(source.pcm, config.octaveShift, config.tuningCents);
@@ -334,15 +433,30 @@ async function persistTrack(
     throw new Error(`Post-processed ${speaker} audio has an unusable duration.`);
   }
   const wav = wavFromPcm(processed);
+  const timingMetadata = {
+    ...source.timingMetadata,
+    metadata: {
+      ...source.timingMetadata.metadata,
+      duration: processed.length / SAMPLE_RATE,
+    },
+  };
   const contentSha = await sha256(wav);
   const safeTrackKey = trackKey.replace(/[^a-zA-Z0-9:_-]/g, '_');
   const path = `voice-tracks/${safeTrackKey}/${speaker}.wav`;
+  const timingPath = `voice-tracks/${safeTrackKey}/${speaker}.rhubarb.json`;
   const upload = await supabase.storage.from('oracle-films').upload(path, wav, {
     contentType: 'audio/wav',
     upsert: true,
   });
   if (upload.error) throw new Error(`Character voice upload failed: ${upload.error.message}`);
+  const timingUpload = await supabase.storage.from('oracle-films').upload(
+    timingPath,
+    new TextEncoder().encode(JSON.stringify(timingMetadata)),
+    { contentType: 'application/json', upsert: true },
+  );
+  if (timingUpload.error) throw new Error(`Character timing upload failed: ${timingUpload.error.message}`);
   const { data: publicData } = supabase.storage.from('oracle-films').getPublicUrl(path);
+  const { data: timingPublicData } = supabase.storage.from('oracle-films').getPublicUrl(timingPath);
   const row: TrackRow = {
     track_key: trackKey,
     session_id: sessionId,
@@ -356,6 +470,8 @@ async function persistTrack(
     transcript: source.transcript,
     duration_seconds: processed.length / SAMPLE_RATE,
     sample_rate_hz: SAMPLE_RATE,
+    timing_metadata: timingMetadata,
+    rhubarb_url: timingPublicData.publicUrl,
     content_sha256: contentSha,
     storage_path: path,
     public_url: publicData.publicUrl,
@@ -374,7 +490,13 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'POST required.' }, 405);
   if (!GOOGLE_KEYS.length) return json({ error: 'Gemini character voice synthesis is not configured.' }, 503);
 
-  let body: { sessionId?: unknown; storyKey?: unknown; lines?: unknown };
+  let body: {
+    sessionId?: unknown;
+    storyKey?: unknown;
+    lines?: unknown;
+    rhubarb?: unknown;
+    rhubarbTiming?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -391,6 +513,10 @@ Deno.serve(async (req: Request) => {
 
   try {
     const lines = readLines(body.lines);
+    const suppliedRhubarbValue = body.rhubarb ?? body.rhubarbTiming;
+    const suppliedRhubarb = suppliedRhubarbValue && typeof suppliedRhubarbValue === 'object'
+      ? suppliedRhubarbValue as Record<string, unknown>
+      : {};
     const grouped = groupBySpeaker(lines);
     const speakers = [...grouped.keys()];
     const trackKey = await trackKeyFor(sessionId, storyKey, lines);
@@ -434,13 +560,16 @@ Deno.serve(async (req: Request) => {
       try {
         const generated = await Promise.all(speakers.map(async speaker => {
           if (existingBySpeaker.has(speaker)) return existingBySpeaker.get(speaker)!;
-          return persistTrack(
+            const speakerTiming = suppliedRhubarb[speaker]
+              ?? (speakers.length === 1 ? suppliedRhubarbValue : undefined);
+            const rhubarb = readRhubarbMouthCues(speakerTiming);
+            return persistTrack(
             supabase,
             trackKey,
             sessionId,
             storyKey,
             speaker,
-            await synthesizeSpeaker(grouped.get(speaker)!, key),
+              await synthesizeSpeaker(grouped.get(speaker)!, key, rhubarb),
           );
         }));
         ready.splice(0, ready.length, ...generated);

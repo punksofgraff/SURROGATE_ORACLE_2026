@@ -109,6 +109,21 @@ export type IllustrationStoryVoiceLine = {
   speaker: 'oracle' | 'levi' | 'lennon' | 'pickles' | 'ghost-spider' | 'mario-spider-man' | 'donkey';
   text: string;
   pauseAfterMs?: number;
+  /** Optional source-timeline placement for persisted character tracks. */
+  pageNumber?: number;
+  pageOffsetSeconds?: number;
+};
+export type IllustrationStorySoundEffect = {
+  id?: string;
+  url?: string;
+  publicUrl?: string;
+  public_url?: string;
+  assetUrl?: string;
+  offsetSeconds?: number;
+  offsetMs?: number;
+  pageOffsetSeconds?: number;
+  pageNumber?: number;
+  volume?: number;
 };
 export type IllustrationStoryPage = {
   id: string;
@@ -126,6 +141,8 @@ export type IllustrationStoryPage = {
   progress: number;
   error?: string | null;
   voiceover?: IllustrationStoryVoiceLine[];
+  soundEffects?: IllustrationStorySoundEffect[];
+  sfx?: IllustrationStorySoundEffect[];
 };
 
 export type IllustrationStoryScene = {

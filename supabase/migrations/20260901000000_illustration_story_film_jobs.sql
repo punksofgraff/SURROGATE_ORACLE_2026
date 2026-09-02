@@ -5,6 +5,7 @@ ALTER TABLE public.oracle_film_jobs
   ADD COLUMN IF NOT EXISTS job_type text NOT NULL DEFAULT 'single',
   ADD COLUMN IF NOT EXISTS story_scenes jsonb NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS story_manifest jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS audio_manifest jsonb NOT NULL DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS narration_url text,
   ADD COLUMN IF NOT EXISTS music_url text;
 

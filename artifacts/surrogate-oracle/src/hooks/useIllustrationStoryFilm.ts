@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import type {
   IllustrationStoryModelOption,
   IllustrationStoryPage,
+  IllustrationStorySoundEffect,
   IllustrationStoryVoiceLine,
 } from '../lib/creativeProduction';
 
@@ -43,6 +44,9 @@ export type IllustrationStoryFilmJob = {
   pageCount: number;
   scenes: IllustrationStorySceneState[];
   characterVoiceTracks?: IllustrationStoryCharacterTrack[];
+  audioManifest?: {
+    soundEffects?: IllustrationStorySoundEffect[];
+  };
   finalMediaUrl: string | null;
   narrationUrl?: string | null;
   musicUrl?: string | null;
@@ -67,6 +71,8 @@ export type IllustrationStoryFilmResult = {
   pageCount: number;
   durationSeconds: number;
   narrationAvailable: boolean;
+  soundEffectsMixed?: number;
+  characterTimingApplied?: number;
 };
 
 export type IllustrationStoryCharacterTrack = {
@@ -78,6 +84,19 @@ export type IllustrationStoryCharacterTrack = {
   transcript: string;
   duration_seconds: number;
   sample_rate_hz: number;
+  timing_metadata?: {
+    format?: 'rhubarb';
+    version?: string;
+    metadata?: { soundFile?: string; duration?: number };
+    mouthCues?: Array<{ start: string; end: string; value: string }>;
+    lineCues?: Array<{
+      start: string;
+      end: string;
+      pageNumber: number | null;
+      pageOffsetSeconds: number;
+    }>;
+  };
+  rhubarb_url?: string | null;
   public_url: string;
   storage_path: string;
   track_key: string;
@@ -172,11 +191,22 @@ async function createNarrationAudio(
   pages: IllustrationStoryPage[],
   sessionId: string,
 ): Promise<NarrationBundle> {
-  const lines: IllustrationStoryVoiceLine[] = pages.flatMap(page => page.voiceover ?? [{
-    speaker: 'oracle' as const,
-    text: page.narration,
-    pauseAfterMs: 260,
-  }]);
+  let storyOffsetSeconds = 0;
+  const lines: IllustrationStoryVoiceLine[] = pages.flatMap(page => {
+    const pageLines = page.voiceover ?? [{
+      speaker: 'oracle' as const,
+      text: page.narration,
+      pauseAfterMs: 260,
+    }];
+    const linesWithPlacement = pageLines.map((line, index) => ({
+      ...line,
+      pageNumber: page.pageNumber,
+      pageOffsetSeconds: storyOffsetSeconds
+        + (page.durationSeconds * index / Math.max(1, pageLines.length)),
+    }));
+    storyOffsetSeconds += page.durationSeconds;
+    return linesWithPlacement;
+  });
   const characterLines = lines.filter((line): line is Exclude<IllustrationStoryVoiceLine, { speaker: 'oracle' }> => line.speaker !== 'oracle');
   const [narrationResponse, characterResponse] = await Promise.all([
     supabase.functions.invoke('oracle-chirp-voiceover', { body: { lines } }),
@@ -244,6 +274,8 @@ async function readLocalStitchResponse(
     pageCount: pages.length,
     durationSeconds: validatedDuration,
     narrationAvailable: response.headers.get('X-Story-Narration') === 'available',
+    soundEffectsMixed: Number(response.headers.get('X-Story-SFX') || 0),
+    characterTimingApplied: Number(response.headers.get('X-Story-Character-Timing') || 0),
   };
 }
 
@@ -469,6 +501,13 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     if (controller.signal.aborted) throw new Error('Story film recovery cancelled.');
     onProgress?.(82);
 
+    const persistedSoundEffects = current.audioManifest?.soundEffects ?? [];
+    const recoveredPages = pages.map(page => page.soundEffects?.length || page.sfx?.length
+      ? page
+      : {
+        ...page,
+        soundEffects: persistedSoundEffects.filter(effect => effect.pageNumber === page.pageNumber),
+      });
     const stitchResponse = await fetch(`${import.meta.env.BASE_URL}api/illustration-story-stitch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -479,7 +518,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
         musicUrl: current.musicUrl,
         narrationUrl: current.narrationUrl,
         characterVoiceTracks: current.characterVoiceTracks ?? [],
-        pages,
+        pages: recoveredPages,
       } satisfies LocalStitchInput),
       signal: controller.signal,
     });
@@ -489,7 +528,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       throw new Error(detail || `Local FFmpeg story recovery failed (${stitchResponse.status}).`);
     }
     onJob?.(current);
-    return readLocalStitchResponse(stitchResponse, pages, onProgress, localObjectUrlRef);
+    return readLocalStitchResponse(stitchResponse, recoveredPages, onProgress, localObjectUrlRef);
   }, []);
 
   const renderLocalStory = useCallback(async (

@@ -112,6 +112,19 @@ type CharacterVoiceTrackInput = {
   octave_shift?: number;
   tuning_cents?: number;
   duration_seconds?: number;
+  timing_metadata?: {
+    format?: string;
+    version?: string;
+    metadata?: { soundFile?: string; duration?: number };
+    mouthCues?: Array<{ start?: string; end?: string; value?: string }>;
+    lineCues?: Array<{
+      start?: string;
+      end?: string;
+      pageNumber?: number | null;
+      pageOffsetSeconds?: number;
+    }>;
+  };
+  rhubarb_url?: string | null;
 };
 
 type StoryFailureKind = 'provider-safety' | 'provider' | 'submission' | 'audio-gate' | null;
@@ -125,6 +138,7 @@ type StoryJobRow = {
   chunks: unknown;
   story_scenes: unknown;
   story_manifest: unknown;
+  audio_manifest: unknown;
   provider: string | null;
   model_slug: string | null;
   runpod_job_id: string | null;
@@ -227,6 +241,9 @@ function publicJob(row: StoryJobRow) {
     characterVoiceTracks: Array.isArray(manifest.characterVoiceTracks)
       ? manifest.characterVoiceTracks
       : [],
+    audioManifest: row.audio_manifest && typeof row.audio_manifest === 'object'
+      ? row.audio_manifest
+      : {},
     error: row.error_message,
     failureKind: typeof manifest.failureKind === 'string' ? manifest.failureKind : null,
     audioGate: {
@@ -266,6 +283,48 @@ function readCharacterVoiceTracks(value: unknown): CharacterVoiceTrackInput[] {
     const speaker = safeText(track.speaker, 40);
     const publicUrl = safeUrl(track.public_url ?? track.publicUrl);
     if (!CHARACTER_SPEAKERS.has(speaker) || !publicUrl) return [];
+    const rawTiming = track.timing_metadata && typeof track.timing_metadata === 'object'
+      ? track.timing_metadata
+      : {};
+    const timingMetadata = {
+      format: rawTiming.format === 'rhubarb' ? 'rhubarb' : undefined,
+      version: safeText(rawTiming.version, 20) || undefined,
+      metadata: rawTiming.metadata && typeof rawTiming.metadata === 'object'
+        ? {
+          soundFile: safeText(rawTiming.metadata.soundFile, 160) || undefined,
+          duration: Number(rawTiming.metadata.duration) > 0 ? Number(rawTiming.metadata.duration) : undefined,
+        }
+        : undefined,
+      mouthCues: Array.isArray(rawTiming.mouthCues)
+        ? rawTiming.mouthCues.flatMap(cue => {
+          if (!cue || typeof cue !== 'object') return [];
+          const item = cue as { start?: unknown; end?: unknown; value?: unknown };
+          const start = Number(item.start);
+          const end = Number(item.end);
+          const cueValue = typeof item.value === 'string' ? item.value.trim().slice(0, 1) : '';
+          return Number.isFinite(start) && Number.isFinite(end) && end > start && /^[A-Z@]$/.test(cueValue)
+            ? [{ start: start.toFixed(3), end: end.toFixed(3), value: cueValue }]
+            : [];
+        })
+        : [],
+      lineCues: Array.isArray(rawTiming.lineCues)
+        ? rawTiming.lineCues.flatMap(cue => {
+          if (!cue || typeof cue !== 'object') return [];
+          const item = cue as Record<string, unknown>;
+          const start = Number(item.start);
+          const end = Number(item.end);
+          const pageOffsetSeconds = Number(item.pageOffsetSeconds);
+          return Number.isFinite(start) && Number.isFinite(end) && end > start && Number.isFinite(pageOffsetSeconds) && pageOffsetSeconds >= 0
+            ? [{
+              start: start.toFixed(3),
+              end: end.toFixed(3),
+              pageNumber: Number.isInteger(Number(item.pageNumber)) ? Number(item.pageNumber) : null,
+              pageOffsetSeconds,
+            }]
+            : [];
+        })
+        : [],
+    };
     return [{
       speaker,
       public_url: publicUrl,
@@ -275,8 +334,45 @@ function readCharacterVoiceTracks(value: unknown): CharacterVoiceTrackInput[] {
       octave_shift: Number(track.octave_shift) || 0,
       tuning_cents: Number(track.tuning_cents) || 0,
       duration_seconds: Number(track.duration_seconds) || 0,
+      timing_metadata: timingMetadata,
+      rhubarb_url: safeUrl(track.rhubarb_url, 4000) || null,
     }];
   });
+}
+
+function storyAudioManifest(
+  pages: Record<string, unknown>[],
+  characterVoiceTracks: CharacterVoiceTrackInput[],
+): Record<string, unknown> {
+  const soundEffects = pages.flatMap(page => {
+    const pageNumber = Number(page.pageNumber);
+    const values = [
+      ...(Array.isArray(page.soundEffects) ? page.soundEffects : []),
+      ...(Array.isArray(page.sfx) ? page.sfx : []),
+    ];
+    return values.flatMap(raw => {
+      if (!raw || typeof raw !== 'object') return [];
+      const effect = raw as Record<string, unknown>;
+      const url = effect.url ?? effect.public_url ?? effect.publicUrl ?? effect.assetUrl ?? effect.audioUrl;
+      const localPath = effect.path ?? effect.assetPath;
+      return (typeof url === 'string' && url.trim()) || (typeof localPath === 'string' && localPath.trim())
+        ? [{
+          ...(typeof url === 'string' && url.trim() ? { url: safeUrl(url) } : {}),
+          ...(typeof localPath === 'string' && localPath.trim() ? { path: safeText(localPath, 400) } : {}),
+          pageNumber,
+          offsetSeconds: Number(effect.offsetSeconds) >= 0 ? Number(effect.offsetSeconds) : 0,
+          offsetMs: Number(effect.offsetMs) >= 0 ? Number(effect.offsetMs) : undefined,
+          pageOffsetSeconds: Number(effect.pageOffsetSeconds) >= 0 ? Number(effect.pageOffsetSeconds) : undefined,
+          volume: Number(effect.volume) >= 0 ? Math.min(4, Number(effect.volume)) : undefined,
+        }]
+        : [];
+    });
+  });
+  return {
+    soundEffects,
+    characterVoiceTracks,
+    format: 'story-audio-manifest-v1',
+  };
 }
 
 function characterAudioForPage(
@@ -703,6 +799,7 @@ Deno.serve(async (req: Request) => {
         audioPolicy: 'Lyria soundtrack plus validated lore narration',
         characterVoiceTracks,
       },
+       audio_manifest: storyAudioManifest(pages, characterVoiceTracks),
     }).select('*').single();
     if (insertError || !inserted) return json({ error: 'Could not create the story film job.', detail: insertError?.message }, 500);
     const row = inserted as StoryJobRow;

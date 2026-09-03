@@ -213,6 +213,11 @@ type StoryJobRow = {
   updated_at: string;
 };
 
+// Rows created before the single-workflow rollout are the only rows eligible
+// for compatibility polling/retry. A newly malformed row is read-only, never
+// silently promoted into the old fan-out lane.
+const LEGACY_PER_SCENE_CUTOFF = Date.parse('2026-09-01T00:00:00.000Z');
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -280,6 +285,45 @@ function decodeBase64(value: unknown, maxChars = 20_000_000): Uint8Array {
 
 function sceneList(value: unknown): StoryScene[] {
   return Array.isArray(value) ? value as StoryScene[] : [];
+}
+
+function storyManifest(row: StoryJobRow): Record<string, unknown> {
+  return row.story_manifest && typeof row.story_manifest === 'object'
+    ? row.story_manifest as Record<string, unknown>
+    : {};
+}
+
+function isSingleFalWorkflowJob(row: StoryJobRow): boolean {
+  const manifest = storyManifest(row);
+  return manifest.workflowMode === 'single-fal-workflow'
+    && manifest.workflow
+    && typeof manifest.workflow === 'object';
+}
+
+function isReadOnlyStoryJob(row: StoryJobRow): boolean {
+  return row.job_type === 'illustration-story'
+    && row.provider !== 'browser-film'
+    && !isSingleFalWorkflowJob(row);
+}
+
+/**
+ * Compatibility boundary for rows created before the single-job workflow.
+ *
+ * These rows remain readable so an old story can be accounted for, but their
+ * provider helpers must never be reachable from a new submission or current
+ * UI action. Remove this branch once historical per-scene rows are migrated
+ * to immutable read-only records or have been archived.
+ */
+function isLegacyPerSceneJob(row: StoryJobRow): boolean {
+  const manifest = storyManifest(row);
+  const explicitlyLegacy = manifest.legacyPerScene === true
+    || manifest.workflowMode === 'legacy-per-scene';
+  const createdBeforeCutoff = Number.isFinite(Date.parse(row.created_at))
+    && Date.parse(row.created_at) < LEGACY_PER_SCENE_CUTOFF;
+  return row.job_type === 'illustration-story'
+    && row.provider !== 'browser-film'
+    && !isSingleFalWorkflowJob(row)
+    && (explicitlyLegacy || (manifest.workflowMode === undefined && createdBeforeCutoff));
 }
 
 function errorDetail(value: unknown): string {
@@ -500,6 +544,8 @@ function publicJob(row: StoryJobRow) {
   const modelSlug = manifestModelSlug || sceneModelSlug || null;
   const retired = Boolean(modelSlug && isRetiredModel(modelSlug));
   const provider = retired ? 'retired-fal' : (row.provider || (scenes.find(scene => scene.provider)?.provider ?? 'fal'));
+  const legacyReadOnly = isReadOnlyStoryJob(row);
+  const publicWorkflow = workflow ?? (legacyReadOnly ? { mode: 'legacy-per-scene-readonly' } : null);
   const review = manifest.review && typeof manifest.review === 'object'
     ? manifest.review
     : undefined;
@@ -549,7 +595,8 @@ function publicJob(row: StoryJobRow) {
       recovery: scene.recovery ?? null,
     })),
     finalMediaUrl: row.final_media_url,
-    workflow,
+    workflow: publicWorkflow,
+    legacyReadOnly,
     sourcePanelManifest: Array.isArray(manifest.panelManifest) ? manifest.panelManifest : [],
     coverageCertificate: manifest.coverageCertificate ?? null,
     blockedReason: typeof manifest.blockedReason === 'string' ? manifest.blockedReason : null,
@@ -1232,6 +1279,10 @@ async function pollStoryJob(
     }
   }
 
+  // The direct scene lane below is compatibility-only. Current single-job
+  // workflows and browser proofs must never fall through to provider polling.
+  if (!isLegacyPerSceneJob(current)) return current;
+
   const scenes = sceneList(current.story_scenes);
   const changed = await Promise.all(scenes.map(async (scene) => {
      if (!scene.falRequestId || !['queued', 'generating'].includes(scene.status)) return scene;
@@ -1902,6 +1953,12 @@ Deno.serve(async (req: Request) => {
       });
       return json(publicJob(current));
     }
+    if (!isLegacyPerSceneJob(current)) {
+      return json({
+        error: 'Only historical per-scene story rows may use the compatibility cancellation lane.',
+        blocked: true,
+      }, 409);
+    }
     const scenes = sceneList(current.story_scenes);
     await Promise.all(scenes.map(async scene => {
       if (scene.falRequestId && ['queued', 'generating'].includes(scene.status)) {
@@ -1927,6 +1984,12 @@ Deno.serve(async (req: Request) => {
   }
 
   if (action === 'retry-stitch') {
+    if (!isLegacyPerSceneJob(current)) {
+      return json({
+        error: 'The current story workflow is immutable; stitch recovery must use the persisted single-job film.',
+        blocked: true,
+      }, 409);
+    }
     const modelSlug = sceneModelSlug(sceneList(current.story_scenes)[0] ?? {} as StoryScene, current.story_manifest);
     if (isRetiredModel(modelSlug)) {
       return json({
@@ -1966,6 +2029,12 @@ Deno.serve(async (req: Request) => {
     if (currentManifest.workflowMode === 'single-fal-workflow') {
       return json({
         error: 'Per-page retry and replacement are disabled for the single-job FAL workflow. Ordered panel coverage must remain one immutable submission; start a new workflow instead.',
+        blocked: true,
+      }, 409);
+    }
+    if (!isLegacyPerSceneJob(current)) {
+      return json({
+        error: 'Per-page recovery is available only for historical per-scene rows. Start a new single-job workflow instead.',
         blocked: true,
       }, 409);
     }

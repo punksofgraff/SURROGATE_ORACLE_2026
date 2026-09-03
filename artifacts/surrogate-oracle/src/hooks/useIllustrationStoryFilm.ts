@@ -77,13 +77,14 @@ export type IllustrationStoryFilmJob = {
   reviewHistory?: IllustrationStoryReviewHistoryEntry[];
   reviewManifest?: IllustrationStoryReviewManifest | null;
   workflow?: {
-    mode?: 'single-fal-workflow';
+    mode?: 'single-fal-workflow' | 'legacy-per-scene-readonly';
     requestId?: string;
     statusUrl?: string;
     responseUrl?: string;
     submissionCount?: 1;
     completedAt?: string;
   } | null;
+  legacyReadOnly?: boolean;
   sourcePanelManifest?: Array<{
     panelId: string;
     pageNumber: number;
@@ -559,7 +560,7 @@ export function useIllustrationStoryFilm(
     }
     throw lastError instanceof Error
       ? lastError
-       : new Error('Hosted story film timed out. Completed scenes remain available for explicit page retry.');
+      : new Error('Hosted story film timed out. Persisted state remains available for an explicit new workflow.');
   }, [poll]);
 
   const renderStory = useCallback(async (
@@ -695,34 +696,6 @@ export function useIllustrationStoryFilm(
       persistAssembly,
     );
   }, [persistAssembly, publish, sessionId, stableOwnerKey, waitForCompletion]);
-
-  const retryScene = useCallback(async (
-    pageNumber: number,
-    onProgress?: (progress: number) => void,
-    onJob?: StoryJobListener,
-    mode: 'retry' | 'replace' = 'retry',
-  ) => {
-    const currentId = activeJobIdRef.current ?? jobRef.current?.id;
-    if (!currentId) throw new Error('There is no saved story film job to retry.');
-    const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
-      body: { action: mode, jobId: currentId, pageNumber, ownerKey: stableOwnerKey },
-    });
-    if (error) throw error;
-    if (!data?.id) throw new Error(data?.error || 'Story page retry returned no job.');
-    publish(data as IllustrationStoryFilmJob, onJob);
-    onProgress?.(data.progress);
-    const complete = await waitForCompletion(data.id, next => {
-      onProgress?.(next.progress);
-      onJob?.(next);
-    });
-    return complete;
-  }, [publish, stableOwnerKey, waitForCompletion]);
-
-  const replaceScene = useCallback(async (
-    pageNumber: number,
-    onProgress?: (progress: number) => void,
-    onJob?: StoryJobListener,
-  ) => retryScene(pageNumber, onProgress, onJob, 'replace'), [retryScene]);
 
   const retryAssembly = useCallback(async (
     onProgress?: (progress: number) => void,
@@ -994,8 +967,6 @@ export function useIllustrationStoryFilm(
     job,
     renderStory,
     renderLocalStory,
-    retryScene,
-    replaceScene,
     retryAssembly,
     recoverAssembly,
     cancel,

@@ -123,7 +123,8 @@ assert.equal(failedPages.find(page => page.status === 'failed')?.pageNumber, 13,
 const localStoryStart = storyHookSource.indexOf('const renderLocalStory');
 const localStoryEnd = storyHookSource.indexOf('const cancel =', localStoryStart);
 const localStoryBody = storyHookSource.slice(localStoryStart, localStoryEnd);
-assert.equal(localStoryBody.includes("oracle-story-film-job"), false, 'local story rendering must make no hosted video call');
+assert.equal(/action:\s*'create'/.test(localStoryBody), false, 'local story rendering must make no hosted video call');
+assert.equal(localStoryBody.includes("action: 'create-local'"), true, 'local story rendering may persist a local review record');
 assert.equal(storyJobSource.includes("if (!confirmed)"), true, 'hosted story requests require explicit confirmation');
 assert.equal(storyJobSource.includes("if (!model)"), true, 'hosted story requests reject unapproved model slugs');
 assert.equal(storyJobSource.includes('model_slug: model.slug'), true, 'the selected model slug must be persisted');

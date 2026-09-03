@@ -1835,11 +1835,12 @@ export function SurrogateOracleImmersion() {
         metadata: {
           ...(restored.metadata ?? {}),
           storyScenes: job.scenes,
-                     workflowMode: job.workflow?.mode,
-                     workflow: job.workflow,
-                     coverageCertificate: job.coverageCertificate,
-                     blockedReason: job.blockedReason,
-                     submissionCount: job.submissionCount,
+          workflowMode: job.workflow?.mode,
+          workflow: job.workflow,
+          legacyReadOnly: job.legacyReadOnly,
+          coverageCertificate: job.coverageCertificate,
+          blockedReason: job.blockedReason,
+          submissionCount: job.submissionCount,
           storyFailureKind: job.failureKind,
           audioGate: job.audioGate,
           storyLane: job.provider === 'minimax' ? 'minimax' : 'fal',
@@ -1894,6 +1895,9 @@ export function SurrogateOracleImmersion() {
       metadata: {
         ...(artifact.metadata ?? {}),
         storyScenes: job.scenes,
+        workflowMode: job.workflow?.mode,
+        workflow: job.workflow,
+        legacyReadOnly: job.legacyReadOnly,
         storyFailureKind: job.failureKind,
         audioGate: job.audioGate,
         storyLane: job.provider === 'minimax' ? 'minimax' : artifact.metadata?.storyLane,
@@ -2828,100 +2832,7 @@ export function SurrogateOracleImmersion() {
       })();
       return;
     }
-    if (!artifact || !isIllustrationStoryProduction(artifact.metadata?.production)
-      || (['illustration-story-studio', 'illustration-story-proof'].includes(String(artifact.metadata?.production))
-        && artifact.metadata?.storyLane !== 'fal'
-        && artifact.metadata?.storyLane !== 'minimax')) return;
-    const token = creativeDispatchTokenRef.current + 1;
-    creativeDispatchTokenRef.current = token;
-    const claim: CreativeDispatchClaim = { artifactId: artifact.id, token };
-    creativeProviderClaimRef.current = claim;
-    updateCreativeArtifact(artifact.id, {
-      status: 'generating',
-      progress: Math.max(8, artifact.progress),
-      error: null,
-      provider: artifact.metadata?.storyLane === 'minimax' ? 'minimax-film' : 'premium-film',
-      providerLabel: artifact.metadata?.storyLane === 'minimax'
-        ? `MiniMax H3 / ${illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)?.label ?? 'native-audio model'} · local assembly`
-        : `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'historical model'} · local assembly`,
-      metadata: {
-        ...(artifact.metadata ?? {}),
-        storyStage: `${mode === 'replace' ? 'using safe replacement for' : 'retrying'} page ${String(pageNumber).padStart(2, '0')}`,
-      },
-    }, claim);
-    const onProgress = (progress: number) => {
-        if (!isCreativeDispatchCurrent(claim, {
-          artifactId: activeCreativeArtifactRef.current?.id ?? null,
-          token: creativeDispatchTokenRef.current,
-          status: activeCreativeArtifactRef.current?.status ?? null,
-        })) return;
-        updateCreativeArtifact(artifact.id, { status: 'generating', progress }, claim);
-      };
-    const onJob = (nextJob: IllustrationStoryFilmJob) => {
-        if (!isCreativeDispatchCurrent(claim, {
-          artifactId: activeCreativeArtifactRef.current?.id ?? null,
-          token: creativeDispatchTokenRef.current,
-          status: activeCreativeArtifactRef.current?.status ?? null,
-        })) return;
-        updateCreativeArtifact(artifact.id, {
-          status: nextJob.status === 'failed' ? 'failed' : nextJob.status === 'cancelled' ? 'cancelled' : 'generating',
-          progress: nextJob.progress,
-          outputUrl: nextJob.finalMediaUrl,
-          metadata: {
-            ...(activeCreativeArtifactRef.current?.metadata ?? {}),
-            storyScenes: nextJob.scenes,
-            storyStage: nextJob.status === 'stitching'
-              ? 'local FFmpeg assembly after 32 scenes'
-              : `${mode === 'replace' ? 'using safe replacement for' : 'retrying'} FAL page`,
-            storyFailureKind: nextJob.failureKind,
-            audioGate: nextJob.audioGate,
-          },
-          error: nextJob.error,
-        }, claim);
-      };
-    const pageRequest = mode === 'replace'
-      ? illustrationStoryFilm.replaceScene(pageNumber, onProgress, onJob)
-      : illustrationStoryFilm.retryScene(pageNumber, onProgress, onJob, 'retry');
-    void pageRequest.then(nextJob => {
-      if (!nextJob) throw new Error('Story retry is already being polled in another tab.');
-      if (!isCreativeDispatchCurrent(claim, {
-        artifactId: activeCreativeArtifactRef.current?.id ?? null,
-        token: creativeDispatchTokenRef.current,
-        status: activeCreativeArtifactRef.current?.status ?? null,
-      })) return;
-      updateCreativeArtifact(artifact.id, {
-        status: nextJob.status === 'ready' ? 'ready' : nextJob.status === 'cancelled' ? 'cancelled' : 'failed',
-        progress: nextJob.progress,
-        outputUrl: nextJob.finalMediaUrl,
-        outputLabel: nextJob.finalMediaUrl ? '32-page historical story film · MP4' : undefined,
-        error: nextJob.error,
-        metadata: {
-          ...(activeCreativeArtifactRef.current?.metadata ?? {}),
-          storyScenes: nextJob.scenes,
-          storyStage: nextJob.status === 'ready'
-            ? 'complete'
-            : `${mode === 'replace' ? 'safe replacement' : 'page retry'} failed`,
-          storyFailureKind: nextJob.failureKind,
-          audioGate: nextJob.audioGate,
-        },
-      }, claim);
-    }).catch(error => {
-      if (!isCreativeDispatchCurrent(claim, {
-        artifactId: activeCreativeArtifactRef.current?.id ?? null,
-        token: creativeDispatchTokenRef.current,
-        status: activeCreativeArtifactRef.current?.status ?? null,
-      })) return;
-      updateCreativeArtifact(artifact.id, {
-        status: 'failed',
-        progress: 0,
-        error: error instanceof Error ? error.message : 'Story page retry failed.',
-        metadata: {
-          ...(activeCreativeArtifactRef.current?.metadata ?? {}),
-          storyFailureKind: storyFailureKindForError(error),
-          storyStage: `${mode === 'replace' ? 'safe replacement' : 'page retry'} failed`,
-        },
-      }, claim);
-    });
+    return;
   }, [illustrationStoryFilm, lyria, updateCreativeArtifact]);
 
   const retryIllustrationStoryFilm = useCallback(() => {

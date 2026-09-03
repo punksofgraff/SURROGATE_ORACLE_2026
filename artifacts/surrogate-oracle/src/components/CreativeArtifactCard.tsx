@@ -152,7 +152,10 @@ function StoryPizzaTracker({
   const blocked = scenes.filter(scene => scene.failureKind === 'provider-safety').length;
   const failed = scenes.filter(scene => scene.status === 'failed' && scene.failureKind !== 'provider-safety').length;
   const pending = scenes.filter(scene => ['planned', 'queued', 'generating'].includes(scene.status)).length;
-  const singleWorkflow = (artifact.metadata as Record<string, unknown> | undefined)?.workflowMode === 'single-fal-workflow';
+  const trackerMetadata = artifact.metadata as Record<string, unknown> | undefined;
+  const legacyReadOnly = trackerMetadata?.legacyReadOnly === true
+    || trackerMetadata?.workflowMode === 'legacy-per-scene-readonly';
+  const singleWorkflow = trackerMetadata?.workflowMode === 'single-fal-workflow' || legacyReadOnly;
   const blockedReason = typeof (artifact.metadata as Record<string, unknown> | undefined)?.blockedReason === 'string'
     ? String((artifact.metadata as Record<string, unknown>).blockedReason)
     : '';
@@ -263,7 +266,9 @@ function StoryReviewWorkspace({
   const readyScenes = scenes.filter(scene => scene.status === 'ready').length;
   const sourceAsset = pages.find(page => Boolean(page.sourceAsset))?.sourceAsset;
   const metadata = artifact.metadata as Record<string, unknown> | undefined;
-  const singleWorkflow = metadata?.workflowMode === 'single-fal-workflow';
+  const legacyReadOnly = metadata?.legacyReadOnly === true
+    || metadata?.workflowMode === 'legacy-per-scene-readonly';
+  const singleWorkflow = metadata?.workflowMode === 'single-fal-workflow' || legacyReadOnly;
   const blockedReason = typeof metadata?.blockedReason === 'string' ? metadata.blockedReason : '';
   const coverageCertificate = metadata?.coverageCertificate;
   const audioGate = metadata?.audioGate as Record<string, unknown> | undefined;
@@ -511,6 +516,16 @@ function StoryReviewWorkspace({
         </div>
       )}
 
+      {legacyReadOnly && (
+        <div className="creative-story-review-workspace__notice creative-story-review-workspace__notice--recovery" role="status">
+          <History size={16} aria-hidden="true" />
+          <div>
+            <strong>Historical per-scene record · read-only</strong>
+            <p>This story is retained for review and accounting only. No new page submission, retry, replacement, or provider polling will be started from the current UI.</p>
+          </div>
+        </div>
+      )}
+
       {audioGateFailed && (
         <div className="creative-story-review-workspace__notice creative-story-review-workspace__notice--audio" role="alert">
           <AudioLines size={16} aria-hidden="true" />
@@ -716,6 +731,9 @@ export function CreativeArtifactCard({
   const hasMetadata = Boolean(metadataRecord && Object.keys(metadataRecord).length);
   const series = artifact.seriesManifest;
   const storyPages = artifact.storyPages ?? [];
+  const storyReadOnly = metadataRecord?.legacyReadOnly === true
+    || metadataRecord?.workflowMode === 'single-fal-workflow'
+    || metadataRecord?.workflowMode === 'legacy-per-scene-readonly';
   const isIllustrationStory = ['illustration-story-studio', 'illustration-story-premium', 'illustration-story-proof'].includes(
     String(artifact.metadata?.production),
   );
@@ -1223,8 +1241,8 @@ export function CreativeArtifactCard({
             audioSources={storyAudioSources}
             storyStage={String(metadataRecord?.storyStage ?? 'studio review required')}
             progress={progress}
-            onStorySceneRetry={onStorySceneRetry}
-            onStorySceneReplace={onStorySceneReplace}
+            onStorySceneRetry={storyReadOnly ? undefined : onStorySceneRetry}
+            onStorySceneReplace={storyReadOnly ? undefined : onStorySceneReplace}
             onStoryFilmRetry={onStoryFilmRetry}
             onStoryReviewApprove={onStoryReviewApprove}
             onStoryReviewReject={onStoryReviewReject}

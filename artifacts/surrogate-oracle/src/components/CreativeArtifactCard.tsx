@@ -778,7 +778,18 @@ export function CreativeArtifactCard({
       : null;
   const [storyLane, setStoryLane] = useState<IllustrationStoryLane>(initialStoryLane);
   const [storyModelSlug, setStoryModelSlug] = useState<string | null>(initialStoryModel);
-  const { models, recommendations, summary, isAdvising, advise, loadCatalog } = useIllustrationStoryModelAdvisor();
+  const [modelQuery, setModelQuery] = useState('');
+  const {
+    models,
+    recommendations,
+    summary,
+    isAdvising,
+    advise,
+    loadCatalog,
+    isResolving,
+    resolution,
+    resolveModel,
+  } = useIllustrationStoryModelAdvisor();
   const laneModels = models.filter(model => (model.provider ?? 'fal') === storyLane);
 
   useEffect(() => {
@@ -813,6 +824,13 @@ export function CreativeArtifactCard({
     setStoryLane(lane);
     setStoryModelSlug(modelSlug);
     onStoryLaneChange?.(lane, modelSlug);
+  };
+
+  const resolveRequestedModel = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const query = modelQuery.trim();
+    if (!query) return;
+    await resolveModel(query, artifact.prompt);
   };
 
   const renderOutput = () => {
@@ -1169,11 +1187,61 @@ export function CreativeArtifactCard({
                       type="button"
                       className="creative-story-choice__advisor"
                       disabled={isAdvising}
-                      onClick={() => { void advise(artifact.prompt); }}
+                      onClick={() => { void advise(artifact.prompt, modelQuery.trim()); }}
                     >
                       <Sparkles size={13} aria-hidden="true" />
                       {isAdvising ? 'CO-PILOT IS COMPARING…' : 'ASK CO-PILOT FOR A MODEL RECOMMENDATION'}
                     </button>
+                    <form className="creative-story-choice__model-search" onSubmit={resolveRequestedModel}>
+                      <label htmlFor={`${descriptionId}-replicate-model`}>
+                        Search any Replicate video model
+                      </label>
+                      <div className="creative-story-choice__model-search-row">
+                        <input
+                          id={`${descriptionId}-replicate-model`}
+                          type="text"
+                          value={modelQuery}
+                          onChange={(event) => setModelQuery(event.target.value)}
+                          placeholder="e.g. minimax H3 Max or owner/model"
+                          maxLength={180}
+                          autoComplete="off"
+                        />
+                        <button
+                          type="submit"
+                          className="creative-story-choice__advisor"
+                          disabled={isResolving || !modelQuery.trim()}
+                        >
+                          {isResolving ? 'CHECKING…' : 'CHECK AVAILABILITY'}
+                        </button>
+                      </div>
+                    </form>
+                    {resolution && (
+                      <div className={`creative-story-choice__availability is-${resolution.availability}`} role="status">
+                        <strong>
+                          {resolution.availability === 'available'
+                            ? 'AVAILABLE ON REPLICATE'
+                            : resolution.availability === 'unavailable'
+                              ? 'NOT AVAILABLE ON REPLICATE'
+                              : 'AVAILABILITY UNKNOWN'}
+                        </strong>
+                        <span>Live lookup for “{resolution.query}”.</span>
+                        {resolution.candidates.length > 0 && (
+                          <div className="creative-story-choice__availability-list">
+                            {resolution.candidates.slice(0, 5).map(candidate => (
+                              <button
+                                type="button"
+                                className="creative-story-choice__recommendation"
+                                key={candidate.slug}
+                                onClick={() => setModelQuery(candidate.slug)}
+                              >
+                                <strong>{candidate.slug}</strong>
+                                <span>{candidate.description}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {recommendations.map(recommendation => (
                       <button
                         type="button"

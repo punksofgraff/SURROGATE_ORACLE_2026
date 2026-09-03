@@ -71,7 +71,7 @@ function falStoryModels(): FalStoryModel[] {
       const model = item as Record<string, unknown>;
       const slug = safeText(model.slug, 180);
       const resolution = model.resolution === '480P' ? '480P' : '768P';
-      if (!slug || isRetiredModel(slug) || slug !== FAL_MINIMAX_H3_MAX_SLUG) return [];
+      if (!slug || isRetiredModel(slug)) return [];
       return [{
         slug,
         label: safeText(model.label, 100) || slug,

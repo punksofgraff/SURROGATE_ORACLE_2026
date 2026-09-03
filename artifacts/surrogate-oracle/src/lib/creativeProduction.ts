@@ -80,7 +80,10 @@ export type IllustrationStoryModelOption = {
   description: string;
   costLabel: string;
   expectedSeconds: number;
-  provider?: 'fal' | 'minimax';
+  provider?: 'fal' | 'minimax' | 'replicate';
+  availability?: 'available' | 'unavailable' | 'unknown';
+  modelUrl?: string;
+  versionId?: string;
 };
 
 // Display-safe defaults. The edge function remains authoritative and can

@@ -80,7 +80,7 @@ export type IllustrationStoryModelOption = {
   description: string;
   costLabel: string;
   expectedSeconds: number;
-  provider?: 'fal' | 'minimax' | 'replicate';
+  provider?: 'fal' | 'minimax';
   availability?: 'available' | 'unavailable' | 'unknown';
   modelUrl?: string;
   versionId?: string;

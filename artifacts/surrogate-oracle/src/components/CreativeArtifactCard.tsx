@@ -34,7 +34,6 @@ import {
   type CreativeMissingDetail,
   type CreativeSeriesHistoryEntry,
   ILLUSTRATION_STORY_FAL_MODELS,
-  ILLUSTRATION_STORY_MINIMAX_MODELS,
   type IllustrationStoryLane,
   type IllustrationStoryReviewAudioSource,
   type IllustrationStoryReviewHistoryEntry,
@@ -44,7 +43,6 @@ import {
   type IllustrationStoryScene,
   type SeriesRenderMode,
 } from '../lib/creativeProduction';
-import { useIllustrationStoryModelAdvisor } from '../hooks/useIllustrationStoryModelAdvisor';
 import IllustrationStoryOpenKitchen from './IllustrationStoryOpenKitchen';
 import './CreativeArtifactCard.css';
 
@@ -154,10 +152,14 @@ function StoryPizzaTracker({
   const blocked = scenes.filter(scene => scene.failureKind === 'provider-safety').length;
   const failed = scenes.filter(scene => scene.status === 'failed' && scene.failureKind !== 'provider-safety').length;
   const pending = scenes.filter(scene => ['planned', 'queued', 'generating'].includes(scene.status)).length;
+  const singleWorkflow = (artifact.metadata as Record<string, unknown> | undefined)?.workflowMode === 'single-fal-workflow';
+  const blockedReason = typeof (artifact.metadata as Record<string, unknown> | undefined)?.blockedReason === 'string'
+    ? String((artifact.metadata as Record<string, unknown>).blockedReason)
+    : '';
   const stitching = artifact.status === 'generating'
     && scenes.length === 32
     && animated === 32;
-  const ready = artifact.status === 'ready' && Boolean(artifact.outputUrl);
+  const ready = Boolean(artifact.outputUrl) && ['ready', 'partial'].includes(artifact.status);
   const audioGateFailed = ['audio-gate', 'gemini-audio'].includes(String(artifact.metadata?.storyFailureKind));
   const steps = [
     { key: 'brief', label: 'Brief', value: 'cleared', complete: artifact.status !== 'draft', active: artifact.status === 'draft' },
@@ -186,12 +188,14 @@ function StoryPizzaTracker({
           <span className="creative-pizza-tracker__eyebrow">Production / live ledger</span>
           <strong>
             {ready
-               ? 'The complete story is assembled.'
+               ? 'Provider coverage and local audio checks passed.'
               : blocked
                 ? `${blocked} slice${blocked === 1 ? '' : 's'} blocked by provider safety review.`
                 : failed
                   ? `${failed} slice${failed === 1 ? '' : 's'} needs a retry.`
-                   : 'Your story is moving through the studio.'}
+                    : singleWorkflow
+                      ? 'One FAL workflow job is being checked against the panel ledger.'
+                      : 'Server evidence is being read.'}
           </strong>
         </div>
       <Layers3 className="creative-pizza-tracker__pie" size={22} aria-hidden="true" />
@@ -212,14 +216,18 @@ function StoryPizzaTracker({
       </ol>
       <p className="creative-pizza-tracker__note">
         {ready
-          ? 'MP4 is persisted and ready to preview or download.'
+           ? 'MP4 is persisted and ready for human watch/listen review.'
           : blocked
-            ? 'Blocked pages are recoverable one at a time. Retry the page or use a safe replacement; completed slices stay saved.'
+             ? singleWorkflow
+               ? blockedReason || 'The single workflow did not provide a provable panel certificate. No per-page retry is available.'
+               : 'Blocked pages are recoverable one at a time. Retry the page or use a safe replacement; completed slices stay saved.'
             : failed
               ? 'Retry only the affected page below. Completed slices stay saved.'
               : pending
                  ? `${pending} page${pending === 1 ? '' : 's'} still in visual production.`
-            : 'Live state from the server job — no placeholder percentages.'}
+             : singleWorkflow
+               ? 'The workflow ledger is authoritative; percentages do not prove panel coverage.'
+               : 'Live state from the server job — no placeholder percentages.'}
       </p>
     </section>
   );
@@ -255,6 +263,9 @@ function StoryReviewWorkspace({
   const readyScenes = scenes.filter(scene => scene.status === 'ready').length;
   const sourceAsset = pages.find(page => Boolean(page.sourceAsset))?.sourceAsset;
   const metadata = artifact.metadata as Record<string, unknown> | undefined;
+  const singleWorkflow = metadata?.workflowMode === 'single-fal-workflow';
+  const blockedReason = typeof metadata?.blockedReason === 'string' ? metadata.blockedReason : '';
+  const coverageCertificate = metadata?.coverageCertificate;
   const audioGate = metadata?.audioGate as Record<string, unknown> | undefined;
   const audioPassed = audioGate?.passed === true;
   const audioVerified = audioGate?.verified === true;
@@ -354,7 +365,9 @@ function StoryReviewWorkspace({
       <div className="creative-story-review-workspace__signals">
         <div className="creative-story-signal">
           <span className="creative-story-signal__icon"><Layers3 size={15} aria-hidden="true" /></span>
-          <span><strong>Panel continuity</strong><small>{readyScenes}/{pages.length} rendered from locked references</small></span>
+           <span><strong>Panel continuity</strong><small>{singleWorkflow
+             ? (coverageCertificate ? '32/32 ranges certified against source hashes' : '32 ranges awaiting a machine-checkable certificate')
+             : `${readyScenes}/${pages.length} rendered from locked references`}</small></span>
         </div>
         <div className="creative-story-signal">
           <span className="creative-story-signal__icon"><Eye size={15} aria-hidden="true" /></span>
@@ -422,7 +435,7 @@ function StoryReviewWorkspace({
                 <i aria-hidden="true" />
                 {canRecover && (
                   <div className="creative-story-panel-map__cell-actions">
-                    {onSceneRetry && (
+                    {onSceneRetry && !singleWorkflow && (
                       <button
                         type="button"
                         onClick={() => onSceneRetry(page.pageNumber)}
@@ -432,7 +445,7 @@ function StoryReviewWorkspace({
                         <RefreshCw size={11} aria-hidden="true" />
                       </button>
                     )}
-                    {scene?.failureKind === 'provider-safety' && onSceneReplace && (
+                    {scene?.failureKind === 'provider-safety' && onSceneReplace && !singleWorkflow && (
                       <button
                         type="button"
                         onClick={() => onSceneReplace(page.pageNumber)}
@@ -461,7 +474,7 @@ function StoryReviewWorkspace({
                 <div key={scene.pageNumber}>
                   <span>Page {String(scene.pageNumber).padStart(2, '0')}{scene.error ? ` · ${scene.error}` : ''}</span>
                   <span>
-                    {onSceneRetry && (
+                    {onSceneRetry && !singleWorkflow && (
                       <button
                         type="button"
                         onClick={() => onSceneRetry(scene.pageNumber)}
@@ -470,7 +483,7 @@ function StoryReviewWorkspace({
                         Retry page
                       </button>
                     )}
-                    {onSceneReplace && (
+                    {onSceneReplace && !singleWorkflow && (
                       <button
                         type="button"
                         onClick={() => onSceneReplace(scene.pageNumber)}
@@ -483,6 +496,17 @@ function StoryReviewWorkspace({
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {singleWorkflow && blockedReason && (
+        <div className="creative-story-review-workspace__notice creative-story-review-workspace__notice--recovery" role="alert">
+          <CircleAlert size={16} aria-hidden="true" />
+          <div>
+            <strong>Single-job workflow blocked</strong>
+            <p>{blockedReason}</p>
+            <p>No direct H3 request or per-page retry was submitted.</p>
           </div>
         </div>
       )}
@@ -762,44 +786,20 @@ export function CreativeArtifactCard({
     ? Object.entries(metadataRecord ?? {}).slice(0, 4)
     : [];
   const [followUpAnswer, setFollowUpAnswer] = useState('');
-  const initialStoryLane: IllustrationStoryLane = metadataRecord?.storyLane === 'fal'
-    ? 'fal'
-    : metadataRecord?.storyLane === 'minimax'
-      ? 'minimax'
-      : 'local';
-  const initialStoryModel = initialStoryLane === 'minimax'
-    ? (typeof metadataRecord?.storyModelSlug === 'string'
-      ? metadataRecord.storyModelSlug
-      : ILLUSTRATION_STORY_MINIMAX_MODELS[0]?.slug ?? null)
-    : initialStoryLane === 'fal'
+  const initialStoryLane: IllustrationStoryLane = metadataRecord?.storyLane === 'fal' ? 'fal' : 'local';
+  const initialStoryModel = initialStoryLane === 'fal'
       ? (typeof metadataRecord?.falModelSlug === 'string'
         ? metadataRecord.falModelSlug
         : ILLUSTRATION_STORY_FAL_MODELS[0]?.slug ?? null)
       : null;
   const [storyLane, setStoryLane] = useState<IllustrationStoryLane>(initialStoryLane);
   const [storyModelSlug, setStoryModelSlug] = useState<string | null>(initialStoryModel);
-  const [modelQuery, setModelQuery] = useState('');
-  const {
-    models,
-    recommendations,
-    summary,
-    isAdvising,
-    advise,
-    loadCatalog,
-    isResolving,
-    resolution,
-    resolveModel,
-  } = useIllustrationStoryModelAdvisor();
-  const laneModels = models.filter(model => (model.provider ?? 'fal') === storyLane);
+  const models = ILLUSTRATION_STORY_FAL_MODELS;
 
   useEffect(() => {
     setStoryLane(initialStoryLane);
     setStoryModelSlug(initialStoryModel);
   }, [artifact.id, initialStoryLane, initialStoryModel]);
-
-  useEffect(() => {
-    if (isIllustrationStory) void loadCatalog();
-  }, [isIllustrationStory, loadCatalog]);
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -824,13 +824,6 @@ export function CreativeArtifactCard({
     setStoryLane(lane);
     setStoryModelSlug(modelSlug);
     onStoryLaneChange?.(lane, modelSlug);
-  };
-
-  const resolveRequestedModel = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const query = modelQuery.trim();
-    if (!query) return;
-    await resolveModel(query, artifact.prompt);
   };
 
   const renderOutput = () => {
@@ -1153,19 +1146,6 @@ export function CreativeArtifactCard({
                     <strong>FAL / EXPLICIT</strong>
                     <span>Hosted motion from still anchors. Requires the model and budget confirmation below.</span>
                   </button>
-                  <button
-                    type="button"
-                    className={`creative-story-choice__option${storyLane === 'minimax' ? ' is-selected' : ''}`}
-                    onClick={() => chooseStoryLane(
-                      'minimax',
-                      models.find(model => model.slug === storyModelSlug && model.provider === 'minimax')?.slug
-                        ?? ILLUSTRATION_STORY_MINIMAX_MODELS[0]?.slug
-                        ?? null,
-                    )}
-                  >
-                    <strong>MINIMAX H3 / EXPLICIT</strong>
-                    <span>Reference-to-video motion with native stereo audio, followed by local FFmpeg assembly.</span>
-                  </button>
                 </div>
                 {storyLane === 'fal' && (
                   <div className="creative-story-choice__fal">
@@ -1183,104 +1163,11 @@ export function CreativeArtifactCard({
                       const model = models.find(item => item.slug === storyModelSlug && (item.provider ?? 'fal') === 'fal');
                       return model ? <small>{model.description} Estimated scene wait: about {Math.ceil(model.expectedSeconds / 60)} minutes.</small> : null;
                     })()}
-                    <button
-                      type="button"
-                      className="creative-story-choice__advisor"
-                      disabled={isAdvising}
-                      onClick={() => { void advise(artifact.prompt, modelQuery.trim()); }}
-                    >
-                      <Sparkles size={13} aria-hidden="true" />
-                      {isAdvising ? 'CO-PILOT IS COMPARING…' : 'ASK CO-PILOT FOR A MODEL RECOMMENDATION'}
-                    </button>
-                    <form className="creative-story-choice__model-search" onSubmit={resolveRequestedModel}>
-                      <label htmlFor={`${descriptionId}-replicate-model`}>
-                        Search any Replicate video model
-                      </label>
-                      <div className="creative-story-choice__model-search-row">
-                        <input
-                          id={`${descriptionId}-replicate-model`}
-                          type="text"
-                          value={modelQuery}
-                          onChange={(event) => setModelQuery(event.target.value)}
-                          placeholder="e.g. minimax H3 Max or owner/model"
-                          maxLength={180}
-                          autoComplete="off"
-                        />
-                        <button
-                          type="submit"
-                          className="creative-story-choice__advisor"
-                          disabled={isResolving || !modelQuery.trim()}
-                        >
-                          {isResolving ? 'CHECKING…' : 'CHECK AVAILABILITY'}
-                        </button>
-                      </div>
-                    </form>
-                    {resolution && (
-                      <div className={`creative-story-choice__availability is-${resolution.availability}`} role="status">
-                        <strong>
-                          {resolution.availability === 'available'
-                            ? 'AVAILABLE ON REPLICATE'
-                            : resolution.availability === 'unavailable'
-                              ? 'NOT AVAILABLE ON REPLICATE'
-                              : 'AVAILABILITY UNKNOWN'}
-                        </strong>
-                        <span>Live lookup for “{resolution.query}”.</span>
-                        {resolution.candidates.length > 0 && (
-                          <div className="creative-story-choice__availability-list">
-                            {resolution.candidates.slice(0, 5).map(candidate => (
-                              <button
-                                type="button"
-                                className="creative-story-choice__recommendation"
-                                key={candidate.slug}
-                                onClick={() => setModelQuery(candidate.slug)}
-                              >
-                                <strong>{candidate.slug}</strong>
-                                <span>{candidate.description}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {recommendations.map(recommendation => (
-                      <button
-                        type="button"
-                        className="creative-story-choice__recommendation"
-                        key={recommendation.slug}
-                        onClick={() => chooseStoryLane('fal', recommendation.slug)}
-                      >
-                        <strong>USE {recommendation.label}</strong>
-                        <span>{recommendation.reason}</span>
-                      </button>
-                    ))}
-                    {summary && <small className="creative-story-choice__summary">{summary}</small>}
-                  </div>
-                )}
-                {storyLane === 'minimax' && (
-                  <div className="creative-story-choice__fal">
-                    <label htmlFor={`${descriptionId}-minimax-model`}>Approved MiniMax model</label>
-                    <select
-                      id={`${descriptionId}-minimax-model`}
-                      value={storyModelSlug ?? ''}
-                      onChange={(event) => chooseStoryLane('minimax', event.target.value || null)}
-                    >
-                      {laneModels.map(model => (
-                        <option value={model.slug} key={model.slug}>{model.label}</option>
-                      ))}
-                    </select>
-                    {laneModels.find(model => model.slug === storyModelSlug)?.description && (
-                      <small>{laneModels.find(model => model.slug === storyModelSlug)?.description} Estimated scene wait: about {Math.ceil((laneModels.find(model => model.slug === storyModelSlug)?.expectedSeconds ?? 120) / 60)} minutes.</small>
-                    )}
                   </div>
                 )}
                 {storyLane === 'fal' && (
                   <p className="creative-story-choice__warning">
-                    FAL is metered. Nothing is submitted until you press the confirmation button, and failed pages are never retried automatically.
-                  </p>
-                )}
-                {storyLane === 'minimax' && (
-                  <p className="creative-story-choice__warning">
-                    MiniMax H3 is an explicit hosted lane. Nothing is submitted until you press confirmation, and failed pages are never retried automatically.
+                    FAL is metered. Confirmation submits exactly one ordered 32-panel workflow job. Direct per-page H3 requests, automatic retries, and replacements are disabled.
                   </p>
                 )}
               </div>
@@ -1291,9 +1178,7 @@ export function CreativeArtifactCard({
             </div>
             <p className="creative-artifact-card__confirmation-copy">
               {isIllustrationStory && storyLane === 'fal'
-                ? `This explicitly confirms ${models.find(model => model.slug === storyModelSlug && (model.provider ?? 'fal') === 'fal')?.label ?? 'the selected approved FAL model'} for 32 visual scenes. The final narration, voices, music, and FFmpeg assembly stay local.`
-                : isIllustrationStory && storyLane === 'minimax'
-                  ? `This explicitly confirms MiniMax H3 for 32 reference-to-video scenes with native stereo audio. The final narration, character tracks, music, and FFmpeg assembly stay local.`
+                ? `This explicitly confirms ${models.find(model => model.slug === storyModelSlug)?.label ?? 'the selected approved FAL model'} for one ordered 32-panel workflow job. The coverage certificate is required before local audio assembly.`
                 : artifact.confirmationCopy
                 ?? (artifact.requiresConfirmation
                   ? 'Money Mite will send this brief into the production lane only after you clear it.'

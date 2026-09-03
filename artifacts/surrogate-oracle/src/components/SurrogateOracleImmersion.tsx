@@ -1835,6 +1835,11 @@ export function SurrogateOracleImmersion() {
         metadata: {
           ...(restored.metadata ?? {}),
           storyScenes: job.scenes,
+                     workflowMode: job.workflow?.mode,
+                     workflow: job.workflow,
+                     coverageCertificate: job.coverageCertificate,
+                     blockedReason: job.blockedReason,
+                     submissionCount: job.submissionCount,
           storyFailureKind: job.failureKind,
           audioGate: job.audioGate,
           storyLane: job.provider === 'minimax' ? 'minimax' : 'fal',
@@ -2277,15 +2282,13 @@ export function SurrogateOracleImmersion() {
       }
       if (isIllustrationStory) {
         void (async () => {
-          const hostedProvider = artifact.metadata?.storyLane === 'minimax' ? 'minimax' : 'fal';
+          const hostedProvider = 'fal' as const;
           try {
             updateCreativeArtifact(artifact.id, {
               status: 'generating',
               progress: 2,
-              provider: artifact.metadata?.storyLane === 'minimax' ? 'minimax-film' : 'fal-film',
-              providerLabel: artifact.metadata?.storyLane === 'minimax'
-                ? `MiniMax H3 / ${illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)?.label ?? 'native-audio model'} · local assembly`
-                : `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
+              provider: 'fal-film',
+              providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · one workflow job`,
               outputLabel: undefined,
               metadata: {
                 ...(artifact.metadata ?? {}),
@@ -2300,10 +2303,8 @@ export function SurrogateOracleImmersion() {
             const pages = artifact.storyPages?.length
               ? artifact.storyPages
               : createIllustrationStoryPages(artifact.prompt, artifact.createdAt);
-            const hostedModel = hostedProvider === 'minimax'
-              ? illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)
-              : illustrationStoryFalModel(artifact.metadata?.falModelSlug);
-            if (!hostedModel) throw new Error(`Choose an approved ${hostedProvider === 'minimax' ? 'MiniMax H3' : 'FAL'} model before confirming the hosted story lane.`);
+            const hostedModel = illustrationStoryFalModel(artifact.metadata?.falModelSlug);
+            if (!hostedModel) throw new Error('Choose an approved FAL model before confirming the hosted story lane.');
             const result = await illustrationStoryFilm.renderStory(
               [storySheetOneUrl, storySheetTwoUrl],
               pages,
@@ -2313,16 +2314,14 @@ export function SurrogateOracleImmersion() {
                 if (isCurrent()) updateCreativeArtifact(artifact.id, {
                   status: 'generating',
                   progress,
-                   provider: hostedProvider === 'minimax' ? 'minimax-film' : 'fal-film',
-                   providerLabel: hostedProvider === 'minimax'
-                     ? `MiniMax H3 / ${illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)?.label ?? 'native-audio model'} · local assembly`
-                     : `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
+                   provider: 'fal-film',
+                   providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · one workflow job`,
                   metadata: {
                     ...(activeCreativeArtifactRef.current?.metadata ?? {}),
                     storyStage: progress < 6
                       ? 'preparing locked panel references and narration'
                       : progress < 78
-                         ? `animating 32 locked pages with ${hostedProvider === 'minimax' ? 'MiniMax H3' : 'FAL'}`
+                         ? 'polling one FAL workflow job for ordered panel coverage'
                          : 'local FFmpeg assembly and audio validation',
                     currentPage: Math.min(32, Math.max(1, Math.ceil((progress / 100) * 32))),
                   },
@@ -2334,15 +2333,13 @@ export function SurrogateOracleImmersion() {
                 updateCreativeArtifact(artifact.id, {
                   status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
                   progress: job.progress,
-                    provider: hostedProvider === 'minimax' ? 'minimax-film' : 'fal-film',
-                    providerLabel: hostedProvider === 'minimax'
-                      ? `MiniMax H3 / ${illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)?.label ?? 'native-audio model'} · local assembly`
-                      : `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
+                    provider: 'fal-film',
+                    providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · one workflow job`,
                   metadata: {
                     ...(activeCreativeArtifactRef.current?.metadata ?? {}),
                      storyStage: job.status === 'ready'
-                       ? '32 visual scenes ready · local FFmpeg assembly'
-                       : `${hostedProvider === 'minimax' ? 'MiniMax H3' : 'FAL'} page animation ${readyScenes}/32`,
+                       ? 'coverage certificate accepted · local FFmpeg assembly'
+                       : `one FAL workflow job · ordered panel coverage pending (${readyScenes}/32 evidence slots)`,
                     storyScenes: job.scenes,
                       storyFailureKind: job.failureKind,
              audioGate: job.audioGate,
@@ -2359,10 +2356,8 @@ export function SurrogateOracleImmersion() {
               outputUrl: result.url,
               reviewManifest: result.reviewManifest,
               outputLabel: `Unreviewed 32-page narrated studio render · ${Math.round(result.durationSeconds)}s MP4`,
-               provider: hostedProvider === 'minimax' ? 'minimax-film' : 'fal-film',
-               providerLabel: hostedProvider === 'minimax'
-                 ? `MiniMax H3 / ${illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)?.label ?? 'native-audio model'} · local assembly`
-                 : `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
+               provider: 'fal-film',
+               providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · one workflow job`,
               metadata: {
                 ...(activeCreativeArtifactRef.current?.metadata ?? {}),
                 storyStage: 'rendered; studio watch + listen approval required',
@@ -2376,7 +2371,7 @@ export function SurrogateOracleImmersion() {
                 soundtrack: 'Lyria instrumental anchor',
                 narration: 'Gemini child-friendly narration',
                 sourceAssets: '32 persisted locked panel references from two immutable 4x4 illustration sheets',
-                  visualGeneration: `32 scenes via ${hostedModel.label}`,
+                  visualGeneration: `one ordered-panel workflow via ${hostedModel.label}`,
               },
             });
             logStep('ILLUSTRATION STORY RENDERED — STUDIO REVIEW REQUIRED', 'ok');
@@ -2387,10 +2382,8 @@ export function SurrogateOracleImmersion() {
             updateCreativeArtifact(artifact.id, {
               status: 'failed',
               progress: 0,
-                provider: hostedProvider === 'minimax' ? 'minimax-film' : 'fal-film',
-                providerLabel: hostedProvider === 'minimax'
-                  ? `MiniMax H3 / ${illustrationStoryMiniMaxModel(artifact.metadata?.storyModelSlug)?.label ?? 'native-audio model'} · local assembly`
-                  : `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · local assembly`,
+                provider: 'fal-film',
+                providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · one workflow job`,
               error: error instanceof Error ? error.message : 'Illustration story film failed.',
               metadata: {
                 ...(activeCreativeArtifactRef.current?.metadata ?? {}),
@@ -2399,7 +2392,7 @@ export function SurrogateOracleImmersion() {
                   ? 'audio gate failed; retry stitch without regenerating pages'
                   : failureKind === 'gemini-audio'
                     ? 'Gemini/Lyria audio setup failed before the film could pass its audio gate'
-                    : 'failed; retry or replace the affected page',
+                    : 'failed; ordered coverage is unverifiable or the workflow did not complete',
               },
             });
             logStep('ILLUSTRATION STORY FAILED — RETRY AVAILABLE', 'warn');

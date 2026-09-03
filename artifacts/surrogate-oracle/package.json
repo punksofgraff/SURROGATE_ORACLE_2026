@@ -19,6 +19,7 @@
     "tour-checkpoint-test": "tsx scripts/tour-checkpoint-contract.test.mjs",
     "creative-dispatch-test": "tsx scripts/creative-dispatch-contract.test.mjs",
     "story-review-contract-test": "tsx scripts/illustration-story-review.contract.test.ts",
+    "fal-single-job-contract-test": "node scripts/fal-single-job.contract.test.mjs",
     "story-review-browser-verify": "node scripts/illustration-story-review.browser-verify.mjs",
     "story-persistence-contract-test": "tsx scripts/illustration-story-persistence.contract.test.ts",
     "story-film-integration-test": "node scripts/illustration-story-film.integration.test.mjs",

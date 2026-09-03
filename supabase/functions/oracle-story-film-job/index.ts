@@ -122,6 +122,46 @@ type StoryScene = {
   recovery?: 'retry' | 'replace' | null;
 };
 
+type StoryPanelManifestEntry = {
+  panelId: string;
+  pageNumber: number;
+  sheetIndex: 0 | 1;
+  row: number;
+  column: number;
+  durationSeconds: number;
+  sourceHash: string;
+  referenceUrl: string | null;
+  prompt: string;
+};
+
+type StoryCoverageEntry = {
+  panelId: string;
+  pageNumber: number;
+  sourceHash: string;
+  startSeconds: number;
+  endSeconds: number;
+};
+
+type StoryCoverageCertificate = {
+  version: 1;
+  panelCount: 32;
+  totalDurationSeconds: number;
+  panels: StoryCoverageEntry[];
+  audioProvenance: Record<string, unknown>;
+};
+
+type StoryWorkflowState = {
+  mode: 'single-fal-workflow';
+  contractVersion: 1;
+  endpoint: string;
+  requestId: string;
+  statusUrl: string;
+  responseUrl: string;
+  cancelUrl?: string;
+  submissionCount: 1;
+  submittedAt: string;
+};
+
 type CharacterVoiceTrackInput = {
   speaker: string;
   public_url?: string;
@@ -251,6 +291,205 @@ function errorDetail(value: unknown): string {
     return '';
   }
 }
+
+function workflowEndpoint(): string {
+  const configured = safeUrl(Deno.env.get('FAL_STORY_WORKFLOW_ENDPOINT'), 4000);
+  if (!configured) {
+    throw new Error('BLOCKED: the shared FAL story workflow endpoint is not configured; no hosted request was submitted.');
+  }
+  try {
+    const parsed = new URL(configured);
+    if (parsed.protocol !== 'https:') throw new Error('endpoint must use HTTPS');
+  } catch {
+    throw new Error('BLOCKED: the shared FAL story workflow endpoint is invalid; expected an HTTPS URL and no hosted request was submitted.');
+  }
+  return configured;
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map(value => value.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function finiteNumber(value: unknown): number | null {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function coverageCertificate(
+  value: unknown,
+  panelManifest: StoryPanelManifestEntry[],
+  totalDurationSeconds: number,
+): StoryCoverageCertificate {
+  if (!value || typeof value !== 'object') {
+    throw new Error('Coverage certificate is missing; ordered panel alignment cannot be proven.');
+  }
+  const raw = value as Record<string, unknown>;
+  const version = Number(raw.version ?? 1);
+  const panels = Array.isArray(raw.panels)
+    ? raw.panels
+    : Array.isArray(raw.shots)
+      ? raw.shots
+      : [];
+  const audioProvenance = raw.audioProvenance ?? raw.audio_provenance;
+  if (version !== 1 || panels.length !== PAGE_COUNT || !audioProvenance || typeof audioProvenance !== 'object') {
+    throw new Error('Coverage certificate is incomplete; expected version 1, 32 panel ranges, and audio provenance.');
+  }
+  const expected = new Map(panelManifest.map(panel => [panel.pageNumber, panel]));
+  const normalized: StoryCoverageEntry[] = [];
+  let previousEnd = 0;
+  for (const [index, item] of panels.entries()) {
+    if (!item || typeof item !== 'object') {
+      throw new Error('Coverage certificate contains an unreadable panel entry.');
+    }
+    const rawPanel = item as Record<string, unknown>;
+    const pageNumber = Number(rawPanel.pageNumber ?? rawPanel.page_number);
+    const expectedPanel = expected.get(pageNumber);
+    const panelId = safeText(rawPanel.panelId ?? rawPanel.panel_id, 120);
+    const sourceHash = safeText(rawPanel.sourceHash ?? rawPanel.source_hash, 128).toLowerCase();
+    const startSeconds = finiteNumber(rawPanel.startSeconds ?? rawPanel.start_seconds);
+    const endSeconds = finiteNumber(rawPanel.endSeconds ?? rawPanel.end_seconds);
+    const contiguous = index === 0 || (startSeconds !== null && Math.abs(startSeconds - previousEnd) <= 0.05);
+    if (!expectedPanel || pageNumber !== index + 1 || !panelId || panelId !== expectedPanel.panelId || sourceHash !== expectedPanel.sourceHash
+      || startSeconds === null || endSeconds === null || startSeconds < -0.05
+      || endSeconds <= startSeconds || !contiguous) {
+      throw new Error('Coverage certificate has missing, duplicate, reordered, overlapping, or unverifiable panel ranges.');
+    }
+    normalized.push({
+      panelId,
+      pageNumber,
+      sourceHash,
+      startSeconds: Math.max(0, startSeconds),
+      endSeconds,
+    });
+    previousEnd = endSeconds;
+  }
+  normalized.sort((left, right) => left.pageNumber - right.pageNumber);
+  if (normalized.some((panel, index) => panel.pageNumber !== index + 1)
+    || normalized[0].startSeconds > 0.05
+    || Math.abs(normalized[normalized.length - 1].endSeconds - totalDurationSeconds) > 0.75) {
+    throw new Error('Coverage certificate does not prove contiguous 01–32 coverage for the requested duration.');
+  }
+  return {
+    version: 1,
+    panelCount: PAGE_COUNT,
+    totalDurationSeconds,
+    panels: normalized,
+    audioProvenance: { ...(audioProvenance as Record<string, unknown>) },
+  };
+}
+
+async function workflowJson(url: string, init: RequestInit = {}): Promise<Record<string, unknown>> {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Key ${Deno.env.get('FAL_API_KEY') ?? ''}`,
+      ...(init.headers ?? {}),
+    },
+  });
+  const text = await response.text();
+  let data: unknown = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { /* report provider text below */ }
+  if (!response.ok) {
+    throw new Error(`Shared FAL workflow request failed (${response.status}): ${errorDetail(data) || safeText(text, 300)}`);
+  }
+  return data && typeof data === 'object' ? data as Record<string, unknown> : {};
+}
+
+function workflowUrl(data: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = safeUrl(data[key], 4000);
+    if (value) return value;
+  }
+  return '';
+}
+
+function workflowRequestId(data: Record<string, unknown>): string {
+  return safeText(data.request_id ?? data.requestId ?? data.job_id ?? data.jobId ?? data.id, 240);
+}
+
+function workflowVideoUrl(data: Record<string, unknown>): string {
+  const video = data.video && typeof data.video === 'object'
+    ? data.video as Record<string, unknown>
+    : {};
+  return safeUrl(
+    data.output_url ?? data.outputUrl ?? data.final_media_url ?? data.finalMediaUrl ?? video.url,
+    4000,
+  );
+}
+
+function workflowCertificate(data: Record<string, unknown>): unknown {
+  return data.coverage_certificate ?? data.coverageCertificate
+    ?? (data.result && typeof data.result === 'object'
+      ? workflowCertificate(data.result as Record<string, unknown>)
+      : null);
+}
+
+async function createFalStoryWorkflow(
+  endpoint: string,
+  payload: Record<string, unknown>,
+): Promise<StoryWorkflowState> {
+  const data = await workflowJson(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+  const requestId = workflowRequestId(data);
+  const statusUrl = workflowUrl(data, ['status_url', 'statusUrl']);
+  const responseUrl = workflowUrl(data, ['response_url', 'responseUrl', 'result_url', 'resultUrl']);
+  if (!requestId || !statusUrl || !responseUrl) {
+    throw new Error('Shared FAL workflow returned no durable request id, status URL, and response URL; submission was not accepted.');
+  }
+  return {
+    mode: 'single-fal-workflow',
+    contractVersion: 1,
+    endpoint,
+    requestId,
+    statusUrl,
+    responseUrl,
+    ...(workflowUrl(data, ['cancel_url', 'cancelUrl']) ? { cancelUrl: workflowUrl(data, ['cancel_url', 'cancelUrl']) } : {}),
+    submissionCount: 1,
+    submittedAt: new Date().toISOString(),
+  };
+}
+
+async function pollFalStoryWorkflow(
+  workflow: StoryWorkflowState,
+  panelManifest: StoryPanelManifestEntry[],
+  totalDurationSeconds: number,
+): Promise<{ status: StoryScene['status']; progress: number; output?: string; certificate?: StoryCoverageCertificate; error?: string }> {
+  const status = await workflowJson(workflow.statusUrl);
+  const state = safeText(status.status ?? status.state, 32).toUpperCase();
+  if (['FAILED', 'ERROR'].includes(state)) {
+    return { status: 'failed', progress: 0, error: errorDetail(status.error ?? status.detail) || 'Shared FAL story workflow failed.' };
+  }
+  if (['CANCELED', 'CANCELLED'].includes(state)) {
+    return { status: 'cancelled', progress: 0, error: 'Shared FAL story workflow was cancelled.' };
+  }
+  if (!['COMPLETED', 'SUCCEEDED', 'SUCCESS'].includes(state)) {
+    return {
+      status: state === 'IN_QUEUE' || state === 'QUEUED' ? 'queued' : 'generating',
+      progress: state === 'IN_QUEUE' || state === 'QUEUED' ? 8 : 45,
+    };
+  }
+  const result = await workflowJson(workflow.responseUrl);
+  const output = workflowVideoUrl(result);
+  if (!output) return { status: 'failed', progress: 0, error: 'Shared FAL story workflow completed without a video URL.' };
+  try {
+    return {
+      status: 'ready',
+      progress: 100,
+      output,
+      certificate: coverageCertificate(workflowCertificate(result), panelManifest, totalDurationSeconds),
+    };
+  } catch (error) {
+    return {
+      status: 'failed',
+      progress: 0,
+      error: error instanceof Error ? error.message : 'Coverage certificate validation failed.',
+    };
+  }
+}
 function publicJob(row: StoryJobRow) {
   const scenes = sceneList(row.story_scenes);
   const manifest = row.story_manifest && typeof row.story_manifest === 'object'
@@ -274,6 +513,9 @@ function publicJob(row: StoryJobRow) {
   const audioVerification = manifest.audioVerification && typeof manifest.audioVerification === 'object'
     ? manifest.audioVerification as Record<string, unknown>
     : {};
+  const workflow = manifest.workflow && typeof manifest.workflow === 'object'
+    ? manifest.workflow as Record<string, unknown>
+    : null;
   const everyPageReady = (scenes.length === PAGE_COUNT
     && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl)))
     || (row.provider === 'browser-film' && Boolean(row.final_media_url));
@@ -307,6 +549,11 @@ function publicJob(row: StoryJobRow) {
       recovery: scene.recovery ?? null,
     })),
     finalMediaUrl: row.final_media_url,
+    workflow,
+    sourcePanelManifest: Array.isArray(manifest.panelManifest) ? manifest.panelManifest : [],
+    coverageCertificate: manifest.coverageCertificate ?? null,
+    blockedReason: typeof manifest.blockedReason === 'string' ? manifest.blockedReason : null,
+    submissionCount: Number(manifest.submissionCount) || 0,
     narrationUrl: row.narration_url,
     musicUrl: row.music_url,
     characterVoiceTracks: Array.isArray(manifest.characterVoiceTracks)
@@ -812,6 +1059,28 @@ async function persistRemoteScene(
   return uploadAsset(supabase, `films/${jobId}/scenes/page-${String(pageNumber).padStart(2, '0')}.mp4`, bytes, 'video/mp4');
 }
 
+async function persistRemoteWorkflowFilm(
+  supabase: ReturnType<typeof createClient>,
+  jobId: string,
+  outputUrl: string,
+): Promise<string> {
+  const response = await fetch(outputUrl);
+  if (!response.ok) throw new Error(`Shared FAL workflow film could not be downloaded (${response.status}).`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (!bytes.length) throw new Error('Shared FAL workflow returned an empty video.');
+  return uploadAsset(supabase, `films/${jobId}/hosted-workflow.mp4`, bytes, 'video/mp4');
+}
+
+function panelManifestList(value: unknown): StoryPanelManifestEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((entry): entry is StoryPanelManifestEntry => Boolean(
+    entry && typeof entry === 'object'
+      && Number((entry as Record<string, unknown>).pageNumber) >= 1
+      && typeof (entry as Record<string, unknown>).sourceHash === 'string'
+      && typeof (entry as Record<string, unknown>).panelId === 'string',
+  ));
+}
+
 function storyPrompt(page: Record<string, unknown>): string {
   const narration = providerStoryLanguage(safeText(page.narration, 600));
   const pageNumber = Number(page.pageNumber);
@@ -891,6 +1160,76 @@ async function pollStoryJob(
     // Historical rows may still carry a retired server job id. Keep their
     // persisted state readable, but never resume or poll that provider.
     return current;
+  }
+
+  const manifest = current.story_manifest && typeof current.story_manifest === 'object'
+    ? current.story_manifest as Record<string, unknown>
+    : {};
+  if (manifest.workflowMode === 'single-fal-workflow'
+    && manifest.workflow && typeof manifest.workflow === 'object') {
+    const workflow = manifest.workflow as StoryWorkflowState;
+    const panelManifest = panelManifestList(manifest.panelManifest);
+    const totalDurationSeconds = Number(manifest.totalDurationSeconds);
+    try {
+      const next = await pollFalStoryWorkflow(workflow, panelManifest, totalDurationSeconds);
+      if (next.status === 'ready' && next.output && next.certificate) {
+        const stableUrl = await persistRemoteWorkflowFilm(supabase, current.id, next.output);
+        const scenes = sceneList(current.story_scenes).map(scene => ({
+          ...scene,
+          status: 'ready' as const,
+          progress: 100,
+          outputUrl: stableUrl,
+          error: null,
+          failureKind: null,
+          recovery: null,
+        }));
+        return updateJob(supabase, current.id, {
+          story_scenes: scenes,
+          status: 'ready',
+          progress: 100,
+          final_media_url: stableUrl,
+          runpod_job_id: null,
+          error_message: null,
+          story_manifest: {
+            ...manifest,
+            workflow: {
+              ...workflow,
+              completedAt: new Date().toISOString(),
+            },
+            coverageCertificate: next.certificate,
+            visualsReady: true,
+            assembly: 'local-ffmpeg',
+            failureKind: null,
+          },
+        });
+      }
+      if (next.status === 'failed' || next.status === 'cancelled') {
+        return updateJob(supabase, current.id, {
+          status: next.status,
+          progress: 0,
+          error_message: next.error || 'Shared FAL story workflow did not complete.',
+          story_manifest: {
+            ...manifest,
+            failureKind: next.status === 'cancelled' ? null : 'provider',
+          },
+        });
+      }
+      return updateJob(supabase, current.id, {
+        status: next.status,
+        progress: Math.max(current.progress, Math.min(78, 8 + next.progress * 0.7)),
+        error_message: null,
+      });
+    } catch (error) {
+      return updateJob(supabase, current.id, {
+        status: 'failed',
+        progress: 0,
+        error_message: error instanceof Error ? error.message : 'Shared FAL workflow polling failed.',
+        story_manifest: {
+          ...manifest,
+          failureKind: 'provider',
+        },
+      });
+    }
   }
 
   const scenes = sceneList(current.story_scenes);
@@ -1029,24 +1368,16 @@ Deno.serve(async (req: Request) => {
   if (action === 'catalog') {
     return json({
       provider: 'hosted-story',
-      models: [
-        ...falStoryModels().map(({ slug, label, description, costLabel, expectedSeconds }) => ({
-          provider: 'fal',
-          slug,
-          label,
-          description,
-          costLabel,
-          expectedSeconds,
-        })),
-        ...DEFAULT_MINIMAX_STORY_MODELS.map(({ provider, slug, label, description, costLabel, expectedSeconds }) => ({
-          provider,
-          slug,
-          label,
-          description,
-          costLabel,
-          expectedSeconds,
-        })),
-      ],
+      workflow: 'single-fal-workflow',
+      submissionPolicy: 'one external workflow job per 32-panel story; direct per-panel H3 requests are disabled',
+      models: falStoryModels().map(({ slug, label, description, costLabel, expectedSeconds }) => ({
+        provider: 'fal',
+        slug,
+        label,
+        description,
+        costLabel,
+        expectedSeconds,
+      })),
     });
   }
 
@@ -1083,12 +1414,8 @@ Deno.serve(async (req: Request) => {
     const ownerKey = ownerKeyFor(payload, sessionId);
     const requestedProvider = safeText(payload.provider, 40).toLowerCase();
     const falModel = falStoryModel(payload.modelSlug);
-    const miniMaxModel = minimaxStoryModel(payload.modelSlug);
-    const provider: 'fal' | 'minimax' = requestedProvider === 'minimax'
-      || (!requestedProvider && Boolean(miniMaxModel))
-      ? 'minimax'
-      : 'fal';
-    const model = provider === 'minimax' ? miniMaxModel : falModel;
+    const provider = 'fal' as const;
+    const model = falModel;
     const confirmed = payload.confirmed === true;
     const pages = Array.isArray(payload.pages) ? payload.pages as Record<string, unknown>[] : [];
     const panels = Array.isArray(payload.panels) ? payload.panels as Record<string, unknown>[] : [];
@@ -1097,6 +1424,11 @@ Deno.serve(async (req: Request) => {
     const narrationBase64 = payload.narrationBase64;
     if (!confirmed) {
       return json({ error: 'A Seeker confirmation is required before any hosted story request.' }, 400);
+    }
+    if (requestedProvider && requestedProvider !== 'fal') {
+      return json({
+        error: 'This story lane is blocked: only the shared FAL workflow may submit hosted story work. No direct MiniMax or other per-panel request was submitted.',
+      }, 409);
     }
     if (!model) {
       return json({ error: 'That hosted story model is not approved. Choose a model from the current catalog.' }, 400);
@@ -1119,166 +1451,166 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Story page order, 4x4 coordinates, or timing are invalid.' }, 400);
     }
 
+    let panelManifest: StoryPanelManifestEntry[];
+    try {
+      panelManifest = await Promise.all(pages.map(async (page, index) => {
+        const panel = panels[index];
+        const bytes = decodeBase64(panel?.base64);
+        return {
+          panelId: `sheet-${Number(page.sheetIndex) + 1}-r${Number(page.row) + 1}-c${Number(page.column) + 1}`,
+          pageNumber: index + 1,
+          sheetIndex: Number(page.sheetIndex) as 0 | 1,
+          row: Number(page.row),
+          column: Number(page.column),
+          durationSeconds: Number(page.durationSeconds),
+          sourceHash: await sha256Hex(bytes),
+          referenceUrl: null,
+          prompt: storyPrompt(page),
+        };
+      }));
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : 'Locked panel manifest could not be created.' }, 400);
+    }
+    if (new Set(panelManifest.map(panel => panel.panelId)).size !== PAGE_COUNT) {
+      return json({ error: 'Ordered panel manifest is not unique; no hosted request was submitted.' }, 400);
+    }
+    const baseManifest = {
+      pageCount: PAGE_COUNT,
+      totalDurationSeconds: totalDuration,
+      sourceAssets: 'two immutable 4x4 illustration sheets',
+      referencePolicy: 'one persisted panel image per page',
+      visualProvider: model.slug,
+      modelSlug: model.slug,
+      provider,
+      confirmation: 'explicit',
+      audioPolicy: 'Lyria soundtrack plus validated lore narration',
+      characterVoiceTracks,
+      workflowMode: 'single-fal-workflow',
+      workflowContractVersion: 1,
+      panelManifest,
+      submissionCount: 0,
+      failureKind: null,
+    };
+    const plannedScenes: StoryScene[] = pages.map((page, index) => ({
+      pageNumber: index + 1,
+      sheetIndex: Number(page.sheetIndex) as 0 | 1,
+      row: Number(page.row),
+      column: Number(page.column),
+      durationSeconds: Number(page.durationSeconds),
+      seed: 730_000 + index,
+      modelSlug: model.slug,
+      provider,
+      prompt: storyPrompt(page),
+      referenceUrl: null,
+      referenceAudioUrl: null,
+      falRequestId: null,
+      status: 'planned' as const,
+      progress: 0,
+      jobId: null,
+      outputUrl: null,
+      error: null,
+      failureKind: null,
+      recovery: null,
+    }));
     const { data: inserted, error: insertError } = await supabase.from('oracle_film_jobs').insert({
       session_id: sessionId,
       owner_key: ownerKey,
       portrait_url: 'story://locked-panel-reference',
       job_type: 'illustration-story',
-        provider,
-       model_slug: model.slug,
+      provider,
+      model_slug: model.slug,
       status: 'queued',
       progress: 1,
       chunk_count: PAGE_COUNT,
       chunks: pages,
-      story_manifest: {
-        pageCount: PAGE_COUNT,
-        totalDurationSeconds: totalDuration,
-        sourceAssets: 'two immutable 4x4 illustration sheets',
-        referencePolicy: 'one persisted panel image per page',
-          visualProvider: model.slug,
-         modelSlug: model.slug,
-          provider,
-         confirmation: 'explicit',
-        audioPolicy: 'Lyria soundtrack plus validated lore narration',
-        characterVoiceTracks,
-      },
-       audio_manifest: storyAudioManifest(pages, characterVoiceTracks),
+      story_scenes: plannedScenes,
+      story_manifest: baseManifest,
+      audio_manifest: storyAudioManifest(pages, characterVoiceTracks),
     }).select('*').single();
     if (insertError || !inserted) return json({ error: 'Could not create the story film job.', detail: insertError?.message }, 500);
     const row = inserted as StoryJobRow;
 
+    let workflowSubmitted = false;
     try {
+      const endpoint = workflowEndpoint();
       const musicBytes = decodeBase64(musicBase64);
       const narrationBytes = decodeBase64(narrationBase64);
       const musicUrl = await uploadAsset(supabase, `films/${row.id}/audio/lyria.mp3`, musicBytes, 'audio/mpeg');
       const narrationUrl = await uploadAsset(supabase, `films/${row.id}/audio/narration.wav`, narrationBytes, 'audio/wav');
-      const scenes: StoryScene[] = [];
-
-      for (let batchStart = 0; batchStart < PAGE_COUNT; batchStart += 4) {
-        const batch = pages.slice(batchStart, batchStart + 4).map(async (page, offset) => {
-          const index = batchStart + offset;
-          const panel = panels[index];
-          let referenceUrl: string | null = null;
-          try {
-            const panelBytes = decodeBase64(panel?.base64);
-            const mimeType = typeof panel?.mimeType === 'string' && panel.mimeType.startsWith('image/')
-              ? panel.mimeType
-              : 'image/jpeg';
-            referenceUrl = await uploadAsset(
-              supabase,
-              `films/${row.id}/references/page-${String(index + 1).padStart(2, '0')}.jpg`,
-              panelBytes,
-              mimeType,
-            );
-             const seed = 730_000 + index;
-             const prompt = provider === 'minimax'
-               ? miniMaxStoryPrompt(page)
-               : storyPrompt(page);
-             const requestId = provider === 'minimax'
-               ? await createMiniMaxScene(
-                 model as MiniMaxStoryModel,
-                 referenceUrl,
-                 prompt,
-                 characterAudioForPage(page, characterVoiceTracks),
-                 Number(page.durationSeconds),
-               )
-               : await createFalScene(model as FalStoryModel, referenceUrl, prompt, sessionId, seed);
-            return {
-              pageNumber: index + 1,
-              sheetIndex: Number(page.sheetIndex) as 0 | 1,
-              row: Number(page.row),
-              column: Number(page.column),
-              durationSeconds: Number(page.durationSeconds),
-              seed,
-                modelSlug: model.slug,
-                provider,
-               prompt,
-              referenceUrl,
-              referenceAudioUrl: characterAudioForPage(page, characterVoiceTracks),
-              falRequestId: requestId,
-              status: 'generating' as const,
-              progress: 8,
-              jobId: `${provider}:${requestId}`,
-              outputUrl: null,
-              error: null,
-              failureKind: null,
-              recovery: null,
-            };
-          } catch (error) {
-            const detail = error instanceof Error ? error.message : '';
-             const failure = sceneFailure(
-               index + 1,
-               detail,
-               provider === 'minimax'
-                 ? 'Could not submit this page to MiniMax H3.'
-                 : 'Could not submit this page to FAL.',
-             );
-            return {
-              pageNumber: index + 1,
-              sheetIndex: Number(page.sheetIndex) as 0 | 1,
-              row: Number(page.row),
-              column: Number(page.column),
-              durationSeconds: Number(page.durationSeconds),
-              seed: 730_000 + index,
-                modelSlug: model.slug,
-                provider,
-               prompt: provider === 'minimax' ? miniMaxStoryPrompt(page) : storyPrompt(page),
-              referenceUrl,
-                referenceAudioUrl: characterAudioForPage(page, characterVoiceTracks),
-              falRequestId: null,
-              status: 'failed' as const,
-              progress: 0,
-              jobId: null,
-              outputUrl: null,
-              error: failure.error,
-              failureKind: referenceUrl ? failure.failureKind : 'submission',
-              recovery: null,
-            };
-          }
-        });
-        scenes.push(...await Promise.all(batch));
-        await updateJob(supabase, row.id, {
-          status: 'generating',
-          progress: Math.min(12, Math.round((scenes.length / PAGE_COUNT) * 12)),
-          story_scenes: scenes,
-          music_url: musicUrl,
+      const persistedPanelManifest = await Promise.all(panelManifest.map(async (panel, index) => {
+        const source = panels[index];
+        const bytes = decodeBase64(source?.base64);
+        const mimeType = typeof source?.mimeType === 'string' && source.mimeType.startsWith('image/')
+          ? source.mimeType
+          : 'image/jpeg';
+        return {
+          ...panel,
+          referenceUrl: await uploadAsset(
+            supabase,
+            `films/${row.id}/references/page-${String(index + 1).padStart(2, '0')}.jpg`,
+            bytes,
+            mimeType,
+          ),
+        };
+      }));
+      const scenes = plannedScenes.map((scene, index) => ({
+        ...scene,
+        referenceUrl: persistedPanelManifest[index].referenceUrl,
+        referenceAudioUrl: characterAudioForPage(pages[index], characterVoiceTracks),
+      }));
+      const workflow = await createFalStoryWorkflow(endpoint, {
+        workflow: 'ordered-panel-story-film',
+        workflow_version: 1,
+        model_slug: model.slug,
+        session_id: sessionId,
+        panel_manifest: persistedPanelManifest,
+        panels: persistedPanelManifest,
+        audio: {
           narration_url: narrationUrl,
-          error_message: scenes.some(scene => scene.status === 'failed')
-            ? 'One or more pages failed during submission. Retry them individually.'
-            : null,
-        });
-      }
-
-      const completed = await updateJob(supabase, row.id, {
-        status: scenes.some(scene => scene.status === 'failed') ? 'failed' : 'generating',
-        progress: Math.min(12, Math.round((scenes.length / PAGE_COUNT) * 12)),
+          music_url: musicUrl,
+          character_voice_tracks: characterVoiceTracks,
+        },
+        story: {
+          page_count: PAGE_COUNT,
+          total_duration_seconds: totalDuration,
+          target: '16:9 child-friendly story film',
+          pages,
+        },
+      });
+      workflowSubmitted = true;
+      const submitted = await updateJob(supabase, row.id, {
+        status: 'generating',
+        progress: 8,
         story_scenes: scenes,
         music_url: musicUrl,
         narration_url: narrationUrl,
-        error_message: scenes.some(scene => scene.status === 'failed')
-          ? 'One or more pages failed during submission. Retry or replace only the affected pages.'
-          : null,
+        runpod_job_id: workflow.requestId,
+        error_message: null,
         story_manifest: {
-          ...(row.story_manifest && typeof row.story_manifest === 'object' ? row.story_manifest : {}),
-          failureKind: scenes.some(scene => scene.failureKind === 'provider-safety')
-            ? 'provider-safety'
-            : scenes.some(scene => scene.status === 'failed') ? 'submission' : null,
+          ...baseManifest,
+          panelManifest: persistedPanelManifest,
+          workflow,
+          submissionCount: 1,
+          failureKind: null,
         },
       });
-      return json(publicJob(completed), 202);
+      return json(publicJob(submitted), 202);
     } catch (error) {
       const failed = await updateJob(supabase, row.id, {
         status: 'failed',
         progress: 0,
-         error_message: error instanceof Error ? error.message : 'FAL story setup failed.',
+        error_message: error instanceof Error ? error.message : 'Shared FAL story workflow setup failed.',
         story_manifest: {
-          ...(row.story_manifest && typeof row.story_manifest === 'object' ? row.story_manifest : {}),
-          failureKind: /\b(?:gemini|narration|lyria|soundtrack|audio)\b/i.test(error instanceof Error ? error.message : '')
-            ? 'audio-gate'
-            : 'submission',
+          ...baseManifest,
+          submissionCount: workflowSubmitted ? 1 : 0,
+          blockedReason: String(error instanceof Error ? error.message : '').startsWith('BLOCKED:')
+            ? error instanceof Error ? error.message : 'Shared FAL workflow is blocked.'
+            : null,
+          failureKind: 'submission',
         },
       });
-      return json(publicJob(failed), 503);
+      const blocked = String(error instanceof Error ? error.message : '').startsWith('BLOCKED:');
+      return json(publicJob(failed), blocked ? 202 : 503);
     }
   }
 
@@ -1513,6 +1845,25 @@ Deno.serve(async (req: Request) => {
   }
 
   if (action === 'resume' && current.status === 'failed') {
+    const currentManifest = current.story_manifest && typeof current.story_manifest === 'object'
+      ? current.story_manifest as Record<string, unknown>
+      : {};
+    if (currentManifest.workflowMode === 'single-fal-workflow') {
+      const workflow = currentManifest.workflow && typeof currentManifest.workflow === 'object'
+        ? currentManifest.workflow as StoryWorkflowState
+        : null;
+      if (!workflow?.requestId) {
+        return json({
+          error: currentManifest.blockedReason
+            || 'This story is blocked before submission because the shared FAL workflow contract is unavailable. No retry was submitted.',
+          blocked: true,
+        }, 409);
+      }
+      current = await updateJob(supabase, current.id, {
+        status: 'generating',
+        error_message: null,
+      });
+    }
     const scenes = sceneList(current.story_scenes);
 
     const everyPageReady = scenes.length === PAGE_COUNT
@@ -1526,6 +1877,31 @@ Deno.serve(async (req: Request) => {
   }
 
   if (action === 'cancel') {
+    const currentManifest = current.story_manifest && typeof current.story_manifest === 'object'
+      ? current.story_manifest as Record<string, unknown>
+      : {};
+    if (currentManifest.workflowMode === 'single-fal-workflow') {
+      const workflow = currentManifest.workflow && typeof currentManifest.workflow === 'object'
+        ? currentManifest.workflow as StoryWorkflowState
+        : null;
+      if (workflow?.requestId && workflow.cancelUrl) {
+        try {
+          await workflowJson(workflow.cancelUrl, { method: 'POST' });
+        } catch {
+          // Local cancellation remains authoritative when the workflow has no
+          // confirmed cancellation response.
+        }
+      }
+      current = await updateJob(supabase, current.id, {
+        status: 'cancelled',
+        runpod_job_id: null,
+        story_scenes: sceneList(current.story_scenes).map(scene => ['queued', 'generating', 'planned'].includes(scene.status)
+          ? { ...scene, status: 'cancelled', progress: 0, error: null }
+          : scene),
+        error_message: 'Story workflow cancelled locally; external cancellation was not confirmed.',
+      });
+      return json(publicJob(current));
+    }
     const scenes = sceneList(current.story_scenes);
     await Promise.all(scenes.map(async scene => {
       if (scene.falRequestId && ['queued', 'generating'].includes(scene.status)) {
@@ -1584,6 +1960,15 @@ Deno.serve(async (req: Request) => {
   }
 
   if (action === 'retry' || action === 'replace') {
+    const currentManifest = current.story_manifest && typeof current.story_manifest === 'object'
+      ? current.story_manifest as Record<string, unknown>
+      : {};
+    if (currentManifest.workflowMode === 'single-fal-workflow') {
+      return json({
+        error: 'Per-page retry and replacement are disabled for the single-job FAL workflow. Ordered panel coverage must remain one immutable submission; start a new workflow instead.',
+        blocked: true,
+      }, 409);
+    }
     const pageNumber = Number(payload.pageNumber);
     const scenes = sceneList(current.story_scenes);
     const scene = scenes.find(item => item.pageNumber === pageNumber);

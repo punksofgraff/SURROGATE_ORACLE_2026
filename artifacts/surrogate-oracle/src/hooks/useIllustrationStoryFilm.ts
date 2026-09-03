@@ -76,6 +76,39 @@ export type IllustrationStoryFilmJob = {
   reviewRejections?: IllustrationStoryReviewRejection[];
   reviewHistory?: IllustrationStoryReviewHistoryEntry[];
   reviewManifest?: IllustrationStoryReviewManifest | null;
+  workflow?: {
+    mode?: 'single-fal-workflow';
+    requestId?: string;
+    statusUrl?: string;
+    responseUrl?: string;
+    submissionCount?: 1;
+    completedAt?: string;
+  } | null;
+  sourcePanelManifest?: Array<{
+    panelId: string;
+    pageNumber: number;
+    sheetIndex: 0 | 1;
+    row: number;
+    column: number;
+    durationSeconds: number;
+    sourceHash: string;
+    referenceUrl: string | null;
+  }>;
+  coverageCertificate?: {
+    version: 1;
+    panelCount: 32;
+    totalDurationSeconds: number;
+    panels: Array<{
+      panelId: string;
+      pageNumber: number;
+      sourceHash: string;
+      startSeconds: number;
+      endSeconds: number;
+    }>;
+    audioProvenance: Record<string, unknown>;
+  } | null;
+  blockedReason?: string | null;
+  submissionCount?: number;
 };
 
 export type IllustrationStoryFilmResult = {
@@ -126,6 +159,7 @@ type NarrationBundle = {
 type StoryJobListener = (job: IllustrationStoryFilmJob) => void;
 type LocalStitchInput = {
   sceneUrls?: string[];
+  hostedFilmUrl?: string;
   sheets?: StoryAsset[];
   music?: StoryAsset;
   musicUrl?: string;
@@ -602,7 +636,7 @@ export function useIllustrationStoryFilm(
         : 'Lyria instrumental anchor',
       soundEffectsCount: complete.audioManifest?.soundEffects?.length ?? 0,
     });
-    if (complete.finalMediaUrl) {
+    if (complete.finalMediaUrl && complete.workflow?.mode !== 'single-fal-workflow') {
       onProgress?.(100);
       return {
         url: complete.finalMediaUrl,
@@ -623,7 +657,13 @@ export function useIllustrationStoryFilm(
       .sort((a, b) => a.pageNumber - b.pageNumber)
       .map(scene => scene.outputUrl)
       .filter((url): url is string => Boolean(url));
-    if (sceneUrls.length !== pages.length) {
+    const hostedFilmUrl = complete.workflow?.mode === 'single-fal-workflow'
+      ? complete.finalMediaUrl ?? undefined
+      : undefined;
+    if (complete.workflow?.mode === 'single-fal-workflow' && !hostedFilmUrl) {
+      throw new Error('The shared FAL workflow completed without a playable hosted film URL.');
+    }
+    if (!hostedFilmUrl && sceneUrls.length !== pages.length) {
        throw new Error('Hosted provider returned an incomplete visual scene set.');
     }
     onProgress?.(82);
@@ -631,7 +671,8 @@ export function useIllustrationStoryFilm(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sceneUrls,
+         ...(sceneUrls.length && !hostedFilmUrl ? { sceneUrls } : {}),
+        ...(hostedFilmUrl ? { hostedFilmUrl } : {}),
         music,
         narration: narrationBundle.narration,
         characterVoiceTracks: narrationBundle.characterTracks,
@@ -720,9 +761,12 @@ export function useIllustrationStoryFilm(
       throw new Error('Persisted story audio is unavailable or expired (music and narration are required).');
     }
     const orderedScenes = [...current.scenes].sort((a, b) => a.pageNumber - b.pageNumber);
-    if (orderedScenes.length !== pages.length || orderedScenes.some((scene, index) =>
+    const hostedFilmUrl = current.workflow?.mode === 'single-fal-workflow'
+      ? current.finalMediaUrl ?? undefined
+      : undefined;
+    if (!hostedFilmUrl && (orderedScenes.length !== pages.length || orderedScenes.some((scene, index) =>
       scene.pageNumber !== index + 1 || scene.status !== 'ready' || !scene.outputUrl
-    )) {
+    ))) {
       throw new Error('Persisted hosted scenes are incomplete or expired; no new scene request was submitted.');
     }
     if (controller.signal.aborted) throw new Error('Story film recovery cancelled.');
@@ -739,9 +783,13 @@ export function useIllustrationStoryFilm(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        sceneUrls: orderedScenes
-          .map(scene => scene.outputUrl)
-          .filter((url): url is string => Boolean(url)),
+        ...(hostedFilmUrl
+          ? { hostedFilmUrl }
+          : {
+            sceneUrls: orderedScenes
+              .map(scene => scene.outputUrl)
+              .filter((url): url is string => Boolean(url)),
+          }),
         musicUrl: current.musicUrl,
         narrationUrl: current.narrationUrl,
         characterVoiceTracks: current.characterVoiceTracks ?? [],

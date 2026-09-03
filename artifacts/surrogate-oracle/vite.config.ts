@@ -467,6 +467,25 @@ async function validateStoryFilm(file: string, expectedDuration: number): Promis
   return { durationSeconds, audioTrackPresent };
 }
 
+async function probeStoryVideo(file: string): Promise<{ durationSeconds: number; audioTrackPresent: boolean }> {
+  const { stdout } = await execFileAsync('ffprobe', [
+    '-v', 'error',
+    '-show_entries', 'format=duration:stream=codec_type',
+    '-of', 'json',
+    file,
+  ], { maxBuffer: 256 * 1024 });
+  const probe = JSON.parse(stdout) as {
+    format?: { duration?: string };
+    streams?: Array<{ codec_type?: string }>;
+  };
+  const durationSeconds = Number(probe.format?.duration);
+  if (!Number.isFinite(durationSeconds)) throw new Error('Hosted workflow film duration could not be measured.');
+  return {
+    durationSeconds,
+    audioTrackPresent: Boolean(probe.streams?.some(stream => stream.codec_type === 'audio')),
+  };
+}
+
 async function stitchIllustrationStory(body: any): Promise<{
   bytes: Buffer;
   narrationAvailable: boolean;
@@ -477,10 +496,12 @@ async function stitchIllustrationStory(body: any): Promise<{
 }> {
   const sheets = Array.isArray(body?.sheets) ? body.sheets : [];
   const sceneUrls = Array.isArray(body?.sceneUrls) ? body.sceneUrls : [];
+  const hostedFilmUrl = typeof body?.hostedFilmUrl === 'string' ? body.hostedFilmUrl : '';
   const pages = Array.isArray(body?.pages) ? body.pages as StoryPageRequest[] : [];
   const usingRemoteScenes = sceneUrls.length === 32;
-  if ((!usingRemoteScenes && sheets.length !== 2) || pages.length !== 32) {
-    throw new Error('Story assembly requires either 32 hosted scene URLs or two sheets, plus 32 pages.');
+  const usingHostedFilm = Boolean(hostedFilmUrl);
+  if ((!usingRemoteScenes && !usingHostedFilm && sheets.length !== 2) || pages.length !== 32) {
+    throw new Error('Story assembly requires one validated hosted film, 32 hosted scene URLs, or two sheets, plus 32 pages.');
   }
   const duration = pages.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
   const orderedPages = pages.every((page, index) => page.pageNumber === index + 1
@@ -502,7 +523,7 @@ async function stitchIllustrationStory(body: any): Promise<{
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-story-'));
   try {
-    const sheetFiles = usingRemoteScenes ? [] : sheets.map((asset: unknown, index: number) => {
+    const sheetFiles = usingRemoteScenes || usingHostedFilm ? [] : sheets.map((asset: unknown, index: number) => {
       const decoded = decodeDataAsset(asset);
       const file = path.join(dir, `sheet-${index}.png`);
       fs.writeFileSync(file, decoded.bytes);
@@ -527,7 +548,36 @@ async function stitchIllustrationStory(body: any): Promise<{
     if (narration && narrationFile) fs.writeFileSync(narrationFile, narration.bytes);
 
     const clipFiles: string[] = [];
-    if (usingRemoteScenes) {
+    if (usingHostedFilm) {
+      const remoteFile = path.join(dir, 'hosted-workflow-film.mp4');
+      fs.writeFileSync(remoteFile, await downloadRemoteAsset(hostedFilmUrl, 'Validated hosted story film'));
+      const hostedProbe = await probeStoryVideo(remoteFile);
+      if (Math.abs(hostedProbe.durationSeconds - duration) > 0.75) {
+        throw new Error(`Hosted workflow film duration validation failed (${hostedProbe.durationSeconds.toFixed(2)}s; expected ${duration}s).`);
+      }
+      const clipFile = path.join(dir, 'hosted-workflow-clip.mp4');
+      const visual = 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p';
+      const clipArgs = ['-y', '-i', remoteFile];
+      if (!hostedProbe.audioTrackPresent) {
+        clipArgs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000');
+      }
+      clipArgs.push(
+        '-vf', visual,
+        '-t', String(duration),
+        '-map', '0:v:0',
+        '-map', hostedProbe.audioTrackPresent ? '0:a:0' : '1:a:0',
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac',
+        '-ar', '48000',
+        '-ac', '2',
+        '-b:a', '96k',
+        clipFile,
+      );
+      await runFfmpeg(clipArgs);
+      clipFiles.push(clipFile);
+    } else if (usingRemoteScenes) {
       for (const [index, page] of pages.entries()) {
         const remoteFile = path.join(dir, `remote-${String(page.pageNumber).padStart(2, '0')}.mp4`);
         fs.writeFileSync(remoteFile, await downloadRemoteAsset(sceneUrls[index], `Hosted scene ${page.pageNumber}`));
@@ -594,8 +644,9 @@ async function stitchIllustrationStory(body: any): Promise<{
     characterFiles.forEach(({ file }) => audioArgs.push('-i', file));
     soundEffects.forEach(effect => audioArgs.push('-i', effect.file));
     authoredSoundEffects.forEach(effect => audioArgs.push('-i', effect.file));
-    const audioLabels = usingRemoteScenes ? ['[native]', '[music]'] : ['[music]'];
-    const filters = usingRemoteScenes
+    const preservesNativeAudio = usingRemoteScenes || usingHostedFilm;
+    const audioLabels = preservesNativeAudio ? ['[native]', '[music]'] : ['[music]'];
+    const filters = preservesNativeAudio
       ? ['[0:a]volume=0.34[native]', '[1:a]volume=0.28[music]']
       : ['[1:a]volume=0.28[music]'];
     if (narrationFile) {

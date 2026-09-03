@@ -16,8 +16,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, x-client-info',
 };
 const PAGE_COUNT = 32;
-const LEGACY_SEEDANCE_MODEL = 'bytedance/seedance-2.5/image-to-video';
-const LEGACY_SEEDANCE_QUEUE_MODEL = 'bytedance/seedance-2.5';
 const FAL_TIMEOUT_MS = 20_000;
 
 type FalStoryModel = {
@@ -28,36 +26,12 @@ type FalStoryModel = {
   expectedSeconds: number;
   resolution: '480P' | '768P';
 };
-const FAL_MINIMAX_H3_MAX_SLUG = 'minimax/h3-max/image-to-video';
-
-type MiniMaxStoryModel = {
-  provider: 'minimax';
-  slug: 'MiniMax-H3';
-  label: string;
-  description: string;
-  costLabel: string;
-  expectedSeconds: number;
-  resolution: '768P' | '2K';
-};
-
 const DEFAULT_FAL_STORY_MODELS: FalStoryModel[] = [
   {
     slug: 'minimax/h3-max/image-to-video',
     label: 'MiniMax H3 Max · 768P',
     description: 'FAL-hosted MiniMax H3 Max motion from each locked still anchor.',
     costLabel: 'Hosted H3 Max scene',
-    expectedSeconds: 120,
-    resolution: '768P',
-  },
-];
-
-const DEFAULT_MINIMAX_STORY_MODELS: MiniMaxStoryModel[] = [
-  {
-    provider: 'minimax',
-    slug: 'MiniMax-H3',
-    label: 'MiniMax H3 · 768P native audio',
-    description: 'Reference-to-video animation with native stereo ambience and movement audio.',
-    costLabel: 'Hosted H3 scene',
     expectedSeconds: 120,
     resolution: '768P',
   },
@@ -97,10 +71,6 @@ function isRetiredModel(slug: string): boolean {
 function falStoryModel(slug: unknown): FalStoryModel | null {
   const clean = safeText(slug, 180);
   return falStoryModels().find(model => model.slug === clean) ?? null;
-}
-
-function minimaxStoryModel(slug: unknown): MiniMaxStoryModel | null {
-  return DEFAULT_MINIMAX_STORY_MODELS.find(model => model.slug === safeText(slug, 180)) ?? null;
 }
 
 type StoryScene = {
@@ -200,11 +170,6 @@ type StoryJobRow = {
   updated_at: string;
 };
 
-// Rows created before the single-workflow rollout are the only rows eligible
-// for compatibility polling/retry. A newly malformed row is read-only, never
-// silently promoted into the old fan-out lane.
-const LEGACY_PER_SCENE_CUTOFF = Date.parse('2026-09-01T00:00:00.000Z');
-
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -291,26 +256,6 @@ function isReadOnlyStoryJob(row: StoryJobRow): boolean {
   return row.job_type === 'illustration-story'
     && row.provider !== 'browser-film'
     && !isSingleFalWorkflowJob(row);
-}
-
-/**
- * Compatibility boundary for rows created before the single-job workflow.
- *
- * These rows remain readable so an old story can be accounted for, but their
- * provider helpers must never be reachable from a new submission or current
- * UI action. Remove this branch once historical per-scene rows are migrated
- * to immutable read-only records or have been archived.
- */
-function isLegacyPerSceneJob(row: StoryJobRow): boolean {
-  const manifest = storyManifest(row);
-  const explicitlyLegacy = manifest.legacyPerScene === true
-    || manifest.workflowMode === 'legacy-per-scene';
-  const createdBeforeCutoff = Number.isFinite(Date.parse(row.created_at))
-    && Date.parse(row.created_at) < LEGACY_PER_SCENE_CUTOFF;
-  return row.job_type === 'illustration-story'
-    && row.provider !== 'browser-film'
-    && !isSingleFalWorkflowJob(row)
-    && (explicitlyLegacy || (manifest.workflowMode === undefined && createdBeforeCutoff));
 }
 
 function errorDetail(value: unknown): string {
@@ -715,28 +660,6 @@ function characterAudioForPage(
   return null;
 }
 
-function sceneFailure(
-  pageNumber: number,
-  detail: string,
-  fallback: string,
-): { error: string; failureKind: NonNullable<StoryScene['failureKind']> } {
-  const cleanDetail = detail || fallback;
-  if (isProviderSafetyBlock(cleanDetail)) {
-    return {
-      failureKind: 'provider-safety',
-      error: `Page ${pageNumber} was blocked by FAL's provider safety policy${detail ? `: ${detail}` : '.'} This is a page-level block; the other pages are unchanged. Retry or replace this page.`,
-    };
-  }
-  return {
-    failureKind: 'provider',
-    error: `Page ${pageNumber} failed in FAL${detail ? `: ${detail}` : `: ${fallback}`}. Retry this page without restarting successful scenes.`,
-  };
-}
-
-function isProviderSafetyBlock(detail: string): boolean {
-  return /\b(?:safety|safe(?:ty)?[-\s]?checker|moderation|likeness|identity|celebrity|face(?:[-\s]?(?:recognition|matching))?|content.{0,18}(?:blocked|flagged|policy)|blocked.{0,18}(?:content|policy|safety|likeness))\b/i.test(detail);
-}
-
 function falErrorDetail(value: Record<string, unknown>): string {
   for (const key of ['error', 'detail', 'message', 'reason', 'failure_reason']) {
     const detail = errorDetail(value[key]);
@@ -779,170 +702,6 @@ function providerStoryLanguage(value: string): string {
     .replace(/\bMario\b/gi, 'a cheerful red-capped adventurer');
 }
 
-async function createFalScene(
-  model: FalStoryModel,
-  referenceUrl: string,
-  prompt: string,
-  sessionId: string,
-  seed: number,
-): Promise<string> {
-  const isMiniMaxH3Max = model.slug === FAL_MINIMAX_H3_MAX_SLUG;
-  const requestBody = isMiniMaxH3Max
-    ? {
-      prompt: providerStoryLanguage(prompt),
-      image_url: referenceUrl,
-      duration: Math.max(5, Math.min(15, Math.round(3.75))),
-      resolution: model.resolution,
-      enable_safety_checker: true,
-      prompt_expansion_mode: 'balanced',
-      seed,
-    }
-    : {
-      prompt: providerStoryLanguage(prompt),
-      image_url: referenceUrl,
-      resolution: model.resolution,
-      num_frames: 81,
-      frames_per_second: 16,
-      aspect_ratio: '16:9',
-      enable_safety_checker: true,
-      seed,
-      end_user_id: sessionId,
-    };
-  const data = await falJson(`/${model.slug}`, {
-    method: 'POST',
-    body: JSON.stringify(requestBody),
-  });
-  const requestId = safeText(data.request_id, 180);
-  if (!requestId) throw new Error('FAL did not return a request id for this story page.');
-  return requestId;
-}
-
-async function minimaxFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const key = Deno.env.get('MINIMAX_API_KEY');
-  if (!key) throw new Error('MiniMax H3 is not configured. Add MINIMAX_API_KEY before starting this hosted story.');
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FAL_TIMEOUT_MS);
-  try {
-    const headers = new Headers(init.headers);
-    headers.set('Authorization', `Bearer ${key}`);
-    headers.set('Content-Type', 'application/json');
-    return await fetch(`https://api.minimax.io${path}`, { ...init, headers, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function minimaxJson(path: string, init: RequestInit = {}): Promise<Record<string, unknown>> {
-  const response = await minimaxFetch(path, init);
-  const raw = await response.text();
-  let data: Record<string, unknown> = {};
-  try { data = JSON.parse(raw); } catch { /* use the short raw message below */ }
-  if (!response.ok) {
-    const detail = errorDetail(data.error) || errorDetail(data) || safeText(raw, 240);
-    if (response.status === 402) {
-      throw new Error('MiniMax H3 rejected this request because the configured account is not entitled to video generation. No H3 task was created; enable H3 access on the MiniMax account before retrying.');
-    }
-    throw new Error(`MiniMax H3 ${response.status}: ${detail}`);
-  }
-  return data;
-}
-
-async function createMiniMaxScene(
-  model: MiniMaxStoryModel,
-  referenceUrl: string,
-  prompt: string,
-  referenceAudioUrl: string | null,
-  durationSeconds: number,
-): Promise<string> {
-  // MiniMax H3 accepts five to fifteen seconds; the local stitcher trims each
-  // provider clip to the story page duration after download.
-  const duration = Math.max(5, Math.min(15, Math.round(durationSeconds)));
-  const content: Array<Record<string, unknown>> = [
-    { type: 'text', text: providerStoryLanguage(prompt) },
-    {
-      type: 'image_url',
-      role: 'reference_image',
-      image_url: { url: referenceUrl },
-    },
-  ];
-  if (referenceAudioUrl) {
-    content.push({
-      type: 'audio_url',
-      role: 'reference_audio',
-      audio_url: { url: referenceAudioUrl },
-    });
-  }
-  const data = await minimaxJson('/v2/video_generation', {
-    method: 'POST',
-    body: JSON.stringify({
-      model: model.slug,
-      content,
-      resolution: model.resolution,
-      duration,
-      ratio: '16:9',
-    }),
-  });
-  const taskId = safeText(data.task_id, 180);
-  if (!taskId) throw new Error('MiniMax H3 did not return a task id for this story page.');
-  return taskId;
-}
-
-async function pollFalScene(modelSlug: string, requestId: string): Promise<{ status: StoryScene['status']; progress: number; output?: string; error?: string }> {
-  const queueModel = modelSlug === LEGACY_SEEDANCE_MODEL ? LEGACY_SEEDANCE_QUEUE_MODEL : modelSlug;
-  const status = await falJson(`/${queueModel}/requests/${encodeURIComponent(requestId)}/status`);
-  const state = safeText(status.status, 24).toUpperCase();
-  if (state === 'COMPLETED') {
-    const result = await falJson(`/${queueModel}/requests/${encodeURIComponent(requestId)}`);
-    const video = result.video && typeof result.video === 'object'
-      ? result.video as Record<string, unknown>
-      : {};
-    const output = safeUrl(video.url, 4000);
-    return output
-      ? { status: 'ready', progress: 100, output }
-      : { status: 'failed', progress: 0, error: 'FAL completed without a video URL.' };
-  }
-  if (state === 'FAILED' || state === 'ERROR') {
-    return { status: 'failed', progress: 0, error: falErrorDetail(status) || 'FAL page animation failed.' };
-  }
-  if (state === 'CANCELED' || state === 'CANCELLED') {
-    return { status: 'cancelled', progress: 0, error: 'FAL page animation was cancelled.' };
-  }
-  return { status: state === 'IN_QUEUE' ? 'queued' : 'generating', progress: state === 'IN_QUEUE' ? 8 : 38 };
-}
-
-async function pollMiniMaxScene(taskId: string): Promise<{ status: StoryScene['status']; progress: number; output?: string; error?: string }> {
-  const data = await minimaxJson(`/v2/query/video_generation/${encodeURIComponent(taskId)}`);
-  const task = data.task && typeof data.task === 'object'
-    ? data.task as Record<string, unknown>
-    : {};
-  const state = safeText(task.status, 24).toLowerCase();
-  if (state === 'succeeded') {
-    const content = task.content && typeof task.content === 'object'
-      ? task.content as Record<string, unknown>
-      : {};
-    const output = safeUrl(content.url, 4000);
-    return output
-      ? { status: 'ready', progress: 100, output }
-      : { status: 'failed', progress: 0, error: 'MiniMax H3 completed without a video URL.' };
-  }
-  if (state === 'failed') {
-    return { status: 'failed', progress: 0, error: errorDetail(task.error) || errorDetail(data.error) || 'MiniMax H3 page animation failed.' };
-  }
-  if (state === 'cancelled' || state === 'canceled') {
-    return { status: 'cancelled', progress: 0, error: 'MiniMax H3 page animation was cancelled.' };
-  }
-  return { status: state === 'queued' ? 'queued' : 'generating', progress: state === 'queued' ? 8 : 38 };
-}
-
-async function cancelFalScene(modelSlug: string, requestId: string): Promise<void> {
-  const queueModel = modelSlug === LEGACY_SEEDANCE_MODEL ? LEGACY_SEEDANCE_QUEUE_MODEL : modelSlug;
-  await falJson(`/${queueModel}/requests/${encodeURIComponent(requestId)}/cancel`, { method: 'PUT' });
-}
-
-async function cancelMiniMaxScene(taskId: string): Promise<void> {
-  await minimaxJson(`/v2/video_generation/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
-}
-
 async function uploadAsset(
   supabase: ReturnType<typeof createClient>,
   path: string,
@@ -956,19 +715,6 @@ async function uploadAsset(
   if (upload.error) throw new Error(`Story asset upload failed: ${upload.error.message}`);
   const { data } = supabase.storage.from('oracle-films').getPublicUrl(path);
   return data.publicUrl;
-}
-
-async function persistRemoteScene(
-  supabase: ReturnType<typeof createClient>,
-  jobId: string,
-  pageNumber: number,
-  outputUrl: string,
-): Promise<string> {
-  const response = await fetch(outputUrl);
-  if (!response.ok) throw new Error(`FAL page ${pageNumber} could not be downloaded (${response.status}).`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (!bytes.length) throw new Error(`FAL page ${pageNumber} returned an empty video.`);
-  return uploadAsset(supabase, `films/${jobId}/scenes/page-${String(pageNumber).padStart(2, '0')}.mp4`, bytes, 'video/mp4');
 }
 
 async function persistRemoteWorkflowFilm(
@@ -1020,36 +766,6 @@ function miniMaxStoryPrompt(page: Record<string, unknown>): string {
   ].join(' ');
 }
 
-function replacementStoryPrompt(scene: StoryScene): string {
-  return [
-    'Create a gentle, child-friendly 5-second animated storybook page using the supplied illustration only as a broad color, layout, and movement reference.',
-    'Use an original, non-identifying illustrated interpretation: do not reproduce a real person, celebrity, recognizable face, trademarked character, or exact likeness.',
-    'Preserve the page mood and simple actions, but replace any recognizable identity with abstract storybook silhouettes, friendly animals, objects, or non-identifying fictional figures.',
-    'No text, logos, photorealism, audio, face matching, or identity-preserving transformation.',
-    `This is a safe replacement for story page ${scene.pageNumber} of ${PAGE_COUNT}.`,
-  ].join(' ');
-}
-
-function sceneModelSlug(scene: StoryScene, manifest: unknown): string {
-  if (scene.modelSlug) return scene.modelSlug;
-  if (manifest && typeof manifest === 'object') {
-    const value = safeText((manifest as Record<string, unknown>).modelSlug ?? (manifest as Record<string, unknown>).visualProvider, 180);
-    if (value) return value;
-  }
-  // Old rows did not persist the model slug. This fallback only identifies
-  // readable, historical rows; new submissions cannot use this path.
-  return LEGACY_SEEDANCE_MODEL;
-}
-
-function sceneProvider(scene: StoryScene, manifest: unknown): 'fal' | 'minimax' {
-  if (scene.provider === 'minimax') return 'minimax';
-  if (scene.provider === 'fal') return 'fal';
-  if (manifest && typeof manifest === 'object') {
-    const value = safeText((manifest as Record<string, unknown>).provider, 40).toLowerCase();
-    if (value === 'minimax') return 'minimax';
-  }
-  return 'fal';
-}
 async function updateJob(
   supabase: ReturnType<typeof createClient>,
   jobId: string,
@@ -1144,125 +860,7 @@ async function pollStoryJob(
     }
   }
 
-  // The direct scene lane below is compatibility-only. Current single-job
-  // workflows and browser proofs must never fall through to provider polling.
-  if (!isLegacyPerSceneJob(current)) return current;
-
-  const scenes = sceneList(current.story_scenes);
-  const changed = await Promise.all(scenes.map(async (scene) => {
-     if (!scene.falRequestId || !['queued', 'generating'].includes(scene.status)) return scene;
-    try {
-       const next = sceneProvider(scene, current.story_manifest) === 'minimax'
-         ? await pollMiniMaxScene(scene.falRequestId)
-         : await pollFalScene(sceneModelSlug(scene, current.story_manifest), scene.falRequestId);
-      if (next.status === 'ready' && next.output) {
-        const stableUrl = await persistRemoteScene(supabase, current.id, scene.pageNumber, next.output);
-        return {
-          ...scene,
-          status: 'ready' as const,
-          progress: 100,
-          outputUrl: stableUrl,
-          error: null,
-          failureKind: null,
-          recovery: null,
-        };
-      }
-      if (next.status === 'failed') {
-         const failure = sceneFailure(
-           scene.pageNumber,
-           next.error ?? '',
-           sceneProvider(scene, current.story_manifest) === 'minimax'
-             ? 'MiniMax H3 page animation failed.'
-             : 'FAL page animation failed.',
-         );
-        return { ...scene, status: 'failed' as const, progress: 0, error: failure.error, failureKind: failure.failureKind };
-      }
-      return { ...scene, status: next.status, progress: next.progress, error: null };
-    } catch (error) {
-       const failure = sceneFailure(
-        scene.pageNumber,
-        error instanceof Error ? error.message : '',
-         sceneProvider(scene, current.story_manifest) === 'minimax'
-           ? 'MiniMax H3 page retrieval failed.'
-           : 'FAL page retrieval failed.',
-      );
-      return {
-        ...scene,
-        status: 'failed' as const,
-        progress: 0,
-        error: failure.error,
-        failureKind: failure.failureKind,
-      };
-    }
-  }));
-
-  const readyCount = changed.filter(scene => scene.status === 'ready').length;
-  const failedCount = changed.filter(scene => scene.status === 'failed').length;
-  const visualProgress = Math.round((readyCount / PAGE_COUNT) * 70);
-  const nextScenes = JSON.stringify(changed) !== JSON.stringify(scenes) ? changed : scenes;
-
-  if (failedCount > 0 && readyCount + failedCount === PAGE_COUNT) {
-    const safetyBlocked = changed.filter(scene => scene.failureKind === 'provider-safety').length;
-    return updateJob(supabase, current.id, {
-      story_scenes: nextScenes,
-      status: 'failed',
-      progress: Math.max(current.progress, 10 + visualProgress),
-      error_message: safetyBlocked
-        ? `${safetyBlocked} page${safetyBlocked === 1 ? '' : 's'} were blocked by FAL's provider safety policy. Retry or replace those pages individually; successful scenes are preserved.`
-        : `${failedCount} page animation${failedCount === 1 ? '' : 's'} failed. Retry the individual page.`,
-      story_manifest: {
-        ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
-        failureKind: safetyBlocked ? 'provider-safety' : 'provider',
-      },
-    });
-  }
-
-   if (readyCount === PAGE_COUNT && changed.every(scene => scene.outputUrl)) {
-    if (!current.music_url || !current.narration_url) {
-      return updateJob(supabase, current.id, {
-        story_scenes: changed,
-        status: 'failed',
-        progress: Math.max(current.progress, 78),
-        error_message: 'Story cannot be stitched until both the Lyria soundtrack and Gemini narration pass the audio gate.',
-        story_manifest: {
-          ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
-          failureKind: 'audio-gate',
-        },
-      });
-    }
-    return updateJob(supabase, current.id, {
-      story_scenes: changed,
-       status: 'ready',
-       progress: 100,
-       // The final MP4 is deliberately assembled by the local FFmpeg lane.
-       // Keep this null so a browser cannot mistake visual completion for a
-       // validated final deliverable.
-       final_media_url: null,
-       runpod_job_id: null,
-      error_message: null,
-      story_manifest: {
-        ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
-         visualsReady: true,
-         assembly: 'local-ffmpeg',
-        failureKind: null,
-      },
-    });
-  }
-
-  return updateJob(supabase, current.id, {
-    story_scenes: nextScenes,
-    status: 'generating',
-    progress: Math.max(current.progress, 10 + visualProgress),
-    error_message: failedCount
-      ? `${failedCount} page${failedCount === 1 ? '' : 's'} need a retry${changed.some(scene => scene.failureKind === 'provider-safety') ? ' because of a provider safety block' : ''}; remaining pages are still in the oven.`
-      : null,
-    story_manifest: {
-      ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
-      failureKind: failedCount && changed.some(scene => scene.failureKind === 'provider-safety')
-        ? 'provider-safety'
-        : failedCount ? 'provider' : null,
-    },
-  });
+  return current;
 }
 
 Deno.serve(async (req: Request) => {
@@ -1764,32 +1362,26 @@ Deno.serve(async (req: Request) => {
     const currentManifest = current.story_manifest && typeof current.story_manifest === 'object'
       ? current.story_manifest as Record<string, unknown>
       : {};
-    if (currentManifest.workflowMode === 'single-fal-workflow') {
-      const workflow = currentManifest.workflow && typeof currentManifest.workflow === 'object'
-        ? currentManifest.workflow as StoryWorkflowState
-        : null;
-      if (!workflow?.requestId) {
-        return json({
-          error: currentManifest.blockedReason
-            || 'This story is blocked before submission because the shared FAL workflow contract is unavailable. No retry was submitted.',
-          blocked: true,
-        }, 409);
-      }
-      current = await updateJob(supabase, current.id, {
-        status: 'generating',
-        error_message: null,
-      });
+    if (currentManifest.workflowMode !== 'single-fal-workflow') {
+      return json({
+        error: 'Historical per-scene story records are archived and read-only. Start a new single-job workflow instead.',
+        blocked: true,
+      }, 409);
     }
-    const scenes = sceneList(current.story_scenes);
-
-    const everyPageReady = scenes.length === PAGE_COUNT
-      && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl));
-    if (scenes.some(scene => ['queued', 'generating'].includes(scene.status))) {
-      current = await updateJob(supabase, current.id, {
-        status: 'generating',
-        error_message: null,
-      });
+    const workflow = currentManifest.workflow && typeof currentManifest.workflow === 'object'
+      ? currentManifest.workflow as StoryWorkflowState
+      : null;
+    if (!workflow?.requestId) {
+      return json({
+        error: currentManifest.blockedReason
+          || 'This story is blocked before submission because the shared FAL workflow contract is unavailable. No retry was submitted.',
+        blocked: true,
+      }, 409);
     }
+    current = await updateJob(supabase, current.id, {
+      status: 'generating',
+      error_message: null,
+    });
   }
 
   if (action === 'cancel') {
@@ -1818,177 +1410,17 @@ Deno.serve(async (req: Request) => {
       });
       return json(publicJob(current));
     }
-    if (!isLegacyPerSceneJob(current)) {
-      return json({
-        error: 'Only historical per-scene story rows may use the compatibility cancellation lane.',
-        blocked: true,
-      }, 409);
-    }
-    const scenes = sceneList(current.story_scenes);
-    await Promise.all(scenes.map(async scene => {
-      if (scene.falRequestId && ['queued', 'generating'].includes(scene.status)) {
-        try {
-          if (sceneProvider(scene, current.story_manifest) === 'minimax') {
-            await cancelMiniMaxScene(scene.falRequestId);
-          } else {
-            await cancelFalScene(sceneModelSlug(scene, current.story_manifest), scene.falRequestId);
-          }
-        } catch {
-          // Persist cancellation even if the provider has already closed the request.
-        }
-      }
-    }));
-    current = await updateJob(supabase, current.id, {
-      status: 'cancelled',
-      story_scenes: scenes.map(scene => ['queued', 'generating'].includes(scene.status)
-        ? { ...scene, status: 'cancelled', progress: 0, error: null }
-        : scene),
-      error_message: null,
-    });
-    return json(publicJob(current));
+    return json({
+      error: 'Historical per-scene story records are archived and read-only. Start a new single-job workflow instead.',
+      blocked: true,
+    }, 409);
   }
 
-  if (action === 'retry-stitch') {
-    if (!isLegacyPerSceneJob(current)) {
-      return json({
-        error: 'The current story workflow is immutable; stitch recovery must use the persisted single-job film.',
-        blocked: true,
-      }, 409);
-    }
-    const modelSlug = sceneModelSlug(sceneList(current.story_scenes)[0] ?? {} as StoryScene, current.story_manifest);
-    if (isRetiredModel(modelSlug)) {
-      return json({
-        error: 'This historical Seedance job is readable but cannot be retried. Start a new story and explicitly choose an approved FAL model.',
-        retired: true,
-      }, 409);
-    }
-    const scenes = sceneList(current.story_scenes);
-
-    const everyPageReady = scenes.length === PAGE_COUNT
-      && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl));
-    await Promise.all(scenes.map(async scene => {
-       if (scene.falRequestId && ['queued', 'generating'].includes(scene.status)) {
-          try {
-            if (sceneProvider(scene, current.story_manifest) === 'minimax') {
-              await cancelMiniMaxScene(scene.falRequestId);
-            } else {
-              await cancelFalScene(sceneModelSlug(scene, current.story_manifest), scene.falRequestId);
-            }
-          } catch { /* local state remains authoritative */ }
-      }
-    }));
-    current = await updateJob(supabase, current.id, {
-      status: 'cancelled',
-      story_scenes: scenes.map(scene => ['queued', 'generating'].includes(scene.status)
-        ? { ...scene, status: 'cancelled', progress: 0, error: null }
-        : scene),
-      error_message: null,
-    });
-    return json(publicJob(current));
-  }
-
-  if (action === 'retry' || action === 'replace') {
-    const currentManifest = current.story_manifest && typeof current.story_manifest === 'object'
-      ? current.story_manifest as Record<string, unknown>
-      : {};
-    if (currentManifest.workflowMode === 'single-fal-workflow') {
-      return json({
-        error: 'Per-page retry and replacement are disabled for the single-job FAL workflow. Ordered panel coverage must remain one immutable submission; start a new workflow instead.',
-        blocked: true,
-      }, 409);
-    }
-    if (!isLegacyPerSceneJob(current)) {
-      return json({
-        error: 'Per-page recovery is available only for historical per-scene rows. Start a new single-job workflow instead.',
-        blocked: true,
-      }, 409);
-    }
-    const pageNumber = Number(payload.pageNumber);
-    const scenes = sceneList(current.story_scenes);
-    const scene = scenes.find(item => item.pageNumber === pageNumber);
-    if (!scene || !scene.referenceUrl) {
-      return json({ error: 'That story page has no persisted panel reference to retry.' }, 400);
-    }
-    const modelSlug = sceneModelSlug(scene, current.story_manifest);
-    if (isRetiredModel(modelSlug)) {
-      return json({
-        error: 'This historical Seedance page is readable but cannot be retried automatically. Start a new story with an approved FAL model.',
-        retired: true,
-      }, 409);
-    }
-    const provider = sceneProvider(scene, current.story_manifest);
-    const model = provider === 'minimax' ? minimaxStoryModel(modelSlug) : falStoryModel(modelSlug);
-    if (!model) return json({ error: 'The saved hosted story model is no longer approved; start a new story with the current catalog.' }, 409);
-    const isReplacement = action === 'replace';
-    try {
-      const nextPrompt = isReplacement ? replacementStoryPrompt(scene) : scene.prompt;
-      const nextSeed = isReplacement ? scene.seed + 500_000 : scene.seed;
-       const requestId = provider === 'minimax'
-         ? await createMiniMaxScene(
-           model as MiniMaxStoryModel,
-           scene.referenceUrl,
-           nextPrompt,
-           scene.referenceAudioUrl,
-           Number(scene.durationSeconds),
-         )
-         : await createFalScene(model as FalStoryModel, scene.referenceUrl, nextPrompt, current.session_id, nextSeed);
-      const nextScenes = scenes.map(item => item.pageNumber === pageNumber
-        ? {
-          ...item,
-          prompt: nextPrompt,
-          seed: nextSeed,
-           modelSlug,
-            provider,
-          falRequestId: requestId,
-          status: 'generating' as const,
-          progress: 8,
-          jobId: `${provider}:${requestId}`,
-          outputUrl: null,
-          error: null,
-          failureKind: null,
-          recovery: isReplacement ? 'replace' : 'retry',
-        }
-        : item);
-      current = await updateJob(supabase, current.id, {
-        status: 'generating',
-        progress: Math.max(10, Math.round(nextScenes.filter(item => item.status === 'ready').length / PAGE_COUNT * 70)),
-        runpod_job_id: null,
-        story_scenes: nextScenes,
-        error_message: null,
-        story_manifest: {
-          ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
-          failureKind: null,
-        },
-      });
-      return json(publicJob(current), 202);
-    } catch (retryError) {
-      current = await updateJob(supabase, current.id, {
-        story_scenes: scenes.map(item => item.pageNumber === pageNumber
-          ? {
-            ...item,
-            status: 'failed',
-            progress: 0,
-            error: sceneFailure(
-              pageNumber,
-              retryError instanceof Error ? retryError.message : '',
-              'Page retry failed before FAL accepted the request.',
-            ).error,
-            failureKind: isProviderSafetyBlock(retryError instanceof Error ? retryError.message : '')
-              ? 'provider-safety' : 'provider',
-          }
-          : item),
-        status: 'failed',
-        error_message: isReplacement
-          ? 'The safe replacement page could not be submitted. Retry or replace this page again.'
-          : 'The page retry failed before FAL accepted the request.',
-        story_manifest: {
-          ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
-          failureKind: isProviderSafetyBlock(retryError instanceof Error ? retryError.message : '')
-            ? 'provider-safety' : 'provider',
-        },
-      });
-      return json(publicJob(current), 503);
-    }
+  if (action === 'retry' || action === 'replace' || action === 'retry-stitch') {
+    return json({
+      error: 'Per-scene recovery has been retired. Start a new single-job workflow instead.',
+      blocked: true,
+    }, 409);
   }
 
   if (['queued', 'generating', 'stitching'].includes(current.status)) {

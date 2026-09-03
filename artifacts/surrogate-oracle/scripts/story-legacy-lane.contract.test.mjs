@@ -5,6 +5,10 @@ const edgeSource = fs.readFileSync(
   new URL('../../../supabase/functions/oracle-story-film-job/index.ts', import.meta.url),
   'utf8',
 );
+const archiveMigration = fs.readFileSync(
+  new URL('../../../supabase/migrations/20260903000000_archive_historical_story_jobs.sql', import.meta.url),
+  'utf8',
+);
 const hookSource = fs.readFileSync(
   new URL('../src/hooks/useIllustrationStoryFilm.ts', import.meta.url),
   'utf8',
@@ -18,22 +22,25 @@ const cardSource = fs.readFileSync(
   'utf8',
 );
 
-assert.match(edgeSource, /function isLegacyPerSceneJob\(row: StoryJobRow\)/);
-assert.match(edgeSource, /LEGACY_PER_SCENE_CUTOFF/);
-assert.match(edgeSource, /manifest\.workflowMode === undefined && createdBeforeCutoff/);
 assert.match(edgeSource, /function isReadOnlyStoryJob\(row: StoryJobRow\)/);
 assert.match(edgeSource, /mode: 'legacy-per-scene-readonly'/);
-assert.match(edgeSource, /Remove this branch once historical per-scene rows are migrated/);
-
-const pollStart = edgeSource.indexOf('async function pollStoryJob(');
-const pollWorkflowStart = edgeSource.indexOf("manifest.workflowMode === 'single-fal-workflow'", pollStart);
-const pollDirectStart = edgeSource.indexOf('const scenes = sceneList(current.story_scenes);', pollWorkflowStart);
-assert.ok(pollStart >= 0 && pollDirectStart > pollStart);
-assert.match(
-  edgeSource.slice(pollWorkflowStart, pollDirectStart),
-  /if \(!isLegacyPerSceneJob\(current\)\) return current;/,
-  'provider scene polling must be behind the legacy-only guard',
-);
+assert.equal(edgeSource.includes('isLegacyPerSceneJob'), false);
+assert.equal(edgeSource.includes('LEGACY_PER_SCENE_CUTOFF'), false);
+assert.equal(edgeSource.includes('pollFalScene'), false);
+assert.equal(edgeSource.includes('pollMiniMaxScene'), false);
+assert.equal(edgeSource.includes('cancelFalScene'), false);
+assert.equal(edgeSource.includes('cancelMiniMaxScene'), false);
+assert.equal(edgeSource.includes('createFalScene'), false);
+assert.equal(edgeSource.includes('createMiniMaxScene'), false);
+assert.equal(edgeSource.includes('persistRemoteScene'), false);
+assert.equal(edgeSource.includes('replacementStoryPrompt'), false);
+assert.match(archiveMigration, /oracle_film_jobs_story_archive/);
+assert.match(archiveMigration, /created_at < timestamptz '2026-09-01T00:00:00\.000Z'/);
+assert.match(archiveMigration, /legacyPerScene.*true/);
+assert.match(archiveMigration, /workflowMode.*legacy-per-scene/);
+assert.match(archiveMigration, /INSERT INTO public\.oracle_film_jobs_story_archive/);
+assert.match(archiveMigration, /ON CONFLICT \(id\) DO NOTHING/);
+assert.match(archiveMigration, /DELETE FROM public\.oracle_film_jobs/);
 
 const createStart = edgeSource.indexOf("if (action === 'create')");
 const createEnd = edgeSource.indexOf("if (action === 'create-local')");
@@ -41,14 +48,8 @@ const createBranch = edgeSource.slice(createStart, createEnd);
 assert.equal((createBranch.match(/createFalScene\(/g) ?? []).length, 0);
 assert.equal((createBranch.match(/createMiniMaxScene\(/g) ?? []).length, 0);
 assert.match(createBranch, /createFalStoryWorkflow\(/);
-
-const retryStart = edgeSource.indexOf("if (action === 'retry' || action === 'replace')");
-const retryEnd = edgeSource.indexOf("\n  if (['queued', 'generating', 'stitching']", retryStart);
-assert.match(
-  edgeSource.slice(retryStart, retryEnd),
-  /if \(!isLegacyPerSceneJob\(current\)\)/,
-  'per-page provider recovery must reject non-legacy jobs',
-);
+assert.match(edgeSource, /Per-scene recovery has been retired/);
+assert.match(edgeSource, /Historical per-scene story records are archived and read-only/);
 
 assert.equal(hookSource.includes('retryScene'), false, 'the current hook must not expose direct per-scene submission');
 assert.equal(hookSource.includes('replaceScene'), false, 'the current hook must not expose direct per-scene replacement');
@@ -59,4 +60,4 @@ assert.match(cardSource, /onStorySceneRetry=\{storyReadOnly \? undefined : onSto
 assert.match(cardSource, /onStorySceneReplace=\{storyReadOnly \? undefined : onStorySceneReplace\}/);
 assert.match(cardSource, /Historical per-scene record · read-only/);
 
-console.log('Legacy story lane contract: historical rows are read-only in current UI and direct scene helpers stay legacy-guarded.');
+console.log('Legacy story lane contract: historical rows are read-only and direct scene helpers are retired.');

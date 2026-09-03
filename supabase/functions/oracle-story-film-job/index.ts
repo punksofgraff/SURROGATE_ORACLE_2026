@@ -6,6 +6,9 @@
  * persisted here; final audio assembly remains on the local FFmpeg lane.
  */
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+  pollFalStoryWorkflow,
+} from './polling.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -132,22 +135,6 @@ type StoryPanelManifestEntry = {
   sourceHash: string;
   referenceUrl: string | null;
   prompt: string;
-};
-
-type StoryCoverageEntry = {
-  panelId: string;
-  pageNumber: number;
-  sourceHash: string;
-  startSeconds: number;
-  endSeconds: number;
-};
-
-type StoryCoverageCertificate = {
-  version: 1;
-  panelCount: 32;
-  totalDurationSeconds: number;
-  panels: StoryCoverageEntry[];
-  audioProvenance: Record<string, unknown>;
 };
 
 type StoryWorkflowState = {
@@ -357,74 +344,6 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
     .join('');
 }
 
-function finiteNumber(value: unknown): number | null {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
-
-function coverageCertificate(
-  value: unknown,
-  panelManifest: StoryPanelManifestEntry[],
-  totalDurationSeconds: number,
-): StoryCoverageCertificate {
-  if (!value || typeof value !== 'object') {
-    throw new Error('Coverage certificate is missing; ordered panel alignment cannot be proven.');
-  }
-  const raw = value as Record<string, unknown>;
-  const version = Number(raw.version ?? 1);
-  const panels = Array.isArray(raw.panels)
-    ? raw.panels
-    : Array.isArray(raw.shots)
-      ? raw.shots
-      : [];
-  const audioProvenance = raw.audioProvenance ?? raw.audio_provenance;
-  if (version !== 1 || panels.length !== PAGE_COUNT || !audioProvenance || typeof audioProvenance !== 'object') {
-    throw new Error('Coverage certificate is incomplete; expected version 1, 32 panel ranges, and audio provenance.');
-  }
-  const expected = new Map(panelManifest.map(panel => [panel.pageNumber, panel]));
-  const normalized: StoryCoverageEntry[] = [];
-  let previousEnd = 0;
-  for (const [index, item] of panels.entries()) {
-    if (!item || typeof item !== 'object') {
-      throw new Error('Coverage certificate contains an unreadable panel entry.');
-    }
-    const rawPanel = item as Record<string, unknown>;
-    const pageNumber = Number(rawPanel.pageNumber ?? rawPanel.page_number);
-    const expectedPanel = expected.get(pageNumber);
-    const panelId = safeText(rawPanel.panelId ?? rawPanel.panel_id, 120);
-    const sourceHash = safeText(rawPanel.sourceHash ?? rawPanel.source_hash, 128).toLowerCase();
-    const startSeconds = finiteNumber(rawPanel.startSeconds ?? rawPanel.start_seconds);
-    const endSeconds = finiteNumber(rawPanel.endSeconds ?? rawPanel.end_seconds);
-    const contiguous = index === 0 || (startSeconds !== null && Math.abs(startSeconds - previousEnd) <= 0.05);
-    if (!expectedPanel || pageNumber !== index + 1 || !panelId || panelId !== expectedPanel.panelId || sourceHash !== expectedPanel.sourceHash
-      || startSeconds === null || endSeconds === null || startSeconds < -0.05
-      || endSeconds <= startSeconds || !contiguous) {
-      throw new Error('Coverage certificate has missing, duplicate, reordered, overlapping, or unverifiable panel ranges.');
-    }
-    normalized.push({
-      panelId,
-      pageNumber,
-      sourceHash,
-      startSeconds: Math.max(0, startSeconds),
-      endSeconds,
-    });
-    previousEnd = endSeconds;
-  }
-  normalized.sort((left, right) => left.pageNumber - right.pageNumber);
-  if (normalized.some((panel, index) => panel.pageNumber !== index + 1)
-    || normalized[0].startSeconds > 0.05
-    || Math.abs(normalized[normalized.length - 1].endSeconds - totalDurationSeconds) > 0.75) {
-    throw new Error('Coverage certificate does not prove contiguous 01–32 coverage for the requested duration.');
-  }
-  return {
-    version: 1,
-    panelCount: PAGE_COUNT,
-    totalDurationSeconds,
-    panels: normalized,
-    audioProvenance: { ...(audioProvenance as Record<string, unknown>) },
-  };
-}
-
 async function workflowJson(url: string, init: RequestInit = {}): Promise<Record<string, unknown>> {
   const response = await fetch(url, {
     ...init,
@@ -456,23 +375,6 @@ function workflowRequestId(data: Record<string, unknown>): string {
   return safeText(data.request_id ?? data.requestId ?? data.job_id ?? data.jobId ?? data.id, 240);
 }
 
-function workflowVideoUrl(data: Record<string, unknown>): string {
-  const video = data.video && typeof data.video === 'object'
-    ? data.video as Record<string, unknown>
-    : {};
-  return safeUrl(
-    data.output_url ?? data.outputUrl ?? data.final_media_url ?? data.finalMediaUrl ?? video.url,
-    4000,
-  );
-}
-
-function workflowCertificate(data: Record<string, unknown>): unknown {
-  return data.coverage_certificate ?? data.coverageCertificate
-    ?? (data.result && typeof data.result === 'object'
-      ? workflowCertificate(data.result as Record<string, unknown>)
-      : null);
-}
-
 async function createFalStoryWorkflow(
   endpoint: string,
   payload: Record<string, unknown>,
@@ -497,43 +399,6 @@ async function createFalStoryWorkflow(
   };
 }
 
-async function pollFalStoryWorkflow(
-  workflow: StoryWorkflowState,
-  panelManifest: StoryPanelManifestEntry[],
-  totalDurationSeconds: number,
-): Promise<{ status: StoryScene['status']; progress: number; output?: string; certificate?: StoryCoverageCertificate; error?: string }> {
-  const status = await workflowJson(workflow.statusUrl);
-  const state = safeText(status.status ?? status.state, 32).toUpperCase();
-  if (['FAILED', 'ERROR'].includes(state)) {
-    return { status: 'failed', progress: 0, error: errorDetail(status.error ?? status.detail) || 'Shared FAL story workflow failed.' };
-  }
-  if (['CANCELED', 'CANCELLED'].includes(state)) {
-    return { status: 'cancelled', progress: 0, error: 'Shared FAL story workflow was cancelled.' };
-  }
-  if (!['COMPLETED', 'SUCCEEDED', 'SUCCESS'].includes(state)) {
-    return {
-      status: state === 'IN_QUEUE' || state === 'QUEUED' ? 'queued' : 'generating',
-      progress: state === 'IN_QUEUE' || state === 'QUEUED' ? 8 : 45,
-    };
-  }
-  const result = await workflowJson(workflow.responseUrl);
-  const output = workflowVideoUrl(result);
-  if (!output) return { status: 'failed', progress: 0, error: 'Shared FAL story workflow completed without a video URL.' };
-  try {
-    return {
-      status: 'ready',
-      progress: 100,
-      output,
-      certificate: coverageCertificate(workflowCertificate(result), panelManifest, totalDurationSeconds),
-    };
-  } catch (error) {
-    return {
-      status: 'failed',
-      progress: 0,
-      error: error instanceof Error ? error.message : 'Coverage certificate validation failed.',
-    };
-  }
-}
 function publicJob(row: StoryJobRow) {
   const scenes = sceneList(row.story_scenes);
   const manifest = row.story_manifest && typeof row.story_manifest === 'object'
@@ -1218,7 +1083,7 @@ async function pollStoryJob(
     const panelManifest = panelManifestList(manifest.panelManifest);
     const totalDurationSeconds = Number(manifest.totalDurationSeconds);
     try {
-      const next = await pollFalStoryWorkflow(workflow, panelManifest, totalDurationSeconds);
+      const next = await pollFalStoryWorkflow(workflow, panelManifest, totalDurationSeconds, workflowJson);
       if (next.status === 'ready' && next.output && next.certificate) {
         const stableUrl = await persistRemoteWorkflowFilm(supabase, current.id, next.output);
         const scenes = sceneList(current.story_scenes).map(scene => ({

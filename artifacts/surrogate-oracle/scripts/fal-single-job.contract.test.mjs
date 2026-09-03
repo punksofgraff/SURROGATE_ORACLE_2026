@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import pollingModule from '../../../supabase/functions/oracle-story-film-job/polling.ts';
+
+const { pollFalStoryWorkflow } = pollingModule;
 
 const functionSource = await readFile(
   join(new URL('../../../supabase/functions/oracle-story-film-job/index.ts', import.meta.url).pathname),
+  'utf8',
+);
+const pollingSource = await readFile(
+  join(new URL('../../../supabase/functions/oracle-story-film-job/polling.ts', import.meta.url).pathname),
   'utf8',
 );
 const createStart = functionSource.indexOf("if (action === 'create')");
@@ -28,61 +35,136 @@ assert.equal(
 );
 assert.match(createBranch, /panel_manifest:\s*persistedPanelManifest/);
 assert.match(createBranch, /submissionCount:\s*1/);
-assert.match(functionSource, /missing, duplicate, reordered, overlapping, or unverifiable panel ranges/);
+assert.match(pollingSource, /missing, duplicate, reordered, overlapping, or unverifiable panel ranges/);
 
 const PAGE_COUNT = 32;
 const DURATION = 120;
-const expected = Array.from({ length: PAGE_COUNT }, (_, index) => ({
-  panelId: `panel-${index + 1}`,
+const workflow = {
+  requestId: 'fal-story-request-346',
+  statusUrl: 'https://fal.example.test/queue/fal-story-request-346/status',
+  responseUrl: 'https://fal.example.test/queue/fal-story-request-346/response',
+};
+const panelManifest = Array.from({ length: PAGE_COUNT }, (_, index) => ({
+  panelId: `sheet-${index < 16 ? 1 : 2}-r${Math.floor((index % 16) / 4) + 1}-c${(index % 4) + 1}`,
   pageNumber: index + 1,
-  sourceHash: `hash-${index + 1}`,
+  sourceHash: `a${String(index + 1).padStart(63, '0')}`,
 }));
 
-function validateCoverageCertificate(certificate) {
-  assert.equal(certificate?.version, 1);
-  assert.equal(certificate?.panelCount, PAGE_COUNT);
-  assert.equal(Array.isArray(certificate?.panels), true);
-  assert.equal(certificate.panels.length, PAGE_COUNT);
-  assert.equal(typeof certificate.audioProvenance, 'object');
-  let previousEnd = 0;
-  for (const [index, panel] of certificate.panels.entries()) {
-    const source = expected[index];
-    assert.equal(panel.pageNumber, index + 1);
-    assert.equal(panel.panelId, source.panelId);
-    assert.equal(panel.sourceHash, source.sourceHash);
-    assert.ok(panel.startSeconds >= previousEnd - 0.05);
-    assert.ok(index === 0 || Math.abs(panel.startSeconds - previousEnd) <= 0.05);
-    assert.ok(panel.endSeconds > panel.startSeconds);
-    previousEnd = panel.endSeconds;
-  }
-  assert.ok(certificate.panels[0].startSeconds <= 0.05);
-  assert.ok(Math.abs(previousEnd - DURATION) <= 0.75);
+function providerCertificate() {
+  return {
+    version: 1,
+    audio_provenance: { narration: 'persisted', music: 'persisted', nativeSceneAudio: false },
+    shots: panelManifest.map((panel, index) => ({
+      panel_id: panel.panelId,
+      page_number: panel.pageNumber,
+      source_hash: panel.sourceHash.toUpperCase(),
+      start_seconds: index * 3.75,
+      end_seconds: (index + 1) * 3.75,
+    })),
+  };
 }
 
-const valid = {
-  version: 1,
-  panelCount: PAGE_COUNT,
-  totalDurationSeconds: DURATION,
-  audioProvenance: { narration: 'persisted', music: 'persisted', nativeSceneAudio: false },
-  panels: expected.map((panel, index) => ({
-    ...panel,
-    startSeconds: index * 3.75,
-    endSeconds: (index + 1) * 3.75,
-  })),
+function providerFixture({ status, response } = {}) {
+  const calls = [];
+  return {
+    calls,
+    request: async (url) => {
+      calls.push(url);
+      if (url === workflow.statusUrl) return structuredClone(status);
+      if (url === workflow.responseUrl) return structuredClone(response);
+      throw new Error(`unexpected provider URL: ${url}`);
+    },
+  };
+}
+
+const queuedProvider = providerFixture({
+  status: { state: 'IN_QUEUE', request_id: workflow.requestId },
+});
+const queued = await pollFalStoryWorkflow(workflow, panelManifest, DURATION, queuedProvider.request);
+assert.deepEqual(queued, { status: 'queued', progress: 8 });
+assert.deepEqual(queuedProvider.calls, [workflow.statusUrl], 'queued polling must not fetch a response body');
+
+const completedProvider = providerFixture({
+  status: { status: 'SUCCEEDED', requestId: workflow.requestId },
+  response: {
+    requestId: workflow.requestId,
+    video: { url: 'https://fal.example.test/results/story-film.mp4' },
+    result: {
+      coverage_certificate: providerCertificate(),
+    },
+  },
+});
+const completed = await pollFalStoryWorkflow(workflow, panelManifest, DURATION, completedProvider.request);
+assert.equal(completed.status, 'ready', completed.error);
+assert.equal(completed.progress, 100);
+assert.equal(completed.output, 'https://fal.example.test/results/story-film.mp4');
+assert.equal(completed.certificate.panels.length, PAGE_COUNT);
+assert.deepEqual(completedProvider.calls, [workflow.statusUrl, workflow.responseUrl]);
+
+// A valid workflow completion is persisted as one hosted film. Every scene
+// points at that one film, while the manifest retains one coverage certificate.
+const stableHostedFilm = 'https://storage.example.test/films/job-346/hosted-workflow.mp4';
+const persisted = {
+  final_media_url: stableHostedFilm,
+  story_scenes: panelManifest.map(panel => ({ pageNumber: panel.pageNumber, outputUrl: stableHostedFilm })),
+  story_manifest: { coverageCertificate: completed.certificate },
 };
-validateCoverageCertificate(valid);
+assert.equal(new Set(persisted.story_scenes.map(scene => scene.outputUrl)).size, 1);
+assert.equal(persisted.final_media_url, stableHostedFilm);
+assert.deepEqual(persisted.story_manifest.coverageCertificate, completed.certificate);
+assert.match(functionSource, /final_media_url: stableUrl/);
+assert.match(functionSource, /coverageCertificate: next\.certificate/);
+
+async function assertFailedFixture(label, fixture) {
+  const result = await pollFalStoryWorkflow(workflow, panelManifest, DURATION, fixture.request);
+  assert.equal(result.status, 'failed', `${label} must fail closed`);
+  assert.equal(result.progress, 0, `${label} must not report partial progress`);
+  assert.match(result.error ?? '', /request|video URL|certificate|coverage|panel|ranges/i, label);
+}
+
+await assertFailedFixture('missing output', providerFixture({
+  status: { state: 'COMPLETED', request_id: workflow.requestId },
+  response: { request_id: workflow.requestId, result: { coverage_certificate: providerCertificate() } },
+}));
+
+await assertFailedFixture('stale status request identity', providerFixture({
+  status: { state: 'COMPLETED', request_id: 'stale-fal-request' },
+  response: { request_id: workflow.requestId, output_url: stableHostedFilm, coverageCertificate: providerCertificate() },
+}));
+
+await assertFailedFixture('stale completed response identity', providerFixture({
+  status: { state: 'COMPLETED', request_id: workflow.requestId },
+  response: { job_id: 'stale-fal-request', output_url: stableHostedFilm, coverageCertificate: providerCertificate() },
+}));
+
+const cancelledProvider = providerFixture({
+  status: { status: 'CANCELLED', requestId: workflow.requestId },
+});
+const cancelled = await pollFalStoryWorkflow(workflow, panelManifest, DURATION, cancelledProvider.request);
+assert.deepEqual(cancelled, {
+  status: 'cancelled',
+  progress: 0,
+  error: 'Shared FAL story workflow was cancelled.',
+});
 
 for (const [label, mutate] of [
-  ['missing panel', certificate => certificate.panels.pop()],
-  ['duplicate panel', certificate => { certificate.panels[1] = { ...certificate.panels[0], startSeconds: 3.75, endSeconds: 7.5 }; }],
-  ['reordered panel', certificate => { [certificate.panels[0], certificate.panels[1]] = [certificate.panels[1], certificate.panels[0]]; }],
-  ['overlapping panel', certificate => { certificate.panels[4].startSeconds = 14.7; }],
-  ['gapped panel', certificate => { certificate.panels[4].startSeconds = 15.2; }],
-  ['unverifiable source', certificate => { certificate.panels[8].sourceHash = 'wrong-hash'; }],
+  ['missing panel', certificate => certificate.shots.pop()],
+  ['duplicate panel', certificate => { certificate.shots[1] = { ...certificate.shots[0], page_number: 1, start_seconds: 3.75, end_seconds: 7.5 }; }],
+  ['reordered panel', certificate => { [certificate.shots[0], certificate.shots[1]] = [certificate.shots[1], certificate.shots[0]]; }],
+  ['overlapping panel', certificate => { certificate.shots[4].start_seconds = 14.7; }],
+  ['gapped panel', certificate => { certificate.shots[4].start_seconds = 15.2; }],
+  ['wrong hash', certificate => { certificate.shots[8].source_hash = 'wrong-hash'; }],
 ]) {
-  const invalid = structuredClone(valid);
-  mutate(invalid);
-  assert.throws(() => validateCoverageCertificate(invalid), label);
+  const certificate = providerCertificate();
+  mutate(certificate);
+  await assertFailedFixture(label, providerFixture({
+    status: { state: 'SUCCESS', request_id: workflow.requestId },
+    response: {
+      request_id: workflow.requestId,
+      outputUrl: stableHostedFilm,
+      result: { coverageCertificate: certificate },
+    },
+  }));
 }
 
-console.log('FAL single-job contract: one submission path and strict 32-panel certificate checks passed.');
+console.log('FAL single-job contract: provider-shaped polling, fail-closed certificates, and one-film persistence passed.');

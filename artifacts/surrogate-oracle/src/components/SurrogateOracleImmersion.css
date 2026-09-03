@@ -1098,16 +1098,14 @@
 
 .oracle-stage[data-oracle-state="oracle"] .oracle-cabinet {
   animation: cabinet-breathe 4s ease-in-out infinite;
-  border-color: rgba(0,255,136,0.6);
-  padding: 8px;
-  border-radius: 16px;
-  background: rgba(0,10,25,0.75);
-  box-shadow:
-    0 0 15px rgba(0,255,136,0.4),
-    0 0 35px rgba(0,255,136,0.15),
-    inset 0 0 20px rgba(0,255,136,0.10),
-    inset 0 0 45px rgba(0,0,0,0.7);
-  border-width: 2px;
+  /* The cabinet is only the origin point now. The living field must not
+     inherit a CRT/card surface behind it. */
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 /* ── Monitor Cast Halo — screen-level CRT bloom only ─────────────────────────
@@ -6194,7 +6192,22 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 /* ── Depth frame: slightly more present in oracle mode ──────────────────────
    The CRT border adds just enough frame to feel contained in the alley.      */
 .oracle-stage[data-oracle-state="oracle"] .oracle-depth-frame {
-  opacity: 0.35 !important;
+  border: none !important;
+  border-image: none !important;
+  box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.34) !important;
+  opacity: 0.18 !important;
+}
+
+/* The warm-up portrait has a solid white background. The entrance selector
+   appears later in this stylesheet and used to win with !important, leaving
+   the portrait visible as a large rectangular card during fracture recovery.
+   Once Oracle mode begins, only the transparent living surface is allowed. */
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-static,
+.oracle-stage[data-oracle-state="oracle"][data-oracle-entrance="warming"] .oracle-avatar-static,
+.oracle-stage[data-oracle-state="oracle"][data-oracle-entrance="live"] .oracle-avatar-static {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  animation: none !important;
 }
 
 /* ── Monitor cast halo: stronger when Oracle speaks ─────────────────────────

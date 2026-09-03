@@ -23,8 +23,9 @@ type FalStoryModel = {
   description: string;
   costLabel: string;
   expectedSeconds: number;
-  resolution: '480p' | '720p';
+  resolution: '480P' | '768P';
 };
+const FAL_MINIMAX_H3_MAX_SLUG = 'minimax/h3-max/image-to-video';
 
 type MiniMaxStoryModel = {
   provider: 'minimax';
@@ -38,20 +39,12 @@ type MiniMaxStoryModel = {
 
 const DEFAULT_FAL_STORY_MODELS: FalStoryModel[] = [
   {
-    slug: 'fal-ai/wan-i2v',
-    label: 'Wan 2.1 I2V · 480p',
-    description: 'Lowest-cost short motion from each locked still anchor.',
-    costLabel: '$0.20 / scene at 480p',
-    expectedSeconds: 60,
-    resolution: '480p',
-  },
-  {
-    slug: 'fal-ai/wan-pro/image-to-video',
-    label: 'Wan Pro I2V',
-    description: 'Higher-fidelity motion for a deliberately premium pass.',
-    costLabel: 'Higher-cost premium scene',
-    expectedSeconds: 180,
-    resolution: '720p',
+    slug: 'minimax/h3-max/image-to-video',
+    label: 'MiniMax H3 Max · 768P',
+    description: 'FAL-hosted MiniMax H3 Max motion from each locked still anchor.',
+    costLabel: 'Hosted H3 Max scene',
+    expectedSeconds: 120,
+    resolution: '768P',
   },
 ];
 
@@ -77,8 +70,8 @@ function falStoryModels(): FalStoryModel[] {
       if (!item || typeof item !== 'object') return [];
       const model = item as Record<string, unknown>;
       const slug = safeText(model.slug, 180);
-      const resolution = model.resolution === '720p' ? '720p' : '480p';
-      if (!slug || isRetiredModel(slug)) return [];
+      const resolution = model.resolution === '480P' ? '480P' : '768P';
+      if (!slug || isRetiredModel(slug) || slug !== FAL_MINIMAX_H3_MAX_SLUG) return [];
       return [{
         slug,
         label: safeText(model.label, 100) || slug,
@@ -592,9 +585,18 @@ async function createFalScene(
   sessionId: string,
   seed: number,
 ): Promise<string> {
-  const data = await falJson(`/${model.slug}`, {
-    method: 'POST',
-    body: JSON.stringify({
+  const isMiniMaxH3Max = model.slug === FAL_MINIMAX_H3_MAX_SLUG;
+  const requestBody = isMiniMaxH3Max
+    ? {
+      prompt: providerStoryLanguage(prompt),
+      image_url: referenceUrl,
+      duration: Math.max(5, Math.min(15, Math.round(3.75))),
+      resolution: model.resolution,
+      enable_safety_checker: true,
+      prompt_expansion_mode: 'balanced',
+      seed,
+    }
+    : {
       prompt: providerStoryLanguage(prompt),
       image_url: referenceUrl,
       resolution: model.resolution,
@@ -604,7 +606,10 @@ async function createFalScene(
       enable_safety_checker: true,
       seed,
       end_user_id: sessionId,
-    }),
+    };
+  const data = await falJson(`/${model.slug}`, {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
   });
   const requestId = safeText(data.request_id, 180);
   if (!requestId) throw new Error('FAL did not return a request id for this story page.');

@@ -87,19 +87,11 @@ export type IllustrationStoryModelOption = {
 // narrow/replace this catalog with FAL_STORY_MODEL_CATALOG.
 export const ILLUSTRATION_STORY_FAL_MODELS: IllustrationStoryModelOption[] = [
   {
-    slug: 'fal-ai/wan-i2v',
-    label: 'Wan 2.1 I2V · 480p',
-    description: 'Lowest-cost short motion from each locked still anchor.',
-    costLabel: '$0.20 / scene at 480p',
-    expectedSeconds: 60,
-    provider: 'fal',
-  },
-  {
-    slug: 'fal-ai/wan-pro/image-to-video',
-    label: 'Wan Pro I2V',
-    description: 'Higher-fidelity motion for a deliberately premium pass.',
-    costLabel: 'Higher-cost premium scene',
-    expectedSeconds: 180,
+    slug: 'minimax/h3-max/image-to-video',
+    label: 'MiniMax H3 Max · 768P',
+    description: 'FAL-hosted MiniMax H3 Max motion from each locked still anchor.',
+    costLabel: 'Hosted H3 Max scene',
+    expectedSeconds: 120,
     provider: 'fal',
   },
 ];

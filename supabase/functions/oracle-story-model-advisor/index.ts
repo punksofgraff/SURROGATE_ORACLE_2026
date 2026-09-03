@@ -13,9 +13,9 @@ const corsHeaders = {
 
 const GEMINI_MODEL = 'gemini-3.7-flash';
 const GEMINI_REST_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const FAL_MINIMAX_H3_MAX_SLUG = 'minimax/h3-max/image-to-video';
 const FALLBACK_MODELS = [
-  { slug: 'fal-ai/wan-i2v', label: 'Wan 2.1 I2V · 480p', description: 'Lowest-cost short motion from each locked still anchor.', costLabel: '$0.20 / scene at 480p' },
-  { slug: 'fal-ai/wan-pro/image-to-video', label: 'Wan Pro I2V', description: 'Higher-fidelity motion for a deliberately premium pass.', costLabel: 'Higher-cost premium scene' },
+  { slug: FAL_MINIMAX_H3_MAX_SLUG, label: 'MiniMax H3 Max · 768P', description: 'FAL-hosted MiniMax H3 Max motion from each locked still anchor.', costLabel: 'Hosted H3 Max scene' },
 ];
 
 function json(body: unknown, status = 200): Response {
@@ -41,7 +41,7 @@ function approvedModels(): typeof FALLBACK_MODELS {
       if (!item || typeof item !== 'object') return [];
       const record = item as Record<string, unknown>;
       const slug = cleanText(record.slug, 180);
-      if (!slug || /seedance/i.test(slug)) return [];
+       if (!slug || /seedance/i.test(slug) || slug !== FAL_MINIMAX_H3_MAX_SLUG) return [];
       return [{
         slug,
         label: cleanText(record.label, 100) || slug,

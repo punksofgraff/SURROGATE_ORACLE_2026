@@ -1657,7 +1657,10 @@ export function SurrogateOracleImmersion() {
 
   const portrait = usePortraitPipeline({ currentUserId, userEmail, currentSessionId, onPortraitGenerated: handlePortraitGenerated });
   const oracleFilm = useOracleFilm(currentSessionId);
-  const illustrationStoryFilm = useIllustrationStoryFilm(currentSessionId);
+  const illustrationStoryFilm = useIllustrationStoryFilm(
+    currentSessionId,
+    currentUserId ?? ipAddress ?? seekerKeyRef.current,
+  );
 
   const persistSeriesArtifact = useCallback((artifact: CreativeArtifact | null) => {
     if (!artifact?.seriesManifest || typeof window === 'undefined') return;
@@ -1820,10 +1823,12 @@ export function SurrogateOracleImmersion() {
         ...restored,
         id: `story-artifact-${job.id}`,
         requestId: `story-job-${job.id}`,
-        status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
+        status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled'
+          : job.review?.approvedAt ? 'ready' : job.finalMediaUrl ? 'partial' : 'generating',
         progress: job.progress,
         outputUrl: job.finalMediaUrl,
         outputLabel: job.finalMediaUrl ? 'Unreviewed 32-page studio render · MP4' : undefined,
+        reviewManifest: job.reviewManifest ?? undefined,
         error: job.error,
         metadata: {
           ...(restored.metadata ?? {}),
@@ -1834,6 +1839,15 @@ export function SurrogateOracleImmersion() {
           storyModelSlug: job.modelSlug,
           ...(job.review ? { studioReviewState: job.review } : {}),
           ...(job.reviewRejections ? { reviewRejections: job.reviewRejections } : {}),
+          ...(job.review?.approvedAt
+            ? {
+              studioReview: {
+                status: 'approved',
+                reviewedAt: job.review.approvedAt,
+                method: job.review.method ?? 'manual-watch-and-listen',
+              },
+            }
+            : {}),
            storyStage: job.status === 'ready'
              ? 'visual scenes ready · local FFmpeg assembly pending'
             : `${job.scenes.filter(scene => scene.status === 'ready').length}/32 pages ready · ${job.scenes.filter(scene => scene.status === 'failed').length} page recovery item(s)`,
@@ -1846,7 +1860,8 @@ export function SurrogateOracleImmersion() {
       return;
     }
     updateCreativeArtifact(artifact.id, {
-        status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : job.finalMediaUrl ? 'partial' : 'generating',
+        status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled'
+          : job.review?.approvedAt ? 'ready' : job.finalMediaUrl ? 'partial' : 'generating',
       progress: job.progress,
        outputUrl: job.finalMediaUrl ?? (job.status === 'ready' ? null : artifact.outputUrl),
         outputLabel: job.finalMediaUrl ? 'Unreviewed 32-page studio render · MP4' : artifact.outputLabel,
@@ -1857,9 +1872,11 @@ export function SurrogateOracleImmersion() {
          : job.provider === 'retired-fal'
            ? 'Historical FAL job · retry disabled'
            : `FAL / ${job.modelSlug ?? 'approved model'} · local assembly`,
-      ...(job.review && artifact.reviewManifest
-        ? { reviewManifest: { ...artifact.reviewManifest, review: job.review } }
-        : {}),
+       ...(job.reviewManifest
+         ? { reviewManifest: job.reviewManifest }
+         : job.review && artifact.reviewManifest
+           ? { reviewManifest: { ...artifact.reviewManifest, review: job.review } }
+           : {}),
       metadata: {
         ...(artifact.metadata ?? {}),
         storyScenes: job.scenes,
@@ -1869,6 +1886,15 @@ export function SurrogateOracleImmersion() {
         storyModelSlug: job.provider === 'minimax' ? job.modelSlug : artifact.metadata?.storyModelSlug,
         ...(job.review ? { studioReviewState: job.review } : {}),
         ...(job.reviewRejections ? { reviewRejections: job.reviewRejections } : {}),
+        ...(job.review?.approvedAt
+          ? {
+            studioReview: {
+              status: 'approved',
+              reviewedAt: job.review.approvedAt,
+              method: job.review.method ?? 'manual-watch-and-listen',
+            },
+          }
+          : {}),
           storyStage: job.status === 'ready' && !job.finalMediaUrl
            ? 'visual scenes ready · local FFmpeg assembly pending'
            : job.status === 'ready' && job.finalMediaUrl

@@ -43,7 +43,7 @@ export type IllustrationStorySceneState = {
 
 export type IllustrationStoryFilmJob = {
   id: string;
-  provider: 'fal' | 'minimax' | 'retired-fal';
+  provider: 'fal' | 'minimax' | 'browser-film' | 'retired-fal';
   modelSlug?: string | null;
   kind: 'illustration-story';
   status: 'queued' | 'generating' | 'stitching' | 'ready' | 'failed' | 'cancelled';
@@ -73,6 +73,7 @@ export type IllustrationStoryFilmJob = {
   };
   review?: IllustrationStoryReviewState;
   reviewRejections?: IllustrationStoryReviewRejection[];
+  reviewManifest?: IllustrationStoryReviewManifest | null;
 };
 
 export type IllustrationStoryFilmResult = {
@@ -378,6 +379,12 @@ async function readLocalStitchResponse(
   localObjectUrlRef: React.MutableRefObject<string | null>,
   audioManifest: IllustrationStoryReviewAudioSource[] = [],
   scenes = [] as IllustrationStoryScene[],
+  persistAssembly?: (
+    blob: Blob,
+    reviewManifest: IllustrationStoryReviewManifest,
+    pageCount: number,
+    durationSeconds: number,
+  ) => Promise<IllustrationStoryReviewManifest>,
 ): Promise<IllustrationStoryFilmResult> {
   const validatedPageCount = Number(response.headers.get('X-Story-Page-Count'));
   const validatedDuration = Number(response.headers.get('X-Story-Duration'));
@@ -406,8 +413,17 @@ async function readLocalStitchResponse(
         : 'No generated story narration',
       soundEffectsCount: soundEffectsMixed,
     });
+  const localReviewManifest = createIllustrationStoryReviewManifest(
+    pages,
+    scenes,
+    localObjectUrlRef.current,
+    resolvedAudioManifest,
+  );
+  const reviewManifest = persistAssembly
+    ? await persistAssembly(blob, localReviewManifest, pages.length, validatedDuration)
+    : localReviewManifest;
   return {
-    url: localObjectUrlRef.current,
+    url: reviewManifest.finalMediaUrl ?? localObjectUrlRef.current,
     mediaType: 'video/mp4',
     pageCount: pages.length,
     durationSeconds: validatedDuration,
@@ -415,16 +431,14 @@ async function readLocalStitchResponse(
     soundEffectsMixed,
     characterTimingApplied: Number(response.headers.get('X-Story-Character-Timing') || 0),
     audioManifest: resolvedAudioManifest,
-    reviewManifest: createIllustrationStoryReviewManifest(
-      pages,
-      scenes,
-      localObjectUrlRef.current,
-      resolvedAudioManifest,
-    ),
+    reviewManifest,
   };
 }
 
-export function useIllustrationStoryFilm(sessionId?: string | null) {
+export function useIllustrationStoryFilm(
+  sessionId?: string | null,
+  ownerKey?: string | null,
+) {
   const [job, setJob] = useState<IllustrationStoryFilmJob | null>(null);
   const jobRef = useRef<IllustrationStoryFilmJob | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -433,6 +447,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
   const activeJobIdRef = useRef<string | null>(null);
   const pollingRef = useRef(false);
   const reviewPersistenceRef = useRef<Promise<void>>(Promise.resolve());
+  const stableOwnerKey = ownerKey || sessionId || 'anonymous-story-session';
 
   const publish = useCallback((next: IllustrationStoryFilmJob, listener?: StoryJobListener) => {
     jobRef.current = next;
@@ -445,14 +460,46 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
 
   const poll = useCallback(async (jobId: string, listener?: StoryJobListener) => {
     const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
-      body: { action: 'status', jobId },
+      body: { action: 'status', jobId, ownerKey: stableOwnerKey },
     });
     if (error) throw error;
     if (!data?.id) throw new Error('Story film status returned no job.');
     const next = data as IllustrationStoryFilmJob;
     publish(next, listener);
     return next;
-  }, [publish]);
+  }, [publish, stableOwnerKey]);
+
+  const persistAssembly = useCallback(async (
+    blob: Blob,
+    reviewManifest: IllustrationStoryReviewManifest,
+    pageCount: number,
+    durationSeconds: number,
+  ): Promise<IllustrationStoryReviewManifest> => {
+    const currentId = activeJobIdRef.current ?? jobRef.current?.id;
+    if (!currentId) throw new Error('There is no saved story film job to persist.');
+    const mediaBase64 = toBase64(new Uint8Array(await blob.arrayBuffer()));
+    const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
+      body: {
+        action: 'persist-assembly',
+        jobId: currentId,
+        ownerKey: stableOwnerKey,
+        mediaBase64,
+        pageCount,
+        durationSeconds,
+        reviewManifest,
+      },
+    });
+    if (error) throw new Error(`Story film persistence failed: ${error.message}`);
+    if (!data?.id || !data.finalMediaUrl) {
+      throw new Error(data?.error || 'Story film persistence returned no durable media URL.');
+    }
+    const next = data as IllustrationStoryFilmJob;
+    publish(next);
+    return (next.reviewManifest ?? {
+      ...reviewManifest,
+      finalMediaUrl: next.finalMediaUrl,
+    }) as IllustrationStoryReviewManifest;
+  }, [publish, stableOwnerKey]);
 
   const waitForCompletion = useCallback(async (jobId: string, listener?: StoryJobListener) => {
     if (pollingRef.current) return jobRef.current;
@@ -505,6 +552,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       body: {
         action: 'create',
         sessionId: sessionId ?? 'anonymous-story-session',
+        ownerKey: stableOwnerKey,
           provider: model.provider ?? 'fal',
          modelSlug: model.slug,
          confirmed: true,
@@ -561,7 +609,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
         durationSeconds: pages.reduce((sum, page) => sum + page.durationSeconds, 0),
         narrationAvailable: true,
         audioManifest: hostedAudioManifest,
-        reviewManifest: createIllustrationStoryReviewManifest(
+        reviewManifest: complete.reviewManifest ?? createIllustrationStoryReviewManifest(
           pages,
           complete.scenes,
           complete.finalMediaUrl,
@@ -601,8 +649,9 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       localObjectUrlRef,
       hostedAudioManifest,
       complete.scenes,
+      persistAssembly,
     );
-  }, [publish, sessionId, waitForCompletion]);
+  }, [persistAssembly, publish, sessionId, stableOwnerKey, waitForCompletion]);
 
   const retryScene = useCallback(async (
     pageNumber: number,
@@ -613,7 +662,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     const currentId = activeJobIdRef.current ?? jobRef.current?.id;
     if (!currentId) throw new Error('There is no saved story film job to retry.');
     const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
-      body: { action: mode, jobId: currentId, pageNumber },
+      body: { action: mode, jobId: currentId, pageNumber, ownerKey: stableOwnerKey },
     });
     if (error) throw error;
     if (!data?.id) throw new Error(data?.error || 'Story page retry returned no job.');
@@ -624,7 +673,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       onJob?.(next);
     });
     return complete;
-  }, [publish, waitForCompletion]);
+  }, [publish, stableOwnerKey, waitForCompletion]);
 
   const replaceScene = useCallback(async (
     pageNumber: number,
@@ -639,7 +688,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     const currentId = activeJobIdRef.current ?? jobRef.current?.id;
     if (!currentId) throw new Error('There is no saved story film job to assemble.');
     const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
-      body: { action: 'retry-stitch', jobId: currentId },
+      body: { action: 'retry-stitch', jobId: currentId, ownerKey: stableOwnerKey },
     });
     if (error) throw error;
     if (!data?.id) throw new Error(data?.error || 'Story stitch retry returned no job.');
@@ -649,7 +698,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       onProgress?.(next.progress);
       onJob?.(next);
     });
-  }, [publish, waitForCompletion]);
+  }, [publish, stableOwnerKey, waitForCompletion]);
 
   const recoverAssembly = useCallback(async (
     pages: IllustrationStoryPage[],
@@ -721,8 +770,9 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       localObjectUrlRef,
       recoveredAudioManifest,
       orderedScenes,
+      persistAssembly,
     );
-  }, []);
+  }, [persistAssembly]);
 
   const renderLocalStory = useCallback(async (
     sheetUrls: [string, string],
@@ -746,6 +796,24 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     const narrationBundle = await createNarrationAudio(pages, sessionId ?? 'anonymous-story-session');
     if (controller.signal.aborted) throw new Error('Story film render cancelled.');
     onProgress?.(30);
+
+    const { data: localJobData, error: localJobError } = await supabase.functions.invoke('oracle-story-film-job', {
+      body: {
+        action: 'create-local',
+        sessionId: sessionId ?? 'anonymous-story-session',
+        ownerKey: stableOwnerKey,
+        pages,
+        musicBase64: music.base64,
+        musicMimeType: music.mimeType,
+        narrationBase64: narrationBundle.narration.base64,
+        narrationMimeType: narrationBundle.narration.mimeType,
+        characterVoiceTracks: narrationBundle.characterTracks,
+      },
+    });
+    if (localJobError) throw new Error(`Local story review record could not start: ${localJobError.message}`);
+    if (!localJobData?.id) throw new Error(localJobData?.error || 'Local story review record returned no id.');
+    activeJobIdRef.current = localJobData.id;
+    publish(localJobData as IllustrationStoryFilmJob);
 
     const response = await fetch(`${import.meta.env.BASE_URL}api/illustration-story-stitch`, {
       method: 'POST',
@@ -775,8 +843,16 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
         0,
       ),
     });
-    return readLocalStitchResponse(response, pages, onProgress, localObjectUrlRef, audioManifest);
-  }, [sessionId]);
+    return readLocalStitchResponse(
+      response,
+      pages,
+      onProgress,
+      localObjectUrlRef,
+      audioManifest,
+      [],
+      persistAssembly,
+    );
+  }, [persistAssembly, publish, sessionId, stableOwnerKey]);
 
   const cancel = useCallback(async () => {
     abortRef.current?.abort();
@@ -784,11 +860,11 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     const currentId = activeJobIdRef.current ?? jobRef.current?.id;
     if (currentId && !isTerminal(jobRef.current?.status ?? 'queued')) {
       const { data } = await supabase.functions.invoke('oracle-story-film-job', {
-        body: { action: 'cancel', jobId: currentId },
+        body: { action: 'cancel', jobId: currentId, ownerKey: stableOwnerKey },
       });
       if (data?.id) publish(data as IllustrationStoryFilmJob);
     }
-  }, [publish]);
+  }, [publish, stableOwnerKey]);
 
   const persistReview = useCallback(async (
     review: IllustrationStoryReviewState,
@@ -800,7 +876,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
         const currentId = activeJobIdRef.current ?? jobRef.current?.id;
         if (!currentId) throw new Error('There is no saved story film job to review.');
         const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
-          body: { action: 'review', jobId: currentId, review, rejections },
+          body: { action: 'review', jobId: currentId, ownerKey: stableOwnerKey, review, rejections },
         });
         if (error) throw error;
         if (!data?.id) throw new Error('Story review persistence returned no job.');
@@ -808,7 +884,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       });
     reviewPersistenceRef.current = request.catch(() => undefined);
     return request;
-  }, [publish]);
+  }, [publish, stableOwnerKey]);
 
   useEffect(() => {
     if (!sessionId || typeof window === 'undefined') return;
@@ -831,7 +907,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
   useEffect(() => {
     if (!sessionId) return;
     void supabase.functions.invoke('oracle-story-film-job', {
-      body: { action: 'latest', sessionId },
+      body: { action: 'latest', sessionId, ownerKey: stableOwnerKey },
     }).then(({ data }) => {
       if (data?.id) {
         activeJobIdRef.current = data.id;
@@ -840,7 +916,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     }).catch(() => {
       // A missing server job should not interrupt the Oracle conversation.
     });
-  }, [publish, sessionId]);
+  }, [publish, sessionId, stableOwnerKey]);
 
   useEffect(() => {
     if (!job || isTerminal(job.status) || pollingRef.current) return;

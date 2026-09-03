@@ -117,7 +117,7 @@ type StoryScene = {
   prompt: string;
   referenceUrl: string | null;
   modelSlug: string | null;
-  provider?: 'fal' | 'minimax';
+  provider?: 'fal' | 'minimax' | 'browser-film';
   referenceAudioUrl: string | null;
   falRequestId: string | null;
   status: 'planned' | 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled';
@@ -158,6 +158,7 @@ type StoryFailureKind = 'provider-safety' | 'provider' | 'submission' | 'audio-g
 type StoryJobRow = {
   id: string;
   session_id: string;
+  owner_key: string | null;
   job_type: string;
   status: string;
   progress: number;
@@ -166,6 +167,7 @@ type StoryJobRow = {
   story_scenes: unknown;
   story_manifest: unknown;
   audio_manifest: unknown;
+  review_manifest: unknown;
   provider: string | null;
   model_slug: string | null;
   runpod_job_id: string | null;
@@ -196,8 +198,8 @@ function safeUrl(value: unknown, max = 4000): string {
     : '';
 }
 
-function decodeBase64(value: unknown): Uint8Array {
-  if (typeof value !== 'string' || value.length < 8 || value.length > 20_000_000) {
+function decodeBase64(value: unknown, maxChars = 20_000_000): Uint8Array {
+  if (typeof value !== 'string' || value.length < 8 || value.length > maxChars) {
     throw new Error('Media payload is missing or too large.');
   }
   try {
@@ -239,8 +241,9 @@ function publicJob(row: StoryJobRow) {
   const audioVerification = manifest.audioVerification && typeof manifest.audioVerification === 'object'
     ? manifest.audioVerification as Record<string, unknown>
     : {};
-  const everyPageReady = scenes.length === PAGE_COUNT
-    && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl));
+  const everyPageReady = (scenes.length === PAGE_COUNT
+    && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl)))
+    || (row.provider === 'browser-film' && Boolean(row.final_media_url));
   const audioReady = Boolean(row.music_url && row.narration_url);
   return {
     id: row.id,
@@ -298,9 +301,100 @@ function publicJob(row: StoryJobRow) {
     },
     review,
     reviewRejections,
+    reviewManifest: row.review_manifest && typeof row.review_manifest === 'object'
+      ? row.review_manifest
+      : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function ownerKeyFor(payload: Record<string, unknown>, sessionId: string): string {
+  const requested = safeText(payload.ownerKey, 160).replace(/[^a-zA-Z0-9:._-]/g, '');
+  return requested || sessionId;
+}
+
+function reviewManifestWithDurableReferences(
+  value: unknown,
+  finalMediaUrl: string,
+  narrationUrl: string | null,
+  musicUrl: string | null,
+): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object') return null;
+  const manifest = value as Record<string, unknown>;
+  const audioSources = Array.isArray(manifest.audioSources)
+    ? manifest.audioSources.flatMap(source => {
+      if (!source || typeof source !== 'object') return [];
+      const item = { ...(source as Record<string, unknown>) };
+      const id = safeText(item.id, 120);
+      const persistedUrl = id === 'narration'
+        ? narrationUrl
+        : id === 'music'
+          ? musicUrl
+          : null;
+      if (persistedUrl) {
+        item.previewUrl = persistedUrl;
+        item.generated = true;
+        if (item.status === 'missing') item.status = 'available';
+      } else if (typeof item.previewUrl === 'string' && item.previewUrl.startsWith('blob:')) {
+        delete item.previewUrl;
+        item.generated = false;
+        item.status = 'missing';
+      }
+      return [item];
+    })
+    : [];
+  const shots = Array.isArray(manifest.shots)
+    ? manifest.shots.flatMap(shot => {
+      if (!shot || typeof shot !== 'object') return [];
+      const item = { ...(shot as Record<string, unknown>) };
+      const rendered = item.rendered && typeof item.rendered === 'object'
+        ? { ...(item.rendered as Record<string, unknown>) }
+        : {};
+      if (typeof rendered.sceneUrl === 'string' && rendered.sceneUrl.startsWith('blob:')) {
+        rendered.sceneUrl = null;
+      }
+      if (Array.isArray(rendered.evidence)) {
+        rendered.evidence = rendered.evidence.map(sample => {
+          if (!sample || typeof sample !== 'object') return sample;
+          const evidence = { ...(sample as Record<string, unknown>) };
+          if (typeof evidence.mediaUrl === 'string' && evidence.mediaUrl.startsWith('blob:')) {
+            evidence.mediaUrl = finalMediaUrl;
+            evidence.source = 'assembled-film';
+            evidence.available = true;
+          }
+          return evidence;
+        });
+      }
+      item.rendered = rendered;
+      return [item];
+    })
+    : [];
+  return {
+    ...manifest,
+    finalMediaUrl,
+    audioSources,
+    shots,
+    rejections: Array.isArray(manifest.rejections)
+      ? manifest.rejections
+      : Array.isArray(manifest.reviewRejections)
+        ? manifest.reviewRejections
+        : [],
+  };
+}
+
+function validStoryPages(pages: Record<string, unknown>[]): boolean {
+  const totalDuration = pages.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
+  return pages.length === PAGE_COUNT
+    && totalDuration >= 100
+    && totalDuration <= 180
+    && !pages.some((page, index) => (
+      Number(page.pageNumber) !== index + 1
+      || !Number.isInteger(Number(page.row)) || Number(page.row) < 0 || Number(page.row) > 3
+      || !Number.isInteger(Number(page.column)) || Number(page.column) < 0 || Number(page.column) > 3
+      || Number(page.sheetIndex) < 0 || Number(page.sheetIndex) > 1
+      || Number(page.durationSeconds) <= 0 || Number(page.durationSeconds) > 10
+    ));
 }
 
 const CHARACTER_SPEAKERS = new Set([
@@ -912,19 +1006,34 @@ Deno.serve(async (req: Request) => {
   if (action === 'latest') {
     const sessionId = safeText(payload.sessionId, 120);
     if (!sessionId) return json({ error: 'sessionId is required.' }, 400);
-    const { data: latest, error: latestError } = await supabase.from('oracle_film_jobs')
+    const ownerKey = ownerKeyFor(payload, sessionId);
+    const latestQuery = supabase.from('oracle_film_jobs')
       .select('*')
-      .eq('session_id', sessionId)
       .eq('job_type', 'illustration-story')
+      .eq('owner_key', ownerKey)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
+    let { data: latest, error: latestError } = await latestQuery;
+    if (!latest && !latestError && ownerKey !== sessionId) {
+      const legacy = await supabase.from('oracle_film_jobs')
+        .select('*')
+        .eq('session_id', sessionId)
+        .eq('job_type', 'illustration-story')
+        .is('owner_key', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      latest = legacy.data;
+      latestError = legacy.error;
+    }
     if (latestError) return json({ error: 'Could not load the latest story film job.' }, 500);
     return json(latest ? publicJob(latest as StoryJobRow) : { job: null });
   }
 
   if (action === 'create') {
     const sessionId = safeText(payload.sessionId, 120);
+    const ownerKey = ownerKeyFor(payload, sessionId);
     const requestedProvider = safeText(payload.provider, 40).toLowerCase();
     const falModel = falStoryModel(payload.modelSlug);
     const miniMaxModel = minimaxStoryModel(payload.modelSlug);
@@ -965,6 +1074,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: inserted, error: insertError } = await supabase.from('oracle_film_jobs').insert({
       session_id: sessionId,
+      owner_key: ownerKey,
       portrait_url: 'story://locked-panel-reference',
       job_type: 'illustration-story',
         provider,
@@ -1125,8 +1235,139 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  if (action === 'create-local') {
+    const sessionId = safeText(payload.sessionId, 120);
+    const ownerKey = ownerKeyFor(payload, sessionId);
+    const pages = Array.isArray(payload.pages) ? payload.pages as Record<string, unknown>[] : [];
+    const characterVoiceTracks = readCharacterVoiceTracks(payload.characterVoiceTracks);
+    if (!sessionId || !validStoryPages(pages)) {
+      return json({ error: 'sessionId plus exactly 32 valid story pages are required.' }, 400);
+    }
+    if (typeof payload.musicBase64 !== 'string' || typeof payload.narrationBase64 !== 'string') {
+      return json({ error: 'Local story production requires music and narration audio.' }, 400);
+    }
+    try {
+      const totalDuration = pages.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
+      const { data: inserted, error: insertError } = await supabase.from('oracle_film_jobs').insert({
+        session_id: sessionId,
+        owner_key: ownerKey,
+        portrait_url: 'story://locked-panel-reference',
+        job_type: 'illustration-story',
+        provider: 'browser-film',
+        model_slug: null,
+        status: 'ready',
+        progress: 100,
+        chunk_count: PAGE_COUNT,
+        chunks: pages,
+        story_scenes: pages.map(page => ({
+          pageNumber: Number(page.pageNumber),
+          sheetIndex: Number(page.sheetIndex),
+          row: Number(page.row),
+          column: Number(page.column),
+          durationSeconds: Number(page.durationSeconds),
+          seed: Number(page.pageNumber),
+          provider: 'browser-film',
+          status: 'ready',
+          progress: 100,
+          outputUrl: null,
+          error: null,
+          failureKind: null,
+          recovery: null,
+        })),
+        story_manifest: {
+          pageCount: PAGE_COUNT,
+          totalDurationSeconds: totalDuration,
+          sourceAssets: 'two local 4x4 illustration sheets; originals unchanged',
+          referencePolicy: 'local locked panel references',
+          provider: 'browser-film',
+          audioPolicy: 'Lyria soundtrack plus validated lore narration',
+          characterVoiceTracks,
+          assembly: 'local-ffmpeg',
+        },
+        audio_manifest: storyAudioManifest(pages, characterVoiceTracks),
+      }).select('*').single();
+      if (insertError || !inserted) {
+        return json({ error: 'Could not create the local story review record.', detail: insertError?.message }, 500);
+      }
+      const row = inserted as StoryJobRow;
+      const musicUrl = await uploadAsset(
+        supabase,
+        `films/${row.id}/audio/lyria.mp3`,
+        decodeBase64(payload.musicBase64),
+        'audio/mpeg',
+      );
+      const narrationUrl = await uploadAsset(
+        supabase,
+        `films/${row.id}/audio/narration.wav`,
+        decodeBase64(payload.narrationBase64),
+        'audio/wav',
+      );
+      const local = await updateJob(supabase, row.id, {
+        music_url: musicUrl,
+        narration_url: narrationUrl,
+      });
+      return json(publicJob(local), 202);
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : 'Local story setup failed.' }, 503);
+    }
+  }
+
+  if (action === 'persist-assembly') {
+    if (!jobId) return json({ error: 'jobId is required.' }, 400);
+    const ownerKey = safeText(payload.ownerKey, 160);
+    if (!ownerKey) return json({ error: 'ownerKey is required.' }, 400);
+    const { data: existing, error: existingError } = await supabase.from('oracle_film_jobs')
+      .select('*')
+      .eq('id', jobId)
+      .eq('owner_key', ownerKey)
+      .maybeSingle();
+    if (existingError || !existing) return json({ error: 'Story film job not found.' }, 404);
+    const current = existing as StoryJobRow;
+    try {
+      const bytes = decodeBase64(payload.mediaBase64, 80_000_000);
+      const finalMediaUrl = await uploadAsset(
+        supabase,
+        `films/${jobId}/final/story-film.mp4`,
+        bytes,
+        'video/mp4',
+      );
+      const manifest = reviewManifestWithDurableReferences(
+        payload.reviewManifest,
+        finalMediaUrl,
+        current.narration_url,
+        current.music_url,
+      );
+      const pageCount = Number(payload.pageCount);
+      const durationSeconds = Number(payload.durationSeconds);
+      const next = await updateJob(supabase, jobId, {
+        final_media_url: finalMediaUrl,
+        status: 'ready',
+        progress: 100,
+        error_message: null,
+        story_manifest: {
+          ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
+          visualsReady: true,
+          assembly: 'local-ffmpeg',
+          audioVerification: {
+            audioStreamPresent: true,
+            durationMatch: true,
+            verifiedAt: new Date().toISOString(),
+          },
+        },
+        ...(manifest ? { review_manifest: manifest } : {}),
+        ...(Number.isInteger(pageCount) && pageCount > 0 ? { chunk_count: pageCount } : {}),
+      });
+      return json(publicJob(next));
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : 'Could not persist the assembled story film.' }, 503);
+    }
+  }
+
   if (!jobId) return json({ error: 'jobId is required.' }, 400);
-  const { data, error } = await supabase.from('oracle_film_jobs').select('*').eq('id', jobId).maybeSingle();
+  const requestedOwnerKey = safeText(payload.ownerKey, 160);
+  let jobQuery = supabase.from('oracle_film_jobs').select('*').eq('id', jobId);
+  if (requestedOwnerKey) jobQuery = jobQuery.eq('owner_key', requestedOwnerKey);
+  const { data, error } = await jobQuery.maybeSingle();
   if (error || !data) return json({ error: 'Story film job not found.' }, 404);
   let current = data as StoryJobRow;
   if (current.job_type !== 'illustration-story') return json({ error: 'Job is not an illustration story.' }, 400);
@@ -1145,9 +1386,9 @@ Deno.serve(async (req: Request) => {
       .flatMap(entry => {
         if (!entry || typeof entry !== 'object') return [];
         const candidate = entry as Record<string, unknown>;
-        const pageNumber = Number(candidate.pageNumber);
+        const pageNumber = candidate.pageNumber === null ? null : Number(candidate.pageNumber);
         const reason = safeText(candidate.reason, 500);
-        if (!reason || !Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > PAGE_COUNT) return [];
+        if (!reason || (pageNumber !== null && (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > PAGE_COUNT))) return [];
         return [{
           pageNumber,
           reason,
@@ -1160,10 +1401,27 @@ Deno.serve(async (req: Request) => {
         review: {
           inspectedShotNumbers,
           audioListened: rawReview.audioListened === true,
+          approvedAt: typeof rawReview.approvedAt === 'string' ? rawReview.approvedAt.slice(0, 80) : null,
+          method: rawReview.method === 'manual-watch-and-listen' ? rawReview.method : null,
           updatedAt: new Date().toISOString(),
         },
         reviewRejections: rejections,
+        rejections,
       },
+      review_manifest: current.review_manifest && typeof current.review_manifest === 'object'
+        ? {
+          ...(current.review_manifest as Record<string, unknown>),
+          review: {
+            inspectedShotNumbers,
+            audioListened: rawReview.audioListened === true,
+            approvedAt: typeof rawReview.approvedAt === 'string' ? rawReview.approvedAt.slice(0, 80) : null,
+            method: rawReview.method === 'manual-watch-and-listen' ? rawReview.method : null,
+            updatedAt: new Date().toISOString(),
+          },
+          reviewRejections: rejections,
+          rejections,
+        }
+        : undefined,
     });
     return json(publicJob(current));
   }

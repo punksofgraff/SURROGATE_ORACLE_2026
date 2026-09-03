@@ -88,6 +88,7 @@ import {
   createCreativeTextOutput,
   createDataUrl,
   createIllustrationStoryPages,
+  canApproveIllustrationStoryReview,
   updateIllustrationStoryPages,
   createSeriesAssemblyDataUrl,
   createSeriesManifest,
@@ -105,6 +106,7 @@ import {
   illustrationStoryFalModel,
   illustrationStoryMiniMaxModel,
   type IllustrationStoryLane,
+  type IllustrationStoryReviewAudioSource,
   type SeriesRenderMode,
   isCreativeDispatchCurrent,
   isCreativeFilmJobCurrent,
@@ -123,6 +125,21 @@ function parseStoredJson(value: string): unknown {
   } catch {
     return null;
   }
+}
+
+function sanitizeStoryAudioSources(
+  sources: IllustrationStoryReviewAudioSource[] | undefined,
+): IllustrationStoryReviewAudioSource[] | undefined {
+  if (!sources) return undefined;
+  return sources.map(source => source.previewUrl?.startsWith('blob:')
+    ? {
+      ...source,
+      status: 'missing',
+      previewUrl: null,
+      generated: false,
+      note: 'Browser-scoped preview expired on refresh; rebuild the mix to attach a durable source.',
+    }
+    : source);
 }
 
 function isIllustrationStoryProduction(value: unknown): boolean {
@@ -1674,9 +1691,31 @@ export function SurrogateOracleImmersion() {
     if (restoredStory && isIllustrationStoryProduction(restoredStory.metadata?.production)) {
       // Object URLs are scoped to the previous document and cannot survive a
       // refresh. Let the persisted FAL job rebuild the MP4 instead.
-      const refreshedStory = restoredStory.outputUrl?.startsWith('blob:')
-        ? { ...restoredStory, outputUrl: null, outputLabel: undefined }
-        : restoredStory;
+      const persistedAudioSources = restoredStory.reviewManifest?.audioSources
+        ?? (Array.isArray(restoredStory.metadata?.audioManifest)
+          ? restoredStory.metadata.audioManifest as IllustrationStoryReviewAudioSource[]
+          : undefined);
+      const refreshedAudioSources = sanitizeStoryAudioSources(persistedAudioSources);
+      const refreshedStory = {
+        ...restoredStory,
+        ...(restoredStory.outputUrl?.startsWith('blob:')
+          ? { outputUrl: null, outputLabel: undefined }
+          : {}),
+        ...(restoredStory.reviewManifest
+          ? {
+            reviewManifest: {
+              ...restoredStory.reviewManifest,
+              finalMediaUrl: restoredStory.reviewManifest.finalMediaUrl?.startsWith('blob:')
+                ? null
+                : restoredStory.reviewManifest.finalMediaUrl,
+              ...(refreshedAudioSources ? { audioSources: refreshedAudioSources } : {}),
+            },
+          }
+          : {}),
+        ...(restoredStory.metadata && refreshedAudioSources
+          ? { metadata: { ...restoredStory.metadata, audioManifest: refreshedAudioSources } }
+          : {}),
+      };
       activeCreativeArtifactRef.current = refreshedStory;
       setCreativeArtifact(refreshedStory);
       setShowArtifactCard(true);
@@ -1881,6 +1920,7 @@ export function SurrogateOracleImmersion() {
         status: 'partial',
         progress: 100,
         outputUrl: result.url,
+        reviewManifest: result.reviewManifest,
         outputLabel: `Unreviewed 32-page narrated studio render · ${Math.round(result.durationSeconds)}s MP4`,
           provider: job.provider === 'minimax' ? 'minimax-film' : 'fal-film',
           providerLabel: job.provider === 'minimax'
@@ -1895,6 +1935,7 @@ export function SurrogateOracleImmersion() {
           audioGate: { musicReady: true, narrationReady: true, verified: true, passed: true },
           pageCount: result.pageCount,
           totalDurationSeconds: result.durationSeconds,
+          audioManifest: result.audioManifest,
           ffmpegStitch: 'complete',
           soundtrack: 'persisted Lyria instrumental anchor',
           narration: 'persisted Gemini child-friendly narration',
@@ -2135,6 +2176,7 @@ export function SurrogateOracleImmersion() {
               status: 'partial',
               progress: 100,
               outputUrl: result.url,
+              reviewManifest: result.reviewManifest,
               outputLabel: `Unreviewed 32-page ${result.narrationAvailable ? 'narrated' : 'music-backed'} studio render · ${Math.round(result.durationSeconds)}s MP4`,
               provider: 'browser-film',
               providerLabel: 'FFmpeg story stitch lane',
@@ -2144,6 +2186,7 @@ export function SurrogateOracleImmersion() {
                 studioReview: { status: 'unreviewed', required: 'watch-and-listen' },
                 pageCount: result.pageCount,
                 totalDurationSeconds: result.durationSeconds,
+                audioManifest: result.audioManifest,
                 ffmpegStitch: 'complete',
                 soundtrack: 'Lyria instrumental anchor',
                 narration: result.narrationAvailable
@@ -2263,6 +2306,7 @@ export function SurrogateOracleImmersion() {
               status: 'partial',
               progress: 100,
               outputUrl: result.url,
+              reviewManifest: result.reviewManifest,
               outputLabel: `Unreviewed 32-page narrated studio render · ${Math.round(result.durationSeconds)}s MP4`,
                provider: hostedProvider === 'minimax' ? 'minimax-film' : 'fal-film',
                providerLabel: hostedProvider === 'minimax'
@@ -2276,6 +2320,7 @@ export function SurrogateOracleImmersion() {
                   audioGate: { musicReady: true, narrationReady: true, verified: true, passed: true },
                 pageCount: result.pageCount,
                 totalDurationSeconds: result.durationSeconds,
+                  audioManifest: result.audioManifest,
                 ffmpegStitch: 'complete',
                 soundtrack: 'Lyria instrumental anchor',
                 narration: 'Gemini child-friendly narration',
@@ -2702,6 +2747,7 @@ export function SurrogateOracleImmersion() {
             status: 'partial',
             progress: 100,
             outputUrl: result.url,
+            reviewManifest: result.reviewManifest,
             outputLabel: `Unreviewed 32-page ${result.narrationAvailable ? 'narrated' : 'music-backed'} studio render · ${Math.round(result.durationSeconds)}s MP4`,
             provider: 'browser-film',
             providerLabel: 'FFmpeg story stitch lane',
@@ -2715,6 +2761,7 @@ export function SurrogateOracleImmersion() {
               storyStage: 'rendered; studio watch + listen approval required',
               studioReview: { status: 'unreviewed', required: 'watch-and-listen' },
               totalDurationSeconds: result.durationSeconds,
+              audioManifest: result.audioManifest,
               ffmpegStitch: 'complete',
             },
           }, claim);
@@ -2874,6 +2921,7 @@ export function SurrogateOracleImmersion() {
           status: 'partial',
           progress: 100,
           outputUrl: result.url,
+          reviewManifest: result.reviewManifest,
           outputLabel: `Unreviewed 32-page narrated studio render · ${Math.round(result.durationSeconds)}s MP4`,
           provider: illustrationStoryFilm.job?.provider === 'minimax' ? 'minimax-film' : 'fal-film',
           providerLabel: illustrationStoryFilm.job?.provider === 'minimax'
@@ -2888,6 +2936,7 @@ export function SurrogateOracleImmersion() {
             audioGate: { musicReady: true, narrationReady: true, verified: true, passed: true },
             pageCount: result.pageCount,
             totalDurationSeconds: result.durationSeconds,
+            audioManifest: result.audioManifest,
             ffmpegStitch: 'complete',
             soundtrack: 'persisted Lyria instrumental anchor',
             narration: 'persisted Gemini child-friendly narration',
@@ -3232,6 +3281,10 @@ export function SurrogateOracleImmersion() {
   const approveIllustrationStoryReview = useCallback(() => {
     const artifact = activeCreativeArtifactRef.current;
     if (!artifact?.outputUrl || !isIllustrationStoryProduction(artifact.metadata?.production)) return;
+    if (!canApproveIllustrationStoryReview(artifact.reviewManifest)) {
+      logStep('ILLUSTRATION STORY APPROVAL BLOCKED — COMPLETE VISUAL + AUDIO EVIDENCE REQUIRED', 'warn');
+      return;
+    }
     updateCreativeArtifact(artifact.id, {
       status: 'ready',
       metadata: {
@@ -3247,9 +3300,14 @@ export function SurrogateOracleImmersion() {
     logStep('ILLUSTRATION STORY APPROVED — MANUAL WATCH + LISTEN COMPLETE', 'ok');
   }, [updateCreativeArtifact]);
 
-  const rejectIllustrationStoryReview = useCallback(() => {
+  const rejectIllustrationStoryReview = useCallback((reason?: string, pageNumber?: number) => {
     const artifact = activeCreativeArtifactRef.current;
     if (!artifact || !isIllustrationStoryProduction(artifact.metadata?.production)) return;
+    const rejection = reason?.trim();
+    if (!rejection) return;
+    const previousRejections = Array.isArray(artifact.metadata?.reviewRejections)
+      ? artifact.metadata.reviewRejections
+      : [];
     updateCreativeArtifact(artifact.id, {
       status: 'partial',
       outputUrl: null,
@@ -3262,10 +3320,37 @@ export function SurrogateOracleImmersion() {
           reviewedAt: new Date().toISOString(),
           method: 'manual-watch-and-listen',
         },
+        reviewRejections: [
+          ...previousRejections,
+          {
+            pageNumber: pageNumber ?? null,
+            reason: rejection,
+            rejectedAt: new Date().toISOString(),
+          },
+        ],
         storyStage: 'review rejected — regenerate or revise the shot plan',
       },
     });
     logStep('ILLUSTRATION STORY REVIEW REJECTED — NOT A FINISHED EPISODE', 'warn');
+  }, [updateCreativeArtifact]);
+
+  const updateIllustrationStoryReviewState = useCallback((review: {
+    inspectedShotNumbers: number[];
+    audioListened: boolean;
+    updatedAt: string;
+  }) => {
+    const artifact = activeCreativeArtifactRef.current;
+    if (!artifact?.reviewManifest || !isIllustrationStoryProduction(artifact.metadata?.production)) return;
+    updateCreativeArtifact(artifact.id, {
+      reviewManifest: {
+        ...artifact.reviewManifest,
+        review,
+      },
+      metadata: {
+        ...(artifact.metadata ?? {}),
+        studioReviewState: review,
+      },
+    });
   }, [updateCreativeArtifact]);
 
   return (
@@ -4408,6 +4493,7 @@ export function SurrogateOracleImmersion() {
               onStoryLaneChange={chooseIllustrationStoryLane}
               onStoryReviewApprove={approveIllustrationStoryReview}
               onStoryReviewReject={rejectIllustrationStoryReview}
+              onStoryReviewStateChange={updateIllustrationStoryReviewState}
               savedSeriesCount={seriesHistory.length}
               onOpenSeriesHistory={() => setShowSeriesHistory(true)}
             />

@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import {
+  createIllustrationStoryReviewManifest,
+} from '../lib/creativeProduction';
 import type {
   IllustrationStoryModelOption,
   IllustrationStoryPage,
+  IllustrationStoryScene,
+  IllustrationStoryReviewAudioSource,
+  IllustrationStoryReviewManifest,
   IllustrationStorySoundEffect,
   IllustrationStoryVoiceLine,
 } from '../lib/creativeProduction';
@@ -73,6 +79,8 @@ export type IllustrationStoryFilmResult = {
   narrationAvailable: boolean;
   soundEffectsMixed?: number;
   characterTimingApplied?: number;
+  audioManifest: IllustrationStoryReviewAudioSource[];
+  reviewManifest: IllustrationStoryReviewManifest;
 };
 
 export type IllustrationStoryCharacterTrack = {
@@ -136,6 +144,83 @@ async function urlToBase64(url: string): Promise<StoryAsset> {
     base64: toBase64(new Uint8Array(await blob.arrayBuffer())),
     mimeType: blob.type || 'audio/mpeg',
   };
+}
+
+const STORY_CHARACTER_SPEAKERS: Array<Exclude<IllustrationStoryVoiceLine['speaker'], 'oracle'>> = [
+  'levi',
+  'lennon',
+  'pickles',
+  'ghost-spider',
+  'mario-spider-man',
+  'donkey',
+];
+
+function createStoryAudioManifest({
+  narrationAvailable,
+  narrationSourceLabel,
+  narrationPreviewUrl = null,
+  characterTracks = [],
+  musicPreviewUrl = null,
+  musicSourceLabel = 'Lyria instrumental anchor',
+  soundEffectsCount = 0,
+}: {
+  narrationAvailable: boolean;
+  narrationSourceLabel: string;
+  narrationPreviewUrl?: string | null;
+  characterTracks?: IllustrationStoryCharacterTrack[];
+  musicPreviewUrl?: string | null;
+  musicSourceLabel?: string;
+  soundEffectsCount?: number;
+}): IllustrationStoryReviewAudioSource[] {
+  const tracksBySpeaker = new Map(characterTracks.map(track => [track.speaker, track]));
+  return [
+    {
+      id: 'narration',
+      label: 'Oracle narration',
+      status: narrationAvailable ? 'available' : 'missing',
+      sourceLabel: narrationSourceLabel,
+      previewUrl: narrationPreviewUrl,
+      generated: narrationAvailable,
+      note: narrationAvailable ? 'Separate story narration source.' : 'No playable generated story narration is attached.',
+    },
+    ...STORY_CHARACTER_SPEAKERS.map(speaker => {
+      const track = tracksBySpeaker.get(speaker);
+      return {
+        id: `character:${speaker}`,
+        label: speaker === 'ghost-spider'
+          ? 'Ghost Spider'
+          : speaker === 'mario-spider-man'
+            ? 'Mario Spider-Man'
+            : speaker[0].toUpperCase() + speaker.slice(1),
+        status: track?.public_url ? 'available' : 'missing',
+        sourceLabel: track?.source_voice
+          ? `Gemini catalog voice · ${track.source_voice}`
+          : 'No persisted character track',
+        previewUrl: track?.public_url ?? null,
+        generated: Boolean(track?.public_url),
+        note: track?.public_url
+          ? 'Separate catalog voice track; not the live Oracle voice.'
+          : 'Required character track is not available for review.',
+      } satisfies IllustrationStoryReviewAudioSource;
+    }),
+    {
+      id: 'music',
+      label: 'Lyria music bed',
+      status: musicPreviewUrl ? 'available' : 'missing',
+      sourceLabel: musicSourceLabel,
+      previewUrl: musicPreviewUrl,
+      generated: Boolean(musicPreviewUrl),
+      note: musicPreviewUrl ? 'Looped under the story edit.' : 'No playable music source is attached.',
+    },
+    {
+      id: 'sfx',
+      label: 'Sound effects',
+      status: soundEffectsCount > 0 ? 'available' : 'not-requested',
+      sourceLabel: soundEffectsCount > 0 ? `${soundEffectsCount} authored or persisted cue${soundEffectsCount === 1 ? '' : 's'}` : 'No discrete SFX source',
+      generated: soundEffectsCount > 0,
+      note: soundEffectsCount > 0 ? 'Cues are mixed into the assembled film.' : 'No separate effect track was supplied.',
+    },
+  ];
 }
 
 async function loadBitmap(url: string): Promise<ImageBitmap | HTMLImageElement> {
@@ -250,6 +335,8 @@ async function readLocalStitchResponse(
   pages: IllustrationStoryPage[],
   onProgress: ((progress: number) => void) | undefined,
   localObjectUrlRef: React.MutableRefObject<string | null>,
+  audioManifest: IllustrationStoryReviewAudioSource[] = [],
+  scenes = [] as IllustrationStoryScene[],
 ): Promise<IllustrationStoryFilmResult> {
   const validatedPageCount = Number(response.headers.get('X-Story-Page-Count'));
   const validatedDuration = Number(response.headers.get('X-Story-Duration'));
@@ -268,14 +355,31 @@ async function readLocalStitchResponse(
   if (localObjectUrlRef.current) URL.revokeObjectURL(localObjectUrlRef.current);
   localObjectUrlRef.current = URL.createObjectURL(blob);
   onProgress?.(100);
+  const soundEffectsMixed = Number(response.headers.get('X-Story-SFX') || 0);
+  const resolvedAudioManifest = audioManifest.length
+    ? audioManifest
+    : createStoryAudioManifest({
+      narrationAvailable: response.headers.get('X-Story-Narration') === 'available',
+      narrationSourceLabel: response.headers.get('X-Story-Narration') === 'available'
+        ? 'Generated story narration'
+        : 'No generated story narration',
+      soundEffectsCount: soundEffectsMixed,
+    });
   return {
     url: localObjectUrlRef.current,
     mediaType: 'video/mp4',
     pageCount: pages.length,
     durationSeconds: validatedDuration,
     narrationAvailable: response.headers.get('X-Story-Narration') === 'available',
-    soundEffectsMixed: Number(response.headers.get('X-Story-SFX') || 0),
+    soundEffectsMixed,
     characterTimingApplied: Number(response.headers.get('X-Story-Character-Timing') || 0),
+    audioManifest: resolvedAudioManifest,
+    reviewManifest: createIllustrationStoryReviewManifest(
+      pages,
+      scenes,
+      localObjectUrlRef.current,
+      resolvedAudioManifest,
+    ),
   };
 }
 
@@ -390,6 +494,21 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     if (complete.status !== 'ready') {
        throw new Error(complete.error || 'Hosted story film did not produce 32 playable visual scenes.');
     }
+    const hostedAudioManifest = createStoryAudioManifest({
+      narrationAvailable: Boolean(complete.narrationUrl) || Boolean(narrationBundle.narration),
+      narrationSourceLabel: complete.narrationUrl
+        ? 'Persisted generated story narration'
+        : 'Generated story narration',
+      narrationPreviewUrl: complete.narrationUrl ?? null,
+      characterTracks: complete.characterVoiceTracks?.length
+        ? complete.characterVoiceTracks
+        : narrationBundle.characterTracks,
+      musicPreviewUrl: complete.musicUrl ?? musicUrl,
+      musicSourceLabel: complete.musicUrl
+        ? 'Persisted Lyria instrumental anchor'
+        : 'Lyria instrumental anchor',
+      soundEffectsCount: complete.audioManifest?.soundEffects?.length ?? 0,
+    });
     if (complete.finalMediaUrl) {
       onProgress?.(100);
       return {
@@ -398,6 +517,13 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
         pageCount: complete.pageCount,
         durationSeconds: pages.reduce((sum, page) => sum + page.durationSeconds, 0),
         narrationAvailable: true,
+        audioManifest: hostedAudioManifest,
+        reviewManifest: createIllustrationStoryReviewManifest(
+          pages,
+          complete.scenes,
+          complete.finalMediaUrl,
+          hostedAudioManifest,
+        ),
       };
     }
     const sceneUrls = complete.scenes
@@ -425,7 +551,14 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       try { detail = (await stitchResponse.json()).error ?? ''; } catch { /* keep status */ }
       throw new Error(detail || `Local FFmpeg story assembly failed (${stitchResponse.status}).`);
     }
-    return readLocalStitchResponse(stitchResponse, pages, onProgress, localObjectUrlRef);
+    return readLocalStitchResponse(
+      stitchResponse,
+      pages,
+      onProgress,
+      localObjectUrlRef,
+      hostedAudioManifest,
+      complete.scenes,
+    );
   }, [publish, sessionId, waitForCompletion]);
 
   const retryScene = useCallback(async (
@@ -528,7 +661,23 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       throw new Error(detail || `Local FFmpeg story recovery failed (${stitchResponse.status}).`);
     }
     onJob?.(current);
-    return readLocalStitchResponse(stitchResponse, recoveredPages, onProgress, localObjectUrlRef);
+    const recoveredAudioManifest = createStoryAudioManifest({
+      narrationAvailable: Boolean(current.narrationUrl),
+      narrationSourceLabel: 'Persisted generated story narration',
+      narrationPreviewUrl: current.narrationUrl,
+      characterTracks: current.characterVoiceTracks ?? [],
+      musicPreviewUrl: current.musicUrl,
+      musicSourceLabel: 'Persisted Lyria instrumental anchor',
+      soundEffectsCount: persistedSoundEffects.length,
+    });
+    return readLocalStitchResponse(
+      stitchResponse,
+      recoveredPages,
+      onProgress,
+      localObjectUrlRef,
+      recoveredAudioManifest,
+      orderedScenes,
+    );
   }, []);
 
   const renderLocalStory = useCallback(async (
@@ -571,8 +720,19 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       try { detail = (await response.json()).error ?? ''; } catch { /* keep status */ }
       throw new Error(detail || `FFmpeg story stitch failed (${response.status}).`);
     }
-    return readLocalStitchResponse(response, pages, onProgress, localObjectUrlRef);
-  }, []);
+    const audioManifest = createStoryAudioManifest({
+      narrationAvailable: Boolean(narrationBundle.narration),
+      narrationSourceLabel: 'Generated story narration',
+      characterTracks: narrationBundle.characterTracks,
+      musicPreviewUrl: musicUrl,
+      musicSourceLabel: 'Lyria instrumental anchor',
+      soundEffectsCount: pages.reduce(
+        (sum, page) => sum + (page.soundEffects?.length || page.sfx?.length || 0),
+        0,
+      ),
+    });
+    return readLocalStitchResponse(response, pages, onProgress, localObjectUrlRef, audioManifest);
+  }, [sessionId]);
 
   const cancel = useCallback(async () => {
     abortRef.current?.abort();

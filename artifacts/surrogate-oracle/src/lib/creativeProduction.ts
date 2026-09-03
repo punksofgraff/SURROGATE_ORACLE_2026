@@ -292,6 +292,163 @@ export type IllustrationStoryScene = {
   recovery?: 'retry' | 'replace' | null;
 };
 
+export type IllustrationStoryReviewAudioStatus =
+  | 'available'
+  | 'missing'
+  | 'fallback'
+  | 'failed'
+  | 'not-requested';
+
+export type IllustrationStoryReviewAudioSource = {
+  id: string;
+  label: string;
+  status: IllustrationStoryReviewAudioStatus;
+  sourceLabel: string;
+  previewUrl?: string | null;
+  generated?: boolean;
+  note?: string;
+};
+
+export type IllustrationStoryReviewEvidence = {
+  label: 'beginning' | 'middle' | 'end';
+  mediaUrl: string | null;
+  offsetSeconds: number;
+  available: boolean;
+  source: 'scene' | 'assembled-film' | 'missing';
+};
+
+export type IllustrationStoryReviewShot = {
+  pageNumber: number;
+  startSeconds: number;
+  endSeconds: number;
+  source: {
+    assetUrl: string;
+    sheetIndex: 0 | 1;
+    row: number;
+    column: number;
+  };
+  rendered: {
+    status: IllustrationStoryScene['status'] | 'missing';
+    sceneUrl: string | null;
+    evidence: IllustrationStoryReviewEvidence[];
+  };
+  shotPlan: IllustrationStoryShotPlan;
+};
+
+export type IllustrationStoryReviewState = {
+  inspectedShotNumbers: number[];
+  audioListened: boolean;
+  updatedAt: string;
+};
+
+export type IllustrationStoryReviewManifest = {
+  version: 1;
+  pageCount: number;
+  durationSeconds: number;
+  finalMediaUrl: string | null;
+  shots: IllustrationStoryReviewShot[];
+  audioSources: IllustrationStoryReviewAudioSource[];
+  complete: boolean;
+  createdAt: string;
+  review?: IllustrationStoryReviewState;
+};
+
+export function createIllustrationStoryReviewManifest(
+  pages: IllustrationStoryPage[],
+  scenes: IllustrationStoryScene[] = [],
+  finalMediaUrl: string | null = null,
+  audioSources: IllustrationStoryReviewAudioSource[] = [],
+  createdAt = new Date().toISOString(),
+): IllustrationStoryReviewManifest {
+  let startSeconds = 0;
+  const sceneByPage = new Map(scenes.map(scene => [scene.pageNumber, scene]));
+  const shots = pages.map(page => {
+    const scene = sceneByPage.get(page.pageNumber);
+    const durationSeconds = Math.max(0, Number(page.durationSeconds) || 0);
+    const endSeconds = startSeconds + durationSeconds;
+    const sceneUrl = scene?.outputUrl ?? null;
+    const evidenceUrl = sceneUrl ?? finalMediaUrl;
+    const evidenceSource: IllustrationStoryReviewEvidence['source'] = sceneUrl
+      ? 'scene'
+      : finalMediaUrl
+        ? 'assembled-film'
+        : 'missing';
+    const evidence = [
+      { label: 'beginning' as const, fraction: 0.04 },
+      { label: 'middle' as const, fraction: 0.5 },
+      { label: 'end' as const, fraction: 0.94 },
+    ].map(sample => ({
+      label: sample.label,
+      mediaUrl: evidenceUrl,
+      offsetSeconds: sceneUrl
+        ? Math.min(Math.max(0, durationSeconds - 0.04), durationSeconds * sample.fraction)
+        : startSeconds + Math.min(Math.max(0, durationSeconds - 0.04), durationSeconds * sample.fraction),
+      available: Boolean(evidenceUrl),
+      source: evidenceSource,
+    }));
+    const shot: IllustrationStoryReviewShot = {
+      pageNumber: page.pageNumber,
+      startSeconds,
+      endSeconds,
+      source: {
+        assetUrl: page.sourceAsset,
+        sheetIndex: page.sheetIndex,
+        row: page.row,
+        column: page.column,
+      },
+      rendered: {
+        status: scene?.status ?? (finalMediaUrl ? 'ready' : 'missing'),
+        sceneUrl,
+        evidence,
+      },
+      shotPlan: page.shotPlan,
+    };
+    startSeconds = endSeconds;
+    return shot;
+  });
+  const expectedDuration = pages.reduce((sum, page) => sum + (Number(page.durationSeconds) || 0), 0);
+  const complete = pages.length === ILLUSTRATION_STORY_PAGE_COUNT
+    && shots.length === ILLUSTRATION_STORY_PAGE_COUNT
+    && shots.every(shot => (
+      Boolean(shot.source.assetUrl)
+      && shot.rendered.evidence.every(sample => sample.available)
+    ));
+  return {
+    version: 1,
+    pageCount: shots.length,
+    durationSeconds: expectedDuration,
+    finalMediaUrl,
+    shots,
+    audioSources,
+    complete,
+    createdAt,
+  };
+}
+
+export function canApproveIllustrationStoryReview(
+  manifest: IllustrationStoryReviewManifest | undefined,
+): boolean {
+  const inspectedShotNumbers = manifest?.review?.inspectedShotNumbers ?? [];
+  const inspectedShotSet = new Set(inspectedShotNumbers);
+  const requiredAudio = manifest?.audioSources.filter(source => source.id !== 'sfx') ?? [];
+  return Boolean(
+    manifest
+      && manifest.pageCount === ILLUSTRATION_STORY_PAGE_COUNT
+      && manifest.shots.length === ILLUSTRATION_STORY_PAGE_COUNT
+      && manifest.complete
+      && manifest.shots.every(shot => (
+        shot.rendered.status === 'ready'
+        && shot.rendered.evidence.length === 3
+        && shot.rendered.evidence.every(evidence => evidence.available && evidence.mediaUrl)
+      ))
+      && requiredAudio.length >= 8
+      && requiredAudio.every(source => source.status === 'available')
+      && manifest.review?.audioListened === true
+      && inspectedShotSet.size === ILLUSTRATION_STORY_PAGE_COUNT
+      && manifest.shots.every(shot => inspectedShotSet.has(shot.pageNumber)),
+  );
+}
+
 export type CreativeMissingDetail =
   | 'audience'
   | 'platform'
@@ -367,6 +524,7 @@ export type CreativeArtifact = {
   metadata?: Record<string, unknown>;
   seriesManifest?: CreativeSeriesManifest;
   storyPages?: IllustrationStoryPage[];
+  reviewManifest?: IllustrationStoryReviewManifest;
 };
 
 export type CreativeSeriesHistoryEntry = {

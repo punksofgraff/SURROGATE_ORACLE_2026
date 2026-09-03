@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  createIllustrationStoryReviewManifest,
   creativeDetailLabel,
   creativeDetailQuestion,
   type CreativeArtifact,
@@ -35,10 +36,14 @@ import {
   ILLUSTRATION_STORY_FAL_MODELS,
   ILLUSTRATION_STORY_MINIMAX_MODELS,
   type IllustrationStoryLane,
+  type IllustrationStoryReviewAudioSource,
+  type IllustrationStoryReviewManifest,
+  type IllustrationStoryReviewState,
   type IllustrationStoryScene,
   type SeriesRenderMode,
 } from '../lib/creativeProduction';
 import { useIllustrationStoryModelAdvisor } from '../hooks/useIllustrationStoryModelAdvisor';
+import IllustrationStoryOpenKitchen from './IllustrationStoryOpenKitchen';
 import './CreativeArtifactCard.css';
 
 export type CreativeArtifactCardProps = {
@@ -64,7 +69,8 @@ export type CreativeArtifactCardProps = {
   onStoryFilmRetry?: () => void;
   onStoryLaneChange?: (lane: IllustrationStoryLane, modelSlug: string | null) => void;
   onStoryReviewApprove?: () => void;
-  onStoryReviewReject?: () => void;
+  onStoryReviewReject?: (reason?: string, pageNumber?: number) => void;
+  onStoryReviewStateChange?: (state: IllustrationStoryReviewState) => void;
   savedSeriesCount?: number;
   onOpenSeriesHistory?: () => void;
 };
@@ -669,6 +675,7 @@ export function CreativeArtifactCard({
   onStoryLaneChange,
   onStoryReviewApprove,
   onStoryReviewReject,
+  onStoryReviewStateChange,
   savedSeriesCount = 0,
   onOpenSeriesHistory,
 }: CreativeArtifactCardProps) {
@@ -700,6 +707,26 @@ export function CreativeArtifactCard({
       progress: page.progress,
       error: page.error,
     } as IllustrationStoryScene));
+  const storedReviewManifest = artifact.reviewManifest
+    ?? (metadataRecord?.reviewManifest as IllustrationStoryReviewManifest | undefined);
+  const storyAudioSources = storedReviewManifest?.audioSources
+    ?? (Array.isArray(metadataRecord?.audioManifest)
+      ? metadataRecord.audioManifest as IllustrationStoryReviewAudioSource[]
+      : []);
+  const storyReviewManifest = storyPages.length > 0
+    ? (() => {
+      const freshManifest = createIllustrationStoryReviewManifest(
+        storyPages,
+        storyScenes,
+        outputUrl ?? null,
+        storyAudioSources,
+        storedReviewManifest?.createdAt ?? artifact.createdAt,
+      );
+      return storedReviewManifest?.review
+        ? { ...freshManifest, review: storedReviewManifest.review }
+        : freshManifest;
+    })()
+    : null;
   const hasStoryReviewSurface = isIllustrationStory && storyPages.length > 0;
   const isSeries = Boolean(series);
   const isDraft = status === 'draft';
@@ -1221,24 +1248,21 @@ export function CreativeArtifactCard({
           </div>
         )}
 
-        {isIllustrationStory && (
-          <StoryPizzaTracker artifact={artifact} scenes={storyScenes} />
-        )}
-
         {hasStoryReviewSurface && (
-          <StoryReviewWorkspace
-            artifact={artifact}
+          <IllustrationStoryOpenKitchen
             pages={storyPages}
             scenes={storyScenes}
-            progress={progress}
+            manifest={storyReviewManifest}
             outputUrl={outputUrl}
-            requiresReview={requiresStudioReview}
-            audioGateFailed={storyAudioGateFailed}
-            onSceneRetry={onStorySceneRetry}
-            onSceneReplace={onStorySceneReplace}
-            onFilmRetry={onStoryFilmRetry}
-            onApprove={onStoryReviewApprove}
-            onReject={onStoryReviewReject}
+            audioSources={storyAudioSources}
+            storyStage={String(metadataRecord?.storyStage ?? 'studio review required')}
+            progress={progress}
+            onStorySceneRetry={onStorySceneRetry}
+            onStorySceneReplace={onStorySceneReplace}
+            onStoryFilmRetry={onStoryFilmRetry}
+            onStoryReviewApprove={onStoryReviewApprove}
+            onStoryReviewReject={onStoryReviewReject}
+            onStoryReviewStateChange={onStoryReviewStateChange}
           />
         )}
 

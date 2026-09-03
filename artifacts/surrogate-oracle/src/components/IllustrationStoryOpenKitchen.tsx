@@ -63,7 +63,7 @@ function audioStatusLabel(source: IllustrationStoryReviewAudioSource): string {
 }
 
 function isRequiredAudio(source: IllustrationStoryReviewAudioSource): boolean {
-  return source.id !== 'sfx';
+  return source.id !== 'sfx' && source.status !== 'not-requested';
 }
 
 function EvidenceVideo({
@@ -203,7 +203,7 @@ export function IllustrationStoryOpenKitchen({
       status: 'missing',
       sourceLabel: 'Review manifest did not persist all required sources',
       generated: false,
-      note: 'Narration, six character tracks, and music must be listed before approval.',
+      note: 'Narration, six character tracks, music, and any lane-specific audio must be listed before approval.',
     } satisfies IllustrationStoryReviewAudioSource]
     : requiredAudio.filter(source => source.status !== 'available');
   const manifestLoaded = Boolean(manifest && manifest.version === 1 && manifest.pageCount === 32 && shots.length === 32);

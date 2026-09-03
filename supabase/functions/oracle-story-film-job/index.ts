@@ -230,6 +230,12 @@ function publicJob(row: StoryJobRow) {
   const modelSlug = manifestModelSlug || sceneModelSlug || null;
   const retired = Boolean(modelSlug && isRetiredModel(modelSlug));
   const provider = retired ? 'retired-fal' : (row.provider || (scenes.find(scene => scene.provider)?.provider ?? 'fal'));
+  const review = manifest.review && typeof manifest.review === 'object'
+    ? manifest.review
+    : undefined;
+  const reviewRejections = Array.isArray(manifest.reviewRejections)
+    ? manifest.reviewRejections
+    : [];
   const audioVerification = manifest.audioVerification && typeof manifest.audioVerification === 'object'
     ? manifest.audioVerification as Record<string, unknown>
     : {};
@@ -290,6 +296,8 @@ function publicJob(row: StoryJobRow) {
         && audioVerification.audioStreamPresent === true
         && audioVerification.durationMatch === true,
     },
+    review,
+    reviewRejections,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1122,6 +1130,43 @@ Deno.serve(async (req: Request) => {
   if (error || !data) return json({ error: 'Story film job not found.' }, 404);
   let current = data as StoryJobRow;
   if (current.job_type !== 'illustration-story') return json({ error: 'Job is not an illustration story.' }, 400);
+
+  if (action === 'review') {
+    const rawReview = payload.review && typeof payload.review === 'object'
+      ? payload.review as Record<string, unknown>
+      : null;
+    if (!rawReview) return json({ error: 'review is required.' }, 400);
+    const inspectedShotNumbers = Array.from(new Set(
+      (Array.isArray(rawReview.inspectedShotNumbers) ? rawReview.inspectedShotNumbers : [])
+        .map(value => Number(value))
+        .filter(value => Number.isInteger(value) && value >= 1 && value <= PAGE_COUNT),
+    )).sort((a, b) => a - b);
+    const rejections = (Array.isArray(payload.rejections) ? payload.rejections : [])
+      .flatMap(entry => {
+        if (!entry || typeof entry !== 'object') return [];
+        const candidate = entry as Record<string, unknown>;
+        const pageNumber = Number(candidate.pageNumber);
+        const reason = safeText(candidate.reason, 500);
+        if (!reason || !Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > PAGE_COUNT) return [];
+        return [{
+          pageNumber,
+          reason,
+          rejectedAt: new Date().toISOString(),
+        }];
+      });
+    current = await updateJob(supabase, current.id, {
+      story_manifest: {
+        ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
+        review: {
+          inspectedShotNumbers,
+          audioListened: rawReview.audioListened === true,
+          updatedAt: new Date().toISOString(),
+        },
+        reviewRejections: rejections,
+      },
+    });
+    return json(publicJob(current));
+  }
 
   if (action === 'resume' && current.status === 'failed') {
     const scenes = sceneList(current.story_scenes);

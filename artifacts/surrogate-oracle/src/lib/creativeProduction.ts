@@ -339,6 +339,14 @@ export type IllustrationStoryReviewState = {
   inspectedShotNumbers: number[];
   audioListened: boolean;
   updatedAt: string;
+  approvedAt?: string;
+  method?: 'manual-watch-and-listen';
+};
+
+export type IllustrationStoryReviewRejection = {
+  pageNumber: number | null;
+  reason: string;
+  rejectedAt: string;
 };
 
 export type IllustrationStoryReviewManifest = {
@@ -351,6 +359,7 @@ export type IllustrationStoryReviewManifest = {
   complete: boolean;
   createdAt: string;
   review?: IllustrationStoryReviewState;
+  rejections?: IllustrationStoryReviewRejection[];
 };
 
 export function createIllustrationStoryReviewManifest(
@@ -430,7 +439,9 @@ export function canApproveIllustrationStoryReview(
 ): boolean {
   const inspectedShotNumbers = manifest?.review?.inspectedShotNumbers ?? [];
   const inspectedShotSet = new Set(inspectedShotNumbers);
-  const requiredAudio = manifest?.audioSources.filter(source => source.id !== 'sfx') ?? [];
+  const requiredAudio = manifest?.audioSources.filter(source => (
+    source.id !== 'sfx' && source.status !== 'not-requested'
+  )) ?? [];
   return Boolean(
     manifest
       && manifest.pageCount === ILLUSTRATION_STORY_PAGE_COUNT

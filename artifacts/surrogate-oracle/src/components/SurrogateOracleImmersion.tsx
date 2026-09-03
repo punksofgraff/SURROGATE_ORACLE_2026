@@ -107,6 +107,8 @@ import {
   illustrationStoryMiniMaxModel,
   type IllustrationStoryLane,
   type IllustrationStoryReviewAudioSource,
+  type IllustrationStoryReviewRejection,
+  type IllustrationStoryReviewState,
   type SeriesRenderMode,
   isCreativeDispatchCurrent,
   isCreativeFilmJobCurrent,
@@ -1828,6 +1830,10 @@ export function SurrogateOracleImmersion() {
           storyScenes: job.scenes,
           storyFailureKind: job.failureKind,
           audioGate: job.audioGate,
+          storyLane: job.provider === 'minimax' ? 'minimax' : 'fal',
+          storyModelSlug: job.modelSlug,
+          ...(job.review ? { studioReviewState: job.review } : {}),
+          ...(job.reviewRejections ? { reviewRejections: job.reviewRejections } : {}),
            storyStage: job.status === 'ready'
              ? 'visual scenes ready · local FFmpeg assembly pending'
             : `${job.scenes.filter(scene => scene.status === 'ready').length}/32 pages ready · ${job.scenes.filter(scene => scene.status === 'failed').length} page recovery item(s)`,
@@ -1845,15 +1851,24 @@ export function SurrogateOracleImmersion() {
        outputUrl: job.finalMediaUrl ?? (job.status === 'ready' ? null : artifact.outputUrl),
         outputLabel: job.finalMediaUrl ? 'Unreviewed 32-page studio render · MP4' : artifact.outputLabel,
       error: job.error,
-       provider: job.provider === 'retired-fal' ? 'premium-film' : 'fal-film',
-       providerLabel: job.provider === 'retired-fal'
-         ? 'Historical FAL job · retry disabled'
-         : `FAL / ${job.modelSlug ?? 'approved model'} · local assembly`,
+       provider: job.provider === 'minimax' ? 'minimax-film' : job.provider === 'retired-fal' ? 'premium-film' : 'fal-film',
+       providerLabel: job.provider === 'minimax'
+         ? `MiniMax H3 / ${job.modelSlug ?? 'native-audio model'} · local assembly`
+         : job.provider === 'retired-fal'
+           ? 'Historical FAL job · retry disabled'
+           : `FAL / ${job.modelSlug ?? 'approved model'} · local assembly`,
+      ...(job.review && artifact.reviewManifest
+        ? { reviewManifest: { ...artifact.reviewManifest, review: job.review } }
+        : {}),
       metadata: {
         ...(artifact.metadata ?? {}),
         storyScenes: job.scenes,
         storyFailureKind: job.failureKind,
         audioGate: job.audioGate,
+        storyLane: job.provider === 'minimax' ? 'minimax' : artifact.metadata?.storyLane,
+        storyModelSlug: job.provider === 'minimax' ? job.modelSlug : artifact.metadata?.storyModelSlug,
+        ...(job.review ? { studioReviewState: job.review } : {}),
+        ...(job.reviewRejections ? { reviewRejections: job.reviewRejections } : {}),
           storyStage: job.status === 'ready' && !job.finalMediaUrl
            ? 'visual scenes ready · local FFmpeg assembly pending'
            : job.status === 'ready' && job.finalMediaUrl
@@ -3280,34 +3295,58 @@ export function SurrogateOracleImmersion() {
 
   const approveIllustrationStoryReview = useCallback(() => {
     const artifact = activeCreativeArtifactRef.current;
-    if (!artifact?.outputUrl || !isIllustrationStoryProduction(artifact.metadata?.production)) return;
-    if (!canApproveIllustrationStoryReview(artifact.reviewManifest)) {
+    const reviewManifest = artifact?.reviewManifest;
+    if (!artifact?.outputUrl || !reviewManifest || !isIllustrationStoryProduction(artifact.metadata?.production)) return;
+    if (!canApproveIllustrationStoryReview(reviewManifest)) {
       logStep('ILLUSTRATION STORY APPROVAL BLOCKED — COMPLETE VISUAL + AUDIO EVIDENCE REQUIRED', 'warn');
       return;
     }
+    const approvedAt = new Date().toISOString();
+    const review = {
+      inspectedShotNumbers: reviewManifest.review?.inspectedShotNumbers ?? [],
+      audioListened: reviewManifest.review?.audioListened === true,
+      updatedAt: reviewManifest.review?.updatedAt ?? approvedAt,
+      approvedAt,
+      method: 'manual-watch-and-listen' as const,
+    };
     updateCreativeArtifact(artifact.id, {
       status: 'ready',
+      reviewManifest: {
+        ...reviewManifest,
+        review,
+      },
       metadata: {
         ...(artifact.metadata ?? {}),
         studioReview: {
           status: 'approved',
-          reviewedAt: new Date().toISOString(),
+          reviewedAt: approvedAt,
           method: 'manual-watch-and-listen',
         },
         storyStage: 'approved studio animation',
       },
     });
+    const rejections: IllustrationStoryReviewRejection[] = Array.isArray(artifact.metadata?.reviewRejections)
+      ? artifact.metadata.reviewRejections as IllustrationStoryReviewRejection[]
+      : [];
+    void illustrationStoryFilm.persistReview(review, rejections).catch(error => {
+      logStep(`ILLUSTRATION STORY APPROVAL PERSISTENCE FAILED — ${error instanceof Error ? error.message : 'server unavailable'}`, 'warn');
+    });
     logStep('ILLUSTRATION STORY APPROVED — MANUAL WATCH + LISTEN COMPLETE', 'ok');
-  }, [updateCreativeArtifact]);
+  }, [illustrationStoryFilm.persistReview, updateCreativeArtifact]);
 
   const rejectIllustrationStoryReview = useCallback((reason?: string, pageNumber?: number) => {
     const artifact = activeCreativeArtifactRef.current;
     if (!artifact || !isIllustrationStoryProduction(artifact.metadata?.production)) return;
-    const rejection = reason?.trim();
-    if (!rejection) return;
-    const previousRejections = Array.isArray(artifact.metadata?.reviewRejections)
-      ? artifact.metadata.reviewRejections
+    const rejectionReason = reason?.trim();
+    if (!rejectionReason) return;
+    const previousRejections: IllustrationStoryReviewRejection[] = Array.isArray(artifact.metadata?.reviewRejections)
+      ? artifact.metadata.reviewRejections as IllustrationStoryReviewRejection[]
       : [];
+    const rejection: IllustrationStoryReviewRejection = {
+      pageNumber: pageNumber ?? null,
+      reason: rejectionReason,
+      rejectedAt: new Date().toISOString(),
+    };
     updateCreativeArtifact(artifact.id, {
       status: 'partial',
       outputUrl: null,
@@ -3322,23 +3361,23 @@ export function SurrogateOracleImmersion() {
         },
         reviewRejections: [
           ...previousRejections,
-          {
-            pageNumber: pageNumber ?? null,
-            reason: rejection,
-            rejectedAt: new Date().toISOString(),
-          },
+          rejection,
         ],
         storyStage: 'review rejected — regenerate or revise the shot plan',
       },
     });
+    const review = artifact.reviewManifest?.review ?? {
+      inspectedShotNumbers: [],
+      audioListened: false,
+      updatedAt: new Date().toISOString(),
+    };
+    void illustrationStoryFilm.persistReview(review, [...previousRejections, rejection]).catch(error => {
+      logStep(`ILLUSTRATION STORY REVIEW PERSISTENCE FAILED — ${error instanceof Error ? error.message : 'server unavailable'}`, 'warn');
+    });
     logStep('ILLUSTRATION STORY REVIEW REJECTED — NOT A FINISHED EPISODE', 'warn');
-  }, [updateCreativeArtifact]);
+  }, [illustrationStoryFilm.persistReview, updateCreativeArtifact]);
 
-  const updateIllustrationStoryReviewState = useCallback((review: {
-    inspectedShotNumbers: number[];
-    audioListened: boolean;
-    updatedAt: string;
-  }) => {
+  const updateIllustrationStoryReviewState = useCallback((review: IllustrationStoryReviewState) => {
     const artifact = activeCreativeArtifactRef.current;
     if (!artifact?.reviewManifest || !isIllustrationStoryProduction(artifact.metadata?.production)) return;
     updateCreativeArtifact(artifact.id, {
@@ -3351,7 +3390,13 @@ export function SurrogateOracleImmersion() {
         studioReviewState: review,
       },
     });
-  }, [updateCreativeArtifact]);
+    const rejections: IllustrationStoryReviewRejection[] = Array.isArray(artifact.metadata?.reviewRejections)
+      ? artifact.metadata.reviewRejections as IllustrationStoryReviewRejection[]
+      : [];
+    void illustrationStoryFilm.persistReview(review, rejections).catch(error => {
+      logStep(`ILLUSTRATION STORY REVIEW PERSISTENCE FAILED — ${error instanceof Error ? error.message : 'server unavailable'}`, 'warn');
+    });
+  }, [illustrationStoryFilm.persistReview, updateCreativeArtifact]);
 
   return (
     <div

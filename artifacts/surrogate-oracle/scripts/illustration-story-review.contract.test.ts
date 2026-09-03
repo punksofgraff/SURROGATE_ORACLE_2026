@@ -106,6 +106,47 @@ assert.equal(manifest.audioSources.filter(source => source.id !== 'sfx').length,
 assert.equal(manifest.audioSources.find(source => source.id === 'character:donkey')?.generated, true);
 assert.equal(canApproveIllustrationStoryReview(manifest), false, 'a complete render remains locked before explicit inspection');
 
+const h3AudioSources = [
+  ...audioSources().filter(source => source.id !== 'sfx'),
+  {
+    id: 'native-scene-audio',
+    label: 'MiniMax H3 native scene audio',
+    status: 'available' as const,
+    sourceLabel: 'Embedded stereo scene audio',
+    generated: true,
+  },
+  audioSources().find(source => source.id === 'sfx')!,
+];
+const h3Manifest = createIllustrationStoryReviewManifest(
+  pages(),
+  scenes(),
+  'blob:h3-assembled-film',
+  h3AudioSources,
+);
+const fullyReviewedH3Manifest = {
+  ...h3Manifest,
+  review: {
+    inspectedShotNumbers: pages().map(page => page.pageNumber),
+    audioListened: true,
+    updatedAt: '2026-09-02T12:01:00.000Z',
+  },
+};
+assert.equal(
+  canApproveIllustrationStoryReview(fullyReviewedH3Manifest),
+  true,
+  'a fully reviewed H3 render may pass only when native scene audio is present',
+);
+assert.equal(
+  canApproveIllustrationStoryReview({
+    ...fullyReviewedH3Manifest,
+    audioSources: h3AudioSources.map(source => source.id === 'native-scene-audio'
+      ? { ...source, status: 'missing' as const, generated: false }
+      : source),
+  }),
+  false,
+  'H3 approval must remain locked when native scene audio is missing',
+);
+
 const fullyReviewedManifest = {
   ...manifest,
   review: {

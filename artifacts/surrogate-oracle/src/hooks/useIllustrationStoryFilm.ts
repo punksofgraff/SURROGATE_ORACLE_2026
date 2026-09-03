@@ -9,6 +9,8 @@ import type {
   IllustrationStoryScene,
   IllustrationStoryReviewAudioSource,
   IllustrationStoryReviewManifest,
+  IllustrationStoryReviewRejection,
+  IllustrationStoryReviewState,
   IllustrationStorySoundEffect,
   IllustrationStoryVoiceLine,
 } from '../lib/creativeProduction';
@@ -69,6 +71,8 @@ export type IllustrationStoryFilmJob = {
     audioReady: boolean;
     passed: boolean;
   };
+  review?: IllustrationStoryReviewState;
+  reviewRejections?: IllustrationStoryReviewRejection[];
 };
 
 export type IllustrationStoryFilmResult = {
@@ -160,6 +164,7 @@ function createStoryAudioManifest({
   narrationSourceLabel,
   narrationPreviewUrl = null,
   characterTracks = [],
+  nativeSceneAudioAvailable = false,
   musicPreviewUrl = null,
   musicSourceLabel = 'Lyria instrumental anchor',
   soundEffectsCount = 0,
@@ -168,6 +173,7 @@ function createStoryAudioManifest({
   narrationSourceLabel: string;
   narrationPreviewUrl?: string | null;
   characterTracks?: IllustrationStoryCharacterTrack[];
+  nativeSceneAudioAvailable?: boolean;
   musicPreviewUrl?: string | null;
   musicSourceLabel?: string;
   soundEffectsCount?: number;
@@ -204,6 +210,18 @@ function createStoryAudioManifest({
       } satisfies IllustrationStoryReviewAudioSource;
     }),
     {
+      id: 'native-scene-audio',
+      label: 'MiniMax H3 native scene audio',
+      status: nativeSceneAudioAvailable ? 'available' : 'not-requested',
+      sourceLabel: nativeSceneAudioAvailable
+        ? 'Embedded stereo ambience and movement audio from each H3 scene'
+        : 'Not requested outside the MiniMax H3 lane',
+      generated: nativeSceneAudioAvailable,
+      note: nativeSceneAudioAvailable
+        ? 'Preserved under narration, character tracks, Lyria music, and SFX in the assembled mix.'
+        : 'FAL and local scenes do not provide a native H3 audio layer.',
+    },
+    {
       id: 'music',
       label: 'Lyria music bed',
       status: musicPreviewUrl ? 'available' : 'missing',
@@ -221,6 +239,29 @@ function createStoryAudioManifest({
       note: soundEffectsCount > 0 ? 'Cues are mixed into the assembled film.' : 'No separate effect track was supplied.',
     },
   ];
+}
+
+function updateAssembledAudioManifest(
+  audioManifest: IllustrationStoryReviewAudioSource[],
+  soundEffectsCount: number,
+): IllustrationStoryReviewAudioSource[] {
+  return audioManifest.map(source => source.id !== 'sfx'
+    ? source
+    : soundEffectsCount > 0
+      ? {
+      ...source,
+      status: 'available',
+      sourceLabel: `${soundEffectsCount} authored or persisted cue${soundEffectsCount === 1 ? '' : 's'}`,
+      generated: true,
+      note: 'Cues are mixed into the assembled film.',
+      }
+      : {
+        ...source,
+        status: 'not-requested',
+        sourceLabel: 'No discrete SFX source',
+        generated: false,
+        note: 'No separate effect track was supplied.',
+      });
 }
 
 async function loadBitmap(url: string): Promise<ImageBitmap | HTMLImageElement> {
@@ -357,7 +398,7 @@ async function readLocalStitchResponse(
   onProgress?.(100);
   const soundEffectsMixed = Number(response.headers.get('X-Story-SFX') || 0);
   const resolvedAudioManifest = audioManifest.length
-    ? audioManifest
+    ? updateAssembledAudioManifest(audioManifest, soundEffectsMixed)
     : createStoryAudioManifest({
       narrationAvailable: response.headers.get('X-Story-Narration') === 'available',
       narrationSourceLabel: response.headers.get('X-Story-Narration') === 'available'
@@ -391,6 +432,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
   const localObjectUrlRef = useRef<string | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
   const pollingRef = useRef(false);
+  const reviewPersistenceRef = useRef<Promise<void>>(Promise.resolve());
 
   const publish = useCallback((next: IllustrationStoryFilmJob, listener?: StoryJobListener) => {
     jobRef.current = next;
@@ -503,6 +545,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       characterTracks: complete.characterVoiceTracks?.length
         ? complete.characterVoiceTracks
         : narrationBundle.characterTracks,
+      nativeSceneAudioAvailable: complete.provider === 'minimax',
       musicPreviewUrl: complete.musicUrl ?? musicUrl,
       musicSourceLabel: complete.musicUrl
         ? 'Persisted Lyria instrumental anchor'
@@ -666,6 +709,7 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
       narrationSourceLabel: 'Persisted generated story narration',
       narrationPreviewUrl: current.narrationUrl,
       characterTracks: current.characterVoiceTracks ?? [],
+      nativeSceneAudioAvailable: current.provider === 'minimax',
       musicPreviewUrl: current.musicUrl,
       musicSourceLabel: 'Persisted Lyria instrumental anchor',
       soundEffectsCount: persistedSoundEffects.length,
@@ -746,6 +790,26 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     }
   }, [publish]);
 
+  const persistReview = useCallback(async (
+    review: IllustrationStoryReviewState,
+    rejections: IllustrationStoryReviewRejection[] = [],
+  ) => {
+    const request = reviewPersistenceRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const currentId = activeJobIdRef.current ?? jobRef.current?.id;
+        if (!currentId) throw new Error('There is no saved story film job to review.');
+        const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
+          body: { action: 'review', jobId: currentId, review, rejections },
+        });
+        if (error) throw error;
+        if (!data?.id) throw new Error('Story review persistence returned no job.');
+        publish(data as IllustrationStoryFilmJob);
+      });
+    reviewPersistenceRef.current = request.catch(() => undefined);
+    return request;
+  }, [publish]);
+
   useEffect(() => {
     if (!sessionId || typeof window === 'undefined') return;
     const stored = localStorage.getItem(`oracle_story_film_job_${sessionId}`);
@@ -792,5 +856,15 @@ export function useIllustrationStoryFilm(sessionId?: string | null) {
     if (localObjectUrlRef.current) URL.revokeObjectURL(localObjectUrlRef.current);
   }, []);
 
-  return { job, renderStory, renderLocalStory, retryScene, replaceScene, retryAssembly, recoverAssembly, cancel };
+  return {
+    job,
+    renderStory,
+    renderLocalStory,
+    retryScene,
+    replaceScene,
+    retryAssembly,
+    recoverAssembly,
+    cancel,
+    persistReview,
+  };
 }

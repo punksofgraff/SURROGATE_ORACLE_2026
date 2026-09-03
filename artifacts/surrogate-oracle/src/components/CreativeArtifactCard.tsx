@@ -155,7 +155,14 @@ function StoryPizzaTracker({
   const trackerMetadata = artifact.metadata as Record<string, unknown> | undefined;
   const legacyReadOnly = trackerMetadata?.legacyReadOnly === true
     || trackerMetadata?.workflowMode === 'legacy-per-scene-readonly';
-  const singleWorkflow = trackerMetadata?.workflowMode === 'single-fal-workflow' || legacyReadOnly;
+  const h3ChunkWorkflow = trackerMetadata?.workflowMode === 'ten-h3-chunks';
+  const singleWorkflow = trackerMetadata?.workflowMode === 'single-fal-workflow'
+    || h3ChunkWorkflow
+    || legacyReadOnly;
+  const h3Chunks = Array.isArray(trackerMetadata?.chunks)
+    ? trackerMetadata.chunks as Array<{ status?: string }>
+    : [];
+  const readyH3Chunks = h3Chunks.filter(chunk => chunk.status === 'ready').length;
   const blockedReason = typeof (artifact.metadata as Record<string, unknown> | undefined)?.blockedReason === 'string'
     ? String((artifact.metadata as Record<string, unknown>).blockedReason)
     : '';
@@ -196,8 +203,10 @@ function StoryPizzaTracker({
                 ? `${blocked} slice${blocked === 1 ? '' : 's'} blocked by provider safety review.`
                 : failed
                   ? `${failed} slice${failed === 1 ? '' : 's'} needs a retry.`
-                    : singleWorkflow
-                      ? 'One FAL workflow job is being checked against the panel ledger.'
+                    : h3ChunkWorkflow
+                      ? `Ten H3 chunk jobs are being checked in order (${readyH3Chunks}/10 ready).`
+                      : singleWorkflow
+                        ? 'One FAL workflow job is being checked against the panel ledger.'
                       : 'Server evidence is being read.'}
           </strong>
         </div>
@@ -222,14 +231,18 @@ function StoryPizzaTracker({
            ? 'MP4 is persisted and ready for human watch/listen review.'
           : blocked
              ? singleWorkflow
-               ? blockedReason || 'The single workflow did not provide a provable panel certificate. No per-page retry is available.'
+               ? blockedReason || (h3ChunkWorkflow
+                 ? 'The ten H3 chunk requests did not complete. No per-page retry is available.'
+                 : 'The single workflow did not provide a provable panel certificate. No per-page retry is available.')
                : 'Blocked pages are recoverable one at a time. Retry the page or use a safe replacement; completed slices stay saved.'
             : failed
               ? 'Retry only the affected page below. Completed slices stay saved.'
               : pending
                  ? `${pending} page${pending === 1 ? '' : 's'} still in visual production.`
              : singleWorkflow
-               ? 'The workflow ledger is authoritative; percentages do not prove panel coverage.'
+               ? h3ChunkWorkflow
+                 ? 'The ten submitted composite images establish request order; cell-level visual coverage still requires watch-and-listen review.'
+                 : 'The workflow ledger is authoritative; percentages do not prove panel coverage.'
                : 'Live state from the server job — no placeholder percentages.'}
       </p>
     </section>
@@ -268,7 +281,10 @@ function StoryReviewWorkspace({
   const metadata = artifact.metadata as Record<string, unknown> | undefined;
   const legacyReadOnly = metadata?.legacyReadOnly === true
     || metadata?.workflowMode === 'legacy-per-scene-readonly';
-  const singleWorkflow = metadata?.workflowMode === 'single-fal-workflow' || legacyReadOnly;
+  const h3ChunkWorkflow = metadata?.workflowMode === 'ten-h3-chunks';
+  const singleWorkflow = metadata?.workflowMode === 'single-fal-workflow'
+    || h3ChunkWorkflow
+    || legacyReadOnly;
   const blockedReason = typeof metadata?.blockedReason === 'string' ? metadata.blockedReason : '';
   const coverageCertificate = metadata?.coverageCertificate;
   const audioGate = metadata?.audioGate as Record<string, unknown> | undefined;
@@ -370,8 +386,10 @@ function StoryReviewWorkspace({
       <div className="creative-story-review-workspace__signals">
         <div className="creative-story-signal">
           <span className="creative-story-signal__icon"><Layers3 size={15} aria-hidden="true" /></span>
-           <span><strong>Panel continuity</strong><small>{singleWorkflow
-             ? (coverageCertificate ? '32/32 ranges certified against source hashes' : '32 ranges awaiting a machine-checkable certificate')
+           <span><strong>Panel continuity</strong><small>{h3ChunkWorkflow
+             ? `${Array.isArray(metadata?.chunks) ? metadata.chunks.filter((chunk: { status?: string }) => chunk.status === 'ready').length : 0}/10 composite H3 chunks returned; cell-level coverage requires human review`
+             : singleWorkflow
+               ? (coverageCertificate ? '32/32 ranges certified against source hashes' : '32 ranges awaiting a machine-checkable certificate')
              : `${readyScenes}/${pages.length} rendered from locked references`}</small></span>
         </div>
         <div className="creative-story-signal">
@@ -1185,7 +1203,7 @@ export function CreativeArtifactCard({
                 )}
                 {storyLane === 'fal' && (
                   <p className="creative-story-choice__warning">
-                    FAL is metered. Confirmation submits exactly one ordered 32-panel workflow job. Direct per-page H3 requests, automatic retries, and replacements are disabled.
+                    FAL is metered. Confirmation submits exactly 10 MiniMax H3 image-to-video jobs, one composite image per job, covering the 32 story cells in order. Per-page retries and replacements are disabled.
                   </p>
                 )}
               </div>
@@ -1196,7 +1214,7 @@ export function CreativeArtifactCard({
             </div>
             <p className="creative-artifact-card__confirmation-copy">
               {isIllustrationStory && storyLane === 'fal'
-                ? `This explicitly confirms ${models.find(model => model.slug === storyModelSlug)?.label ?? 'the selected approved FAL model'} for one ordered 32-panel workflow job. The coverage certificate is required before local audio assembly.`
+                ? `This explicitly confirms ${models.find(model => model.slug === storyModelSlug)?.label ?? 'the selected approved FAL model'} for 10 ordered H3 chunk jobs. Local assembly trims the returned chunks to the 32-page story timeline, and human review remains required.`
                 : artifact.confirmationCopy
                 ?? (artifact.requiresConfirmation
                   ? 'Money Mite will send this brief into the production lane only after you clear it.'

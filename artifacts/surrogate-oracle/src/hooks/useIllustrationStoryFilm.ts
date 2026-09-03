@@ -77,13 +77,15 @@ export type IllustrationStoryFilmJob = {
   reviewHistory?: IllustrationStoryReviewHistoryEntry[];
   reviewManifest?: IllustrationStoryReviewManifest | null;
   workflow?: {
-    mode?: 'single-fal-workflow' | 'legacy-per-scene-readonly';
+    mode?: 'single-fal-workflow' | 'ten-h3-chunks' | 'legacy-per-scene-readonly';
     requestId?: string;
     statusUrl?: string;
     responseUrl?: string;
-    submissionCount?: 1;
+    submissionCount?: number;
     completedAt?: string;
+    chunks?: IllustrationStoryH3ChunkState[];
   } | null;
+  chunks?: IllustrationStoryH3ChunkState[];
   legacyReadOnly?: boolean;
   sourcePanelManifest?: Array<{
     panelId: string;
@@ -153,6 +155,25 @@ export type IllustrationStoryCharacterTrack = {
 };
 
 type StoryAsset = { base64: string; mimeType: string };
+export type IllustrationStoryH3ChunkState = {
+  chunkNumber: number;
+  pageNumbers: number[];
+  targetDurationSeconds: number;
+  requestedDurationSeconds: number;
+  imageUrl?: string | null;
+  prompt?: string;
+  requestId?: string;
+  status: 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled';
+  progress: number;
+  outputUrl?: string | null;
+  error?: string | null;
+};
+type StoryChunkAsset = StoryAsset & {
+  chunkNumber: number;
+  pageNumbers: number[];
+  targetDurationSeconds: number;
+  requestedDurationSeconds: number;
+};
 type NarrationBundle = {
   narration: StoryAsset;
   characterTracks: IllustrationStoryCharacterTrack[];
@@ -161,6 +182,7 @@ type StoryJobListener = (job: IllustrationStoryFilmJob) => void;
 type LocalStitchInput = {
   sceneUrls?: string[];
   cellUrls?: string[];
+  chunkUrls?: string[];
   hostedFilmUrl?: string;
   sheets?: StoryAsset[];
   music?: StoryAsset;
@@ -345,6 +367,85 @@ async function createLockedPanelAssets(
   const bitmaps = await Promise.all(sheetUrls.map(loadBitmap));
   try {
     return Promise.all(pages.map(page => cropPanel(bitmaps[page.sheetIndex], page)));
+  } finally {
+    bitmaps.forEach(bitmap => {
+      if (bitmap instanceof ImageBitmap) bitmap.close();
+    });
+  }
+}
+
+async function createH3ChunkAssets(
+  sheetUrls: [string, string],
+  pages: IllustrationStoryPage[],
+): Promise<StoryChunkAsset[]> {
+  const sizes = [4, 4, ...Array.from({ length: 8 }, () => 3)];
+  const bitmaps = await Promise.all(sheetUrls.map(loadBitmap));
+  try {
+    const chunks: StoryChunkAsset[] = [];
+    let cursor = 0;
+    for (let chunkIndex = 0; chunkIndex < sizes.length; chunkIndex += 1) {
+      const pageGroup = pages.slice(cursor, cursor + sizes[chunkIndex]);
+      cursor += pageGroup.length;
+      const columns = pageGroup.length === 4 ? 2 : 3;
+      const rows = pageGroup.length === 4 ? 2 : 1;
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 720;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error(`H3 chunk ${chunkIndex + 1} could not be prepared.`);
+      context.fillStyle = '#061514';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      pageGroup.forEach((page, pageIndex) => {
+        const bitmap = bitmaps[page.sheetIndex];
+        const sourceWidth = bitmap instanceof ImageBitmap ? bitmap.width : bitmap.naturalWidth;
+        const sourceHeight = bitmap instanceof ImageBitmap ? bitmap.height : bitmap.naturalHeight;
+        const sourceWidthPerPanel = Math.floor(sourceWidth / 4);
+        const sourceHeightPerPanel = Math.floor(sourceHeight / 4);
+        const cellWidth = canvas.width / columns;
+        const cellHeight = canvas.height / rows;
+        const imageSize = Math.floor(Math.min(cellWidth, cellHeight) - 32);
+        const imageX = pageIndex % columns * cellWidth + (cellWidth - imageSize) / 2;
+        const imageY = Math.floor(pageIndex / columns) * cellHeight + (cellHeight - imageSize) / 2;
+        context.fillStyle = 'rgba(0,255,136,0.10)';
+        context.fillRect(
+          pageIndex % columns * cellWidth + 8,
+          Math.floor(pageIndex / columns) * cellHeight + 8,
+          cellWidth - 16,
+          cellHeight - 16,
+        );
+        context.drawImage(
+          bitmap,
+          page.column * sourceWidthPerPanel,
+          page.row * sourceHeightPerPanel,
+          sourceWidthPerPanel,
+          sourceHeightPerPanel,
+          imageX,
+          imageY,
+          imageSize,
+          imageSize,
+        );
+        context.fillStyle = 'rgba(0,8,8,0.82)';
+        context.fillRect(imageX + 8, imageY + 8, 118, 30);
+        context.fillStyle = '#b8ffe0';
+        context.font = '600 18px monospace';
+        context.fillText(`CELL ${pageIndex + 1} / P${String(page.pageNumber).padStart(2, '0')}`, imageX + 16, imageY + 29);
+      });
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+      if (!blob?.size) throw new Error(`H3 chunk ${chunkIndex + 1} produced no composite image.`);
+      const targetDurationSeconds = pageGroup.reduce((sum, page) => sum + page.durationSeconds, 0);
+      chunks.push({
+        base64: toBase64(new Uint8Array(await blob.arrayBuffer())),
+        mimeType: 'image/jpeg',
+        chunkNumber: chunkIndex + 1,
+        pageNumbers: pageGroup.map(page => page.pageNumber),
+        targetDurationSeconds,
+        requestedDurationSeconds: Math.min(15, Math.max(5, Math.ceil(targetDurationSeconds))),
+      });
+    }
+    if (chunks.length !== 10 || chunks.reduce((sum, chunk) => sum + chunk.pageNumbers.length, 0) !== 32) {
+      throw new Error('H3 chunk preparation did not cover all 32 story pages.');
+    }
+    return chunks;
   } finally {
     bitmaps.forEach(bitmap => {
       if (bitmap instanceof ImageBitmap) bitmap.close();
@@ -578,8 +679,11 @@ export function useIllustrationStoryFilm(
     onProgress?.(2);
 
     if (pages.length !== 32) throw new Error('Hosted story production requires exactly 32 pages.');
-    const [panels, music, narrationBundle] = await Promise.all([
-      createLockedPanelAssets(sheetUrls, pages),
+    const isH3ChunkLane = model.slug === 'minimax/h3/image-to-video';
+    const [visualInputs, music, narrationBundle] = await Promise.all([
+      isH3ChunkLane
+        ? createH3ChunkAssets(sheetUrls, pages)
+        : createLockedPanelAssets(sheetUrls, pages),
       urlToBase64(musicUrl),
       createNarrationAudio(pages, sessionId ?? 'anonymous-story-session'),
     ]);
@@ -595,7 +699,9 @@ export function useIllustrationStoryFilm(
          modelSlug: model.slug,
          confirmed: true,
         pages,
-        panels,
+        ...(isH3ChunkLane
+          ? { chunks: visualInputs }
+          : { panels: visualInputs }),
         musicBase64: music.base64,
         musicMimeType: music.mimeType,
         narrationBase64: narrationBundle.narration.base64,
@@ -631,14 +737,16 @@ export function useIllustrationStoryFilm(
       characterTracks: complete.characterVoiceTracks?.length
         ? complete.characterVoiceTracks
         : narrationBundle.characterTracks,
-      nativeSceneAudioAvailable: complete.provider === 'minimax',
+      nativeSceneAudioAvailable: complete.provider === 'minimax'
+        || complete.workflow?.mode === 'ten-h3-chunks',
       musicPreviewUrl: complete.musicUrl ?? musicUrl,
       musicSourceLabel: complete.musicUrl
         ? 'Persisted Lyria instrumental anchor'
         : 'Lyria instrumental anchor',
       soundEffectsCount: complete.audioManifest?.soundEffects?.length ?? 0,
     });
-    if (complete.finalMediaUrl && complete.workflow?.mode !== 'single-fal-workflow') {
+    if (complete.finalMediaUrl && complete.workflow?.mode !== 'single-fal-workflow'
+      && complete.workflow?.mode !== 'ten-h3-chunks') {
       onProgress?.(100);
       return {
         url: complete.finalMediaUrl,
@@ -659,13 +767,22 @@ export function useIllustrationStoryFilm(
       .sort((a, b) => a.pageNumber - b.pageNumber)
       .map(scene => scene.outputUrl)
       .filter((url): url is string => Boolean(url));
+    const chunkUrls = complete.chunks
+      ?.slice()
+      .sort((a, b) => a.chunkNumber - b.chunkNumber)
+      .map(chunk => chunk.outputUrl)
+      .filter((url): url is string => Boolean(url)) ?? [];
     const hostedFilmUrl = complete.workflow?.mode === 'single-fal-workflow'
       ? complete.finalMediaUrl ?? undefined
       : undefined;
+    const usingH3Chunks = complete.workflow?.mode === 'ten-h3-chunks';
     if (complete.workflow?.mode === 'single-fal-workflow' && !hostedFilmUrl) {
       throw new Error('The shared FAL workflow completed without a playable hosted film URL.');
     }
-    if (!hostedFilmUrl && sceneUrls.length !== pages.length) {
+    if (usingH3Chunks && chunkUrls.length !== 10) {
+      throw new Error('MiniMax H3 completed without ten playable chunk videos.');
+    }
+    if (!usingH3Chunks && !hostedFilmUrl && sceneUrls.length !== pages.length) {
        throw new Error('Hosted provider returned an incomplete visual scene set.');
     }
     onProgress?.(82);
@@ -673,7 +790,8 @@ export function useIllustrationStoryFilm(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-         ...(sceneUrls.length && !hostedFilmUrl ? { sceneUrls } : {}),
+         ...(sceneUrls.length && !hostedFilmUrl && !usingH3Chunks ? { sceneUrls } : {}),
+        ...(usingH3Chunks ? { chunkUrls } : {}),
         ...(hostedFilmUrl ? { hostedFilmUrl } : {}),
         music,
         narration: narrationBundle.narration,
@@ -738,9 +856,20 @@ export function useIllustrationStoryFilm(
     const hostedFilmUrl = current.workflow?.mode === 'single-fal-workflow'
       ? current.finalMediaUrl ?? undefined
       : undefined;
-    if (!hostedFilmUrl && (orderedScenes.length !== pages.length || orderedScenes.some((scene, index) =>
+    const h3ChunkUrls = current.workflow?.mode === 'ten-h3-chunks'
+      ? (current.chunks ?? [])
+        .slice()
+        .sort((a, b) => a.chunkNumber - b.chunkNumber)
+        .map(chunk => chunk.outputUrl)
+        .filter((url): url is string => Boolean(url))
+      : [];
+    if (current.workflow?.mode === 'ten-h3-chunks' && h3ChunkUrls.length !== 10) {
+      throw new Error('Persisted MiniMax H3 story chunks are incomplete or expired; no new request was submitted.');
+    }
+    if (!hostedFilmUrl && current.workflow?.mode !== 'ten-h3-chunks'
+      && (orderedScenes.length !== pages.length || orderedScenes.some((scene, index) =>
       scene.pageNumber !== index + 1 || scene.status !== 'ready' || !scene.outputUrl
-    ))) {
+      ))) {
       throw new Error('Persisted hosted scenes are incomplete or expired; no new scene request was submitted.');
     }
     if (controller.signal.aborted) throw new Error('Story film recovery cancelled.');
@@ -776,6 +905,8 @@ export function useIllustrationStoryFilm(
       body: JSON.stringify({
         ...(hostedFilmUrl
           ? { hostedFilmUrl }
+          : h3ChunkUrls.length === 10
+            ? { chunkUrls: h3ChunkUrls }
           : reviewedCellUrls
             ? { cellUrls: reviewedCellUrls }
           : {
@@ -801,7 +932,8 @@ export function useIllustrationStoryFilm(
       narrationSourceLabel: 'Persisted generated story narration',
       narrationPreviewUrl: current.narrationUrl,
       characterTracks: current.characterVoiceTracks ?? [],
-      nativeSceneAudioAvailable: current.provider === 'minimax',
+      nativeSceneAudioAvailable: current.provider === 'minimax'
+        || current.workflow?.mode === 'ten-h3-chunks',
       musicPreviewUrl: current.musicUrl,
       musicSourceLabel: 'Persisted Lyria instrumental anchor',
       soundEffectsCount: persistedSoundEffects.length,

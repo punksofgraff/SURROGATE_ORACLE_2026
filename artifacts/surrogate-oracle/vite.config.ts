@@ -515,13 +515,15 @@ async function stitchIllustrationStory(body: any): Promise<{
   const sheets = Array.isArray(body?.sheets) ? body.sheets : [];
   const sceneUrls = Array.isArray(body?.sceneUrls) ? body.sceneUrls : [];
   const cellUrls = Array.isArray(body?.cellUrls) ? body.cellUrls : [];
+  const chunkUrls = Array.isArray(body?.chunkUrls) ? body.chunkUrls : [];
   const hostedFilmUrl = typeof body?.hostedFilmUrl === 'string' ? body.hostedFilmUrl : '';
   const pages = Array.isArray(body?.pages) ? body.pages as StoryPageRequest[] : [];
   const usingRemoteScenes = sceneUrls.length === 32;
   const usingRemoteCells = cellUrls.length === 32;
+  const usingRemoteChunks = chunkUrls.length === 10;
   const usingHostedFilm = Boolean(hostedFilmUrl);
-  if ((!usingRemoteScenes && !usingRemoteCells && !usingHostedFilm && sheets.length !== 2) || pages.length !== 32) {
-    throw new Error('Story assembly requires one validated hosted film, 32 hosted scene URLs, 32 persisted cell URLs, or two sheets, plus 32 pages.');
+  if ((!usingRemoteScenes && !usingRemoteCells && !usingRemoteChunks && !usingHostedFilm && sheets.length !== 2) || pages.length !== 32) {
+    throw new Error('Story assembly requires one validated hosted film, ten H3 chunk URLs, 32 hosted scene URLs, 32 persisted cell URLs, or two sheets, plus 32 pages.');
   }
   const duration = pages.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
   const orderedPages = pages.every((page, index) => page.pageNumber === index + 1
@@ -543,7 +545,7 @@ async function stitchIllustrationStory(body: any): Promise<{
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-story-'));
   try {
-    const sheetFiles = usingRemoteScenes || usingRemoteCells || usingHostedFilm ? [] : sheets.map((asset: unknown, index: number) => {
+    const sheetFiles = usingRemoteScenes || usingRemoteCells || usingRemoteChunks || usingHostedFilm ? [] : sheets.map((asset: unknown, index: number) => {
       const decoded = decodeDataAsset(asset);
       const file = path.join(dir, `sheet-${index}.png`);
       fs.writeFileSync(file, decoded.bytes);
@@ -610,6 +612,39 @@ async function stitchIllustrationStory(body: any): Promise<{
           '-movflags', '+faststart',
           clipFile,
         ]);
+        clipFiles.push(clipFile);
+      }
+    } else if (usingRemoteChunks) {
+      const chunkSizes = [4, 4, ...Array.from({ length: 8 }, () => 3)];
+      let pageCursor = 0;
+      for (const [index, chunkUrl] of chunkUrls.entries()) {
+        const pageGroup = pages.slice(pageCursor, pageCursor + chunkSizes[index]);
+        pageCursor += pageGroup.length;
+        const targetDuration = pageGroup.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
+        const remoteFile = path.join(dir, `h3-chunk-${String(index + 1).padStart(2, '0')}.mp4`);
+        fs.writeFileSync(remoteFile, await downloadRemoteAsset(chunkUrl, `MiniMax H3 chunk ${index + 1}`));
+        const clipFile = path.join(dir, `h3-page-group-${String(index + 1).padStart(2, '0')}.mp4`);
+        const remoteHasAudio = await hasAudioStream(remoteFile);
+        const clipArgs = ['-y', '-i', remoteFile];
+        if (!remoteHasAudio) {
+          clipArgs.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000');
+        }
+        const visual = 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p';
+        clipArgs.push(
+          '-vf', visual,
+          '-t', String(targetDuration),
+          '-map', '0:v:0',
+          '-map', remoteHasAudio ? '0:a:0' : '1:a:0',
+          '-c:v', 'libx264',
+          '-preset', 'veryfast',
+          '-pix_fmt', 'yuv420p',
+          '-c:a', 'aac',
+          '-ar', '48000',
+          '-ac', '2',
+          '-b:a', '96k',
+          clipFile,
+        );
+        await runFfmpeg(clipArgs);
         clipFiles.push(clipFile);
       }
     } else if (usingRemoteScenes) {
@@ -679,7 +714,7 @@ async function stitchIllustrationStory(body: any): Promise<{
     characterFiles.forEach(({ file }) => audioArgs.push('-i', file));
     soundEffects.forEach(effect => audioArgs.push('-i', effect.file));
     authoredSoundEffects.forEach(effect => audioArgs.push('-i', effect.file));
-    const preservesNativeAudio = usingRemoteScenes || usingHostedFilm;
+    const preservesNativeAudio = usingRemoteScenes || usingRemoteChunks || usingHostedFilm;
     const audioLabels = preservesNativeAudio ? ['[native]', '[music]'] : ['[music]'];
     const filters = preservesNativeAudio
       ? ['[0:a]volume=0.34[native]', '[1:a]volume=0.28[music]']

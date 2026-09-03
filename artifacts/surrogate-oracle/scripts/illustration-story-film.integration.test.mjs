@@ -53,6 +53,7 @@ function pages() {
 
 async function createFixtures(dir) {
   const sceneFile = join(dir, 'scene.mp4');
+  const chunkFile = join(dir, 'chunk.mp4');
   const cellFile = join(dir, 'cell.jpg');
   const audioFile = join(dir, 'audio.wav');
   await run('ffmpeg', [
@@ -65,6 +66,24 @@ async function createFixtures(dir) {
     '-pix_fmt', 'yuv420p',
     '-movflags', '+faststart',
     sceneFile,
+  ], artifactDir);
+  await run('ffmpeg', [
+    '-y',
+    '-f', 'lavfi',
+    '-i', 'color=c=0x39264c:s=320x180:r=24:d=15',
+    '-f', 'lavfi',
+    '-i', 'sine=frequency=330:sample_rate=48000:duration=15',
+    '-map', '0:v:0',
+    '-map', '1:a:0',
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac',
+    '-ar', '48000',
+    '-ac', '2',
+    '-shortest',
+    '-movflags', '+faststart',
+    chunkFile,
   ], artifactDir);
   await run('ffmpeg', [
     '-y',
@@ -83,6 +102,7 @@ async function createFixtures(dir) {
   ], artifactDir);
   return {
     scene: await readFile(sceneFile),
+    chunk: await readFile(chunkFile),
     cell: await readFile(cellFile),
     audio: await readFile(audioFile),
   };
@@ -108,6 +128,11 @@ async function startFixtureServer(fixtures) {
     if (/^\/scene\/\d{2}\.mp4$/.test(request.url ?? '')) {
       response.writeHead(200, { 'Content-Type': 'video/mp4' });
       response.end(fixtures.scene);
+      return;
+    }
+    if (/^\/chunk\/\d{2}\.mp4$/.test(request.url ?? '')) {
+      response.writeHead(200, { 'Content-Type': 'video/mp4' });
+      response.end(fixtures.chunk);
       return;
     }
     if (/^\/cell\/\d{2}\.jpg$/.test(request.url ?? '')) {
@@ -251,6 +276,25 @@ async function assemblePersistedStory(viteUrl, baseUrl) {
   return { response, bytes };
 }
 
+async function assembleH3Chunks(viteUrl, baseUrl) {
+  const response = await fetch(`${viteUrl}/api/illustration-story-stitch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chunkUrls: Array.from({ length: 10 }, (_, index) => (
+        `${baseUrl}/chunk/${String(index + 1).padStart(2, '0')}.mp4`
+      )),
+      musicUrl: `${baseUrl}/music.wav`,
+      narrationUrl: `${baseUrl}/narration.wav`,
+      characterVoiceTracks: [],
+      pages: pages(),
+    }),
+  });
+  const errorBody = response.ok ? '' : await response.text();
+  assert.equal(response.status, 200, errorBody);
+  return { response, bytes: Buffer.from(await response.arrayBuffer()) };
+}
+
 async function main() {
   const dir = await mkdtemp('/tmp/oracle-story-film-integration-');
   let fixtureServer;
@@ -296,7 +340,32 @@ async function main() {
     );
     assert.equal(fixtureServer.requests.filter(url => url === '/music.wav').length, 1);
     assert.equal(fixtureServer.requests.filter(url => url === '/narration.wav').length, 1);
-    console.log('illustration story film integration passed (32 persisted cells, 16:9 MP4/audio, refresh/cancel/retry race controls)');
+
+    const h3Start = fixtureServer.requests.length;
+    const h3 = await assembleH3Chunks(vite.url, fixtureServer.baseUrl);
+    assert.equal(h3.response.headers.get('x-story-page-count'), String(PAGE_COUNT));
+    assert.equal(h3.response.headers.get('x-story-audio'), 'present');
+    assert.ok(Math.abs(Number(h3.response.headers.get('x-story-duration')) - EXPECTED_DURATION_SECONDS) <= 0.75);
+    const h3File = join(dir, 'h3-story.mp4');
+    await writeFile(h3File, h3.bytes);
+    const { stdout: h3ProbeOutput } = await execFileAsync('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'format=duration:stream=codec_type,width,height',
+      '-of', 'json',
+      h3File,
+    ]);
+    const h3Probe = JSON.parse(h3ProbeOutput);
+    const h3Video = h3Probe.streams.find(stream => stream.codec_type === 'video');
+    assert.deepEqual([h3Video.width, h3Video.height], [1280, 720]);
+    assert.ok(h3Probe.streams.some(stream => stream.codec_type === 'audio'));
+    assert.ok(Math.abs(Number(h3Probe.format.duration) - EXPECTED_DURATION_SECONDS) <= 0.75);
+    const h3Requests = fixtureServer.requests.slice(h3Start).filter(url => /^\/chunk\/\d{2}\.mp4$/.test(url ?? ''));
+    assert.deepEqual(
+      h3Requests.map(url => Number(url.match(/\/(\d+)\.mp4$/)[1])),
+      Array.from({ length: 10 }, (_, index) => index + 1),
+      'ten H3 chunk URLs must be downloaded exactly once and in order',
+    );
+    console.log('illustration story film integration passed (32-cell local lane + ten H3 chunk lane, 16:9 MP4/audio, refresh/cancel/retry controls)');
   } finally {
     await stopProcess(vite?.process);
     fixtureServer?.server.close();

@@ -90,10 +90,10 @@ export type IllustrationStoryModelOption = {
 // narrow/replace this catalog with FAL_STORY_MODEL_CATALOG.
 export const ILLUSTRATION_STORY_FAL_MODELS: IllustrationStoryModelOption[] = [
   {
-    slug: 'minimax/h3-max/image-to-video',
-    label: 'MiniMax H3 Max · 768P',
-    description: 'FAL-hosted MiniMax H3 Max motion from each locked still anchor.',
-    costLabel: 'Hosted H3 Max scene',
+    slug: 'minimax/h3/image-to-video',
+    label: 'MiniMax H3 · 480P × 10 story chunks',
+    description: 'Ten ordered H3 calls, each animating one composite of three or four story cells.',
+    costLabel: '10 hosted H3 chunks',
     expectedSeconds: 120,
     provider: 'fal',
   },

@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import pollingModule from '../../../supabase/functions/oracle-story-film-job/polling.ts';
-
-const { pollFalStoryWorkflow } = pollingModule;
+import {
+  pollFalStoryWorkflow,
+  pollFalH3Chunks,
+} from '../../../supabase/functions/oracle-story-film-job/polling.ts';
 
 const functionSource = await readFile(
   join(new URL('../../../supabase/functions/oracle-story-film-job/index.ts', import.meta.url).pathname),
@@ -36,6 +37,10 @@ assert.equal(
 assert.match(createBranch, /panel_manifest:\s*persistedPanelManifest/);
 assert.match(createBranch, /submissionCount:\s*1/);
 assert.match(pollingSource, /missing, duplicate, reordered, overlapping, or unverifiable panel ranges/);
+assert.match(createBranch, /createFalH3ChunkRequest/);
+assert.match(createBranch, /H3_CHUNK_COUNT/);
+assert.match(createBranch, /Promise\.allSettled/);
+assert.match(functionSource, /minimax\/h3\/image-to-video/);
 
 const PAGE_COUNT = 32;
 const DURATION = 120;
@@ -168,3 +173,53 @@ for (const [label, mutate] of [
 }
 
 console.log('FAL single-job contract: provider-shaped polling, fail-closed certificates, and one-film persistence passed.');
+
+const h3Chunks = [
+  ...[4, 4, 3, 3, 3, 3, 3, 3, 3, 3].map((size, index) => ({
+    chunkNumber: index + 1,
+    pageNumbers: Array.from({ length: size }, (_, offset) => (
+      [4, 4, 3, 3, 3, 3, 3, 3, 3, 3]
+        .slice(0, index)
+        .reduce((sum, value) => sum + value, 0) + offset + 1
+    )),
+    targetDurationSeconds: size * 3.75,
+    requestedDurationSeconds: Math.min(15, Math.ceil(size * 3.75)),
+    prompt: `chunk-${index + 1}`,
+    imageUrl: `https://storage.example.test/chunk-${index + 1}.jpg`,
+    requestId: `h3-request-${index + 1}`,
+    statusUrl: `https://fal.example.test/h3/${index + 1}/status`,
+    responseUrl: `https://fal.example.test/h3/${index + 1}/response`,
+    status: 'queued',
+    progress: 8,
+    outputUrl: null,
+    error: null,
+  })),
+];
+const h3Provider = {
+  calls: [],
+  request: async (url) => {
+    h3Provider.calls.push(url);
+    const match = url.match(/h3\/(\d+)\//);
+    const index = Number(match?.[1] ?? 0) - 1;
+    const chunk = h3Chunks[index];
+    if (url.endsWith('/status')) return { status: 'SUCCEEDED', request_id: chunk.requestId };
+    return { request_id: chunk.requestId, video: { url: `https://fal.example.test/h3/${index + 1}.mp4` } };
+  },
+};
+const h3Complete = await pollFalH3Chunks(h3Chunks, h3Provider.request);
+assert.equal(h3Complete.status, 'ready', h3Complete.error);
+assert.equal(h3Complete.chunks.length, 10);
+assert.equal(h3Complete.chunks.filter(chunk => chunk.status === 'ready').length, 10);
+assert.equal(h3Complete.progress, 100);
+assert.equal(h3Provider.calls.length, 20);
+const reorderedH3 = structuredClone(h3Chunks);
+[reorderedH3[0], reorderedH3[1]] = [reorderedH3[1], reorderedH3[0]];
+const reorderedResult = await pollFalH3Chunks(reorderedH3, h3Provider.request);
+assert.equal(reorderedResult.status, 'failed');
+assert.match(reorderedResult.error ?? '', /reordered|manifest/i);
+const incompleteH3 = structuredClone(h3Chunks).slice(0, 9);
+const incompleteResult = await pollFalH3Chunks(incompleteH3, h3Provider.request);
+assert.equal(incompleteResult.status, 'failed');
+assert.match(incompleteResult.error ?? '', /missing|cover/i);
+
+console.log('MiniMax H3 ten-chunk contract: ten ordered requests, stale identity checks, and fail-closed manifest validation passed.');

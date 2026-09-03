@@ -1835,6 +1835,7 @@ export function SurrogateOracleImmersion() {
         metadata: {
           ...(restored.metadata ?? {}),
           storyScenes: job.scenes,
+          chunks: job.chunks,
           workflowMode: job.workflow?.mode,
           workflow: job.workflow,
           legacyReadOnly: job.legacyReadOnly,
@@ -1858,8 +1859,12 @@ export function SurrogateOracleImmersion() {
             }
             : {}),
            storyStage: job.status === 'ready'
-             ? 'visual scenes ready · local FFmpeg assembly pending'
-            : `${job.scenes.filter(scene => scene.status === 'ready').length}/32 pages ready · ${job.scenes.filter(scene => scene.status === 'failed').length} page recovery item(s)`,
+             ? job.workflow?.mode === 'ten-h3-chunks'
+               ? 'ten H3 chunks ready · local FFmpeg assembly pending'
+               : 'visual scenes ready · local FFmpeg assembly pending'
+            : job.workflow?.mode === 'ten-h3-chunks'
+              ? `${job.chunks?.filter(chunk => chunk.status === 'ready').length ?? 0}/10 H3 chunks ready`
+              : `${job.scenes.filter(scene => scene.status === 'ready').length}/32 pages ready · ${job.scenes.filter(scene => scene.status === 'failed').length} page recovery item(s)`,
         },
       };
       activeCreativeArtifactRef.current = artifact;
@@ -1895,6 +1900,7 @@ export function SurrogateOracleImmersion() {
       metadata: {
         ...(artifact.metadata ?? {}),
         storyScenes: job.scenes,
+        chunks: job.chunks,
         workflowMode: job.workflow?.mode,
         workflow: job.workflow,
         legacyReadOnly: job.legacyReadOnly,
@@ -2292,7 +2298,7 @@ export function SurrogateOracleImmersion() {
               status: 'generating',
               progress: 2,
               provider: 'fal-film',
-              providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · one workflow job`,
+              providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · 10 H3 chunk jobs`,
               outputLabel: undefined,
               metadata: {
                 ...(artifact.metadata ?? {}),
@@ -2319,13 +2325,13 @@ export function SurrogateOracleImmersion() {
                   status: 'generating',
                   progress,
                    provider: 'fal-film',
-                   providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · one workflow job`,
+                   providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · 10 H3 chunk jobs`,
                   metadata: {
                     ...(activeCreativeArtifactRef.current?.metadata ?? {}),
                     storyStage: progress < 6
                       ? 'preparing locked panel references and narration'
                       : progress < 78
-                         ? 'polling one FAL workflow job for ordered panel coverage'
+                         ? 'polling 10 FAL H3 chunk jobs in story order'
                          : 'local FFmpeg assembly and audio validation',
                     currentPage: Math.min(32, Math.max(1, Math.ceil((progress / 100) * 32))),
                   },
@@ -2338,13 +2344,14 @@ export function SurrogateOracleImmersion() {
                   status: job.status === 'failed' ? 'failed' : job.status === 'cancelled' ? 'cancelled' : 'generating',
                   progress: job.progress,
                     provider: 'fal-film',
-                    providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · one workflow job`,
+                    providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · 10 H3 chunk jobs`,
                   metadata: {
                     ...(activeCreativeArtifactRef.current?.metadata ?? {}),
                      storyStage: job.status === 'ready'
-                       ? 'coverage certificate accepted · local FFmpeg assembly'
-                       : `one FAL workflow job · ordered panel coverage pending (${readyScenes}/32 evidence slots)`,
+                       ? 'ten H3 chunks ready · local FFmpeg assembly'
+                       : `ten FAL H3 chunk jobs · ${job.chunks?.filter(chunk => chunk.status === 'ready').length ?? 0}/10 chunks ready`,
                     storyScenes: job.scenes,
+                    chunks: job.chunks,
                       storyFailureKind: job.failureKind,
              audioGate: job.audioGate,
              ...(job.finalMediaUrl ? { studioReview: { status: 'unreviewed', required: 'watch-and-listen' } } : {}),
@@ -2361,7 +2368,7 @@ export function SurrogateOracleImmersion() {
               reviewManifest: result.reviewManifest,
               outputLabel: `Unreviewed 32-page narrated studio render · ${Math.round(result.durationSeconds)}s MP4`,
                provider: 'fal-film',
-               providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · one workflow job`,
+               providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · 10 H3 chunk jobs`,
               metadata: {
                 ...(activeCreativeArtifactRef.current?.metadata ?? {}),
                 storyStage: 'rendered; studio watch + listen approval required',
@@ -2375,7 +2382,7 @@ export function SurrogateOracleImmersion() {
                 soundtrack: 'Lyria instrumental anchor',
                 narration: 'Gemini child-friendly narration',
                 sourceAssets: '32 persisted locked panel references from two immutable 4x4 illustration sheets',
-                  visualGeneration: `one ordered-panel workflow via ${hostedModel.label}`,
+                  visualGeneration: `10 ordered H3 composite chunks via ${hostedModel.label}`,
               },
             });
             logStep('ILLUSTRATION STORY RENDERED — STUDIO REVIEW REQUIRED', 'ok');
@@ -2387,7 +2394,7 @@ export function SurrogateOracleImmersion() {
               status: 'failed',
               progress: 0,
                 provider: 'fal-film',
-                providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · one workflow job`,
+                providerLabel: `FAL / ${illustrationStoryFalModel(artifact.metadata?.falModelSlug)?.label ?? 'approved model'} · 10 H3 chunk jobs`,
               error: error instanceof Error ? error.message : 'Illustration story film failed.',
               metadata: {
                 ...(activeCreativeArtifactRef.current?.metadata ?? {}),

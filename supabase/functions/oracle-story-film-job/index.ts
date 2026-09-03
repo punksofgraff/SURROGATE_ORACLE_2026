@@ -7,6 +7,8 @@
  */
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
+  H3ChunkRequest,
+  pollFalH3Chunks,
   pollFalStoryWorkflow,
 } from './polling.ts';
 
@@ -16,6 +18,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, x-client-info',
 };
 const PAGE_COUNT = 32;
+const H3_CHUNK_COUNT = 10;
+const H3_MODEL_SLUG = 'minimax/h3/image-to-video';
+const H3_QUEUE_ENDPOINT = `https://queue.fal.run/${H3_MODEL_SLUG}`;
 const FAL_TIMEOUT_MS = 20_000;
 
 type FalStoryModel = {
@@ -28,12 +33,12 @@ type FalStoryModel = {
 };
 const DEFAULT_FAL_STORY_MODELS: FalStoryModel[] = [
   {
-    slug: 'minimax/h3-max/image-to-video',
-    label: 'MiniMax H3 Max · 768P',
-    description: 'FAL-hosted MiniMax H3 Max motion from each locked still anchor.',
-    costLabel: 'Hosted H3 Max scene',
+    slug: H3_MODEL_SLUG,
+    label: 'MiniMax H3 · 480P × 10 story chunks',
+    description: 'Ten ordered H3 calls, each animating one composite of three or four story cells.',
+    costLabel: '10 hosted H3 chunks',
     expectedSeconds: 120,
-    resolution: '768P',
+    resolution: '480P',
   },
 ];
 
@@ -108,14 +113,15 @@ type StoryPanelManifestEntry = {
 };
 
 type StoryWorkflowState = {
-  mode: 'single-fal-workflow';
-  contractVersion: 1;
+  mode: 'single-fal-workflow' | 'ten-h3-chunks';
+  contractVersion: 1 | 2;
   endpoint: string;
-  requestId: string;
-  statusUrl: string;
-  responseUrl: string;
+  requestId?: string;
+  statusUrl?: string;
+  responseUrl?: string;
   cancelUrl?: string;
-  submissionCount: 1;
+  chunks?: H3ChunkRequest[];
+  submissionCount: number;
   submittedAt: string;
 };
 
@@ -267,10 +273,18 @@ function isSingleFalWorkflowJob(row: StoryJobRow): boolean {
     && typeof manifest.workflow === 'object';
 }
 
+function isTenH3ChunksJob(row: StoryJobRow): boolean {
+  const manifest = storyManifest(row);
+  return manifest.workflowMode === 'ten-h3-chunks'
+    && manifest.workflow
+    && typeof manifest.workflow === 'object';
+}
+
 function isReadOnlyStoryJob(row: StoryJobRow): boolean {
   return row.job_type === 'illustration-story'
     && row.provider !== 'browser-film'
-    && !isSingleFalWorkflowJob(row);
+    && !isSingleFalWorkflowJob(row)
+    && !isTenH3ChunksJob(row);
 }
 
 function errorDetail(value: unknown): string {
@@ -293,6 +307,20 @@ function workflowEndpoint(): string {
     if (parsed.protocol !== 'https:') throw new Error('endpoint must use HTTPS');
   } catch {
     throw new Error('BLOCKED: the shared FAL story workflow endpoint is invalid; expected an HTTPS URL and no hosted request was submitted.');
+  }
+  return configured;
+}
+
+function h3QueueEndpoint(): string {
+  const configured = safeUrl(Deno.env.get('FAL_H3_QUEUE_ENDPOINT'), 4000) || H3_QUEUE_ENDPOINT;
+  try {
+    const parsed = new URL(configured);
+    if (parsed.protocol !== 'https:') throw new Error('endpoint must use HTTPS');
+    if (!/\/minimax\/h3\/image-to-video\/?$/.test(parsed.pathname)) {
+      throw new Error('endpoint must target MiniMax H3 image-to-video');
+    }
+  } catch {
+    throw new Error('BLOCKED: the MiniMax H3 queue endpoint is invalid; no hosted request was submitted.');
   }
   return configured;
 }
@@ -389,7 +417,8 @@ function publicJob(row: StoryJobRow) {
     : null;
   const everyPageReady = (scenes.length === PAGE_COUNT
     && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl)))
-    || (row.provider === 'browser-film' && Boolean(row.final_media_url));
+    || (row.provider === 'browser-film' && Boolean(row.final_media_url))
+    || (manifest.workflowMode === 'ten-h3-chunks' && Boolean(row.final_media_url));
   const audioReady = Boolean(row.music_url && row.narration_url);
   return {
     id: row.id,
@@ -421,6 +450,7 @@ function publicJob(row: StoryJobRow) {
     })),
     finalMediaUrl: row.final_media_url,
     workflow: publicWorkflow,
+    chunks: Array.isArray(manifest.chunkManifest) ? manifest.chunkManifest : [],
     legacyReadOnly,
     sourcePanelManifest: Array.isArray(manifest.panelManifest) ? manifest.panelManifest : [],
     coverageCertificate: manifest.coverageCertificate ?? null,
@@ -768,6 +798,121 @@ function storyPrompt(page: Record<string, unknown>): string {
   ].join(' ');
 }
 
+function h3ChunkPrompt(
+  pages: Record<string, unknown>[],
+  pageNumbers: number[],
+  targetDurationSeconds: number,
+): string {
+  const cellDuration = targetDurationSeconds / Math.max(1, pageNumbers.length);
+  const beats = pageNumbers.map((pageNumber, index) => {
+    const page = pages[pageNumber - 1];
+    const narration = providerStoryLanguage(safeText(page?.narration, 600));
+    const treatment = page?.shotPlan && typeof page.shotPlan === 'object'
+      ? page.shotPlan as Record<string, unknown>
+      : {};
+    return [
+      `Cell ${index + 1}, story page ${pageNumber}, seconds ${(
+        index * cellDuration
+      ).toFixed(2)}–${((index + 1) * cellDuration).toFixed(2)}.`,
+      `Narration beat: ${narration}.`,
+      `Treatment: ${safeText(treatment.treatment, 120) || 'restrained storybook motion'};`,
+      `action: ${safeText(treatment.actionBeat, 220) || 'animate the depicted action'};`,
+      `environment: ${safeText(treatment.environmentBeat, 180) || 'add gentle environmental movement'};`,
+      `camera: ${safeText(treatment.cameraMove, 180) || 'use a gentle motivated camera move'}.`,
+    ].join(' ');
+  });
+  return [
+    'Animate the supplied composite story image as an ordered sequence of labeled illustration cells.',
+    `The image contains exactly ${pageNumbers.length} cells for story pages ${pageNumbers.join(', ')} in reading order.`,
+    `Run the sequence for approximately ${targetDurationSeconds.toFixed(2)} seconds, giving each cell about ${cellDuration.toFixed(2)} seconds.`,
+    'Start on the first cell, animate only that cell while preserving its characters and composition, then make a gentle motivated transition to the next cell. Continue cell by cell in the stated order until the final cell.',
+    'Treat the cell labels and grid as timing guidance, not as content to reproduce. Do not invent an extra cell, skip a cell, reorder cells, replace the artwork, or turn the grid into a single unrelated scene.',
+    'Preserve the authored storybook characters, identities, costumes, colors, relationships, linework, proportions, and child-friendly visual style. Animate expressions, blinking, breathing, gestures, props, and environmental motion that are already implied by each cell.',
+    'Use restrained camera movement and smooth transitions. Do not add dialogue text, logos, watermarks, photorealistic restyling, character morphing, or unrelated objects.',
+    'Generate synchronized native ambience and movement sound for the visible action when supported. Do not generate spoken dialogue; the separately supplied narration and character tracks remain authoritative.',
+    beats.join(' '),
+  ].join(' ');
+}
+
+function h3ChunkPlan(pages: Record<string, unknown>[]): Array<{
+  chunkNumber: number;
+  pageNumbers: number[];
+  targetDurationSeconds: number;
+  requestedDurationSeconds: number;
+  prompt: string;
+}> {
+  const sizes = [4, 4, ...Array.from({ length: 8 }, () => 3)];
+  const chunks: Array<{
+    chunkNumber: number;
+    pageNumbers: number[];
+    targetDurationSeconds: number;
+    requestedDurationSeconds: number;
+    prompt: string;
+  }> = [];
+  let cursor = 0;
+  sizes.forEach((size, index) => {
+    const pageNumbers = Array.from({ length: size }, (_, offset) => cursor + offset + 1);
+    cursor += size;
+    const targetDurationSeconds = pageNumbers.reduce(
+      (sum, pageNumber) => sum + Number(pages[pageNumber - 1]?.durationSeconds || 0),
+      0,
+    );
+    chunks.push({
+      chunkNumber: index + 1,
+      pageNumbers,
+      targetDurationSeconds,
+      requestedDurationSeconds: Math.min(15, Math.max(5, Math.ceil(targetDurationSeconds))),
+      prompt: h3ChunkPrompt(pages, pageNumbers, targetDurationSeconds),
+    });
+  });
+  return chunks;
+}
+
+async function createFalH3ChunkRequest(
+  endpoint: string,
+  chunk: {
+    chunkNumber: number;
+    pageNumbers: number[];
+    targetDurationSeconds: number;
+    requestedDurationSeconds: number;
+    prompt: string;
+    imageUrl: string;
+  },
+): Promise<H3ChunkRequest> {
+  const data = await workflowJson(endpoint, {
+    method: 'POST',
+    body: JSON.stringify({
+      prompt: chunk.prompt,
+      duration: chunk.requestedDurationSeconds,
+      resolution: '480P',
+      image_url: chunk.imageUrl,
+    }),
+  });
+  const requestId = workflowRequestId(data);
+  const statusUrl = workflowUrl(data, ['status_url', 'statusUrl']);
+  const responseUrl = workflowUrl(data, ['response_url', 'responseUrl', 'result_url', 'resultUrl']);
+  if (!requestId || !statusUrl || !responseUrl) {
+    throw new Error(`MiniMax H3 chunk ${chunk.chunkNumber} returned no durable request id, status URL, and response URL.`);
+  }
+  const cancelUrl = workflowUrl(data, ['cancel_url', 'cancelUrl']);
+  return {
+    chunkNumber: chunk.chunkNumber,
+    pageNumbers: chunk.pageNumbers,
+    targetDurationSeconds: chunk.targetDurationSeconds,
+    requestedDurationSeconds: chunk.requestedDurationSeconds,
+    prompt: chunk.prompt,
+    imageUrl: chunk.imageUrl,
+    requestId,
+    statusUrl,
+    responseUrl,
+    ...(cancelUrl ? { cancelUrl } : {}),
+    status: 'queued',
+    progress: 8,
+    outputUrl: null,
+    error: null,
+  };
+}
+
 function miniMaxStoryPrompt(page: Record<string, unknown>): string {
   const narration = providerStoryLanguage(safeText(page.narration, 600));
   const pageNumber = Number(page.pageNumber);
@@ -808,6 +953,83 @@ async function pollStoryJob(
   const manifest = current.story_manifest && typeof current.story_manifest === 'object'
     ? current.story_manifest as Record<string, unknown>
     : {};
+  if (manifest.workflowMode === 'ten-h3-chunks'
+    && manifest.workflow && typeof manifest.workflow === 'object') {
+    const workflow = manifest.workflow as StoryWorkflowState;
+    const chunks = Array.isArray(workflow.chunks) ? workflow.chunks : [];
+    try {
+      const next = await pollFalH3Chunks(chunks, workflowJson);
+      const nextWorkflow = {
+        ...workflow,
+        chunks: next.chunks,
+        submissionCount: next.chunks.length,
+        ...(next.status === 'ready' ? { completedAt: new Date().toISOString() } : {}),
+      };
+      const nextChunkManifest = next.chunks.map(chunk => ({
+        chunkNumber: chunk.chunkNumber,
+        pageNumbers: chunk.pageNumbers,
+        imageUrl: chunk.imageUrl,
+        targetDurationSeconds: chunk.targetDurationSeconds,
+        requestedDurationSeconds: chunk.requestedDurationSeconds,
+        prompt: chunk.prompt,
+        requestId: chunk.requestId,
+        status: chunk.status,
+        progress: chunk.progress,
+        outputUrl: chunk.outputUrl ?? null,
+        error: chunk.error ?? null,
+      }));
+      if (next.status === 'ready') {
+        return updateJob(supabase, current.id, {
+          status: 'ready',
+          progress: 82,
+          runpod_job_id: null,
+          error_message: null,
+          story_manifest: {
+            ...manifest,
+            workflow: nextWorkflow,
+            chunkManifest: nextChunkManifest,
+            visualsReady: true,
+            assembly: 'local-ffmpeg',
+            coverageMode: 'submitted-composite-chunks; visual cell coverage requires human review',
+            failureKind: null,
+          },
+        });
+      }
+      if (next.status === 'failed' || next.status === 'cancelled') {
+        return updateJob(supabase, current.id, {
+          status: next.status,
+          progress: 0,
+          error_message: next.error || 'MiniMax H3 chunk generation did not complete.',
+          story_manifest: {
+            ...manifest,
+            workflow: nextWorkflow,
+            chunkManifest: nextChunkManifest,
+            failureKind: next.status === 'cancelled' ? null : 'provider',
+          },
+        });
+      }
+      return updateJob(supabase, current.id, {
+        status: next.status,
+        progress: Math.max(current.progress, Math.min(80, 8 + next.progress * 0.72)),
+        error_message: null,
+        story_manifest: {
+          ...manifest,
+          workflow: nextWorkflow,
+          chunkManifest: nextChunkManifest,
+        },
+      });
+    } catch (error) {
+      return updateJob(supabase, current.id, {
+        status: 'failed',
+        progress: 0,
+        error_message: error instanceof Error ? error.message : 'MiniMax H3 chunk polling failed.',
+        story_manifest: {
+          ...manifest,
+          failureKind: 'provider',
+        },
+      });
+    }
+  }
   if (manifest.workflowMode === 'single-fal-workflow'
     && manifest.workflow && typeof manifest.workflow === 'object') {
     const workflow = manifest.workflow as StoryWorkflowState;
@@ -897,8 +1119,8 @@ Deno.serve(async (req: Request) => {
   if (action === 'catalog') {
     return json({
       provider: 'hosted-story',
-      workflow: 'single-fal-workflow',
-      submissionPolicy: 'one external workflow job per 32-panel story; direct per-panel H3 requests are disabled',
+      workflow: 'ten-h3-chunks',
+      submissionPolicy: 'ten external MiniMax H3 image-to-video jobs; one composite image per job; no per-panel fan-out',
       models: falStoryModels().map(({ slug, label, description, costLabel, expectedSeconds }) => ({
         provider: 'fal',
         slug,
@@ -1044,6 +1266,7 @@ Deno.serve(async (req: Request) => {
     const confirmed = payload.confirmed === true;
     const pages = Array.isArray(payload.pages) ? payload.pages as Record<string, unknown>[] : [];
     const panels = Array.isArray(payload.panels) ? payload.panels as Record<string, unknown>[] : [];
+    const chunks = Array.isArray(payload.chunks) ? payload.chunks as Record<string, unknown>[] : [];
     const characterVoiceTracks = readCharacterVoiceTracks(payload.characterVoiceTracks);
     const musicBase64 = payload.musicBase64;
     const narrationBase64 = payload.narrationBase64;
@@ -1058,8 +1281,13 @@ Deno.serve(async (req: Request) => {
     if (!model) {
       return json({ error: 'That hosted story model is not approved. Choose a model from the current catalog.' }, 400);
     }
-    if (!sessionId || pages.length !== PAGE_COUNT || panels.length !== PAGE_COUNT) {
-      return json({ error: 'sessionId plus exactly 32 pages and 32 locked panel references are required.' }, 400);
+    if (!sessionId || pages.length !== PAGE_COUNT
+      || (model?.slug === H3_MODEL_SLUG ? chunks.length !== H3_CHUNK_COUNT : panels.length !== PAGE_COUNT)) {
+      return json({
+        error: model?.slug === H3_MODEL_SLUG
+          ? 'sessionId plus exactly 32 pages and 10 ordered composite chunk images are required.'
+          : 'sessionId plus exactly 32 pages and 32 locked panel references are required.',
+      }, 400);
     }
     if (typeof musicBase64 !== 'string' || typeof narrationBase64 !== 'string') {
       return json({ error: 'Hosted story production requires real Lyria music and narration audio.' }, 400);
@@ -1074,6 +1302,185 @@ Deno.serve(async (req: Request) => {
       || Number(page.durationSeconds) <= 0 || Number(page.durationSeconds) > 10
     )) {
       return json({ error: 'Story page order, 4x4 coordinates, or timing are invalid.' }, 400);
+    }
+
+    if (model.slug === H3_MODEL_SLUG) {
+      const incomingChunks = Array.isArray(payload.chunks)
+        ? payload.chunks as Record<string, unknown>[]
+        : [];
+      const chunkPlan = h3ChunkPlan(pages);
+      if (incomingChunks.length !== H3_CHUNK_COUNT) {
+        return json({ error: 'MiniMax H3 story production requires exactly 10 composite chunk images.' }, 400);
+      }
+      if (incomingChunks.some((chunk, index) => (
+        Number(chunk.chunkNumber) !== index + 1
+        || typeof chunk.base64 !== 'string'
+        || !Array.isArray(chunk.pageNumbers)
+      ))) {
+        return json({ error: 'MiniMax H3 chunk order or image payload is invalid.' }, 400);
+      }
+      if (incomingChunks.some((chunk, index) => {
+        const expected = chunkPlan[index];
+        const pageNumbers = (chunk.pageNumbers as unknown[]).map(value => Number(value));
+        return pageNumbers.length !== expected.pageNumbers.length
+          || pageNumbers.some((pageNumber, pageIndex) => pageNumber !== expected.pageNumbers[pageIndex]);
+      })) {
+        return json({ error: 'MiniMax H3 chunks must cover pages 01–32 contiguously in ten ordered groups.' }, 400);
+      }
+
+      const plannedScenes: StoryScene[] = pages.map((page, index) => ({
+        pageNumber: index + 1,
+        sheetIndex: Number(page.sheetIndex) as 0 | 1,
+        row: Number(page.row),
+        column: Number(page.column),
+        durationSeconds: Number(page.durationSeconds),
+        seed: 730_000 + index,
+        modelSlug: model.slug,
+        provider,
+        prompt: storyPrompt(page),
+        referenceUrl: null,
+        referenceAudioUrl: null,
+        falRequestId: null,
+        status: 'planned' as const,
+        progress: 0,
+        jobId: null,
+        outputUrl: null,
+        error: null,
+        failureKind: null,
+        recovery: null,
+      }));
+      const baseManifest = {
+        pageCount: PAGE_COUNT,
+        totalDurationSeconds: totalDuration,
+        sourceAssets: 'two immutable 4x4 illustration sheets',
+        referencePolicy: 'one ordered composite image per H3 call',
+        visualProvider: model.slug,
+        modelSlug: model.slug,
+        provider,
+        confirmation: 'explicit',
+        audioPolicy: 'Lyria soundtrack plus validated lore narration; H3 native ambience preserved when present',
+        characterVoiceTracks,
+        workflowMode: 'ten-h3-chunks',
+        workflowContractVersion: 2,
+        coverageMode: 'composite-chunk-submission; individual cell coverage requires human watch/listen review',
+        chunkCount: H3_CHUNK_COUNT,
+        submissionCount: 0,
+        failureKind: null,
+      };
+      const { data: inserted, error: insertError } = await supabase.from('oracle_film_jobs').insert({
+        session_id: sessionId,
+        owner_key: ownerKey,
+        portrait_url: 'story://ordered-composite-chunk-reference',
+        job_type: 'illustration-story',
+        provider,
+        model_slug: model.slug,
+        status: 'queued',
+        progress: 1,
+        chunk_count: H3_CHUNK_COUNT,
+        chunks: pages,
+        story_scenes: plannedScenes,
+        story_manifest: baseManifest,
+        audio_manifest: storyAudioManifest(pages, characterVoiceTracks),
+      }).select('*').single();
+      if (insertError || !inserted) return json({ error: 'Could not create the MiniMax H3 story job.', detail: insertError?.message }, 500);
+      const row = inserted as StoryJobRow;
+      try {
+        const endpoint = h3QueueEndpoint();
+        const musicBytes = decodeBase64(musicBase64);
+        const narrationBytes = decodeBase64(narrationBase64);
+        const musicUrl = await uploadAsset(supabase, `films/${row.id}/audio/lyria.mp3`, musicBytes, 'audio/mpeg');
+        const narrationUrl = await uploadAsset(supabase, `films/${row.id}/audio/narration.wav`, narrationBytes, 'audio/wav');
+        const persistedChunks = await Promise.all(chunkPlan.map(async (plan, index) => {
+          const input = incomingChunks[index];
+          const bytes = decodeBase64(input.base64);
+          const requestedMimeType = typeof input.mimeType === 'string' ? input.mimeType : '';
+          const mediaKind = requestedMimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+          return {
+            ...plan,
+            imageUrl: await uploadAsset(
+              supabase,
+              `films/${row.id}/h3-chunks/chunk-${String(plan.chunkNumber).padStart(2, '0')}.${mediaKind === 'image/png' ? 'png' : 'jpg'}`,
+              bytes,
+              mediaKind,
+            ),
+          };
+        }));
+        const submitted = await Promise.allSettled(
+          persistedChunks.map(chunk => createFalH3ChunkRequest(endpoint, chunk)),
+        );
+        const requests = submitted.map((result, index) => result.status === 'fulfilled'
+          ? result.value
+          : ({
+            chunkNumber: persistedChunks[index].chunkNumber,
+            pageNumbers: persistedChunks[index].pageNumbers,
+            targetDurationSeconds: persistedChunks[index].targetDurationSeconds,
+            requestedDurationSeconds: persistedChunks[index].requestedDurationSeconds,
+            prompt: persistedChunks[index].prompt,
+            imageUrl: persistedChunks[index].imageUrl,
+            requestId: '',
+            statusUrl: '',
+            responseUrl: '',
+            status: 'failed' as const,
+            progress: 0,
+            outputUrl: null,
+            error: result.reason instanceof Error ? result.reason.message : 'MiniMax H3 chunk submission failed.',
+          }));
+        const submissionErrors = requests.filter(chunk => chunk.status === 'failed').map(chunk => chunk.error).filter(Boolean);
+        const workflow = {
+          mode: 'ten-h3-chunks' as const,
+          contractVersion: 2 as const,
+          endpoint,
+          chunks: requests,
+          submissionCount: requests.filter(chunk => chunk.requestId).length,
+          submittedAt: new Date().toISOString(),
+        };
+        const chunkManifest = requests.map(chunk => ({
+          chunkNumber: chunk.chunkNumber,
+          pageNumbers: chunk.pageNumbers,
+          imageUrl: chunk.imageUrl,
+          targetDurationSeconds: chunk.targetDurationSeconds,
+          requestedDurationSeconds: chunk.requestedDurationSeconds,
+          prompt: chunk.prompt,
+          requestId: chunk.requestId,
+          status: chunk.status,
+          progress: chunk.progress,
+          outputUrl: chunk.outputUrl ?? null,
+          error: chunk.error ?? null,
+        }));
+        const submittedJob = await updateJob(supabase, row.id, {
+          status: submissionErrors.length ? 'failed' : 'generating',
+          progress: submissionErrors.length ? 0 : 8,
+          runpod_job_id: null,
+          music_url: musicUrl,
+          narration_url: narrationUrl,
+          error_message: submissionErrors.length
+            ? `MiniMax H3 chunk submission failed: ${submissionErrors.join(' | ')}`
+            : null,
+          story_manifest: {
+            ...baseManifest,
+            workflow,
+            chunkManifest,
+            submissionCount: workflow.submissionCount,
+            failureKind: submissionErrors.length ? 'submission' : null,
+          },
+        });
+        return json(publicJob(submittedJob), 202);
+      } catch (error) {
+        const failed = await updateJob(supabase, row.id, {
+          status: 'failed',
+          progress: 0,
+          error_message: error instanceof Error ? error.message : 'MiniMax H3 story setup failed.',
+          story_manifest: {
+            ...baseManifest,
+            blockedReason: String(error instanceof Error ? error.message : '').startsWith('BLOCKED:')
+              ? error instanceof Error ? error.message : 'MiniMax H3 queue is blocked.'
+              : null,
+            failureKind: 'submission',
+          },
+        });
+        const blocked = String(error instanceof Error ? error.message : '').startsWith('BLOCKED:');
+        return json(publicJob(failed), blocked ? 202 : 503);
+      }
     }
 
     let panelManifest: StoryPanelManifestEntry[];
@@ -1529,19 +1936,20 @@ Deno.serve(async (req: Request) => {
     const currentManifest = current.story_manifest && typeof current.story_manifest === 'object'
       ? current.story_manifest as Record<string, unknown>
       : {};
-    if (currentManifest.workflowMode !== 'single-fal-workflow') {
+    if (currentManifest.workflowMode !== 'single-fal-workflow'
+      && currentManifest.workflowMode !== 'ten-h3-chunks') {
       return json({
-        error: 'Historical per-scene story records are archived and read-only. Start a new single-job workflow instead.',
+        error: 'Historical per-scene story records are archived and read-only. Start a new hosted story workflow instead.',
         blocked: true,
       }, 409);
     }
     const workflow = currentManifest.workflow && typeof currentManifest.workflow === 'object'
       ? currentManifest.workflow as StoryWorkflowState
       : null;
-    if (!workflow?.requestId) {
+    if (!workflow?.requestId && !(workflow?.chunks?.length === H3_CHUNK_COUNT)) {
       return json({
         error: currentManifest.blockedReason
-          || 'This story is blocked before submission because the shared FAL workflow contract is unavailable. No retry was submitted.',
+          || 'This story is blocked before submission because its hosted request contract is unavailable. No retry was submitted.',
         blocked: true,
       }, 409);
     }
@@ -1555,11 +1963,17 @@ Deno.serve(async (req: Request) => {
     const currentManifest = current.story_manifest && typeof current.story_manifest === 'object'
       ? current.story_manifest as Record<string, unknown>
       : {};
-    if (currentManifest.workflowMode === 'single-fal-workflow') {
+    if (currentManifest.workflowMode === 'single-fal-workflow'
+      || currentManifest.workflowMode === 'ten-h3-chunks') {
       const workflow = currentManifest.workflow && typeof currentManifest.workflow === 'object'
         ? currentManifest.workflow as StoryWorkflowState
         : null;
-      if (workflow?.requestId && workflow.cancelUrl) {
+      if (currentManifest.workflowMode === 'ten-h3-chunks' && workflow?.chunks) {
+        await Promise.all(workflow.chunks.map(async chunk => {
+          if (!chunk.cancelUrl || !chunk.requestId || ['ready', 'failed', 'cancelled'].includes(chunk.status)) return;
+          try { await workflowJson(chunk.cancelUrl, { method: 'POST' }); } catch { /* local cancel remains authoritative */ }
+        }));
+      } else if (workflow?.requestId && workflow.cancelUrl) {
         try {
           await workflowJson(workflow.cancelUrl, { method: 'POST' });
         } catch {
@@ -1573,6 +1987,17 @@ Deno.serve(async (req: Request) => {
         story_scenes: sceneList(current.story_scenes).map(scene => ['queued', 'generating', 'planned'].includes(scene.status)
           ? { ...scene, status: 'cancelled', progress: 0, error: null }
           : scene),
+        story_manifest: {
+          ...currentManifest,
+          ...(workflow?.chunks ? {
+            workflow: {
+              ...workflow,
+              chunks: workflow.chunks.map(chunk => ['queued', 'generating'].includes(chunk.status)
+                ? { ...chunk, status: 'cancelled', progress: 0, error: 'Story workflow cancelled locally.' }
+                : chunk),
+            },
+          } : {}),
+        },
         error_message: 'Story workflow cancelled locally; external cancellation was not confirmed.',
       });
       return json(publicJob(current));

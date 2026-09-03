@@ -30,6 +30,23 @@ export type StoryWorkflowState = {
   [key: string]: unknown;
 };
 
+export type H3ChunkRequest = {
+  chunkNumber: number;
+  pageNumbers: number[];
+  targetDurationSeconds: number;
+  requestedDurationSeconds: number;
+  prompt: string;
+  imageUrl: string;
+  requestId: string;
+  statusUrl: string;
+  responseUrl: string;
+  cancelUrl?: string;
+  status: 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled';
+  progress: number;
+  outputUrl?: string | null;
+  error?: string | null;
+};
+
 export type WorkflowJson = (
   url: string,
   init?: RequestInit,
@@ -203,4 +220,130 @@ export async function pollFalStoryWorkflow(
       error: error instanceof Error ? error.message : 'Coverage certificate validation failed.',
     };
   }
+}
+
+function h3VideoUrl(data: Record<string, unknown>): string {
+  const video = data.video && typeof data.video === 'object'
+    ? data.video as Record<string, unknown>
+    : {};
+  return safeUrl(data.output_url ?? data.outputUrl ?? video.url, 4000);
+}
+
+function chunkStateFromProvider(
+  chunk: H3ChunkRequest,
+  status: Record<string, unknown>,
+): H3ChunkRequest {
+  const state = safeText(status.status ?? status.state, 32).toUpperCase();
+  if (['FAILED', 'ERROR'].includes(state)) {
+    return {
+      ...chunk,
+      status: 'failed',
+      progress: 0,
+      error: errorDetail(status.error ?? status.detail) || 'MiniMax H3 chunk failed.',
+    };
+  }
+  if (['CANCELED', 'CANCELLED'].includes(state)) {
+    return {
+      ...chunk,
+      status: 'cancelled',
+      progress: 0,
+      error: 'MiniMax H3 chunk was cancelled.',
+    };
+  }
+  return {
+    ...chunk,
+    status: state === 'IN_QUEUE' || state === 'QUEUED' ? 'queued' : 'generating',
+    progress: state === 'IN_QUEUE' || state === 'QUEUED' ? 8 : 45,
+    error: null,
+  };
+}
+
+export async function pollFalH3Chunks(
+  chunks: H3ChunkRequest[],
+  request: WorkflowJson,
+): Promise<{
+  status: 'queued' | 'generating' | 'ready' | 'failed' | 'cancelled';
+  progress: number;
+  chunks: H3ChunkRequest[];
+  error?: string;
+}> {
+  const expectedSizes = [4, 4, ...Array.from({ length: 8 }, () => 3)];
+  const orderedPages = chunks.flatMap(chunk => chunk.pageNumbers);
+  const validManifest = chunks.length === 10
+    && chunks.every((chunk, index) => (
+      chunk.chunkNumber === index + 1
+      && chunk.pageNumbers.length === expectedSizes[index]
+    ))
+    && orderedPages.length === 32
+    && orderedPages.every((pageNumber, index) => pageNumber === index + 1);
+  if (!validManifest) {
+    return {
+      status: 'failed',
+      progress: 0,
+      chunks,
+      error: 'MiniMax H3 chunk manifest is missing, duplicated, reordered, or does not cover all 32 story pages.',
+    };
+  }
+  const nextChunks = await Promise.all(chunks.map(async (chunk) => {
+    if (chunk.status === 'ready' || chunk.status === 'failed' || chunk.status === 'cancelled') return chunk;
+    try {
+      const status = await request(chunk.statusUrl);
+      const responseRequestId = workflowRequestId(status);
+      if (responseRequestId && responseRequestId !== chunk.requestId) {
+        return {
+          ...chunk,
+          status: 'failed' as const,
+          progress: 0,
+          error: `MiniMax H3 chunk response belongs to request ${responseRequestId}, not chunk ${chunk.chunkNumber}.`,
+        };
+      }
+      const state = safeText(status.status ?? status.state, 32).toUpperCase();
+      if (!['COMPLETED', 'SUCCEEDED', 'SUCCESS'].includes(state)) {
+        return chunkStateFromProvider(chunk, status);
+      }
+      const result = await request(chunk.responseUrl);
+      const resultRequestId = workflowRequestId(result);
+      if (resultRequestId && resultRequestId !== chunk.requestId) {
+        return {
+          ...chunk,
+          status: 'failed' as const,
+          progress: 0,
+          error: `MiniMax H3 result belongs to request ${resultRequestId}, not chunk ${chunk.chunkNumber}.`,
+        };
+      }
+      const outputUrl = h3VideoUrl(result);
+      if (!outputUrl) {
+        return {
+          ...chunk,
+          status: 'failed' as const,
+          progress: 0,
+          error: `MiniMax H3 chunk ${chunk.chunkNumber} completed without a playable video URL.`,
+        };
+      }
+      return {
+        ...chunk,
+        status: 'ready' as const,
+        progress: 100,
+        outputUrl,
+        error: null,
+      };
+    } catch (error) {
+      return {
+        ...chunk,
+        status: 'failed' as const,
+        progress: 0,
+        error: error instanceof Error ? error.message : `MiniMax H3 chunk ${chunk.chunkNumber} polling failed.`,
+      };
+    }
+  }));
+  const failed = nextChunks.find(chunk => chunk.status === 'failed');
+  const cancelled = nextChunks.find(chunk => chunk.status === 'cancelled');
+  const allReady = nextChunks.length > 0 && nextChunks.every(chunk => chunk.status === 'ready' && Boolean(chunk.outputUrl));
+  const active = nextChunks.some(chunk => chunk.status === 'queued' || chunk.status === 'generating');
+  return {
+    status: failed ? 'failed' : cancelled ? 'cancelled' : allReady ? 'ready' : active ? 'generating' : 'queued',
+    progress: Math.round(nextChunks.reduce((sum, chunk) => sum + chunk.progress, 0) / Math.max(1, nextChunks.length)),
+    chunks: nextChunks,
+    ...(failed?.error ? { error: failed.error } : cancelled?.error ? { error: cancelled.error } : {}),
+  };
 }

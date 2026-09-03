@@ -3868,6 +3868,7 @@ export function SurrogateOracleImmersion() {
                   territory="FIRST TRANSMISSION"
                   question="GREETINGS SEEKER"
                   variant={returningCard ? 'knife' : 'ghost'}
+                  freeForm
                 />
               </div>
               <div className="oracle-stage00-card__body">
@@ -4212,6 +4213,7 @@ export function SurrogateOracleImmersion() {
                   question="THE ALLEY REMEMBERS YOU"
                   autoType
                   typingSpeedMs={34}
+                  freeForm
                 />
                 <div className="oracle-return-card__verified">SIGNAL RECOGNIZED // THE DOOR IS STILL OPEN</div>
                   </div>
@@ -4602,6 +4604,7 @@ export function SurrogateOracleImmersion() {
                 accentColor="#00ffcc"
                 territory="LYRIA SIGNAL"
                 question="MANIFESTED SIGNAL"
+                freeForm
               />
             </div>
             <div className="oracle-lyria-card__status">

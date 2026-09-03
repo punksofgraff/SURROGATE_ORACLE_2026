@@ -429,7 +429,9 @@
   -webkit-backdrop-filter: blur(4px) saturate(1.9);
   color: rgba(255, 255, 255, 0.92);
   box-shadow: none;
-  overflow: hidden;
+  /* The signal canvas deliberately blooms beyond this frame. Keep the
+     viewport/stage as the final clip, not the card. */
+  overflow: visible;
   isolation: isolate;
   pointer-events: auto;
   will-change: transform, opacity, filter;
@@ -3806,7 +3808,9 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   width: min(400px, calc(100vw - 40px));
   padding: 30px 26px 24px;
   gap: 14px;
-  overflow: hidden;
+  /* Let the return transmission escape the panel while the controls remain
+     laid out inside it. */
+  overflow: visible;
   background: linear-gradient(
     158deg,
     rgba(0, 255, 136, 0.09) 0%,

@@ -24,6 +24,8 @@ interface ParticleTypographyCardProps {
   /** Let non-interactive gates use the same letter-by-letter landing as knife cards. */
   autoType?: boolean;
   typingSpeedMs?: number;
+  /** Paint particle bursts beyond the local text/card bounds without moving the copy. */
+  freeForm?: boolean;
 }
 
 interface Spark {
@@ -55,6 +57,7 @@ export function ParticleTypographyCard({
   variant = 'knife',
   autoType = false,
   typingSpeedMs = 38,
+  freeForm = false,
 }: ParticleTypographyCardProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -113,12 +116,13 @@ export function ParticleTypographyCard({
     if (shatteredRef.current) return;
     if (effectiveLandedChars > prevLandedRef.current && containerRef.current) {
       const containerRect = containerRef.current.getBoundingClientRect();
+      const particleRect = canvasRef.current?.getBoundingClientRect() ?? containerRect;
       for (let i = prevLandedRef.current; i < effectiveLandedChars; i++) {
         const el = containerRef.current.querySelector(`[data-char-idx="${i}"]`) as HTMLElement | null;
         if (el) {
           const rect = el.getBoundingClientRect();
-          const relX = rect.left - containerRect.left + rect.width / 2;
-          const relY = rect.top - containerRect.top + rect.height / 2;
+          const relX = rect.left - particleRect.left + rect.width / 2;
+          const relY = rect.top - particleRect.top + rect.height / 2;
 
            // Ghost lettering is viewed against a very dark, moving alley.
            // Give each landed character a readable burst instead of a
@@ -157,16 +161,17 @@ export function ParticleTypographyCard({
     if (isSelected && isThisSelected && !shatteredRef.current && containerRef.current) {
       shatteredRef.current = true;
       const containerRect = containerRef.current.getBoundingClientRect();
+      const particleRect = canvasRef.current?.getBoundingClientRect() ?? containerRect;
       const charEls = containerRef.current.querySelectorAll(`[data-char-idx]`);
 
       // Explode all characters into a cloud of quantum particle shards
       charEls.forEach((el) => {
         const rect = (el as HTMLElement).getBoundingClientRect();
-        const relX = rect.left - containerRect.left + rect.width / 2;
-        const relY = rect.top - containerRect.top + rect.height / 2;
+        const relX = rect.left - particleRect.left + rect.width / 2;
+        const relY = rect.top - particleRect.top + rect.height / 2;
 
-        const centerX = containerRect.width / 2;
-        const centerY = containerRect.height / 2;
+        const centerX = particleRect.width / 2;
+        const centerY = particleRect.height / 2;
         const dx = relX - centerX;
         const dy = relY - centerY;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -285,9 +290,14 @@ export function ParticleTypographyCard({
           height: '100%',
           pointerEvents: 'none',
           zIndex: 12,
-           display: 'block',
-           overflow: 'visible',
-           mixBlendMode: 'screen',
+          display: 'block',
+          overflow: 'visible',
+          mixBlendMode: 'screen',
+          ...(freeForm ? {
+            inset: '-100%',
+            width: '300%',
+            height: '300%',
+          } : {}),
         }}
       />
 

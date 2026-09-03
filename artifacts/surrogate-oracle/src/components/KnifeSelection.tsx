@@ -325,6 +325,7 @@ export function KnifeSelection({ isGeminiConnected, isOracleSpeaking, selectedKn
                   accentColor={kq.color}
                   territory={kq.territory}
                   question={kq.question}
+                  freeForm
                 />
 
                 {/* CTA — "DRAW THIS ONE" reads as an unambiguous choice of THIS card

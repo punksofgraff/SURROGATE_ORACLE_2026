@@ -160,6 +160,7 @@ type NarrationBundle = {
 type StoryJobListener = (job: IllustrationStoryFilmJob) => void;
 type LocalStitchInput = {
   sceneUrls?: string[];
+  cellUrls?: string[];
   hostedFilmUrl?: string;
   sheets?: StoryAsset[];
   music?: StoryAsset;
@@ -745,6 +746,23 @@ export function useIllustrationStoryFilm(
     if (controller.signal.aborted) throw new Error('Story film recovery cancelled.');
     onProgress?.(82);
 
+    let reviewedCellUrls: string[] | null = null;
+    if (current.provider === 'browser-film') {
+      const { data: stitchOrderData, error: stitchOrderError } = await supabase.functions.invoke('oracle-story-film-job', {
+        body: {
+          action: 'stitch-order',
+          jobId: current.id,
+          ownerKey: stableOwnerKey,
+        },
+      });
+      if (stitchOrderError) throw new Error(`Story cell order recovery failed: ${stitchOrderError.message}`);
+      if (!Array.isArray(stitchOrderData?.cellUrls) || stitchOrderData.cellUrls.length !== pages.length) {
+        throw new Error(stitchOrderData?.error || 'Persisted story cell order is incomplete or expired.');
+      }
+      reviewedCellUrls = stitchOrderData.cellUrls;
+      if (stitchOrderData.job?.id) publish(stitchOrderData.job as IllustrationStoryFilmJob);
+    }
+
     const persistedSoundEffects = current.audioManifest?.soundEffects ?? [];
     const recoveredPages = pages.map(page => page.soundEffects?.length || page.sfx?.length
       ? page
@@ -758,6 +776,8 @@ export function useIllustrationStoryFilm(
       body: JSON.stringify({
         ...(hostedFilmUrl
           ? { hostedFilmUrl }
+          : reviewedCellUrls
+            ? { cellUrls: reviewedCellUrls }
           : {
             sceneUrls: orderedScenes
               .map(scene => scene.outputUrl)
@@ -795,7 +815,7 @@ export function useIllustrationStoryFilm(
       orderedScenes,
       persistAssembly,
     );
-  }, [persistAssembly]);
+  }, [persistAssembly, publish, stableOwnerKey]);
 
   const renderLocalStory = useCallback(async (
     sheetUrls: [string, string],
@@ -808,9 +828,8 @@ export function useIllustrationStoryFilm(
     abortRef.current = controller;
     onProgress?.(8);
 
-    const [sheetOne, sheetTwo, music] = await Promise.all([
-      urlToBase64(sheetUrls[0]),
-      urlToBase64(sheetUrls[1]),
+    const [panels, music] = await Promise.all([
+      createLockedPanelAssets(sheetUrls, pages),
       urlToBase64(musicUrl),
     ]);
     if (controller.signal.aborted) throw new Error('Story film render cancelled.');
@@ -826,6 +845,7 @@ export function useIllustrationStoryFilm(
         sessionId: sessionId ?? 'anonymous-story-session',
         ownerKey: stableOwnerKey,
         pages,
+        panels,
         musicBase64: music.base64,
         musicMimeType: music.mimeType,
         narrationBase64: narrationBundle.narration.base64,
@@ -838,16 +858,29 @@ export function useIllustrationStoryFilm(
     activeJobIdRef.current = localJobData.id;
     publish(localJobData as IllustrationStoryFilmJob);
 
+    const { data: stitchOrderData, error: stitchOrderError } = await supabase.functions.invoke('oracle-story-film-job', {
+      body: {
+        action: 'stitch-order',
+        jobId: localJobData.id,
+        ownerKey: stableOwnerKey,
+      },
+    });
+    if (stitchOrderError) throw new Error(`Story cell order review failed: ${stitchOrderError.message}`);
+    if (!Array.isArray(stitchOrderData?.cellUrls) || stitchOrderData.cellUrls.length !== pages.length) {
+      throw new Error(stitchOrderData?.error || 'Story cell order review returned an incomplete list.');
+    }
+    if (stitchOrderData.job?.id) publish(stitchOrderData.job as IllustrationStoryFilmJob);
+
     const response = await fetch(`${import.meta.env.BASE_URL}api/illustration-story-stitch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-         body: JSON.stringify({
-         sheets: [sheetOne, sheetTwo],
-         music,
-         narration: narrationBundle.narration,
-         characterVoiceTracks: narrationBundle.characterTracks,
-         pages,
-       } satisfies LocalStitchInput),
+      body: JSON.stringify({
+        cellUrls: stitchOrderData.cellUrls,
+        music,
+        narration: narrationBundle.narration,
+        characterVoiceTracks: narrationBundle.characterTracks,
+        pages,
+      } satisfies LocalStitchInput),
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -872,7 +905,7 @@ export function useIllustrationStoryFilm(
       onProgress,
       localObjectUrlRef,
       audioManifest,
-      [],
+      (stitchOrderData.job?.scenes ?? localJobData.scenes ?? []) as IllustrationStoryScene[],
       persistAssembly,
     );
   }, [persistAssembly, publish, sessionId, stableOwnerKey]);

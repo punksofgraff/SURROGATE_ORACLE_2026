@@ -381,6 +381,24 @@ function storyPerformanceFilter(page: StoryPageRequest): string {
   ].join(',');
 }
 
+function storyCellPerformanceFilter(page: StoryPageRequest): string {
+  const phase = (page.pageNumber * 0.73).toFixed(3);
+  const duration = Math.max(0.1, Number(page.durationSeconds));
+  const x = `(iw-1280)/2+${120 + (page.pageNumber % 4) * 40}*sin(2*PI*(t+${phase})/${duration})`;
+  const y = `(ih-720)/2+${38 + (page.pageNumber % 3) * 12}*cos(PI*(t+${phase})/${duration})`;
+  const fadeOutStart = Math.max(0.1, duration - 0.22);
+  return [
+    'scale=3840:2160:force_original_aspect_ratio=increase',
+    'crop=3840:2160',
+    `crop=1280:720:x='${x}':y='${y}'`,
+    'setsar=1',
+    'fps=24',
+    'format=yuv420p',
+    'fade=t=in:st=0:d=0.22',
+    `fade=t=out:st=${fadeOutStart}:d=0.22`,
+  ].join(',');
+}
+
 type AuthoredStoryEffect = { file: string; startSeconds: number; volume: number };
 
 function authoredCueFilter(cue: string, duration: number): string {
@@ -496,12 +514,14 @@ async function stitchIllustrationStory(body: any): Promise<{
 }> {
   const sheets = Array.isArray(body?.sheets) ? body.sheets : [];
   const sceneUrls = Array.isArray(body?.sceneUrls) ? body.sceneUrls : [];
+  const cellUrls = Array.isArray(body?.cellUrls) ? body.cellUrls : [];
   const hostedFilmUrl = typeof body?.hostedFilmUrl === 'string' ? body.hostedFilmUrl : '';
   const pages = Array.isArray(body?.pages) ? body.pages as StoryPageRequest[] : [];
   const usingRemoteScenes = sceneUrls.length === 32;
+  const usingRemoteCells = cellUrls.length === 32;
   const usingHostedFilm = Boolean(hostedFilmUrl);
-  if ((!usingRemoteScenes && !usingHostedFilm && sheets.length !== 2) || pages.length !== 32) {
-    throw new Error('Story assembly requires one validated hosted film, 32 hosted scene URLs, or two sheets, plus 32 pages.');
+  if ((!usingRemoteScenes && !usingRemoteCells && !usingHostedFilm && sheets.length !== 2) || pages.length !== 32) {
+    throw new Error('Story assembly requires one validated hosted film, 32 hosted scene URLs, 32 persisted cell URLs, or two sheets, plus 32 pages.');
   }
   const duration = pages.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
   const orderedPages = pages.every((page, index) => page.pageNumber === index + 1
@@ -523,7 +543,7 @@ async function stitchIllustrationStory(body: any): Promise<{
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-story-'));
   try {
-    const sheetFiles = usingRemoteScenes || usingHostedFilm ? [] : sheets.map((asset: unknown, index: number) => {
+    const sheetFiles = usingRemoteScenes || usingRemoteCells || usingHostedFilm ? [] : sheets.map((asset: unknown, index: number) => {
       const decoded = decodeDataAsset(asset);
       const file = path.join(dir, `sheet-${index}.png`);
       fs.writeFileSync(file, decoded.bytes);
@@ -577,6 +597,21 @@ async function stitchIllustrationStory(body: any): Promise<{
       );
       await runFfmpeg(clipArgs);
       clipFiles.push(clipFile);
+    } else if (usingRemoteCells) {
+      for (const [index, page] of pages.entries()) {
+        const remoteFile = path.join(dir, `cell-${String(page.pageNumber).padStart(2, '0')}.jpg`);
+        fs.writeFileSync(remoteFile, await downloadRemoteAsset(cellUrls[index], `Persisted story cell ${page.pageNumber}`));
+        const clipFile = path.join(dir, `page-${String(page.pageNumber).padStart(2, '0')}.mp4`);
+        await runFfmpeg([
+          '-y', '-loop', '1', '-i', remoteFile,
+          '-vf', storyCellPerformanceFilter(page),
+          '-t', String(page.durationSeconds),
+          '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+          '-movflags', '+faststart',
+          clipFile,
+        ]);
+        clipFiles.push(clipFile);
+      }
     } else if (usingRemoteScenes) {
       for (const [index, page] of pages.entries()) {
         const remoteFile = path.join(dir, `remote-${String(page.pageNumber).padStart(2, '0')}.mp4`);

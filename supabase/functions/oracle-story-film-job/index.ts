@@ -239,6 +239,21 @@ function sceneList(value: unknown): StoryScene[] {
   return Array.isArray(value) ? value as StoryScene[] : [];
 }
 
+function orderedStoryScenes(value: unknown): StoryScene[] {
+  return [...sceneList(value)].sort((left, right) => left.pageNumber - right.pageNumber);
+}
+
+function validCellManifest(scenes: StoryScene[]): boolean {
+  return scenes.length === PAGE_COUNT
+    && scenes.every((scene, index) => (
+      scene.pageNumber === index + 1
+      && scene.status === 'ready'
+      && Boolean(scene.referenceUrl || scene.outputUrl)
+      && Number(scene.durationSeconds) > 0
+      && Number(scene.durationSeconds) <= 10
+    ));
+}
+
 function storyManifest(row: StoryJobRow): Record<string, unknown> {
   return row.story_manifest && typeof row.story_manifest === 'object'
     ? row.story_manifest as Record<string, unknown>
@@ -923,6 +938,102 @@ Deno.serve(async (req: Request) => {
     return json(latest ? publicJob(latest as StoryJobRow) : { job: null });
   }
 
+  if (action === 'stitch-order') {
+    if (!jobId) return json({ error: 'jobId is required.' }, 400);
+    const ownerKey = safeText(payload.ownerKey, 160);
+    if (!ownerKey) return json({ error: 'ownerKey is required.' }, 400);
+    const { data: existing, error: existingError } = await supabase.from('oracle_film_jobs')
+      .select('*')
+      .eq('id', jobId)
+      .eq('owner_key', ownerKey)
+      .eq('job_type', 'illustration-story')
+      .maybeSingle();
+    if (existingError || !existing) return json({ error: 'Story film job not found.' }, 404);
+    const current = existing as StoryJobRow;
+    const scenes = orderedStoryScenes(current.story_scenes);
+    if (!validCellManifest(scenes)) {
+      return json({
+        error: 'The persisted story cells are incomplete or out of order; no stitch request was started.',
+      }, 409);
+    }
+
+    const { data: cellRows, error: cellError } = await supabase.from('oracle_story_cells')
+      .select('page_number,panel_id,source_hash,media_url,media_kind,duration_seconds,status,expires_at')
+      .eq('job_id', jobId)
+      .order('page_number', { ascending: true });
+    if (cellError || !cellRows || cellRows.length !== PAGE_COUNT) {
+      return json({
+        error: 'The persisted story cell manifest is incomplete; no stitch request was started.',
+      }, 409);
+    }
+    const now = Date.now();
+    const orderedCells = cellRows.map((raw: Record<string, unknown>, index: number) => ({
+      pageNumber: Number(raw.page_number),
+      panelId: safeText(raw.panel_id, 160),
+      sourceHash: safeText(raw.source_hash, 128).toLowerCase(),
+      mediaUrl: safeUrl(raw.media_url, 4000),
+      mediaKind: safeText(raw.media_kind, 40),
+      durationSeconds: Number(raw.duration_seconds),
+      status: safeText(raw.status, 20),
+      expiresAt: safeText(raw.expires_at, 80),
+      expectedScene: scenes[index],
+    }));
+    const valid = orderedCells.every((cell, index) => (
+      cell.pageNumber === index + 1
+      && cell.panelId
+      && /^https:\/\//i.test(cell.mediaUrl)
+      && ['image/jpeg', 'image/png', 'video/mp4'].includes(cell.mediaKind)
+      && cell.status === 'ready'
+      && Number.isFinite(Date.parse(cell.expiresAt))
+      && Date.parse(cell.expiresAt) > now
+      && Number.isFinite(cell.durationSeconds)
+      && cell.durationSeconds > 0
+      && Math.abs(cell.durationSeconds - cell.expectedScene.durationSeconds) <= 0.01
+      && cell.mediaUrl === (cell.expectedScene.referenceUrl || cell.expectedScene.outputUrl)
+    ));
+    if (!valid) {
+      return json({
+        error: 'The persisted story cell manifest is expired, unavailable, or does not match the page order; no stitch request was started.',
+      }, 409);
+    }
+
+    const manifest = storyManifest(current);
+    const stitchPlan = {
+      version: 1,
+      reviewedAt: new Date().toISOString(),
+      expiresAt: orderedCells[0].expiresAt,
+      pageCount: PAGE_COUNT,
+      order: orderedCells.map(cell => ({
+        pageNumber: cell.pageNumber,
+        panelId: cell.panelId,
+        sourceHash: cell.sourceHash,
+        mediaUrl: cell.mediaUrl,
+        mediaKind: cell.mediaKind,
+        durationSeconds: cell.durationSeconds,
+      })),
+    };
+    const { data: updated, error: updateError } = await supabase.from('oracle_film_jobs')
+      .update({
+        status: 'stitching',
+        progress: Math.max(current.progress, 82),
+        story_manifest: { ...manifest, stitchPlan },
+        error_message: null,
+      })
+      .eq('id', jobId)
+      .eq('owner_key', ownerKey)
+      .select('*')
+      .single();
+    if (updateError || !updated) return json({ error: 'Could not persist the story stitch plan.' }, 500);
+    return json({
+      id: jobId,
+      pageCount: PAGE_COUNT,
+      orderReviewed: true,
+      stitchPlan,
+      cellUrls: stitchPlan.order.map(cell => cell.mediaUrl),
+      job: publicJob(updated as StoryJobRow),
+    }, 202);
+  }
+
   if (action === 'create') {
     const sessionId = safeText(payload.sessionId, 120);
     const ownerKey = ownerKeyFor(payload, sessionId);
@@ -1132,9 +1243,10 @@ Deno.serve(async (req: Request) => {
     const sessionId = safeText(payload.sessionId, 120);
     const ownerKey = ownerKeyFor(payload, sessionId);
     const pages = Array.isArray(payload.pages) ? payload.pages as Record<string, unknown>[] : [];
+    const panels = Array.isArray(payload.panels) ? payload.panels as Record<string, unknown>[] : [];
     const characterVoiceTracks = readCharacterVoiceTracks(payload.characterVoiceTracks);
-    if (!sessionId || !validStoryPages(pages)) {
-      return json({ error: 'sessionId plus exactly 32 valid story pages are required.' }, 400);
+    if (!sessionId || !validStoryPages(pages) || panels.length !== PAGE_COUNT) {
+      return json({ error: 'sessionId plus exactly 32 valid story pages and 32 locked panel cells are required.' }, 400);
     }
     if (typeof payload.musicBase64 !== 'string' || typeof payload.narrationBase64 !== 'string') {
       return json({ error: 'Local story production requires music and narration audio.' }, 400);
@@ -1162,6 +1274,7 @@ Deno.serve(async (req: Request) => {
           provider: 'browser-film',
           status: 'ready',
           progress: 100,
+          referenceUrl: null,
           outputUrl: null,
           error: null,
           failureKind: null,
@@ -1176,6 +1289,8 @@ Deno.serve(async (req: Request) => {
           audioPolicy: 'Lyria soundtrack plus validated lore narration',
           characterVoiceTracks,
           assembly: 'local-ffmpeg',
+          cellStorage: 'perishable-postgres-manifest',
+          stitchReview: 'server-ordered-cell-list-v1',
         },
         audio_manifest: storyAudioManifest(pages, characterVoiceTracks),
       }).select('*').single();
@@ -1183,6 +1298,44 @@ Deno.serve(async (req: Request) => {
         return json({ error: 'Could not create the local story review record.', detail: insertError?.message }, 500);
       }
       const row = inserted as StoryJobRow;
+      const initialScenes = sceneList(row.story_scenes);
+      const storedCells = await Promise.all(pages.map(async (page, index) => {
+        const source = panels[index];
+        const bytes = decodeBase64(source?.base64);
+        const requestedMimeType = typeof source?.mimeType === 'string' ? source.mimeType : '';
+        const mediaKind = requestedMimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+        const panelId = `sheet-${Number(page.sheetIndex) + 1}-r${Number(page.row) + 1}-c${Number(page.column) + 1}`;
+        return {
+          pageNumber: Number(page.pageNumber),
+          panelId,
+          sourceHash: await sha256Hex(bytes),
+          mediaUrl: await uploadAsset(
+            supabase,
+            `films/${row.id}/cells/page-${String(index + 1).padStart(2, '0')}.${mediaKind === 'image/png' ? 'png' : 'jpg'}`,
+            bytes,
+            mediaKind,
+          ),
+          mediaKind,
+          durationSeconds: Number(page.durationSeconds),
+        };
+      }));
+      const scenesWithCells = initialScenes.map((scene, index) => ({
+        ...scene,
+        referenceUrl: storedCells[index].mediaUrl,
+        outputUrl: storedCells[index].mediaUrl,
+      }));
+      const { error: cellInsertError } = await supabase.from('oracle_story_cells').insert(
+        storedCells.map(cell => ({
+          job_id: row.id,
+          page_number: cell.pageNumber,
+          panel_id: cell.panelId,
+          source_hash: cell.sourceHash,
+          media_url: cell.mediaUrl,
+          media_kind: cell.mediaKind,
+          duration_seconds: cell.durationSeconds,
+        })),
+      );
+      if (cellInsertError) throw new Error(`Story cell manifest could not be stored: ${cellInsertError.message}`);
       const musicUrl = await uploadAsset(
         supabase,
         `films/${row.id}/audio/lyria.mp3`,
@@ -1196,10 +1349,24 @@ Deno.serve(async (req: Request) => {
         'audio/wav',
       );
       const local = await updateJob(supabase, row.id, {
+        story_scenes: scenesWithCells,
         music_url: musicUrl,
         narration_url: narrationUrl,
       });
-      return json(publicJob(local), 202);
+      return json({
+        ...publicJob(local),
+        stitchPlan: {
+          version: 1,
+          pageCount: PAGE_COUNT,
+          order: storedCells.map(cell => ({
+            pageNumber: cell.pageNumber,
+            panelId: cell.panelId,
+            mediaUrl: cell.mediaUrl,
+            mediaKind: cell.mediaKind,
+            durationSeconds: cell.durationSeconds,
+          })),
+        },
+      }, 202);
     } catch (error) {
       return json({ error: error instanceof Error ? error.message : 'Local story setup failed.' }, 503);
     }

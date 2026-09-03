@@ -53,6 +53,7 @@ function pages() {
 
 async function createFixtures(dir) {
   const sceneFile = join(dir, 'scene.mp4');
+  const cellFile = join(dir, 'cell.jpg');
   const audioFile = join(dir, 'audio.wav');
   await run('ffmpeg', [
     '-y',
@@ -68,12 +69,21 @@ async function createFixtures(dir) {
   await run('ffmpeg', [
     '-y',
     '-f', 'lavfi',
+    '-i', 'color=c=0x2d4965:s=640x360',
+    '-frames:v', '1',
+    '-q:v', '2',
+    cellFile,
+  ], artifactDir);
+  await run('ffmpeg', [
+    '-y',
+    '-f', 'lavfi',
     '-i', 'sine=frequency=440:sample_rate=16000:duration=4',
     '-c:a', 'pcm_s16le',
     audioFile,
   ], artifactDir);
   return {
     scene: await readFile(sceneFile),
+    cell: await readFile(cellFile),
     audio: await readFile(audioFile),
   };
 }
@@ -98,6 +108,11 @@ async function startFixtureServer(fixtures) {
     if (/^\/scene\/\d{2}\.mp4$/.test(request.url ?? '')) {
       response.writeHead(200, { 'Content-Type': 'video/mp4' });
       response.end(fixtures.scene);
+      return;
+    }
+    if (/^\/cell\/\d{2}\.jpg$/.test(request.url ?? '')) {
+      response.writeHead(200, { 'Content-Type': 'image/jpeg' });
+      response.end(fixtures.cell);
       return;
     }
     if (request.url === '/music.wav' || request.url === '/narration.wav') {
@@ -223,7 +238,7 @@ async function assemblePersistedStory(viteUrl, baseUrl) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      sceneUrls: pages().map(page => `${baseUrl}/scene/${String(page.pageNumber).padStart(2, '0')}.mp4`),
+      cellUrls: pages().map(page => `${baseUrl}/cell/${String(page.pageNumber).padStart(2, '0')}.jpg`),
       musicUrl: `${baseUrl}/music.wav`,
       narrationUrl: `${baseUrl}/narration.wav`,
       characterVoiceTracks: [],
@@ -272,16 +287,16 @@ async function main() {
     assert.ok(probe.streams.some(stream => stream.codec_type === 'audio'));
     assert.ok(Math.abs(Number(probe.format.duration) - EXPECTED_DURATION_SECONDS) <= 0.75);
 
-    const sceneRequests = fixtureServer.requests.filter(url => /^\/scene\/\d{2}\.mp4$/.test(url ?? ''));
-    assert.equal(sceneRequests.length, PAGE_COUNT, 'local assembly must download every persisted scene exactly once');
+    const cellRequests = fixtureServer.requests.filter(url => /^\/cell\/\d{2}\.jpg$/.test(url ?? ''));
+    assert.equal(cellRequests.length, PAGE_COUNT, 'local assembly must download every persisted cell exactly once');
     assert.deepEqual(
-      sceneRequests.map(url => Number(url.match(/\/(\d+)\.mp4$/)[1])),
+      cellRequests.map(url => Number(url.match(/\/(\d+)\.jpg$/)[1])),
       pages().map(page => page.pageNumber),
-      'persisted scene URLs must be downloaded in page order',
+      'persisted cell URLs must be downloaded in page order',
     );
     assert.equal(fixtureServer.requests.filter(url => url === '/music.wav').length, 1);
     assert.equal(fixtureServer.requests.filter(url => url === '/narration.wav').length, 1);
-    console.log('illustration story film integration passed (32 persisted scenes, 16:9 MP4/audio, refresh/cancel/retry race controls)');
+    console.log('illustration story film integration passed (32 persisted cells, 16:9 MP4/audio, refresh/cancel/retry race controls)');
   } finally {
     await stopProcess(vite?.process);
     fixtureServer?.server.close();

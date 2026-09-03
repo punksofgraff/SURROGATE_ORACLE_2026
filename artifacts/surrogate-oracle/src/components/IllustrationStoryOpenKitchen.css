@@ -236,6 +236,116 @@
   opacity: 0.72;
 }
 
+.story-kitchen__history {
+  display: grid;
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid rgba(145, 233, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(8, 20, 35, 0.42);
+}
+
+.story-kitchen__history .story-kitchen__panel-heading {
+  padding-bottom: 9px;
+}
+
+.story-kitchen__history-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.story-kitchen__history-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr);
+  gap: 9px;
+  min-width: 0;
+  padding: 9px 0;
+}
+
+.story-kitchen__history-item:not(:last-child)::before {
+  position: absolute;
+  top: 32px;
+  bottom: -1px;
+  left: 12px;
+  width: 1px;
+  background: var(--kitchen-line);
+  content: '';
+}
+
+.story-kitchen__history-marker {
+  z-index: 1;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--kitchen-line);
+  border-radius: 50%;
+  background: rgba(8, 20, 35, 0.9);
+  color: var(--kitchen-cyan);
+}
+
+.story-kitchen__history-marker--approval {
+  border-color: rgba(157, 255, 215, 0.38);
+  color: var(--kitchen-mint);
+}
+
+.story-kitchen__history-marker--rejection {
+  border-color: rgba(255, 155, 191, 0.38);
+  color: var(--kitchen-danger);
+}
+
+.story-kitchen__history-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  padding-top: 1px;
+}
+
+.story-kitchen__history-topline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.story-kitchen__history-topline strong {
+  color: var(--kitchen-ink);
+  font-size: 0.64rem;
+}
+
+.story-kitchen__history-topline time,
+.story-kitchen__history-copy small {
+  color: var(--kitchen-faint);
+  font-size: 0.52rem;
+}
+
+.story-kitchen__history-copy > span {
+  color: var(--kitchen-muted);
+  font-size: 0.59rem;
+  line-height: 1.35;
+}
+
+.story-kitchen__history-copy p {
+  margin: 2px 0 0;
+  padding: 6px 8px;
+  border-left: 2px solid rgba(255, 155, 191, 0.45);
+  background: rgba(255, 155, 191, 0.06);
+  color: var(--kitchen-ink);
+  font-size: 0.58rem;
+  line-height: 1.4;
+}
+
+.story-kitchen__history-empty {
+  margin: 0;
+  color: var(--kitchen-faint);
+  font-size: 0.59rem;
+  line-height: 1.45;
+}
+
 .story-kitchen__workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(290px, 0.7fr);

@@ -341,6 +341,30 @@ export type IllustrationStoryReviewRejection = {
   rejectedAt: string;
 };
 
+export type IllustrationStoryReviewHistoryAction = 'inspection' | 'approval' | 'rejection';
+
+/**
+ * An audit-only review event. Keep this deliberately independent from shot
+ * media and audio URLs so it can be shown to collaborators without widening
+ * access to private production assets.
+ */
+export type IllustrationStoryReviewHistoryEntry = {
+  action: IllustrationStoryReviewHistoryAction;
+  reviewer: string;
+  occurredAt: string;
+  inspectedShotNumbers: number[];
+  audioListened: boolean;
+  pageNumber: number | null;
+  reason?: string;
+};
+
+export function appendIllustrationStoryReviewHistory(
+  history: IllustrationStoryReviewHistoryEntry[] | undefined,
+  entry: IllustrationStoryReviewHistoryEntry,
+): IllustrationStoryReviewHistoryEntry[] {
+  return [...(history ?? []), entry].slice(-200);
+}
+
 export type IllustrationStoryReviewManifest = {
   version: 1;
   pageCount: number;
@@ -352,6 +376,7 @@ export type IllustrationStoryReviewManifest = {
   createdAt: string;
   review?: IllustrationStoryReviewState;
   rejections?: IllustrationStoryReviewRejection[];
+  reviewHistory?: IllustrationStoryReviewHistoryEntry[];
 };
 
 export function createIllustrationStoryReviewManifest(

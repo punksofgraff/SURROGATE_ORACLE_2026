@@ -155,6 +155,7 @@ const fullyReviewedManifest = {
     updatedAt: '2026-09-02T12:01:00.000Z',
   },
 };
+assert.equal(fullyReviewedManifest.reviewHistory, undefined, 'legacy manifests may omit review history');
 assert.equal(canApproveIllustrationStoryReview(fullyReviewedManifest), true);
 assert.equal(
   canApproveIllustrationStoryReview({

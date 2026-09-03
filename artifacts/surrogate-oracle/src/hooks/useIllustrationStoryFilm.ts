@@ -8,6 +8,7 @@ import type {
   IllustrationStoryPage,
   IllustrationStoryScene,
   IllustrationStoryReviewAudioSource,
+  IllustrationStoryReviewHistoryEntry,
   IllustrationStoryReviewManifest,
   IllustrationStoryReviewRejection,
   IllustrationStoryReviewState,
@@ -73,6 +74,7 @@ export type IllustrationStoryFilmJob = {
   };
   review?: IllustrationStoryReviewState;
   reviewRejections?: IllustrationStoryReviewRejection[];
+  reviewHistory?: IllustrationStoryReviewHistoryEntry[];
   reviewManifest?: IllustrationStoryReviewManifest | null;
 };
 
@@ -869,6 +871,7 @@ export function useIllustrationStoryFilm(
   const persistReview = useCallback(async (
     review: IllustrationStoryReviewState,
     rejections: IllustrationStoryReviewRejection[] = [],
+    reviewHistoryEntry?: Pick<IllustrationStoryReviewHistoryEntry, 'action' | 'reviewer' | 'pageNumber' | 'reason'>,
   ) => {
     const request = reviewPersistenceRef.current
       .catch(() => undefined)
@@ -876,7 +879,14 @@ export function useIllustrationStoryFilm(
         const currentId = activeJobIdRef.current ?? jobRef.current?.id;
         if (!currentId) throw new Error('There is no saved story film job to review.');
         const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
-          body: { action: 'review', jobId: currentId, ownerKey: stableOwnerKey, review, rejections },
+          body: {
+            action: 'review',
+            jobId: currentId,
+            ownerKey: stableOwnerKey,
+            review,
+            rejections,
+            ...(reviewHistoryEntry ? { reviewHistoryEntry } : {}),
+          },
         });
         if (error) throw error;
         if (!data?.id) throw new Error('Story review persistence returned no job.');

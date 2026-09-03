@@ -7,6 +7,7 @@ import {
   FileAudio,
   Film,
   Headphones,
+  History,
   Image as ImageIcon,
   LockKeyhole,
   Play,
@@ -39,7 +40,7 @@ type IllustrationStoryOpenKitchenProps = {
   onStoryFilmRetry?: () => void;
   onStoryReviewApprove?: () => void;
   onStoryReviewReject?: (reason?: string, pageNumber?: number) => void;
-  onStoryReviewStateChange?: (state: IllustrationStoryReviewState) => void;
+  onStoryReviewStateChange?: (state: IllustrationStoryReviewState, pageNumber?: number) => void;
 };
 
 function formatTime(seconds: number): string {
@@ -64,6 +65,39 @@ function audioStatusLabel(source: IllustrationStoryReviewAudioSource): string {
 
 function isRequiredAudio(source: IllustrationStoryReviewAudioSource): boolean {
   return source.id !== 'sfx' && source.status !== 'not-requested';
+}
+
+function formatReviewDate(value: string): string {
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return 'Time unavailable';
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(timestamp);
+}
+
+function reviewActionLabel(action: NonNullable<IllustrationStoryReviewManifest['reviewHistory']>[number]['action']): string {
+  switch (action) {
+    case 'approval': return 'Approved';
+    case 'rejection': return 'Rejected';
+    default: return 'Review progress';
+  }
+}
+
+function reviewChangeLabel(entry: NonNullable<IllustrationStoryReviewManifest['reviewHistory']>[number]): string {
+  if (entry.action === 'approval') return 'Approved the reviewed studio render.';
+  if (entry.action === 'rejection') {
+    return entry.pageNumber
+      ? `Rejected shot ${String(entry.pageNumber).padStart(2, '0')}.`
+      : 'Rejected the studio render.';
+  }
+  const inspected = `${entry.inspectedShotNumbers.length}/32 shots inspected`;
+  const shot = entry.pageNumber
+    ? `Inspected shot ${String(entry.pageNumber).padStart(2, '0')}`
+    : null;
+  return entry.audioListened
+    ? `${shot ? `${shot} · ` : ''}${inspected}; current mix listened to.`
+    : `${shot ? `${shot} · ` : ''}${inspected}`;
 }
 
 function EvidenceVideo({
@@ -249,7 +283,7 @@ export function IllustrationStoryOpenKitchen({
         inspectedShotNumbers: [...next].sort((a, b) => a - b),
         audioListened: audioReviewed,
         updatedAt: new Date().toISOString(),
-      });
+      }, selectedShot.pageNumber);
       return next;
     });
   };
@@ -325,6 +359,40 @@ export function IllustrationStoryOpenKitchen({
           );
         })}
       </div>
+
+      <section className="story-kitchen__history" aria-label="Studio review history" data-testid="story-review-history">
+        <div className="story-kitchen__panel-heading">
+          <div>
+            <span className="story-kitchen__section-kicker">02 / Studio review history</span>
+            <strong>Every review decision, in order</strong>
+          </div>
+          <History size={16} aria-hidden="true" />
+        </div>
+        {manifest?.reviewHistory?.length ? (
+          <ol className="story-kitchen__history-list">
+            {manifest.reviewHistory.map((entry, index) => (
+              <li className="story-kitchen__history-item" key={`${entry.occurredAt}-${entry.action}-${index}`}>
+                <span className={`story-kitchen__history-marker story-kitchen__history-marker--${entry.action}`} aria-hidden="true">
+                  {entry.action === 'approval' ? <Check size={12} /> : entry.action === 'rejection' ? <X size={12} /> : <Eye size={12} />}
+                </span>
+                <div className="story-kitchen__history-copy">
+                  <div className="story-kitchen__history-topline">
+                    <strong>{reviewActionLabel(entry.action)}</strong>
+                    <time dateTime={entry.occurredAt}>{formatReviewDate(entry.occurredAt)}</time>
+                  </div>
+                  <span>{reviewChangeLabel(entry)}</span>
+                  {entry.reason && <p>{entry.reason}</p>}
+                  <small>by {entry.reviewer || 'Studio reviewer'}</small>
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="story-kitchen__history-empty">
+            No chronological events have been recorded yet. New inspections, approvals, and shot-level reasons will appear here.
+          </p>
+        )}
+      </section>
 
       {selectedShot && (
         <div className="story-kitchen__workspace">

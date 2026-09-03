@@ -183,6 +183,15 @@ async function run() {
     const rejection = rejected?.metadata?.reviewRejections?.at(-1);
     check(rejection?.pageNumber === 17, 'rejection records the selected shot');
     check(rejection?.reason === 'Shot 17 obscures the source artwork at the end checkpoint.', 'rejection records the entered reason');
+    const history = rejected?.metadata?.reviewHistory ?? [];
+    check(history.at(-1)?.action === 'rejection', 'review history records the rejection action');
+    check(history.at(-1)?.pageNumber === 17, 'review history records the rejected shot');
+    check(history.at(-1)?.reason === 'Shot 17 obscures the source artwork at the end checkpoint.', 'review history records the rejection reason');
+    check(history.at(-1)?.finalMediaUrl === undefined, 'review history does not contain private media URLs');
+    check(await page.$$eval(
+      '[data-testid="story-review-history"] .story-kitchen__history-item',
+      elements => elements.length,
+    ) > 0, 'studio shows the review history');
 
     await page.reload({ waitUntil: 'load', timeout: 45_000 });
     await sleep(1_500);
@@ -196,6 +205,11 @@ async function run() {
     }, STORY_STORAGE_KEY);
     check(restoredRejection?.pageNumber === 17, 'reload retains the rejected shot');
     check(restoredRejection?.reason === 'Shot 17 obscures the source artwork at the end checkpoint.', 'reload retains the rejection reason');
+    const restoredHistory = await page.evaluate(storageKey => {
+      const artifact = JSON.parse(localStorage.getItem(storageKey) ?? 'null');
+      return artifact?.metadata?.reviewHistory ?? [];
+    }, STORY_STORAGE_KEY);
+    check(restoredHistory.at(-1)?.action === 'rejection', 'reload retains the review history');
     check(providerCalls.length === 0, 'review fixture makes no provider-generation calls');
     check(pageErrors.length === 0, 'browser review run produces no page errors');
 

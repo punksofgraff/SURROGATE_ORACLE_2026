@@ -37,7 +37,9 @@ import {
   ILLUSTRATION_STORY_MINIMAX_MODELS,
   type IllustrationStoryLane,
   type IllustrationStoryReviewAudioSource,
+  type IllustrationStoryReviewHistoryEntry,
   type IllustrationStoryReviewManifest,
+  type IllustrationStoryReviewRejection,
   type IllustrationStoryReviewState,
   type IllustrationStoryScene,
   type SeriesRenderMode,
@@ -70,7 +72,7 @@ export type CreativeArtifactCardProps = {
   onStoryLaneChange?: (lane: IllustrationStoryLane, modelSlug: string | null) => void;
   onStoryReviewApprove?: () => void;
   onStoryReviewReject?: (reason?: string, pageNumber?: number) => void;
-  onStoryReviewStateChange?: (state: IllustrationStoryReviewState) => void;
+  onStoryReviewStateChange?: (state: IllustrationStoryReviewState, pageNumber?: number) => void;
   savedSeriesCount?: number;
   onOpenSeriesHistory?: () => void;
 };
@@ -722,9 +724,20 @@ export function CreativeArtifactCard({
         storyAudioSources,
         storedReviewManifest?.createdAt ?? artifact.createdAt,
       );
-      return storedReviewManifest?.review
-        ? { ...freshManifest, review: storedReviewManifest.review }
-        : freshManifest;
+      return {
+        ...freshManifest,
+        ...(storedReviewManifest?.review ? { review: storedReviewManifest.review } : {}),
+        ...(storedReviewManifest?.rejections
+          ? { rejections: storedReviewManifest.rejections }
+          : Array.isArray(metadataRecord?.reviewRejections)
+            ? { rejections: metadataRecord.reviewRejections as IllustrationStoryReviewRejection[] }
+            : {}),
+        ...(storedReviewManifest?.reviewHistory
+          ? { reviewHistory: storedReviewManifest.reviewHistory }
+          : Array.isArray(metadataRecord?.reviewHistory)
+            ? { reviewHistory: metadataRecord.reviewHistory as IllustrationStoryReviewHistoryEntry[] }
+            : {}),
+      };
     })()
     : null;
   const hasStoryReviewSurface = isIllustrationStory && storyPages.length > 0;

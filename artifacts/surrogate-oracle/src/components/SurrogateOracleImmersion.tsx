@@ -88,6 +88,7 @@ import {
   createCreativeTextOutput,
   createDataUrl,
   createIllustrationStoryPages,
+  appendIllustrationStoryReviewHistory,
   canApproveIllustrationStoryReview,
   updateIllustrationStoryPages,
   createSeriesAssemblyDataUrl,
@@ -107,6 +108,7 @@ import {
   illustrationStoryMiniMaxModel,
   type IllustrationStoryLane,
   type IllustrationStoryReviewAudioSource,
+  type IllustrationStoryReviewHistoryEntry,
   type IllustrationStoryReviewRejection,
   type IllustrationStoryReviewState,
   type SeriesRenderMode,
@@ -1839,6 +1841,7 @@ export function SurrogateOracleImmersion() {
           storyModelSlug: job.modelSlug,
           ...(job.review ? { studioReviewState: job.review } : {}),
           ...(job.reviewRejections ? { reviewRejections: job.reviewRejections } : {}),
+          ...(job.reviewHistory ? { reviewHistory: job.reviewHistory } : {}),
           ...(job.review?.approvedAt
             ? {
               studioReview: {
@@ -1875,7 +1878,13 @@ export function SurrogateOracleImmersion() {
        ...(job.reviewManifest
          ? { reviewManifest: job.reviewManifest }
          : job.review && artifact.reviewManifest
-           ? { reviewManifest: { ...artifact.reviewManifest, review: job.review } }
+           ? {
+             reviewManifest: {
+               ...artifact.reviewManifest,
+               review: job.review,
+               ...(job.reviewHistory ? { reviewHistory: job.reviewHistory } : {}),
+             },
+           }
            : {}),
       metadata: {
         ...(artifact.metadata ?? {}),
@@ -1886,6 +1895,7 @@ export function SurrogateOracleImmersion() {
         storyModelSlug: job.provider === 'minimax' ? job.modelSlug : artifact.metadata?.storyModelSlug,
         ...(job.review ? { studioReviewState: job.review } : {}),
         ...(job.reviewRejections ? { reviewRejections: job.reviewRejections } : {}),
+        ...(job.reviewHistory ? { reviewHistory: job.reviewHistory } : {}),
         ...(job.review?.approvedAt
           ? {
             studioReview: {
@@ -3335,11 +3345,25 @@ export function SurrogateOracleImmersion() {
       approvedAt,
       method: 'manual-watch-and-listen' as const,
     };
+    const reviewer = currentUserId ?? 'Studio reviewer';
+    const historyEntry: IllustrationStoryReviewHistoryEntry = {
+      action: 'approval',
+      reviewer,
+      occurredAt: approvedAt,
+      inspectedShotNumbers: review.inspectedShotNumbers,
+      audioListened: review.audioListened,
+      pageNumber: null,
+    };
+    const reviewHistory = appendIllustrationStoryReviewHistory(
+      reviewManifest.reviewHistory,
+      historyEntry,
+    );
     updateCreativeArtifact(artifact.id, {
       status: 'ready',
       reviewManifest: {
         ...reviewManifest,
         review,
+        reviewHistory,
       },
       metadata: {
         ...(artifact.metadata ?? {}),
@@ -3348,17 +3372,18 @@ export function SurrogateOracleImmersion() {
           reviewedAt: approvedAt,
           method: 'manual-watch-and-listen',
         },
+        reviewHistory,
         storyStage: 'approved studio animation',
       },
     });
     const rejections: IllustrationStoryReviewRejection[] = Array.isArray(artifact.metadata?.reviewRejections)
       ? artifact.metadata.reviewRejections as IllustrationStoryReviewRejection[]
       : [];
-    void illustrationStoryFilm.persistReview(review, rejections).catch(error => {
+    void illustrationStoryFilm.persistReview(review, rejections, historyEntry).catch(error => {
       logStep(`ILLUSTRATION STORY APPROVAL PERSISTENCE FAILED — ${error instanceof Error ? error.message : 'server unavailable'}`, 'warn');
     });
     logStep('ILLUSTRATION STORY APPROVED — MANUAL WATCH + LISTEN COMPLETE', 'ok');
-  }, [illustrationStoryFilm.persistReview, updateCreativeArtifact]);
+  }, [currentUserId, illustrationStoryFilm.persistReview, updateCreativeArtifact]);
 
   const rejectIllustrationStoryReview = useCallback((reason?: string, pageNumber?: number) => {
     const artifact = activeCreativeArtifactRef.current;
@@ -3373,10 +3398,43 @@ export function SurrogateOracleImmersion() {
       reason: rejectionReason,
       rejectedAt: new Date().toISOString(),
     };
+    const review = {
+      ...(artifact.reviewManifest?.review ?? {
+        inspectedShotNumbers: [],
+        audioListened: false,
+        updatedAt: rejection.rejectedAt,
+      }),
+      approvedAt: undefined,
+      updatedAt: rejection.rejectedAt,
+    };
+    const historyEntry: IllustrationStoryReviewHistoryEntry = {
+      action: 'rejection',
+      reviewer: currentUserId ?? 'Studio reviewer',
+      occurredAt: rejection.rejectedAt,
+      inspectedShotNumbers: review.inspectedShotNumbers,
+      audioListened: review.audioListened,
+      pageNumber: rejection.pageNumber,
+      reason: rejection.reason,
+    };
+    const reviewHistory = appendIllustrationStoryReviewHistory(
+      artifact.reviewManifest?.reviewHistory
+        ?? (Array.isArray(artifact.metadata?.reviewHistory)
+          ? artifact.metadata.reviewHistory as IllustrationStoryReviewHistoryEntry[]
+          : []),
+      historyEntry,
+    );
     updateCreativeArtifact(artifact.id, {
       status: 'partial',
       outputUrl: null,
       outputLabel: undefined,
+      reviewManifest: artifact.reviewManifest
+        ? {
+          ...artifact.reviewManifest,
+          review,
+          rejections: [...(artifact.reviewManifest.rejections ?? []), rejection],
+          reviewHistory,
+        }
+        : undefined,
       error: 'Studio review rejected this render. It must not be presented as a finished premium episode.',
       metadata: {
         ...(artifact.metadata ?? {}),
@@ -3385,44 +3443,58 @@ export function SurrogateOracleImmersion() {
           reviewedAt: new Date().toISOString(),
           method: 'manual-watch-and-listen',
         },
+        studioReviewState: review,
         reviewRejections: [
           ...previousRejections,
           rejection,
         ],
+        reviewHistory,
         storyStage: 'review rejected — regenerate or revise the shot plan',
       },
     });
-    const review = artifact.reviewManifest?.review ?? {
-      inspectedShotNumbers: [],
-      audioListened: false,
-      updatedAt: new Date().toISOString(),
-    };
-    void illustrationStoryFilm.persistReview(review, [...previousRejections, rejection]).catch(error => {
+    void illustrationStoryFilm.persistReview(review, [...previousRejections, rejection], historyEntry).catch(error => {
       logStep(`ILLUSTRATION STORY REVIEW PERSISTENCE FAILED — ${error instanceof Error ? error.message : 'server unavailable'}`, 'warn');
     });
     logStep('ILLUSTRATION STORY REVIEW REJECTED — NOT A FINISHED EPISODE', 'warn');
-  }, [illustrationStoryFilm.persistReview, updateCreativeArtifact]);
+  }, [currentUserId, illustrationStoryFilm.persistReview, updateCreativeArtifact]);
 
-  const updateIllustrationStoryReviewState = useCallback((review: IllustrationStoryReviewState) => {
+  const updateIllustrationStoryReviewState = useCallback((review: IllustrationStoryReviewState, changedPageNumber?: number) => {
     const artifact = activeCreativeArtifactRef.current;
     if (!artifact?.reviewManifest || !isIllustrationStoryProduction(artifact.metadata?.production)) return;
+    const historyEntry: IllustrationStoryReviewHistoryEntry = {
+      action: 'inspection',
+      reviewer: currentUserId ?? 'Studio reviewer',
+      occurredAt: review.updatedAt,
+      inspectedShotNumbers: review.inspectedShotNumbers,
+      audioListened: review.audioListened,
+      pageNumber: changedPageNumber ?? null,
+    };
+    const reviewHistory = appendIllustrationStoryReviewHistory(
+      artifact.reviewManifest.reviewHistory
+        ?? (Array.isArray(artifact.metadata?.reviewHistory)
+          ? artifact.metadata.reviewHistory as IllustrationStoryReviewHistoryEntry[]
+          : []),
+      historyEntry,
+    );
     updateCreativeArtifact(artifact.id, {
       reviewManifest: {
         ...artifact.reviewManifest,
         review,
+        reviewHistory,
       },
       metadata: {
         ...(artifact.metadata ?? {}),
         studioReviewState: review,
+        reviewHistory,
       },
     });
     const rejections: IllustrationStoryReviewRejection[] = Array.isArray(artifact.metadata?.reviewRejections)
       ? artifact.metadata.reviewRejections as IllustrationStoryReviewRejection[]
       : [];
-    void illustrationStoryFilm.persistReview(review, rejections).catch(error => {
+    void illustrationStoryFilm.persistReview(review, rejections, historyEntry).catch(error => {
       logStep(`ILLUSTRATION STORY REVIEW PERSISTENCE FAILED — ${error instanceof Error ? error.message : 'server unavailable'}`, 'warn');
     });
-  }, [illustrationStoryFilm.persistReview, updateCreativeArtifact]);
+  }, [currentUserId, illustrationStoryFilm.persistReview, updateCreativeArtifact]);
 
   return (
     <div

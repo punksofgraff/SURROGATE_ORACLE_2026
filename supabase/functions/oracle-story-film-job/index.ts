@@ -161,6 +161,7 @@ type StoryJobRow = {
   story_manifest: unknown;
   audio_manifest: unknown;
   review_manifest: unknown;
+  review_history: unknown;
   provider: string | null;
   model_slug: string | null;
   runpod_job_id: string | null;
@@ -189,6 +190,41 @@ function safeUrl(value: unknown, max = 4000): string {
   return typeof value === 'string'
     ? value.replace(/["'`{}<>]/g, '').trim().slice(0, max)
     : '';
+}
+
+function reviewHistoryList(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(entry => {
+    if (!entry || typeof entry !== 'object') return [];
+    const raw = entry as Record<string, unknown>;
+    const action = raw.action === 'approval' || raw.action === 'rejection' || raw.action === 'inspection'
+      ? raw.action
+      : null;
+    const occurredAt = safeText(raw.occurredAt, 80);
+    if (!action || !occurredAt) return [];
+    const inspectedShotNumbers = Array.from(new Set(
+      (Array.isArray(raw.inspectedShotNumbers) ? raw.inspectedShotNumbers : [])
+        .map(value => Number(value))
+        .filter(value => Number.isInteger(value) && value >= 1 && value <= PAGE_COUNT),
+    )).sort((a, b) => a - b);
+    const pageNumber = raw.pageNumber === null || raw.pageNumber === undefined
+      ? null
+      : Number(raw.pageNumber);
+    const normalizedPageNumber = pageNumber === null
+      || (Number.isInteger(pageNumber) && pageNumber >= 1 && pageNumber <= PAGE_COUNT)
+      ? pageNumber
+      : null;
+    const reason = safeText(raw.reason, 500);
+    return [{
+      action,
+      reviewer: safeText(raw.reviewer, 160) || 'Studio reviewer',
+      occurredAt,
+      inspectedShotNumbers,
+      audioListened: raw.audioListened === true,
+      pageNumber: normalizedPageNumber,
+      ...(reason ? { reason } : {}),
+    }];
+  });
 }
 
 function decodeBase64(value: unknown, maxChars = 20_000_000): Uint8Array {
@@ -231,6 +267,10 @@ function publicJob(row: StoryJobRow) {
   const reviewRejections = Array.isArray(manifest.reviewRejections)
     ? manifest.reviewRejections
     : [];
+  const storedReviewHistory = reviewHistoryList(row.review_history);
+  const reviewHistory = storedReviewHistory.length
+    ? storedReviewHistory
+    : reviewHistoryList(manifest.reviewHistory);
   const audioVerification = manifest.audioVerification && typeof manifest.audioVerification === 'object'
     ? manifest.audioVerification as Record<string, unknown>
     : {};
@@ -294,6 +334,7 @@ function publicJob(row: StoryJobRow) {
     },
     review,
     reviewRejections,
+    reviewHistory,
     reviewManifest: row.review_manifest && typeof row.review_manifest === 'object'
       ? row.review_manifest
       : null,
@@ -373,6 +414,7 @@ function reviewManifestWithDurableReferences(
       : Array.isArray(manifest.reviewRejections)
         ? manifest.reviewRejections
         : [],
+    reviewHistory: reviewHistoryList(manifest.reviewHistory),
   };
 }
 
@@ -1360,6 +1402,7 @@ Deno.serve(async (req: Request) => {
           },
         },
         ...(manifest ? { review_manifest: manifest } : {}),
+        ...(manifest ? { review_history: reviewHistoryList(manifest.reviewHistory) } : {}),
         ...(Number.isInteger(pageCount) && pageCount > 0 ? { chunk_count: pageCount } : {}),
       });
       return json(publicJob(next));
@@ -1400,31 +1443,69 @@ Deno.serve(async (req: Request) => {
           rejectedAt: new Date().toISOString(),
         }];
       });
+    const currentManifest = current.review_manifest && typeof current.review_manifest === 'object'
+      ? current.review_manifest as Record<string, unknown>
+      : {};
+    const currentStoryManifest = current.story_manifest && typeof current.story_manifest === 'object'
+      ? current.story_manifest as Record<string, unknown>
+      : {};
+    const storedReviewHistory = reviewHistoryList(current.review_history);
+    const previousHistory = storedReviewHistory.length
+      ? storedReviewHistory
+      : reviewHistoryList(currentManifest.reviewHistory ?? currentStoryManifest.reviewHistory);
+    const rawHistoryEntry = payload.reviewHistoryEntry && typeof payload.reviewHistoryEntry === 'object'
+      ? payload.reviewHistoryEntry as Record<string, unknown>
+      : {};
+    const action = rawHistoryEntry.action === 'approval'
+      || rawHistoryEntry.action === 'rejection'
+      || rawHistoryEntry.action === 'inspection'
+      ? rawHistoryEntry.action
+      : 'inspection';
+    const historyPageNumber = rawHistoryEntry.pageNumber === null || rawHistoryEntry.pageNumber === undefined
+      ? null
+      : Number(rawHistoryEntry.pageNumber);
+    const normalizedHistoryPageNumber = historyPageNumber !== null
+      && Number.isInteger(historyPageNumber)
+      && historyPageNumber >= 1
+      && historyPageNumber <= PAGE_COUNT
+      ? historyPageNumber
+      : null;
+    const historyReason = safeText(rawHistoryEntry.reason, 500);
+    const reviewHistory = [
+      ...previousHistory,
+      ...reviewHistoryList([{
+        action,
+        reviewer: rawHistoryEntry.reviewer,
+        occurredAt: new Date().toISOString(),
+        inspectedShotNumbers,
+        audioListened: rawReview.audioListened === true,
+        pageNumber: action === 'rejection' ? normalizedHistoryPageNumber : null,
+        ...(historyReason ? { reason: historyReason } : {}),
+      }]),
+    ].slice(-200);
+    const review = {
+      inspectedShotNumbers,
+      audioListened: rawReview.audioListened === true,
+      approvedAt: typeof rawReview.approvedAt === 'string' ? rawReview.approvedAt.slice(0, 80) : null,
+      method: rawReview.method === 'manual-watch-and-listen' ? rawReview.method : null,
+      updatedAt: new Date().toISOString(),
+    };
     current = await updateJob(supabase, current.id, {
       story_manifest: {
-        ...(current.story_manifest && typeof current.story_manifest === 'object' ? current.story_manifest : {}),
-        review: {
-          inspectedShotNumbers,
-          audioListened: rawReview.audioListened === true,
-          approvedAt: typeof rawReview.approvedAt === 'string' ? rawReview.approvedAt.slice(0, 80) : null,
-          method: rawReview.method === 'manual-watch-and-listen' ? rawReview.method : null,
-          updatedAt: new Date().toISOString(),
-        },
+        ...currentStoryManifest,
+        review,
         reviewRejections: rejections,
         rejections,
+        reviewHistory,
       },
+      review_history: reviewHistory,
       review_manifest: current.review_manifest && typeof current.review_manifest === 'object'
         ? {
-          ...(current.review_manifest as Record<string, unknown>),
-          review: {
-            inspectedShotNumbers,
-            audioListened: rawReview.audioListened === true,
-            approvedAt: typeof rawReview.approvedAt === 'string' ? rawReview.approvedAt.slice(0, 80) : null,
-            method: rawReview.method === 'manual-watch-and-listen' ? rawReview.method : null,
-            updatedAt: new Date().toISOString(),
-          },
+          ...currentManifest,
+          review,
           reviewRejections: rejections,
           rejections,
+          reviewHistory,
         }
         : undefined,
     });

@@ -20,11 +20,13 @@ import type {
   IllustrationStoryPage,
   IllustrationStoryReviewAudioSource,
   IllustrationStoryReviewEvidence,
+  IllustrationStoryReviewHistoryAction,
   IllustrationStoryReviewManifest,
   IllustrationStoryReviewShot,
   IllustrationStoryReviewState,
   IllustrationStoryScene,
 } from '../lib/creativeProduction';
+import { filterIllustrationStoryReviewHistory } from '../lib/creativeProduction';
 import './IllustrationStoryOpenKitchen.css';
 
 type IllustrationStoryOpenKitchenProps = {
@@ -78,9 +80,9 @@ function formatReviewDate(value: string): string {
 
 function reviewActionLabel(action: NonNullable<IllustrationStoryReviewManifest['reviewHistory']>[number]['action']): string {
   switch (action) {
+    case 'inspection': return 'Inspected';
     case 'approval': return 'Approved';
     case 'rejection': return 'Rejected';
-    default: return 'Review progress';
   }
 }
 
@@ -217,6 +219,8 @@ export function IllustrationStoryOpenKitchen({
   const [rejectionReason, setRejectionReason] = useState('');
   const filmRef = useRef<HTMLVideoElement>(null);
   const [filmReady, setFilmReady] = useState(false);
+  const [historyShotFilter, setHistoryShotFilter] = useState<number | 'all'>('all');
+  const [historyActionFilter, setHistoryActionFilter] = useState<IllustrationStoryReviewHistoryAction | 'all'>('all');
 
   useEffect(() => {
     setSelectedPageNumber(1);
@@ -224,11 +228,20 @@ export function IllustrationStoryOpenKitchen({
     setAudioReviewed(manifest?.review?.audioListened ?? false);
     setRejectionReason('');
     setFilmReady(false);
+    setHistoryShotFilter('all');
+    setHistoryActionFilter('all');
   }, [manifest?.createdAt, outputUrl]);
 
   const selectedShot = shots.find(shot => shot.pageNumber === selectedPageNumber) ?? shots[0] ?? null;
   const selectedPage = selectedShot ? pageForShot(pages, selectedShot) : null;
   const selectedScene = scenes.find(scene => scene.pageNumber === selectedShot?.pageNumber);
+  const reviewHistory = useMemo(
+    () => filterIllustrationStoryReviewHistory(manifest?.reviewHistory, {
+      pageNumber: historyShotFilter,
+      action: historyActionFilter,
+    }),
+    [historyActionFilter, historyShotFilter, manifest?.reviewHistory],
+  );
   const requiredAudio = audioSources.filter(isRequiredAudio);
   const missingAudio = requiredAudio.length < 8
     ? [{
@@ -364,13 +377,63 @@ export function IllustrationStoryOpenKitchen({
         <div className="story-kitchen__panel-heading">
           <div>
             <span className="story-kitchen__section-kicker">02 / Studio review history</span>
-            <strong>Every review decision, in order</strong>
+            <strong>
+              {historyShotFilter === 'all' && historyActionFilter === 'all'
+                ? 'Every review decision, in order'
+                : `${reviewHistory.length} matching event${reviewHistory.length === 1 ? '' : 's'}`}
+            </strong>
           </div>
           <History size={16} aria-hidden="true" />
         </div>
-        {manifest?.reviewHistory?.length ? (
+        <div className="story-kitchen__history-filters" aria-label="Filter studio review history">
+          <label>
+            <span>Shot</span>
+            <select
+              value={historyShotFilter}
+              onChange={event => {
+                const value = event.target.value;
+                setHistoryShotFilter(value === 'all' ? 'all' : Number(value));
+              }}
+              data-testid="select-review-history-shot"
+            >
+              <option value="all">All shots</option>
+              {shots.map(shot => (
+                <option key={shot.pageNumber} value={shot.pageNumber}>
+                  Shot {String(shot.pageNumber).padStart(2, '0')}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Decision</span>
+            <select
+              value={historyActionFilter}
+              onChange={event => setHistoryActionFilter(event.target.value as IllustrationStoryReviewHistoryAction | 'all')}
+              data-testid="select-review-history-action"
+            >
+              <option value="all">All events</option>
+              <option value="approval">Approvals</option>
+              <option value="rejection">Rejections</option>
+              <option value="inspection">Inspections</option>
+            </select>
+          </label>
+          {(historyShotFilter !== 'all' || historyActionFilter !== 'all') && (
+            <button
+              type="button"
+              className="story-kitchen__history-clear"
+              onClick={() => {
+                setHistoryShotFilter('all');
+                setHistoryActionFilter('all');
+              }}
+              data-testid="button-clear-review-history-filters"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+        {reviewHistory.length ? (
           <ol className="story-kitchen__history-list">
-            {manifest.reviewHistory.map((entry, index) => (
+            {reviewHistory.map((entry, index) => (
               <li className="story-kitchen__history-item" key={`${entry.occurredAt}-${entry.action}-${index}`}>
                 <span className={`story-kitchen__history-marker story-kitchen__history-marker--${entry.action}`} aria-hidden="true">
                   {entry.action === 'approval' ? <Check size={12} /> : entry.action === 'rejection' ? <X size={12} /> : <Eye size={12} />}
@@ -387,6 +450,10 @@ export function IllustrationStoryOpenKitchen({
               </li>
             ))}
           </ol>
+        ) : manifest?.reviewHistory?.length ? (
+          <p className="story-kitchen__history-empty">
+            No review events match these filters. Clear filters to restore the complete chronological history.
+          </p>
         ) : (
           <p className="story-kitchen__history-empty">
             No chronological events have been recorded yet. New inspections, approvals, and shot-level reasons will appear here.

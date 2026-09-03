@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   canApproveIllustrationStoryReview,
   createIllustrationStoryReviewManifest,
+  filterIllustrationStoryReviewHistory,
   type IllustrationStoryPage,
   type IllustrationStoryReviewAudioSource,
   type IllustrationStoryScene,
@@ -176,6 +177,60 @@ assert.equal(
   false,
   'approval must remain locked until the current mix is listened to',
 );
+
+const reviewHistory = [
+  {
+    action: 'inspection' as const,
+    reviewer: 'alice',
+    occurredAt: '2026-09-02T12:02:00.000Z',
+    inspectedShotNumbers: [1],
+    audioListened: false,
+    pageNumber: 1,
+  },
+  {
+    action: 'rejection' as const,
+    reviewer: 'bob',
+    occurredAt: '2026-09-02T12:03:00.000Z',
+    inspectedShotNumbers: [1],
+    audioListened: false,
+    pageNumber: 1,
+    reason: 'Source panel is obscured.',
+  },
+  {
+    action: 'approval' as const,
+    reviewer: 'alice',
+    occurredAt: '2026-09-02T12:04:00.000Z',
+    inspectedShotNumbers: pages().map(page => page.pageNumber),
+    audioListened: true,
+    pageNumber: null,
+  },
+];
+assert.deepEqual(
+  filterIllustrationStoryReviewHistory(reviewHistory).map(entry => entry.action),
+  ['inspection', 'rejection', 'approval'],
+  'no filters must preserve the complete chronological history',
+);
+assert.deepEqual(
+  filterIllustrationStoryReviewHistory(reviewHistory, { pageNumber: 1 }).map(entry => entry.action),
+  ['inspection', 'rejection'],
+  'shot filters must keep only events for that shot',
+);
+assert.deepEqual(
+  filterIllustrationStoryReviewHistory(reviewHistory, { action: 'rejection' }).map(entry => entry.pageNumber),
+  [1],
+  'decision filters must keep only matching event types',
+);
+assert.deepEqual(
+  filterIllustrationStoryReviewHistory(reviewHistory, { pageNumber: 1, action: 'inspection' }).map(entry => entry.reviewer),
+  ['alice'],
+  'shot and decision filters must compose',
+);
+assert.equal(
+  filterIllustrationStoryReviewHistory(reviewHistory, { pageNumber: 32, action: 'approval' }).length,
+  0,
+  'filters with no matches must return an empty view',
+);
+assert.equal(reviewHistory.length, 3, 'filtering must not rewrite persisted history');
 
 const missingAudioManifest = createIllustrationStoryReviewManifest(
   pages(),

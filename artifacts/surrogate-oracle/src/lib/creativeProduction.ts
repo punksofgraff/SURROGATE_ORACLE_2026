@@ -361,11 +361,29 @@ export type IllustrationStoryReviewHistoryEntry = {
   reason?: string;
 };
 
+export type IllustrationStoryReviewHistoryFilters = {
+  pageNumber?: number | 'all';
+  action?: IllustrationStoryReviewHistoryAction | 'all';
+};
+
 export function appendIllustrationStoryReviewHistory(
   history: IllustrationStoryReviewHistoryEntry[] | undefined,
   entry: IllustrationStoryReviewHistoryEntry,
 ): IllustrationStoryReviewHistoryEntry[] {
   return [...(history ?? []), entry].slice(-200);
+}
+
+export function filterIllustrationStoryReviewHistory(
+  history: IllustrationStoryReviewHistoryEntry[] | undefined,
+  filters: IllustrationStoryReviewHistoryFilters = {},
+): IllustrationStoryReviewHistoryEntry[] {
+  const pageNumber = filters.pageNumber ?? 'all';
+  const action = filters.action ?? 'all';
+
+  return (history ?? []).filter(entry => (
+    (pageNumber === 'all' || entry.pageNumber === pageNumber)
+      && (action === 'all' || entry.action === action)
+  ));
 }
 
 export type IllustrationStoryReviewManifest = {

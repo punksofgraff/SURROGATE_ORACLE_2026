@@ -11,6 +11,7 @@ import {
   pollFalH3Chunks,
   pollFalStoryWorkflow,
 } from './polling.ts';
+import { submitFalH3Chunks } from './submission.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1421,56 +1422,17 @@ Deno.serve(async (req: Request) => {
             ),
           };
         }));
-        const submitted = await Promise.allSettled(
-          persistedChunks.map(chunk => createFalH3ChunkRequest(endpoint, chunk)),
+        const { requests, submissionErrors } = await submitFalH3Chunks(
+          persistedChunks,
+          chunk => createFalH3ChunkRequest(endpoint, chunk),
+          async chunk => {
+            if (!chunk.cancelUrl) throw new Error('FAL did not return a cancellation URL.');
+            await workflowJson(chunk.cancelUrl, {
+              method: 'PUT',
+              headers: { 'X-Fal-No-Retry': '1' },
+            });
+          },
         );
-        let requests = submitted.map((result, index) => result.status === 'fulfilled'
-          ? result.value
-          : ({
-            chunkNumber: persistedChunks[index].chunkNumber,
-            pageNumbers: persistedChunks[index].pageNumbers,
-            targetDurationSeconds: persistedChunks[index].targetDurationSeconds,
-            requestedDurationSeconds: persistedChunks[index].requestedDurationSeconds,
-            prompt: persistedChunks[index].prompt,
-            imageUrl: persistedChunks[index].imageUrl,
-            requestId: '',
-            statusUrl: '',
-            responseUrl: '',
-            status: 'failed' as const,
-            progress: 0,
-            outputUrl: null,
-            error: result.reason instanceof Error ? result.reason.message : 'MiniMax H3 chunk submission failed.',
-          }));
-        const submissionErrors = requests.filter(chunk => chunk.status === 'failed').map(chunk => chunk.error).filter(Boolean);
-        if (submissionErrors.length) {
-          const cancellationResults = await Promise.all(requests.map(async chunk => {
-            if (!chunk.requestId || chunk.status === 'failed') return null;
-            if (!chunk.cancelUrl) {
-              return `MiniMax H3 chunk ${chunk.chunkNumber} was accepted but returned no cancellation URL.`;
-            }
-            try {
-              await workflowJson(chunk.cancelUrl, {
-                method: 'PUT',
-                headers: { 'X-Fal-No-Retry': '1' },
-              });
-              return null;
-            } catch (error) {
-              return `MiniMax H3 chunk ${chunk.chunkNumber} cancellation failed: ${
-                error instanceof Error ? error.message : 'unknown cancellation error'
-              }`;
-            }
-          }));
-          const cancellationErrors = cancellationResults.filter((error): error is string => Boolean(error));
-          requests = requests.map(chunk => chunk.requestId && chunk.status !== 'failed'
-            ? {
-              ...chunk,
-              status: 'cancelled' as const,
-              progress: 0,
-              error: 'Submission batch aborted after another H3 chunk failed.',
-            }
-            : chunk);
-          if (cancellationErrors.length) submissionErrors.push(...cancellationErrors);
-        }
         const workflow = {
           mode: 'ten-h3-chunks' as const,
           contractVersion: 2 as const,

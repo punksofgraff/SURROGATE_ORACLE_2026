@@ -5,6 +5,7 @@ import {
   pollFalStoryWorkflow,
   pollFalH3Chunks,
 } from '../../../supabase/functions/oracle-story-film-job/polling.ts';
+import { submitFalH3Chunks } from '../../../supabase/functions/oracle-story-film-job/submission.ts';
 
 const functionSource = await readFile(
   join(new URL('../../../supabase/functions/oracle-story-film-job/index.ts', import.meta.url).pathname),
@@ -12,6 +13,10 @@ const functionSource = await readFile(
 );
 const pollingSource = await readFile(
   join(new URL('../../../supabase/functions/oracle-story-film-job/polling.ts', import.meta.url).pathname),
+  'utf8',
+);
+const submissionSource = await readFile(
+  join(new URL('../../../supabase/functions/oracle-story-film-job/submission.ts', import.meta.url).pathname),
   'utf8',
 );
 const createStart = functionSource.indexOf("if (action === 'create')");
@@ -39,10 +44,10 @@ assert.match(createBranch, /submissionCount:\s*1/);
 assert.match(pollingSource, /missing, duplicate, reordered, overlapping, or unverifiable panel ranges/);
 assert.match(createBranch, /createFalH3ChunkRequest/);
 assert.match(createBranch, /H3_CHUNK_COUNT/);
-assert.match(createBranch, /Promise\.allSettled/);
+assert.match(submissionSource, /Promise\.allSettled/);
 assert.match(createBranch, /X-Fal-No-Retry/);
 assert.match(functionSource, /method:\s*'PUT'/);
-assert.match(functionSource, /Submission batch aborted after another H3 chunk failed/);
+assert.match(submissionSource, /Submission batch aborted after another H3 chunk failed/);
 assert.match(functionSource, /minimax\/h3\/image-to-video/);
 
 const PAGE_COUNT = 32;
@@ -224,5 +229,55 @@ const incompleteH3 = structuredClone(h3Chunks).slice(0, 9);
 const incompleteResult = await pollFalH3Chunks(incompleteH3, h3Provider.request);
 assert.equal(incompleteResult.status, 'failed');
 assert.match(incompleteResult.error ?? '', /missing|cover/i);
+
+const partialSubmissionInputs = h3Chunks.map((chunk) => ({
+  chunkNumber: chunk.chunkNumber,
+  pageNumbers: chunk.pageNumbers,
+  targetDurationSeconds: chunk.targetDurationSeconds,
+  requestedDurationSeconds: chunk.requestedDurationSeconds,
+  prompt: chunk.prompt,
+  imageUrl: chunk.imageUrl,
+}));
+const submitCalls = [];
+const cancelCalls = [];
+const partialSubmission = await submitFalH3Chunks(
+  partialSubmissionInputs,
+  async (chunk) => {
+    submitCalls.push(chunk.chunkNumber);
+    if (chunk.chunkNumber === 5) throw new Error('FAL rejected chunk 5 with 429');
+    return {
+      ...chunk,
+      requestId: `partial-request-${chunk.chunkNumber}`,
+      statusUrl: `https://fal.example.test/partial/${chunk.chunkNumber}/status`,
+      responseUrl: `https://fal.example.test/partial/${chunk.chunkNumber}/response`,
+      cancelUrl: `https://fal.example.test/partial/${chunk.chunkNumber}/cancel`,
+      status: 'queued',
+      progress: 8,
+      outputUrl: null,
+      error: null,
+    };
+  },
+  async (chunk) => {
+    cancelCalls.push({
+      chunkNumber: chunk.chunkNumber,
+      requestId: chunk.requestId,
+      cancelUrl: chunk.cancelUrl,
+    });
+  },
+);
+assert.deepEqual(submitCalls, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+assert.equal(partialSubmission.requests.length, 10);
+assert.deepEqual(partialSubmission.submissionErrors, ['FAL rejected chunk 5 with 429']);
+assert.deepEqual(cancelCalls.map(call => call.chunkNumber), [1, 2, 3, 4, 6, 7, 8, 9, 10]);
+assert.equal(new Set(cancelCalls.map(call => call.chunkNumber)).size, 9);
+assert.ok(cancelCalls.every(call => call.cancelUrl?.endsWith('/cancel')));
+assert.equal(
+  partialSubmission.requests.filter(chunk => chunk.status === 'cancelled').length,
+  9,
+);
+assert.equal(
+  partialSubmission.requests.find(chunk => chunk.chunkNumber === 5)?.status,
+  'failed',
+);
 
 console.log('MiniMax H3 ten-chunk contract: ten ordered requests, stale identity checks, and fail-closed manifest validation passed.');

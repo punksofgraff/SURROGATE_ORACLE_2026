@@ -359,6 +359,17 @@ function workflowUrl(data: Record<string, unknown>, keys: string[]): string {
   return '';
 }
 
+function falCancelUrlFromStatusUrl(statusUrl: string): string {
+  try {
+    const parsed = new URL(statusUrl);
+    if (!/\/status\/?$/.test(parsed.pathname)) return '';
+    parsed.pathname = parsed.pathname.replace(/\/status\/?$/, '/cancel');
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
 function workflowRequestId(data: Record<string, unknown>): string {
   return safeText(data.request_id ?? data.requestId ?? data.job_id ?? data.jobId ?? data.id, 240);
 }
@@ -367,7 +378,11 @@ async function createFalStoryWorkflow(
   endpoint: string,
   payload: Record<string, unknown>,
 ): Promise<StoryWorkflowState> {
-  const data = await workflowJson(endpoint, { method: 'POST', body: JSON.stringify(payload) });
+  const data = await workflowJson(endpoint, {
+    method: 'POST',
+    headers: { 'X-Fal-No-Retry': '1' },
+    body: JSON.stringify(payload),
+  });
   const requestId = workflowRequestId(data);
   const statusUrl = workflowUrl(data, ['status_url', 'statusUrl']);
   const responseUrl = workflowUrl(data, ['response_url', 'responseUrl', 'result_url', 'resultUrl']);
@@ -881,6 +896,7 @@ async function createFalH3ChunkRequest(
 ): Promise<H3ChunkRequest> {
   const data = await workflowJson(endpoint, {
     method: 'POST',
+    headers: { 'X-Fal-No-Retry': '1' },
     body: JSON.stringify({
       prompt: chunk.prompt,
       duration: chunk.requestedDurationSeconds,
@@ -894,7 +910,7 @@ async function createFalH3ChunkRequest(
   if (!requestId || !statusUrl || !responseUrl) {
     throw new Error(`MiniMax H3 chunk ${chunk.chunkNumber} returned no durable request id, status URL, and response URL.`);
   }
-  const cancelUrl = workflowUrl(data, ['cancel_url', 'cancelUrl']);
+  const cancelUrl = workflowUrl(data, ['cancel_url', 'cancelUrl']) || falCancelUrlFromStatusUrl(statusUrl);
   return {
     chunkNumber: chunk.chunkNumber,
     pageNumbers: chunk.pageNumbers,
@@ -1408,7 +1424,7 @@ Deno.serve(async (req: Request) => {
         const submitted = await Promise.allSettled(
           persistedChunks.map(chunk => createFalH3ChunkRequest(endpoint, chunk)),
         );
-        const requests = submitted.map((result, index) => result.status === 'fulfilled'
+        let requests = submitted.map((result, index) => result.status === 'fulfilled'
           ? result.value
           : ({
             chunkNumber: persistedChunks[index].chunkNumber,
@@ -1426,6 +1442,35 @@ Deno.serve(async (req: Request) => {
             error: result.reason instanceof Error ? result.reason.message : 'MiniMax H3 chunk submission failed.',
           }));
         const submissionErrors = requests.filter(chunk => chunk.status === 'failed').map(chunk => chunk.error).filter(Boolean);
+        if (submissionErrors.length) {
+          const cancellationResults = await Promise.all(requests.map(async chunk => {
+            if (!chunk.requestId || chunk.status === 'failed') return null;
+            if (!chunk.cancelUrl) {
+              return `MiniMax H3 chunk ${chunk.chunkNumber} was accepted but returned no cancellation URL.`;
+            }
+            try {
+              await workflowJson(chunk.cancelUrl, {
+                method: 'PUT',
+                headers: { 'X-Fal-No-Retry': '1' },
+              });
+              return null;
+            } catch (error) {
+              return `MiniMax H3 chunk ${chunk.chunkNumber} cancellation failed: ${
+                error instanceof Error ? error.message : 'unknown cancellation error'
+              }`;
+            }
+          }));
+          const cancellationErrors = cancellationResults.filter((error): error is string => Boolean(error));
+          requests = requests.map(chunk => chunk.requestId && chunk.status !== 'failed'
+            ? {
+              ...chunk,
+              status: 'cancelled' as const,
+              progress: 0,
+              error: 'Submission batch aborted after another H3 chunk failed.',
+            }
+            : chunk);
+          if (cancellationErrors.length) submissionErrors.push(...cancellationErrors);
+        }
         const workflow = {
           mode: 'ten-h3-chunks' as const,
           contractVersion: 2 as const,
@@ -1971,11 +2016,11 @@ Deno.serve(async (req: Request) => {
       if (currentManifest.workflowMode === 'ten-h3-chunks' && workflow?.chunks) {
         await Promise.all(workflow.chunks.map(async chunk => {
           if (!chunk.cancelUrl || !chunk.requestId || ['ready', 'failed', 'cancelled'].includes(chunk.status)) return;
-          try { await workflowJson(chunk.cancelUrl, { method: 'POST' }); } catch { /* local cancel remains authoritative */ }
+          try { await workflowJson(chunk.cancelUrl, { method: 'PUT' }); } catch { /* local cancel remains authoritative */ }
         }));
       } else if (workflow?.requestId && workflow.cancelUrl) {
         try {
-          await workflowJson(workflow.cancelUrl, { method: 'POST' });
+          await workflowJson(workflow.cancelUrl, { method: 'PUT' });
         } catch {
           // Local cancellation remains authoritative when the workflow has no
           // confirmed cancellation response.

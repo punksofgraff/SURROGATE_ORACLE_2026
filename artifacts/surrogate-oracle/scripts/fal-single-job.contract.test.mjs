@@ -40,6 +40,9 @@ assert.match(pollingSource, /missing, duplicate, reordered, overlapping, or unve
 assert.match(createBranch, /createFalH3ChunkRequest/);
 assert.match(createBranch, /H3_CHUNK_COUNT/);
 assert.match(createBranch, /Promise\.allSettled/);
+assert.match(createBranch, /X-Fal-No-Retry/);
+assert.match(functionSource, /method:\s*'PUT'/);
+assert.match(functionSource, /Submission batch aborted after another H3 chunk failed/);
 assert.match(functionSource, /minimax\/h3\/image-to-video/);
 
 const PAGE_COUNT = 32;

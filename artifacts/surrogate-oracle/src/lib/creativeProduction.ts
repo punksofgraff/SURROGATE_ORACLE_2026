@@ -890,8 +890,12 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
     missingDetails: classification.missingDetails,
     followUpCompleted: classification.missingDetails.length === 0,
     status: 'draft',
-    provider: classification.provider,
-    providerLabel: classification.provider === 'lyria'
+    provider: illustrationStory
+      ? 'fal-film'
+      : classification.provider,
+    providerLabel: illustrationStory
+      ? 'Premium living-story video lane'
+      : classification.provider === 'lyria'
       ? 'Lyria music lane'
       : classification.provider === 'browser-film'
         ? 'Free browser film lane'
@@ -904,7 +908,7 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
     createdAt,
     requiresConfirmation: classification.requiresConfirmation,
     confirmationLabel: illustrationStory
-      ? 'Confirm local story film'
+      ? 'Confirm premium living story'
       : classification.kind === 'music'
       ? 'Confirm music generation'
       : classification.kind === 'film'
@@ -913,7 +917,7 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
           ? 'Create series manifest'
           : 'Create draft',
     confirmationCopy: illustrationStory && classification.missingDetails.length === 0
-      ? 'This starts the free local studio lane: all 32 original panels stay in order while authored shot treatments create staged movement, Lyria backs the edit, and the narration/voice mix is held for a manual watch-and-listen approval.'
+      ? 'This starts the premium living-story lane: hosted H3 video animates ten ordered composites of the 32 original panels. Lyria, narration, character voices, and local FFmpeg assembly remain in the final mix, followed by manual watch-and-listen approval.'
       : missingCopy(classification.missingDetails),
     storyPages: illustrationStory ? createIllustrationStoryPages(clean, createdAt) : undefined,
     metadata: {
@@ -921,8 +925,8 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
       missingDetails: classification.missingDetails,
       ...(illustrationStory ? {
         production: 'illustration-story-studio',
-        storyLane: 'local' as IllustrationStoryLane,
-        falModelSlug: null,
+         storyLane: 'fal' as IllustrationStoryLane,
+         falModelSlug: ILLUSTRATION_STORY_FAL_MODELS[0]?.slug ?? null,
       storyModelSlug: null,
         pageCount: ILLUSTRATION_STORY_PAGE_COUNT,
         pageDurationSeconds: ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,
@@ -935,7 +939,7 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
         narration: 'plan: Gemini child-friendly narration',
         sourceAssets: `${ILLUSTRATION_STORY_SOURCE_ASSETS[0]} + ${ILLUSTRATION_STORY_SOURCE_ASSETS[1]}; originals remain unchanged`,
       } : {}),
-      deliveryBoundary: classification.kind === 'film' || classification.kind === 'music'
+         deliveryBoundary: classification.kind === 'film' || classification.kind === 'music'
         ? 'This first pass uses the existing local/browser or Lyria seam. Premium or outbound delivery is never implicit.'
         : 'This first pass stays local and editable. Originals are never uploaded by this route.',
     },

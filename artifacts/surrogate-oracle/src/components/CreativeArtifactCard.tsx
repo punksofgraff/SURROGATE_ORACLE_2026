@@ -1171,7 +1171,7 @@ export function CreativeArtifactCard({
                     onClick={() => chooseStoryLane('local', null)}
                   >
                     <strong>LOCAL / FREE</strong>
-                    <span>Original panels + local FFmpeg motion. Default; no hosted video charge.</span>
+                    <span>Opt down to authored panel motion and local FFmpeg. No hosted video charge.</span>
                   </button>
                   <button
                     type="button"
@@ -1183,8 +1183,8 @@ export function CreativeArtifactCard({
                         ?? null,
                     )}
                   >
-                    <strong>FAL / EXPLICIT</strong>
-                    <span>Hosted motion from still anchors. Requires the model and budget confirmation below.</span>
+                    <strong>LIVING STORY / PREMIUM</strong>
+                    <span>Hosted H3 video gives the comic real movement between the cells. Requires explicit metered-run confirmation.</span>
                   </button>
                 </div>
                 {storyLane === 'fal' && (
@@ -1207,7 +1207,7 @@ export function CreativeArtifactCard({
                 )}
                 {storyLane === 'fal' && (
                   <p className="creative-story-choice__warning">
-                    FAL is metered. Confirmation submits exactly 10 MiniMax H3 image-to-video jobs, one composite image per job, covering the 32 story cells in order. Per-page retries and replacements are disabled.
+                     Premium is metered. Confirmation submits exactly 10 MiniMax H3 image-to-video jobs, one composite image per job, covering the 32 story cells in order. Per-page retries and replacements are disabled.
                   </p>
                 )}
               </div>

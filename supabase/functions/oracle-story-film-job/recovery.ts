@@ -1,5 +1,9 @@
 export type StoryProviderFailureCategory =
   | 'billing'
+  | 'free-run-exhausted'
+  | 'account-eligibility'
+  | 'rate-limit'
+  | 'catalog-drift'
   | 'content-policy'
   | 'prompt'
   | 'stale'
@@ -28,6 +32,12 @@ export type StoryRecoveryPlan = {
   promptRewrite: string | null;
   removedTerms: string[];
   replacementBrief: string | null;
+  freeFallback: {
+    provider: 'replicate';
+    status: 'not-compatible' | 'requires-account-eligibility' | 'available';
+    compatibleModelSlugs: string[];
+    reason: string;
+  };
   attempts: number;
   maxAttempts: 1;
 };
@@ -52,7 +62,11 @@ export function classifyStoryProviderFailure(value: unknown): StoryProviderFailu
       ? JSON.stringify(value)
       : '';
   const message = raw.toLowerCase();
-  if (/\b(?:exhausted balance|insufficient balance|user is locked|billing|quota|credit|payment required)\b/.test(message)) return 'billing';
+  if (/\b(?:free run|free-run|free allowance|allowance exhausted|no free runs)\b/.test(message)) return 'free-run-exhausted';
+  if (/\b(?:account.*eligible|not eligible|credential eligibility)\b/.test(message)) return 'account-eligibility';
+  if (/\b(?:rate limit|too many requests|429)\b/.test(message)) return 'rate-limit';
+  if (/\b(?:model not found|unknown model|catalog drift|version.*not found)\b/.test(message)) return 'catalog-drift';
+  if (/\b(?:exhausted balance|insufficient balance|billing|quota|credit|payment required)\b/.test(message)) return 'billing';
   if (/\b(?:content[_ -]?policy|copyright|safety policy|policy violation|safety violation|disallowed content)\b/.test(message)) return 'content-policy';
   if (/\b(?:stale|belongs to request|belongs to another request|request identity|wrong request)\b/.test(message)) return 'stale';
   if (/\b(?:prompt|invalid input|unprocessable entity|422)\b/.test(message)) return 'prompt';
@@ -132,10 +146,14 @@ export function createStoryRecoveryPlan(input: {
   const attempts = Math.max(0, Math.min(1, Number(input.attempts) || 0));
   const rewrite = distillStoryPrompt(input.prompt, message);
   const isBilling = category === 'billing';
+  const isFreeRunExhausted = category === 'free-run-exhausted';
+  const isAccountEligibility = category === 'account-eligibility';
   const isPolicy = category === 'content-policy' || rewrite.reasonCode === 'copyright-language';
   const isPrompt = category === 'prompt' || rewrite.reasonCode === 'provider-prompt';
   const disposition: StoryRecoveryDisposition = isBilling
     ? 'billing-blocked'
+    : isFreeRunExhausted || isAccountEligibility
+      ? 'billing-blocked'
     : isPolicy
       ? 'source-replacement-required'
       : isPrompt
@@ -153,8 +171,12 @@ export function createStoryRecoveryPlan(input: {
     retryable: disposition === 'prompt-rewrite-available' || disposition === 'retryable',
     requiresConfirmation: disposition !== 'billing-blocked' && disposition !== 'terminal',
     providerMessage: message,
-    userMessage: isBilling
-      ? 'FAL rejected this request because the server-side provider account is locked or out of balance. Local workspace funds do not prove this FAL credential can submit.'
+    userMessage: isFreeRunExhausted
+      ? 'The Replicate free-run allowance is exhausted for this account boundary. No blind retry was sent; wait for eligibility to return or use an explicitly funded provider.'
+      : isAccountEligibility
+        ? 'The provider account or credential is not eligible for this request. No blind retry was sent.'
+        : isBilling
+          ? 'FAL rejected this request because the server-side provider account is locked or out of balance. Local workspace funds do not prove this FAL credential can submit.'
       : isPolicy
         ? 'The provider flagged the supplied artwork or named character language. A materially original replacement reference is required; the source will not be silently altered.'
         : isPrompt
@@ -171,6 +193,12 @@ export function createStoryRecoveryPlan(input: {
     replacementBrief: isPolicy
       ? 'Create an original child-friendly storybook reference with the same broad action, composition, color energy, and page order, but new character designs, costumes, symbols, and names. Do not imitate a named franchise.'
       : null,
+    freeFallback: {
+      provider: 'replicate',
+      status: 'not-compatible',
+      compatibleModelSlugs: [],
+      reason: 'Replicate free collection models are not compatible with the ten-chunk MiniMax H3 story contract; no silent substitution is allowed.',
+    },
     attempts,
     maxAttempts: 1,
   };

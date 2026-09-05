@@ -28,6 +28,7 @@ import type {
 } from '../lib/creativeProduction';
 import type { IllustrationStoryRecoveryPlan } from '../hooks/useIllustrationStoryFilm';
 import { filterIllustrationStoryReviewHistory } from '../lib/creativeProduction';
+import { supabase } from '../lib/supabase';
 import './IllustrationStoryOpenKitchen.css';
 
 type IllustrationStoryOpenKitchenProps = {
@@ -46,6 +47,17 @@ type IllustrationStoryOpenKitchenProps = {
   onStoryReviewApprove?: () => void;
   onStoryReviewReject?: (reason?: string, pageNumber?: number) => void;
   onStoryReviewStateChange?: (state: IllustrationStoryReviewState, pageNumber?: number) => void;
+};
+
+type ReplicateFreeCatalogModel = {
+  slug: string;
+  label: string;
+  category: string;
+  capabilities: string[];
+  freeEligibility: string;
+  licensingWarning: string;
+  blockedReason: string | null;
+  compatibleJobs: string[];
 };
 
 function formatTime(seconds: number): string {
@@ -226,6 +238,7 @@ export function IllustrationStoryOpenKitchen({
   const [filmReady, setFilmReady] = useState(false);
   const [historyShotFilter, setHistoryShotFilter] = useState<number | 'all'>('all');
   const [historyActionFilter, setHistoryActionFilter] = useState<IllustrationStoryReviewHistoryAction | 'all'>('all');
+  const [replicateFreeCatalog, setReplicateFreeCatalog] = useState<ReplicateFreeCatalogModel[]>([]);
 
   useEffect(() => {
     setSelectedPageNumber(1);
@@ -236,6 +249,17 @@ export function IllustrationStoryOpenKitchen({
     setHistoryShotFilter('all');
     setHistoryActionFilter('all');
   }, [manifest?.createdAt, outputUrl]);
+
+  useEffect(() => {
+    let active = true;
+    void supabase.functions.invoke('oracle-story-film-job', {
+      body: { action: 'replicate-free-catalog' },
+    }).then(({ data }) => {
+      if (!active || !Array.isArray(data?.models)) return;
+      setReplicateFreeCatalog(data.models as ReplicateFreeCatalogModel[]);
+    });
+    return () => { active = false; };
+  }, []);
 
   const selectedShot = shots.find(shot => shot.pageNumber === selectedPageNumber) ?? shots[0] ?? null;
   const selectedPage = selectedShot ? pageForShot(pages, selectedShot) : null;
@@ -383,8 +407,12 @@ export function IllustrationStoryOpenKitchen({
           <div>
             <span className="story-kitchen__section-kicker">Provider feedback / recovery</span>
             <strong>
-              {recovery.category === 'billing'
-                ? 'FAL account or balance blocked the request'
+               {recovery.category === 'free-run-exhausted'
+                 ? 'Replicate free allowance is exhausted'
+                 : recovery.category === 'account-eligibility'
+                   ? 'The provider account is not eligible'
+                   : recovery.category === 'billing'
+                     ? 'FAL account or balance blocked the request'
                 : recovery.category === 'content-policy'
                   ? 'The supplied source needs an original replacement'
                   : recovery.category === 'prompt'
@@ -425,13 +453,46 @@ export function IllustrationStoryOpenKitchen({
             </button>
           )}
           {recovery.disposition === 'billing-blocked' && (
-            <span className="story-kitchen__recovery-note">Repair the FAL account or credential, then start a new confirmed hosted run.</span>
+            <>
+              <span className="story-kitchen__recovery-note">Repair the FAL account or credential, then start a new confirmed hosted run.</span>
+              {recovery.freeFallback && (
+                <span className="story-kitchen__recovery-note">
+                  Replicate free fallback: {recovery.freeFallback.status === 'not-compatible'
+                    ? `not approved for this story lane — ${recovery.freeFallback.reason}`
+                    : recovery.freeFallback.compatibleModelSlugs.join(', ')}
+                </span>
+              )}
+            </>
           )}
           {recovery.disposition === 'source-replacement-required' && (
             <span className="story-kitchen__recovery-note">No metered retry was sent. The original panel remains immutable until an approved original replacement is staged.</span>
           )}
         </section>
       )}
+
+       {replicateFreeCatalog.length > 0 && (
+         <details className="story-kitchen__recovery" data-testid="replicate-free-catalog">
+           <summary>
+             <span className="story-kitchen__section-kicker">Zero-balance support lane</span>
+             <strong>Replicate Try for Free eligibility and compatibility</strong>
+           </summary>
+           <p className="story-kitchen__recovery-note">
+             These models are collection-listed, not guaranteed quota. This H3 story lane will not silently substitute an incompatible model.
+           </p>
+           <div className="story-kitchen__recovery-list">
+             {replicateFreeCatalog.map(model => (
+               <div key={model.slug}>
+                 <strong>{model.label}</strong>
+                 <small>
+                   {model.category} · {model.freeEligibility === 'requires-account-eligibility' ? 'account eligibility required' : model.freeEligibility}
+                   {model.compatibleJobs.length ? ` · compatible: ${model.compatibleJobs.join(', ')}` : ' · not compatible with this story lane'}
+                 </small>
+                 <small>{model.blockedReason ?? model.licensingWarning}</small>
+               </div>
+             ))}
+           </div>
+         </details>
+       )}
 
       <section className="story-kitchen__history" aria-label="Studio review history" data-testid="story-review-history">
         <div className="story-kitchen__panel-heading">

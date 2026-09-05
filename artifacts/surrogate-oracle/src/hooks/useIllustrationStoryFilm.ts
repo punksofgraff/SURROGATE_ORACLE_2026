@@ -25,7 +25,7 @@ export type IllustrationStoryFailureKind =
 
 export type IllustrationStoryRecoveryPlan = {
   version: 1;
-  category: 'billing' | 'content-policy' | 'prompt' | 'stale' | 'provider' | 'submission';
+  category: 'billing' | 'free-run-exhausted' | 'account-eligibility' | 'rate-limit' | 'catalog-drift' | 'content-policy' | 'prompt' | 'stale' | 'provider' | 'submission';
   disposition: 'billing-blocked' | 'source-replacement-required' | 'prompt-rewrite-available' | 'retryable' | 'terminal';
   retryable: boolean;
   requiresConfirmation: boolean;
@@ -38,6 +38,12 @@ export type IllustrationStoryRecoveryPlan = {
   promptRewrite: string | null;
   removedTerms: string[];
   replacementBrief: string | null;
+  freeFallback?: {
+    provider: 'replicate';
+    status: 'not-compatible' | 'requires-account-eligibility' | 'available';
+    compatibleModelSlugs: string[];
+    reason: string;
+  };
   attempts: number;
   maxAttempts: 1;
 };

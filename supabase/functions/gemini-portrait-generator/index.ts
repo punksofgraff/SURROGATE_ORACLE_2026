@@ -28,6 +28,12 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import {
+  classifyReplicateFreeFailure,
+  compatibleReplicateFreeModels,
+  refreshReplicateFreeCatalog,
+  staticReplicateFreeCatalog,
+} from '../replicate-free-models.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -453,12 +459,136 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── STEP 5: Replicate flux-schnell — last paid resort ────────────────────
+  // ── STEP 5: Replicate Try for Free image lane ─────────────────────────────
+  // Free collection membership is not a universal quota. Claiming a run is
+  // persisted against the server credential so duplicate retries and an
+  // exhausted allowance stop before another provider request is submitted.
   // Runs only when Vertex/Gemini/HF/DeepAI all failed. Output MUST be re-hosted:
   // replicate.delivery URLs expire in ~1 hour, so we download and upload to the
   // portraits bucket; on upload failure we fall through to Pollinations rather
-  // than persist a URL that will go blank.
+  // than persist a URL that will go blank. The free lane is intentionally
+  // image-only and must never be used as a story-video/H3 substitute.
   const replicateToken = Deno.env.get('REPLICATE_API_TOKEN') ?? Deno.env.get('REPLICATE_API_KEY');
+  const replicateFreeFallbackEnabled = Deno.env.get('ALLOW_REPLICATE_FREE_FALLBACK') !== 'false';
+  const refreshedReplicateCatalog = replicateToken && replicateFreeFallbackEnabled && !portraitUrl
+    ? await refreshReplicateFreeCatalog()
+    : {
+      catalog: staticReplicateFreeCatalog(),
+      sourceUrl: 'https://replicate.com/collections/try-for-free',
+      observedAt: new Date().toISOString(),
+      drift: { added: [], removed: [], changed: false },
+      refreshed: false,
+      error: null,
+    };
+  const replicateFreeModels = compatibleReplicateFreeModels('image-generation', refreshedReplicateCatalog.catalog);
+  const requestedFreeModel = Deno.env.get('REPLICATE_FREE_MODEL_SLUG');
+  const replicateFreeModel = replicateFreeModels.find(model => model.slug === requestedFreeModel)
+    ?? replicateFreeModels.find(model => model.slug === 'black-forest-labs/flux-dev')
+    ?? replicateFreeModels[0];
+  const replicateFreeBoundary = Deno.env.get('REPLICATE_FREE_ACCOUNT_BOUNDARY') || 'server-replicate-credential';
+  const requestKey = `${sessionId}:${replicateFreeModel?.slug ?? 'none'}:${enhancedPrompt.slice(0, 160)}`;
+  let freeClaimed = false;
+  if (replicateFreeFallbackEnabled && replicateToken && replicateFreeModel && !portraitUrl) {
+    try {
+      await supabase.from('replicate_free_catalogs').insert({
+        catalog_version: 2,
+        source_url: refreshedReplicateCatalog.sourceUrl,
+        observed_at: refreshedReplicateCatalog.observedAt,
+        refreshed: refreshedReplicateCatalog.refreshed,
+        drift: refreshedReplicateCatalog.drift,
+        models: refreshedReplicateCatalog.catalog,
+      });
+      const claim = await supabase.rpc('claim_replicate_free_run', {
+        p_account_boundary: replicateFreeBoundary,
+        p_model_slug: replicateFreeModel.slug,
+        p_request_key: requestKey,
+      });
+      if (claim.error || claim.data !== true) {
+        throw new Error('Replicate free allowance is exhausted, unavailable, or this request was already claimed; no duplicate retry was sent.');
+      }
+      freeClaimed = true;
+      console.log(`🎨 Trying Replicate Try for Free ${replicateFreeModel.slug}…`);
+      const r = await fetch(`https://api.replicate.com/v1/models/${replicateFreeModel.slug}/predictions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${replicateToken}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'wait',
+        },
+        body: JSON.stringify({
+          input: { prompt: enhancedPrompt, aspect_ratio: '1:1', output_format: 'jpg' },
+        }),
+      });
+      if (!r.ok) throw new Error(`Replicate free ${r.status}: ${await r.text()}`);
+      let json = await r.json();
+      const pollUrl = json.urls?.get;
+      for (let i = 0; i < 15 && pollUrl && (json.status === 'processing' || json.status === 'starting'); i++) {
+        await new Promise(res => setTimeout(res, 2000));
+        const pr = await fetch(pollUrl, { headers: { 'Authorization': `Bearer ${replicateToken}` } });
+        if (!pr.ok) throw new Error(`Replicate free poll ${pr.status}`);
+        json = await pr.json();
+      }
+      if (json.status !== 'succeeded') {
+        throw new Error(`Replicate free: prediction ${json.status}${json.error ? `: ${json.error}` : ''}`);
+      }
+      const outUrl = typeof json.output === 'string'
+        ? json.output
+        : Array.isArray(json.output) ? json.output[0] : null;
+      if (!outUrl || typeof outUrl !== 'string' || !outUrl.startsWith('http')) {
+        throw new Error(`Replicate free: unexpected output shape (status ${json.status})`);
+      }
+      const imgResp = await fetch(outUrl);
+      if (!imgResp.ok) throw new Error(`Replicate free image fetch ${imgResp.status}`);
+      const imgBuffer = await imgResp.arrayBuffer();
+      if (imgBuffer.byteLength < 1000) throw new Error('Replicate free returned empty image');
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from('portraits')
+        .upload(`${sessionId}-replicate-free-${Date.now()}.jpg`, imgBuffer, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+      if (uploadErr) throw new Error(`Replicate free re-host failed: ${uploadErr.message}`);
+      const { data: { publicUrl } } = supabase.storage.from('portraits').getPublicUrl(uploadData.path);
+      portraitUrl = publicUrl;
+      generationMethod = `replicate-free-${replicateFreeModel.slug}`;
+      await supabase.rpc('record_replicate_free_outcome', {
+        p_account_boundary: replicateFreeBoundary,
+        p_model_slug: replicateFreeModel.slug,
+        p_status: 'available',
+        p_error_category: null,
+        p_provider_request_id: json.id ?? null,
+        p_provenance: {
+          collectionUrl: 'https://replicate.com/collections/try-for-free',
+          modelUrl: `https://replicate.com/${replicateFreeModel.slug}`,
+          requestKey,
+          observedAt: replicateFreeModel.observedAt,
+        },
+      });
+      console.log('✅ Replicate free portrait re-hosted:', publicUrl.slice(0, 60));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const category = classifyReplicateFreeFailure(msg);
+      if (freeClaimed) {
+        await supabase.rpc('record_replicate_free_outcome', {
+          p_account_boundary: replicateFreeBoundary,
+          p_model_slug: replicateFreeModel.slug,
+          p_status: category === 'exhausted' ? 'exhausted'
+            : category === 'billing' ? 'billing-blocked'
+              : category === 'catalog-drift' ? 'catalog-drift' : 'available',
+          p_error_category: category,
+          p_provenance: {
+            collectionUrl: 'https://replicate.com/collections/try-for-free',
+            modelUrl: `https://replicate.com/${replicateFreeModel.slug}`,
+            requestKey,
+          },
+        });
+      }
+      console.error('❌ Replicate free failed:', msg);
+      imageErrors.push(`Replicate free (${category}): ${msg}`);
+    }
+  }
+
+  // ── STEP 6: Replicate flux-schnell — optional paid resort ─────────────────
   const replicatePaidFallbackEnabled = Deno.env.get('ALLOW_REPLICATE_PAID_FALLBACK') === 'true';
   if (replicatePaidFallbackEnabled && replicateToken && !portraitUrl) {
     try {
@@ -521,7 +651,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── STEP 6: Pollinations.ai — zero config, no key, always free ───────────
+  // ── STEP 7: Pollinations.ai — zero config, no key, always free ───────────
   if (!portraitUrl) {
     try {
       // Seed selection:
@@ -548,7 +678,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── STEP 7: Themed static fallback ────────────────────────────────────────
+  // ── STEP 8: Themed static fallback ────────────────────────────────────────
   if (!portraitUrl) {
     portraitUrl = getThemedFallback(themes);
     generationMethod = 'themed-fallback';

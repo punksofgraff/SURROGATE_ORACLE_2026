@@ -17,6 +17,11 @@ import {
   distillStoryPrompt,
   type StoryRecoveryPlan,
 } from './recovery.ts';
+import {
+  compatibleReplicateFreeModels,
+  refreshReplicateFreeCatalog,
+  staticReplicateFreeCatalog,
+} from '../replicate-free-models.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1198,6 +1203,47 @@ Deno.serve(async (req: Request) => {
         costLabel,
         expectedSeconds,
       })),
+      replicateFree: {
+        collectionUrl: 'https://replicate.com/collections/try-for-free',
+        catalogAction: 'replicate-free-catalog',
+        storyVideoFallback: {
+          compatibleModelSlugs: [],
+          status: 'not-compatible',
+          reason: 'No Replicate Try for Free model currently proves compatibility with the ten-chunk MiniMax H3 contract.',
+        },
+      },
+    });
+  }
+
+  if (action === 'replicate-free-catalog') {
+    const refreshed = await refreshReplicateFreeCatalog();
+    await supabase.from('replicate_free_catalogs').insert({
+      catalog_version: 2,
+      source_url: refreshed.sourceUrl,
+      observed_at: refreshed.observedAt,
+      refreshed: refreshed.refreshed,
+      drift: refreshed.drift,
+      models: refreshed.catalog,
+    });
+    return json({
+      provider: 'replicate',
+      collectionUrl: refreshed.sourceUrl,
+      catalogVersion: 2,
+      observedAt: refreshed.observedAt,
+      refreshed: refreshed.refreshed,
+      refreshError: refreshed.error,
+      drift: refreshed.drift,
+      models: refreshed.catalog.map(model => ({
+        ...model,
+        compatibleJobs: ['image-generation', 'image-replacement', 'image-restoration', 'video-generation', 'story-h3-composite', 'audio-generation']
+          .filter(job => compatibleReplicateFreeModels(job as Parameters<typeof compatibleReplicateFreeModels>[0], refreshed.catalog)
+            .some(candidate => candidate.slug === model.slug)),
+      })),
+      storyVideoFallback: {
+        compatibleModelSlugs: compatibleReplicateFreeModels('story-h3-composite', refreshed.catalog).map(model => model.slug),
+        status: 'not-compatible',
+      },
+      staticFallbackCount: staticReplicateFreeCatalog().length,
     });
   }
 

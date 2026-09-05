@@ -21,6 +21,7 @@
     "story-review-contract-test": "tsx scripts/illustration-story-review.contract.test.ts",
     "fal-single-job-contract-test": "bun scripts/fal-single-job.contract.test.mjs",
     "story-provider-recovery-contract-test": "bun scripts/story-provider-recovery.contract.test.ts",
+    "replicate-free-models-contract-test": "bun scripts/replicate-free-models.contract.test.ts",
     "story-legacy-lane-contract-test": "node scripts/story-legacy-lane.contract.test.mjs",
     "story-review-browser-verify": "node scripts/illustration-story-review.browser-verify.mjs",
     "story-persistence-contract-test": "tsx scripts/illustration-story-persistence.contract.test.ts",

@@ -876,10 +876,16 @@ async function renderPollinationsShortShotStory(body: any): Promise<{
         image: cellUrls[index],
         duration: String(duration),
         aspectRatio: '16:9',
-        resolution: '480p',
         audio: 'false',
         safe: 'true',
       });
+      // The live catalog only guarantees capabilities and duration for this
+      // lane. Do not send optional controls such as resolution unless the
+      // provider explicitly advertises them; nova-reel currently rejects it.
+      const modelRecord = model as typeof model & { allowed_resolutions?: string[] | null };
+      if (modelRecord.allowed_resolutions?.includes('480p')) {
+        params.set('resolution', '480p');
+      }
       const response = await fetch(`https://gen.pollinations.ai/video/${encodeURIComponent(prompt)}?${params.toString()}`, {
         headers: { Authorization: `Bearer ${apiKey}` },
       });

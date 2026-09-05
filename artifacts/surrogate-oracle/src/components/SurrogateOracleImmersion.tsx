@@ -1841,6 +1841,7 @@ export function SurrogateOracleImmersion() {
           legacyReadOnly: job.legacyReadOnly,
           coverageCertificate: job.coverageCertificate,
           blockedReason: job.blockedReason,
+           storyRecovery: job.recovery,
           submissionCount: job.submissionCount,
           storyFailureKind: job.failureKind,
           audioGate: job.audioGate,
@@ -1904,6 +1905,8 @@ export function SurrogateOracleImmersion() {
         workflowMode: job.workflow?.mode,
         workflow: job.workflow,
         legacyReadOnly: job.legacyReadOnly,
+         blockedReason: job.blockedReason,
+         storyRecovery: job.recovery,
         storyFailureKind: job.failureKind,
         audioGate: job.audioGate,
         storyLane: job.provider === 'minimax' ? 'minimax' : artifact.metadata?.storyLane,
@@ -2841,6 +2844,30 @@ export function SurrogateOracleImmersion() {
     }
     return;
   }, [illustrationStoryFilm, lyria, updateCreativeArtifact]);
+
+  const confirmIllustrationStoryRecovery = useCallback((promptRewrite?: string) => {
+    const artifact = activeCreativeArtifactRef.current;
+    if (!artifact || !isHostedIllustrationStoryArtifact(artifact)) return;
+    updateCreativeArtifact(artifact.id, {
+      status: 'generating',
+      progress: Math.max(8, artifact.progress),
+      error: null,
+      metadata: {
+        ...(artifact.metadata ?? {}),
+        storyStage: 'confirmed one scoped provider recovery request',
+      },
+    });
+    void illustrationStoryFilm.recover(promptRewrite).catch(error => {
+      updateCreativeArtifact(artifact.id, {
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Story recovery failed.',
+        metadata: {
+          ...(activeCreativeArtifactRef.current?.metadata ?? artifact.metadata ?? {}),
+          storyStage: 'provider recovery stopped; original job remains preserved',
+        },
+      });
+    });
+  }, [illustrationStoryFilm, updateCreativeArtifact]);
 
   const retryIllustrationStoryFilm = useCallback(() => {
     const artifact = activeCreativeArtifactRef.current;
@@ -4546,6 +4573,7 @@ export function SurrogateOracleImmersion() {
               onStorySceneRetry={retryIllustrationStoryScene}
               onStorySceneReplace={(pageNumber) => retryIllustrationStoryScene(pageNumber, 'replace')}
               onStoryFilmRetry={retryIllustrationStoryFilm}
+               onStoryRecoveryConfirm={confirmIllustrationStoryRecovery}
               onStoryLaneChange={chooseIllustrationStoryLane}
               onStoryReviewApprove={approveIllustrationStoryReview}
               onStoryReviewReject={rejectIllustrationStoryReview}

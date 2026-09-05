@@ -12,6 +12,11 @@ import {
   pollFalStoryWorkflow,
 } from './polling.ts';
 import { submitFalH3Chunks } from './submission.ts';
+import {
+  createStoryRecoveryPlan,
+  distillStoryPrompt,
+  type StoryRecoveryPlan,
+} from './recovery.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -414,7 +419,6 @@ function publicJob(row: StoryJobRow) {
   const retired = Boolean(modelSlug && isRetiredModel(modelSlug));
   const provider = retired ? 'retired-fal' : (row.provider || (scenes.find(scene => scene.provider)?.provider ?? 'fal'));
   const legacyReadOnly = isReadOnlyStoryJob(row);
-  const publicWorkflow = workflow ?? (legacyReadOnly ? { mode: 'legacy-per-scene-readonly' } : null);
   const review = manifest.review && typeof manifest.review === 'object'
     ? manifest.review
     : undefined;
@@ -431,6 +435,7 @@ function publicJob(row: StoryJobRow) {
   const workflow = manifest.workflow && typeof manifest.workflow === 'object'
     ? manifest.workflow as Record<string, unknown>
     : null;
+  const publicWorkflow = workflow ?? (legacyReadOnly ? { mode: 'legacy-per-scene-readonly' } : null);
   const everyPageReady = (scenes.length === PAGE_COUNT
     && scenes.every(scene => scene.status === 'ready' && Boolean(scene.outputUrl)))
     || (row.provider === 'browser-film' && Boolean(row.final_media_url))
@@ -471,6 +476,9 @@ function publicJob(row: StoryJobRow) {
     sourcePanelManifest: Array.isArray(manifest.panelManifest) ? manifest.panelManifest : [],
     coverageCertificate: manifest.coverageCertificate ?? null,
     blockedReason: typeof manifest.blockedReason === 'string' ? manifest.blockedReason : null,
+    recovery: manifest.recovery && typeof manifest.recovery === 'object'
+      ? manifest.recovery as StoryRecoveryPlan
+      : null,
     submissionCount: Number(manifest.submissionCount) || 0,
     narrationUrl: row.narration_url,
     musicUrl: row.music_url,
@@ -831,10 +839,10 @@ function h3ChunkPrompt(
         index * cellDuration
       ).toFixed(2)}–${((index + 1) * cellDuration).toFixed(2)}.`,
       `Narration beat: ${narration}.`,
-      `Treatment: ${safeText(treatment.treatment, 120) || 'restrained storybook motion'};`,
-      `action: ${safeText(treatment.actionBeat, 220) || 'animate the depicted action'};`,
-      `environment: ${safeText(treatment.environmentBeat, 180) || 'add gentle environmental movement'};`,
-      `camera: ${safeText(treatment.cameraMove, 180) || 'use a gentle motivated camera move'}.`,
+      `Treatment: ${providerStoryLanguage(safeText(treatment.treatment, 120)) || 'restrained storybook motion'};`,
+      `action: ${providerStoryLanguage(safeText(treatment.actionBeat, 220)) || 'animate the depicted action'};`,
+      `environment: ${providerStoryLanguage(safeText(treatment.environmentBeat, 180)) || 'add gentle environmental movement'};`,
+      `camera: ${providerStoryLanguage(safeText(treatment.cameraMove, 180)) || 'use a gentle motivated camera move'}.`,
     ].join(' ');
   });
   return [
@@ -882,6 +890,24 @@ function h3ChunkPlan(pages: Record<string, unknown>[]): Array<{
     });
   });
   return chunks;
+}
+
+function recoveryForH3Chunks(
+  chunks: H3ChunkRequest[],
+  attempts = 0,
+): StoryRecoveryPlan | null {
+  const failed = chunks.filter(chunk => chunk.status === 'failed');
+  if (!failed.length) return null;
+  const first = failed[0];
+  return createStoryRecoveryPlan({
+    error: first.error || 'MiniMax H3 chunk failed.',
+    requestId: first.requestId,
+    chunkNumbers: failed.map(chunk => chunk.chunkNumber),
+    pageNumbers: failed.flatMap(chunk => chunk.pageNumbers),
+    prompt: first.prompt,
+    modelSlug: H3_MODEL_SLUG,
+    attempts,
+  });
 }
 
 async function createFalH3ChunkRequest(
@@ -1013,6 +1039,13 @@ async function pollStoryJob(
         });
       }
       if (next.status === 'failed' || next.status === 'cancelled') {
+        const recovery = next.status === 'failed'
+          ? recoveryForH3Chunks(next.chunks, Number(
+            manifest.recovery && typeof manifest.recovery === 'object'
+              ? (manifest.recovery as Record<string, unknown>).attempts
+              : 0,
+          ))
+          : null;
         return updateJob(supabase, current.id, {
           status: next.status,
           progress: 0,
@@ -1022,6 +1055,7 @@ async function pollStoryJob(
             workflow: nextWorkflow,
             chunkManifest: nextChunkManifest,
             failureKind: next.status === 'cancelled' ? null : 'provider',
+            ...(recovery ? { recovery } : {}),
           },
         });
       }
@@ -1043,6 +1077,10 @@ async function pollStoryJob(
         story_manifest: {
           ...manifest,
           failureKind: 'provider',
+          recovery: createStoryRecoveryPlan({
+            error: error instanceof Error ? error.message : 'MiniMax H3 chunk polling failed.',
+            modelSlug: current.model_slug,
+          }),
         },
       });
     }
@@ -1086,6 +1124,14 @@ async function pollStoryJob(
         });
       }
       if (next.status === 'failed' || next.status === 'cancelled') {
+        const recovery = next.status === 'failed'
+          ? createStoryRecoveryPlan({
+            error: next.error || 'Shared FAL story workflow did not complete.',
+            requestId: workflow.requestId,
+            pageNumbers: Array.from({ length: PAGE_COUNT }, (_, index) => index + 1),
+            modelSlug: current.model_slug,
+          })
+          : null;
         return updateJob(supabase, current.id, {
           status: next.status,
           progress: 0,
@@ -1093,6 +1139,7 @@ async function pollStoryJob(
           story_manifest: {
             ...manifest,
             failureKind: next.status === 'cancelled' ? null : 'provider',
+            ...(recovery ? { recovery } : {}),
           },
         });
       }
@@ -1109,6 +1156,11 @@ async function pollStoryJob(
         story_manifest: {
           ...manifest,
           failureKind: 'provider',
+          recovery: createStoryRecoveryPlan({
+            error: error instanceof Error ? error.message : 'Shared FAL workflow polling failed.',
+            requestId: workflow.requestId,
+            modelSlug: current.model_slug,
+          }),
         },
       });
     }
@@ -1469,6 +1521,11 @@ Deno.serve(async (req: Request) => {
             chunkManifest,
             submissionCount: workflow.submissionCount,
             failureKind: submissionErrors.length ? 'submission' : null,
+            ...(submissionErrors.length
+              ? {
+                recovery: recoveryForH3Chunks(requests),
+              }
+              : {}),
           },
         });
         return json(publicJob(submittedJob), 202);
@@ -1483,6 +1540,10 @@ Deno.serve(async (req: Request) => {
               ? error instanceof Error ? error.message : 'MiniMax H3 queue is blocked.'
               : null,
             failureKind: 'submission',
+            recovery: createStoryRecoveryPlan({
+              error: error instanceof Error ? error.message : 'MiniMax H3 story setup failed.',
+              modelSlug: model.slug,
+            }),
           },
         });
         const blocked = String(error instanceof Error ? error.message : '').startsWith('BLOCKED:');
@@ -1646,6 +1707,11 @@ Deno.serve(async (req: Request) => {
             ? error instanceof Error ? error.message : 'Shared FAL workflow is blocked.'
             : null,
           failureKind: 'submission',
+          recovery: createStoryRecoveryPlan({
+            error: error instanceof Error ? error.message : 'Shared FAL story workflow setup failed.',
+            requestId: workflowSubmitted ? row.runpod_job_id : null,
+            modelSlug: model.slug,
+          }),
         },
       });
       const blocked = String(error instanceof Error ? error.message : '').startsWith('BLOCKED:');
@@ -1937,6 +2003,162 @@ Deno.serve(async (req: Request) => {
         : undefined,
     });
     return json(publicJob(current));
+  }
+
+  if (action === 'recover') {
+    const currentManifest = current.story_manifest && typeof current.story_manifest === 'object'
+      ? current.story_manifest as Record<string, unknown>
+      : {};
+    const recovery = currentManifest.recovery && typeof currentManifest.recovery === 'object'
+      ? currentManifest.recovery as StoryRecoveryPlan
+      : null;
+    if (current.status !== 'failed' || currentManifest.workflowMode !== 'ten-h3-chunks') {
+      return json({ error: 'Only a failed ten-chunk H3 job can use scoped recovery.', blocked: true }, 409);
+    }
+    if (!recovery) {
+      return json({ error: 'No structured provider recovery plan is available for this job.', blocked: true }, 409);
+    }
+    if (!recovery.retryable && recovery.disposition !== 'source-replacement-required') {
+      return json({ error: recovery.userMessage, recovery, blocked: true }, 409);
+    }
+    if (payload.confirmedRecovery !== true) {
+      return json({ error: 'Explicit confirmation is required before a metered recovery request.', recovery }, 400);
+    }
+    if (recovery.attempts >= recovery.maxAttempts) {
+      return json({ error: 'The single governed recovery attempt has already been used.', recovery, blocked: true }, 409);
+    }
+    const workflow = currentManifest.workflow && typeof currentManifest.workflow === 'object'
+      ? currentManifest.workflow as StoryWorkflowState
+      : null;
+    if (!workflow?.chunks?.length) {
+      return json({ error: 'The persisted H3 workflow has no recoverable chunks.', blocked: true }, 409);
+    }
+    const failedChunks = workflow.chunks.filter(chunk => chunk.status === 'failed');
+    const activeChunks = workflow.chunks.filter(chunk => !['ready', 'failed', 'cancelled'].includes(chunk.status));
+    if (!failedChunks.length || activeChunks.length) {
+      return json({
+        error: activeChunks.length
+          ? 'Recovery is only scoped when unaffected chunks are already ready; the active batch must finish or be cancelled first.'
+          : 'No failed H3 chunk is available for recovery.',
+        recovery,
+        blocked: true,
+      }, 409);
+    }
+    const replacementChunks = Array.isArray(payload.replacementChunks)
+      ? payload.replacementChunks as Record<string, unknown>[]
+      : [];
+    if (recovery.disposition === 'source-replacement-required' && replacementChunks.length < failedChunks.length) {
+      return json({
+        error: 'This provider policy block requires an approved original replacement image for every affected chunk before resubmission.',
+        recovery,
+        blocked: true,
+      }, 409);
+    }
+    try {
+      const endpoint = h3QueueEndpoint();
+      const replacements = new Map(replacementChunks.map(item => [Number(item.chunkNumber), item]));
+      const inputs = await Promise.all(failedChunks.map(async chunk => {
+        const replacement = replacements.get(chunk.chunkNumber);
+        let imageUrl = chunk.imageUrl;
+        if (replacement) {
+          const bytes = decodeBase64(replacement.base64);
+          const mimeType = replacement.mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+          imageUrl = await uploadAsset(
+            supabase,
+            `films/${current.id}/recovery/chunk-${String(chunk.chunkNumber).padStart(2, '0')}.${mimeType === 'image/png' ? 'png' : 'jpg'}`,
+            bytes,
+            mimeType,
+          );
+        }
+        const requestedPrompt = typeof payload.promptRewrite === 'string'
+          ? payload.promptRewrite
+          : chunk.prompt;
+        const distilled = distillStoryPrompt(requestedPrompt, chunk.error);
+        return {
+          chunkNumber: chunk.chunkNumber,
+          pageNumbers: chunk.pageNumbers,
+          targetDurationSeconds: chunk.targetDurationSeconds,
+          requestedDurationSeconds: chunk.requestedDurationSeconds,
+          prompt: distilled.prompt,
+          imageUrl,
+        };
+      }));
+      const { requests, submissionErrors } = await submitFalH3Chunks(
+        inputs,
+        chunk => createFalH3ChunkRequest(endpoint, chunk),
+        async chunk => {
+          if (!chunk.cancelUrl) throw new Error('FAL did not return a cancellation URL.');
+          await workflowJson(chunk.cancelUrl, { method: 'PUT', headers: { 'X-Fal-No-Retry': '1' } });
+        },
+      );
+      const requestByChunk = new Map(requests.map(chunk => [chunk.chunkNumber, chunk]));
+      const nextChunks = workflow.chunks.map(chunk => requestByChunk.get(chunk.chunkNumber) ?? chunk);
+      const nextRecovery = submissionErrors.length
+        ? recoveryForH3Chunks(nextChunks, 1)
+        : null;
+      const recoveryHistory = Array.isArray(currentManifest.recoveryHistory)
+        ? currentManifest.recoveryHistory
+        : [];
+      const next = await updateJob(supabase, current.id, {
+        status: submissionErrors.length ? 'failed' : 'generating',
+        progress: submissionErrors.length ? 0 : Math.max(8, current.progress),
+        error_message: submissionErrors.length ? `H3 recovery submission failed: ${submissionErrors.join(' | ')}` : null,
+        story_manifest: {
+          ...currentManifest,
+          workflow: {
+            ...workflow,
+            chunks: nextChunks,
+            submissionCount: Number(workflow.submissionCount || 0) + requests.filter(chunk => chunk.requestId).length,
+            submittedAt: new Date().toISOString(),
+          },
+          chunkManifest: nextChunks.map(chunk => ({
+            chunkNumber: chunk.chunkNumber,
+            pageNumbers: chunk.pageNumbers,
+            imageUrl: chunk.imageUrl,
+            targetDurationSeconds: chunk.targetDurationSeconds,
+            requestedDurationSeconds: chunk.requestedDurationSeconds,
+            prompt: chunk.prompt,
+            requestId: chunk.requestId,
+            status: chunk.status,
+            progress: chunk.progress,
+            outputUrl: chunk.outputUrl ?? null,
+            error: chunk.error ?? null,
+          })),
+          recovery: nextRecovery,
+          recoveryHistory: [
+            ...recoveryHistory,
+            {
+              action: 'confirmed-recovery',
+              category: recovery.category,
+              affectedChunkNumbers: failedChunks.map(chunk => chunk.chunkNumber),
+              replacedSource: replacementChunks.length > 0,
+              occurredAt: new Date().toISOString(),
+            },
+          ].slice(-20),
+          failureKind: submissionErrors.length ? 'submission' : null,
+        },
+      });
+      return json(publicJob(next), 202);
+    } catch (error) {
+      const nextRecovery = createStoryRecoveryPlan({
+        error: error instanceof Error ? error.message : 'H3 recovery submission failed.',
+        chunkNumbers: failedChunks.map(chunk => chunk.chunkNumber),
+        pageNumbers: failedChunks.flatMap(chunk => chunk.pageNumbers),
+        modelSlug: current.model_slug,
+        attempts: 1,
+      });
+      const failed = await updateJob(supabase, current.id, {
+        status: 'failed',
+        progress: 0,
+        error_message: error instanceof Error ? error.message : 'H3 recovery submission failed.',
+        story_manifest: {
+          ...currentManifest,
+          failureKind: 'submission',
+          recovery: nextRecovery,
+        },
+      });
+      return json(publicJob(failed), 503);
+    }
   }
 
   if (action === 'resume' && current.status === 'failed') {

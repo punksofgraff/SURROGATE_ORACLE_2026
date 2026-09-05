@@ -26,6 +26,7 @@ import type {
   IllustrationStoryReviewState,
   IllustrationStoryScene,
 } from '../lib/creativeProduction';
+import type { IllustrationStoryRecoveryPlan } from '../hooks/useIllustrationStoryFilm';
 import { filterIllustrationStoryReviewHistory } from '../lib/creativeProduction';
 import './IllustrationStoryOpenKitchen.css';
 
@@ -37,9 +38,11 @@ type IllustrationStoryOpenKitchenProps = {
   audioSources: IllustrationStoryReviewAudioSource[];
   storyStage?: string;
   progress: number;
+  recovery?: IllustrationStoryRecoveryPlan | null;
   onStorySceneRetry?: (pageNumber: number) => void;
   onStorySceneReplace?: (pageNumber: number) => void;
   onStoryFilmRetry?: () => void;
+  onStoryRecoveryConfirm?: (promptRewrite?: string) => void;
   onStoryReviewApprove?: () => void;
   onStoryReviewReject?: (reason?: string, pageNumber?: number) => void;
   onStoryReviewStateChange?: (state: IllustrationStoryReviewState, pageNumber?: number) => void;
@@ -203,9 +206,11 @@ export function IllustrationStoryOpenKitchen({
   audioSources,
   storyStage,
   progress,
+  recovery,
   onStorySceneRetry,
   onStorySceneReplace,
   onStoryFilmRetry,
+  onStoryRecoveryConfirm,
   onStoryReviewApprove,
   onStoryReviewReject,
   onStoryReviewStateChange,
@@ -372,6 +377,61 @@ export function IllustrationStoryOpenKitchen({
           );
         })}
       </div>
+
+      {recovery && (
+        <section className="story-kitchen__recovery story-kitchen__recovery--provider" role="alert" data-testid="story-provider-recovery">
+          <div>
+            <span className="story-kitchen__section-kicker">Provider feedback / recovery</span>
+            <strong>
+              {recovery.category === 'billing'
+                ? 'FAL account or balance blocked the request'
+                : recovery.category === 'content-policy'
+                  ? 'The supplied source needs an original replacement'
+                  : recovery.category === 'prompt'
+                    ? 'A constrained prompt rewrite is available'
+                    : 'The provider returned a recoverable failure'}
+            </strong>
+            <p>{recovery.userMessage}</p>
+            <small>
+              Provider response: {recovery.providerMessage}
+              {recovery.requestId ? ` · request ${recovery.requestId}` : ''}
+            </small>
+            {recovery.affectedChunkNumbers.length > 0 && (
+              <small>
+                Affected H3 chunks: {recovery.affectedChunkNumbers.join(', ')}
+                {recovery.affectedPageNumbers.length ? ` · pages ${recovery.affectedPageNumbers.join(', ')}` : ''}
+              </small>
+            )}
+            {recovery.removedTerms.length > 0 && (
+              <small>Distillation removed named terms: {recovery.removedTerms.join(', ')}.</small>
+            )}
+            {recovery.replacementBrief && <p><strong>Replacement brief:</strong> {recovery.replacementBrief}</p>}
+            {recovery.promptRewrite && (
+              <details>
+                <summary>Review proposed prompt rewrite</summary>
+                <p>{recovery.promptRewrite}</p>
+              </details>
+            )}
+          </div>
+          {recovery.retryable && recovery.requiresConfirmation && onStoryRecoveryConfirm && (
+            <button
+              type="button"
+              onClick={() => onStoryRecoveryConfirm(recovery.promptRewrite ?? undefined)}
+              disabled={recovery.attempts >= recovery.maxAttempts}
+              data-testid="button-confirm-story-recovery"
+            >
+              <RotateCcw size={12} aria-hidden="true" />
+              Confirm one scoped retry
+            </button>
+          )}
+          {recovery.disposition === 'billing-blocked' && (
+            <span className="story-kitchen__recovery-note">Repair the FAL account or credential, then start a new confirmed hosted run.</span>
+          )}
+          {recovery.disposition === 'source-replacement-required' && (
+            <span className="story-kitchen__recovery-note">No metered retry was sent. The original panel remains immutable until an approved original replacement is staged.</span>
+          )}
+        </section>
+      )}
 
       <section className="story-kitchen__history" aria-label="Studio review history" data-testid="story-review-history">
         <div className="story-kitchen__panel-heading">

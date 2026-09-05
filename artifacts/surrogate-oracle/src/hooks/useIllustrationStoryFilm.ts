@@ -23,6 +23,25 @@ export type IllustrationStoryFailureKind =
   | 'audio-gate'
   | null;
 
+export type IllustrationStoryRecoveryPlan = {
+  version: 1;
+  category: 'billing' | 'content-policy' | 'prompt' | 'stale' | 'provider' | 'submission';
+  disposition: 'billing-blocked' | 'source-replacement-required' | 'prompt-rewrite-available' | 'retryable' | 'terminal';
+  retryable: boolean;
+  requiresConfirmation: boolean;
+  providerMessage: string;
+  userMessage: string;
+  requestId: string | null;
+  affectedChunkNumbers: number[];
+  affectedPageNumbers: number[];
+  suggestedModelSlug: string | null;
+  promptRewrite: string | null;
+  removedTerms: string[];
+  replacementBrief: string | null;
+  attempts: number;
+  maxAttempts: 1;
+};
+
 export type IllustrationStorySceneState = {
   pageNumber: number;
   sheetIndex: 0 | 1;
@@ -111,6 +130,7 @@ export type IllustrationStoryFilmJob = {
     audioProvenance: Record<string, unknown>;
   } | null;
   blockedReason?: string | null;
+  recovery?: IllustrationStoryRecoveryPlan | null;
   submissionCount?: number;
 };
 
@@ -1054,6 +1074,26 @@ export function useIllustrationStoryFilm(
     }
   }, [publish, stableOwnerKey]);
 
+  const recover = useCallback(async (promptRewrite?: string) => {
+    const currentId = activeJobIdRef.current ?? jobRef.current?.id;
+    if (!currentId) throw new Error('There is no saved story film job to recover.');
+    const { data, error } = await supabase.functions.invoke('oracle-story-film-job', {
+      body: {
+        action: 'recover',
+        jobId: currentId,
+        ownerKey: stableOwnerKey,
+        confirmedRecovery: true,
+        ...(promptRewrite ? { promptRewrite } : {}),
+      },
+    });
+    if (error) throw new Error(`Story recovery could not start: ${error.message}`);
+    if (!data?.id) throw new Error(data?.error || 'Story recovery returned no job.');
+    const next = data as IllustrationStoryFilmJob;
+    activeJobIdRef.current = next.id;
+    publish(next);
+    return next;
+  }, [publish, stableOwnerKey]);
+
   const persistReview = useCallback(async (
     review: IllustrationStoryReviewState,
     rejections: IllustrationStoryReviewRejection[] = [],
@@ -1134,6 +1174,7 @@ export function useIllustrationStoryFilm(
     renderLocalStory,
     retryAssembly,
     recoverAssembly,
+    recover,
     cancel,
     persistReview,
   };

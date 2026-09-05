@@ -44,6 +44,7 @@ import {
   type SeriesRenderMode,
 } from '../lib/creativeProduction';
 import IllustrationStoryOpenKitchen from './IllustrationStoryOpenKitchen';
+import type { IllustrationStoryRecoveryPlan } from '../hooks/useIllustrationStoryFilm';
 import './CreativeArtifactCard.css';
 
 export type CreativeArtifactCardProps = {
@@ -67,6 +68,7 @@ export type CreativeArtifactCardProps = {
   onStorySceneRetry?: (pageNumber: number) => void;
   onStorySceneReplace?: (pageNumber: number) => void;
   onStoryFilmRetry?: () => void;
+  onStoryRecoveryConfirm?: (promptRewrite?: string) => void;
   onStoryLaneChange?: (lane: IllustrationStoryLane, modelSlug: string | null) => void;
   onStoryReviewApprove?: () => void;
   onStoryReviewReject?: (reason?: string, pageNumber?: number) => void;
@@ -731,6 +733,7 @@ export function CreativeArtifactCard({
   onStorySceneRetry,
   onStorySceneReplace,
   onStoryFilmRetry,
+  onStoryRecoveryConfirm,
   onStoryLaneChange,
   onStoryReviewApprove,
   onStoryReviewReject,
@@ -807,6 +810,7 @@ export function CreativeArtifactCard({
   const isWorking = status === 'queued' || status === 'generating';
   const isRecoverable = status === 'failed' || status === 'cancelled' || status === 'partial';
   const storyFailureKind = metadataRecord?.storyFailureKind;
+  const storyRecovery = metadataRecord?.storyRecovery as IllustrationStoryRecoveryPlan | null | undefined;
   const studioReview = metadataRecord?.studioReview as { status?: string; reviewedAt?: string } | undefined;
   const requiresStudioReview = isIllustrationStory
     && hasOutput
@@ -1262,6 +1266,8 @@ export function CreativeArtifactCard({
             onStorySceneRetry={storyReadOnly ? undefined : onStorySceneRetry}
             onStorySceneReplace={storyReadOnly ? undefined : onStorySceneReplace}
             onStoryFilmRetry={onStoryFilmRetry}
+            onStoryRecoveryConfirm={onStoryRecoveryConfirm}
+            recovery={storyRecovery}
             onStoryReviewApprove={onStoryReviewApprove}
             onStoryReviewReject={onStoryReviewReject}
             onStoryReviewStateChange={onStoryReviewStateChange}

@@ -516,14 +516,19 @@ async function stitchIllustrationStory(body: any): Promise<{
   const sceneUrls = Array.isArray(body?.sceneUrls) ? body.sceneUrls : [];
   const cellUrls = Array.isArray(body?.cellUrls) ? body.cellUrls : [];
   const chunkUrls = Array.isArray(body?.chunkUrls) ? body.chunkUrls : [];
+  const pollinationsShotFiles = Array.isArray(body?.pollinationsShotFiles)
+    ? body.pollinationsShotFiles.filter((file: unknown): file is string => typeof file === 'string')
+    : [];
   const hostedFilmUrl = typeof body?.hostedFilmUrl === 'string' ? body.hostedFilmUrl : '';
   const pages = Array.isArray(body?.pages) ? body.pages as StoryPageRequest[] : [];
   const usingRemoteScenes = sceneUrls.length === 32;
   const usingRemoteCells = cellUrls.length === 32;
   const usingRemoteChunks = chunkUrls.length === 10;
+  const usingPollinationsShots = pollinationsShotFiles.length === 32
+    && pollinationsShotFiles.every(file => file.startsWith(os.tmpdir()) && fs.existsSync(file));
   const usingHostedFilm = Boolean(hostedFilmUrl);
-  if ((!usingRemoteScenes && !usingRemoteCells && !usingRemoteChunks && !usingHostedFilm && sheets.length !== 2) || pages.length !== 32) {
-    throw new Error('Story assembly requires one validated hosted film, ten H3 chunk URLs, 32 hosted scene URLs, 32 persisted cell URLs, or two sheets, plus 32 pages.');
+  if ((!usingRemoteScenes && !usingRemoteCells && !usingRemoteChunks && !usingPollinationsShots && !usingHostedFilm && sheets.length !== 2) || pages.length !== 32) {
+    throw new Error('Story assembly requires one validated hosted film, ten H3 chunk URLs, 32 hosted scene URLs, 32 persisted cell URLs, 32 open short-shot files, or two sheets, plus 32 pages.');
   }
   const duration = pages.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
   const orderedPages = pages.every((page, index) => page.pageNumber === index + 1
@@ -545,7 +550,7 @@ async function stitchIllustrationStory(body: any): Promise<{
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-story-'));
   try {
-    const sheetFiles = usingRemoteScenes || usingRemoteCells || usingRemoteChunks || usingHostedFilm ? [] : sheets.map((asset: unknown, index: number) => {
+    const sheetFiles = usingRemoteScenes || usingRemoteCells || usingRemoteChunks || usingPollinationsShots || usingHostedFilm ? [] : sheets.map((asset: unknown, index: number) => {
       const decoded = decodeDataAsset(asset);
       const file = path.join(dir, `sheet-${index}.png`);
       fs.writeFileSync(file, decoded.bytes);
@@ -647,6 +652,19 @@ async function stitchIllustrationStory(body: any): Promise<{
         await runFfmpeg(clipArgs);
         clipFiles.push(clipFile);
       }
+    } else if (usingPollinationsShots) {
+      for (const [index, page] of pages.entries()) {
+        const clipFile = path.join(dir, `pollinations-page-${String(page.pageNumber).padStart(2, '0')}.mp4`);
+        await runFfmpeg([
+          '-y', '-i', pollinationsShotFiles[index],
+          '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p',
+          '-t', String(page.durationSeconds),
+          '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
+          '-movflags', '+faststart',
+          clipFile,
+        ]);
+        clipFiles.push(clipFile);
+      }
     } else if (usingRemoteScenes) {
       for (const [index, page] of pages.entries()) {
         const remoteFile = path.join(dir, `remote-${String(page.pageNumber).padStart(2, '0')}.mp4`);
@@ -714,7 +732,7 @@ async function stitchIllustrationStory(body: any): Promise<{
     characterFiles.forEach(({ file }) => audioArgs.push('-i', file));
     soundEffects.forEach(effect => audioArgs.push('-i', effect.file));
     authoredSoundEffects.forEach(effect => audioArgs.push('-i', effect.file));
-    const preservesNativeAudio = usingRemoteScenes || usingRemoteChunks || usingHostedFilm;
+     const preservesNativeAudio = usingRemoteScenes || usingRemoteChunks || usingHostedFilm;
     const audioLabels = preservesNativeAudio ? ['[native]', '[music]'] : ['[music]'];
     const filters = preservesNativeAudio
       ? ['[0:a]volume=0.34[native]', '[1:a]volume=0.28[music]']
@@ -794,6 +812,93 @@ async function stitchIllustrationStory(body: any): Promise<{
   }
 }
 
+async function renderPollinationsShortShotStory(body: any): Promise<{
+  bytes: Buffer;
+  narrationAvailable: boolean;
+  durationSeconds: number;
+  audioTrackPresent: boolean;
+  soundEffectsMixed: number;
+  characterTimingApplied: number;
+}> {
+  const apiKey = process.env.POLLINATIONS_API_KEY;
+  if (!apiKey) {
+    throw new Error('Pollinations free-first lane is not configured: add the server-side POLLINATIONS_API_KEY secret, then retry. No paid provider was attempted.');
+  }
+  const cellUrls = Array.isArray(body?.cellUrls) ? body.cellUrls : [];
+  const pages = Array.isArray(body?.pages) ? body.pages : [];
+  if (cellUrls.length !== 32 || pages.length !== 32) {
+    throw new Error('Pollinations short-shot assembly requires exactly 32 persisted cell URLs and 32 ordered pages.');
+  }
+
+  const catalogResponse = await fetch('https://gen.pollinations.ai/video/models?community=false', {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!catalogResponse.ok) {
+    throw new Error(`Pollinations model catalog could not be checked (${catalogResponse.status}); no video request was submitted.`);
+  }
+  const catalog = await catalogResponse.json() as Array<{
+    name?: string;
+    paid_only?: boolean | null;
+    input_modalities?: string[];
+    video_capabilities?: string[];
+    allowed_durations?: number[] | null;
+    max_duration?: number;
+  }>;
+  const requestedModel = typeof body?.model === 'string' ? body.model : 'nova-reel';
+  const model = catalog.find(item => item.name === requestedModel);
+  if (!model) throw new Error(`Pollinations model ${requestedModel} is not available to this account; no paid fallback was attempted.`);
+  if (model.paid_only === true) {
+    throw new Error(`Pollinations model ${requestedModel} is marked paid-only; the free-first lane refused it and submitted nothing.`);
+  }
+  if (!model.input_modalities?.includes('image') || !model.video_capabilities?.includes('start_frame')) {
+    throw new Error(`Pollinations model ${requestedModel} does not support image-to-video start frames; no fallback was attempted.`);
+  }
+  const duration = model.allowed_durations?.includes(6)
+    ? 6
+    : model.allowed_durations?.find(value => value >= 4 && value <= 10)
+      ?? (Number(model.max_duration) >= 6 ? 6 : 0);
+  if (!duration) throw new Error(`Pollinations model ${requestedModel} has no supported short-shot duration; no request was submitted.`);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-pollinations-story-'));
+  try {
+    const shotFiles: string[] = [];
+    for (const [index, page] of pages.entries()) {
+      const prompt = [
+        'Animate this single child-friendly illustrated story panel as a living story shot.',
+        'Preserve the characters, costume, setting, composition, and readable artwork. Do not redesign the panel.',
+        `Action: ${page.shotPlan?.actionBeat ?? page.narration ?? 'gentle character movement and environmental life'}.`,
+        `Environment: ${page.shotPlan?.environmentBeat ?? 'subtle living background motion'}.`,
+        `Performance cue: ${page.shotPlan?.performanceCue ?? 'clear expressive character action'}.`,
+        'Use real character and prop movement, not only a camera pan or zoom. No text overlays, logos, or new panels.',
+      ].join(' ');
+      const params = new URLSearchParams({
+        model: requestedModel,
+        image: cellUrls[index],
+        duration: String(duration),
+        aspectRatio: '16:9',
+        resolution: '480p',
+        audio: 'false',
+        safe: 'true',
+      });
+      const response = await fetch(`https://gen.pollinations.ai/video/${encodeURIComponent(prompt)}?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (!response.ok) {
+        const detail = (await response.text()).slice(0, 800);
+        throw new Error(`Pollinations shot ${index + 1}/32 failed (${response.status})${detail ? `: ${detail}` : '.'}`);
+      }
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (!bytes.length || bytes.length > 80_000_000) throw new Error(`Pollinations shot ${index + 1}/32 was empty or too large.`);
+      const file = path.join(dir, `shot-${String(index + 1).padStart(2, '0')}.mp4`);
+      fs.writeFileSync(file, bytes);
+      shotFiles.push(file);
+    }
+    return stitchIllustrationStory({ ...body, pollinationsShotFiles: shotFiles });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function illustrationStoryStitchPlugin() {
   return {
     name: 'illustration-story-stitch',
@@ -827,6 +932,39 @@ function illustrationStoryStitchPlugin() {
           } catch (error) {
             res.writeHead(400, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
             res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Story stitch failed.' }));
+          }
+        });
+      });
+      server.middlewares.use('/api/pollinations-story-stitch', (req: any, res: any) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+        if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+          if (body.length > 48_000_000) req.destroy(new Error('Pollinations story request is too large.'));
+        });
+        req.on('end', async () => {
+          try {
+            const result = await renderPollinationsShortShotStory(JSON.parse(body));
+            res.writeHead(200, {
+              'Content-Type': 'video/mp4',
+              'Content-Length': result.bytes.length,
+              'Cache-Control': 'no-store',
+              'X-Story-Page-Count': '32',
+              'X-Story-Narration': result.narrationAvailable ? 'available' : 'unavailable',
+              'X-Story-Duration': String(result.durationSeconds),
+              'X-Story-Audio': result.audioTrackPresent ? 'present' : 'missing',
+              'X-Story-SFX': String(result.soundEffectsMixed),
+              'X-Story-Character-Timing': String(result.characterTimingApplied),
+              'X-Story-Provider': 'pollinations',
+            });
+            res.end(result.bytes);
+          } catch (error) {
+            res.writeHead(400, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+            res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Pollinations story stitch failed.' }));
           }
         });
       });

@@ -34,6 +34,7 @@ import {
   type CreativeMissingDetail,
   type CreativeSeriesHistoryEntry,
   ILLUSTRATION_STORY_FAL_MODELS,
+  ILLUSTRATION_STORY_POLLINATIONS_MODELS,
   type IllustrationStoryLane,
   type IllustrationStoryReviewAudioSource,
   type IllustrationStoryReviewHistoryEntry,
@@ -826,11 +827,21 @@ export function CreativeArtifactCard({
     ? Object.entries(metadataRecord ?? {}).slice(0, 4)
     : [];
   const [followUpAnswer, setFollowUpAnswer] = useState('');
-  const initialStoryLane: IllustrationStoryLane = metadataRecord?.storyLane === 'fal' ? 'fal' : 'local';
+  const initialStoryLane: IllustrationStoryLane = metadataRecord?.storyLane === 'fal'
+    ? 'fal'
+    : metadataRecord?.storyLane === 'minimax'
+      ? 'minimax'
+      : metadataRecord?.storyLane === 'pollinations'
+        ? 'pollinations'
+        : 'local';
   const initialStoryModel = initialStoryLane === 'fal'
-      ? (typeof metadataRecord?.falModelSlug === 'string'
-        ? metadataRecord.falModelSlug
-        : ILLUSTRATION_STORY_FAL_MODELS[0]?.slug ?? null)
+    ? (typeof metadataRecord?.falModelSlug === 'string'
+      ? metadataRecord.falModelSlug
+      : ILLUSTRATION_STORY_FAL_MODELS[0]?.slug ?? null)
+    : initialStoryLane === 'pollinations'
+      ? (typeof metadataRecord?.pollinationsModelSlug === 'string'
+        ? metadataRecord.pollinationsModelSlug
+        : ILLUSTRATION_STORY_POLLINATIONS_MODELS[0]?.slug ?? null)
       : null;
   const [storyLane, setStoryLane] = useState<IllustrationStoryLane>(initialStoryLane);
   const [storyModelSlug, setStoryModelSlug] = useState<string | null>(initialStoryModel);
@@ -1175,6 +1186,19 @@ export function CreativeArtifactCard({
                   </button>
                   <button
                     type="button"
+                    className={`creative-story-choice__option${storyLane === 'pollinations' ? ' is-selected' : ''}`}
+                    onClick={() => chooseStoryLane(
+                      'pollinations',
+                      ILLUSTRATION_STORY_POLLINATIONS_MODELS.find(model => model.slug === storyModelSlug)?.slug
+                        ?? ILLUSTRATION_STORY_POLLINATIONS_MODELS[0]?.slug
+                        ?? null,
+                    )}
+                  >
+                    <strong>OPEN SHOTS / FREE-FIRST</strong>
+                    <span>One few-second Pollinations shot per panel, then local FFmpeg stitching. Paid-only models are refused.</span>
+                  </button>
+                  <button
+                    type="button"
                     className={`creative-story-choice__option${storyLane === 'fal' ? ' is-selected' : ''}`}
                     onClick={() => chooseStoryLane(
                       'fal',
@@ -1187,6 +1211,29 @@ export function CreativeArtifactCard({
                     <span>Hosted H3 video gives the comic real movement between the cells. Requires explicit metered-run confirmation.</span>
                   </button>
                 </div>
+                {storyLane === 'pollinations' && (
+                  <div className="creative-story-choice__fal">
+                    <label htmlFor={`${descriptionId}-pollinations-model`}>Open video model</label>
+                    <select
+                      id={`${descriptionId}-pollinations-model`}
+                      value={storyModelSlug ?? ''}
+                      onChange={(event) => chooseStoryLane('pollinations', event.target.value || null)}
+                    >
+                      {ILLUSTRATION_STORY_POLLINATIONS_MODELS.map(model => (
+                        <option value={model.slug} key={model.slug}>{model.label} · {model.costLabel}</option>
+                      ))}
+                    </select>
+                    {storyModelSlug && (() => {
+                      const model = ILLUSTRATION_STORY_POLLINATIONS_MODELS.find(item => item.slug === storyModelSlug);
+                      return model ? <small>{model.description} Estimated run: about {Math.ceil(model.expectedSeconds / 60)} minutes.</small> : null;
+                    })()}
+                  </div>
+                )}
+                {storyLane === 'pollinations' && (
+                  <p className="creative-story-choice__warning">
+                    Free-first is fail-closed: the server checks Pollinations’ live catalog, refuses paid-only models, and never falls through to FAL. A Pollinations server key may still be required.
+                  </p>
+                )}
                 {storyLane === 'fal' && (
                   <div className="creative-story-choice__fal">
                     <label htmlFor={`${descriptionId}-fal-model`}>Approved FAL model</label>
@@ -1217,7 +1264,9 @@ export function CreativeArtifactCard({
               <span>{artifact.requiresConfirmation ? 'Confirmation required' : 'Ready to dispatch'}</span>
             </div>
             <p className="creative-artifact-card__confirmation-copy">
-              {isIllustrationStory && storyLane === 'fal'
+              {isIllustrationStory && storyLane === 'pollinations'
+                ? 'This explicitly confirms 32 ordered Pollinations short-shot requests followed by local FFmpeg assembly. The provider must pass the live non-paid-only catalog check; human watch-and-listen review remains required.'
+                : isIllustrationStory && storyLane === 'fal'
                 ? `This explicitly confirms ${models.find(model => model.slug === storyModelSlug)?.label ?? 'the selected approved FAL model'} for 10 ordered H3 chunk jobs. Local assembly trims the returned chunks to the 32-page story timeline, and human review remains required.`
                 : artifact.confirmationCopy
                 ?? (artifact.requiresConfirmation

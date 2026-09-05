@@ -70,9 +70,10 @@ export type CreativeProvider =
   | 'browser-film'
   | 'premium-film'
   | 'fal-film'
-  | 'minimax-film';
+  | 'minimax-film'
+  | 'pollinations-film';
 
-export type IllustrationStoryLane = 'local' | 'fal' | 'minimax';
+export type IllustrationStoryLane = 'local' | 'fal' | 'minimax' | 'pollinations';
 
 export type IllustrationStoryModelOption = {
   slug: string;
@@ -80,7 +81,7 @@ export type IllustrationStoryModelOption = {
   description: string;
   costLabel: string;
   expectedSeconds: number;
-  provider?: 'fal' | 'minimax';
+  provider?: 'fal' | 'minimax' | 'pollinations';
   availability?: 'available' | 'unavailable' | 'unknown';
   modelUrl?: string;
   versionId?: string;
@@ -110,8 +111,23 @@ export const ILLUSTRATION_STORY_MINIMAX_MODELS: IllustrationStoryModelOption[] =
   },
 ];
 
+export const ILLUSTRATION_STORY_POLLINATIONS_MODELS: IllustrationStoryModelOption[] = [
+  {
+    slug: 'nova-reel',
+    label: 'Pollinations · open short shots',
+    description: 'One short image-to-video shot per panel, stitched locally with FFmpeg. The server checks the live catalog and refuses paid-only models.',
+    costLabel: 'Free-first catalog check',
+    expectedSeconds: 240,
+    provider: 'pollinations',
+  },
+];
+
 export function illustrationStoryFalModel(slug: unknown): IllustrationStoryModelOption | null {
   return ILLUSTRATION_STORY_FAL_MODELS.find(model => model.slug === slug) ?? null;
+}
+
+export function illustrationStoryPollinationsModel(slug: unknown): IllustrationStoryModelOption | null {
+  return ILLUSTRATION_STORY_POLLINATIONS_MODELS.find(model => model.slug === slug) ?? null;
 }
 
 export function illustrationStoryMiniMaxModel(slug: unknown): IllustrationStoryModelOption | null {
@@ -891,10 +907,10 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
     followUpCompleted: classification.missingDetails.length === 0,
     status: 'draft',
     provider: illustrationStory
-      ? 'fal-film'
+      ? 'pollinations-film'
       : classification.provider,
     providerLabel: illustrationStory
-      ? 'Premium living-story video lane'
+      ? 'Open/free-first short-shot video lane'
       : classification.provider === 'lyria'
       ? 'Lyria music lane'
       : classification.provider === 'browser-film'
@@ -908,7 +924,7 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
     createdAt,
     requiresConfirmation: classification.requiresConfirmation,
     confirmationLabel: illustrationStory
-      ? 'Confirm premium living story'
+      ? 'Confirm open short-shot story'
       : classification.kind === 'music'
       ? 'Confirm music generation'
       : classification.kind === 'film'
@@ -917,7 +933,7 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
           ? 'Create series manifest'
           : 'Create draft',
     confirmationCopy: illustrationStory && classification.missingDetails.length === 0
-      ? 'This starts the premium living-story lane: hosted H3 video animates ten ordered composites of the 32 original panels. Lyria, narration, character voices, and local FFmpeg assembly remain in the final mix, followed by manual watch-and-listen approval.'
+      ? 'This starts the open/free-first short-shot lane: the live Pollinations catalog is checked for an eligible non-paid-only image-to-video model, one few-second shot is generated per panel, and local FFmpeg assembles the 32 shots with Lyria, narration, character voices, and review.'
       : missingCopy(classification.missingDetails),
     storyPages: illustrationStory ? createIllustrationStoryPages(clean, createdAt) : undefined,
     metadata: {
@@ -925,9 +941,10 @@ export function createCreativeDraft(prompt: string, createdAt = new Date().toISO
       missingDetails: classification.missingDetails,
       ...(illustrationStory ? {
         production: 'illustration-story-studio',
-         storyLane: 'fal' as IllustrationStoryLane,
-         falModelSlug: ILLUSTRATION_STORY_FAL_MODELS[0]?.slug ?? null,
-      storyModelSlug: null,
+         storyLane: 'pollinations' as IllustrationStoryLane,
+         falModelSlug: null,
+         pollinationsModelSlug: ILLUSTRATION_STORY_POLLINATIONS_MODELS[0]?.slug ?? null,
+         storyModelSlug: null,
         pageCount: ILLUSTRATION_STORY_PAGE_COUNT,
         pageDurationSeconds: ILLUSTRATION_STORY_PAGE_DURATION_SECONDS,
         shotPlan: '32 authored per-panel performance treatments',

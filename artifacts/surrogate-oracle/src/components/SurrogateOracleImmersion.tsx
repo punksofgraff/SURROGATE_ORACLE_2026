@@ -106,6 +106,7 @@ import {
   type CreativeSeriesManifest,
   illustrationStoryFalModel,
   illustrationStoryMiniMaxModel,
+  illustrationStoryPollinationsModel,
   type IllustrationStoryLane,
   type IllustrationStoryReviewAudioSource,
   type IllustrationStoryReviewHistoryEntry,
@@ -161,6 +162,14 @@ function isMiniMaxIllustrationStoryArtifact(artifact: CreativeArtifact | null): 
     artifact
     && ['illustration-story-studio', 'illustration-story-proof'].includes(String(artifact.metadata?.production))
     && artifact.metadata?.storyLane === 'minimax',
+  );
+}
+
+function isPollinationsIllustrationStoryArtifact(artifact: CreativeArtifact | null): boolean {
+  return Boolean(
+    artifact
+      && ['illustration-story-studio', 'illustration-story-proof'].includes(String(artifact.metadata?.production))
+      && artifact.metadata?.storyLane === 'pollinations',
   );
 }
 
@@ -2081,32 +2090,47 @@ export function SurrogateOracleImmersion() {
       ? illustrationStoryFalModel(modelSlug)
       : lane === 'minimax'
         ? illustrationStoryMiniMaxModel(modelSlug)
+        : lane === 'pollinations'
+          ? illustrationStoryPollinationsModel(modelSlug)
         : null;
     const isHosted = lane === 'fal' || lane === 'minimax';
     const laneLabel = lane === 'minimax'
       ? `MiniMax H3 / ${selectedModel?.label ?? 'native-audio model'}`
       : lane === 'fal'
         ? `FAL / ${selectedModel?.label ?? 'approved model'}`
-        : 'Free local FFmpeg story lane';
+        : lane === 'pollinations'
+          ? `Pollinations / ${selectedModel?.label ?? 'open short-shot model'}`
+          : 'Free local FFmpeg story lane';
     const next: CreativeArtifact = {
       ...artifact,
-      provider: lane === 'minimax' ? 'minimax-film' : lane === 'fal' ? 'fal-film' : 'browser-film',
+      provider: lane === 'minimax'
+        ? 'minimax-film'
+        : lane === 'fal'
+          ? 'fal-film'
+          : lane === 'pollinations'
+            ? 'pollinations-film'
+            : 'browser-film',
       providerLabel: laneLabel,
       confirmationLabel: lane === 'minimax'
         ? 'Confirm MiniMax H3 story'
         : lane === 'fal'
           ? 'Confirm metered FAL story'
-          : 'Confirm local story film',
+          : lane === 'pollinations'
+            ? 'Confirm open short-shot story'
+            : 'Confirm local story film',
       confirmationCopy: lane === 'minimax'
         ? 'This explicitly confirms MiniMax H3 reference-to-video for 32 visual scenes with native stereo audio. Narration, character tracks, Lyria music, and final FFmpeg assembly stay local.'
         : lane === 'fal'
         ? `This explicitly confirms ${selectedModel?.label ?? 'an approved FAL model'} for 32 visual scenes. FAL is metered; narration, voices, Lyria music, and final FFmpeg assembly stay local.`
-        : 'This starts the free local story lane: the original 32 panels stay in order while local FFmpeg assembles motion, Lyria backing music, and the existing narration/voice mix into a validated widescreen MP4.',
+        : lane === 'pollinations'
+          ? 'This starts the open/free-first short-shot lane: one few-second Pollinations shot is requested per panel, then local FFmpeg assembles the complete narrated story. Paid-only models and FAL fallback are refused.'
+          : 'This starts the free local story lane: the original 32 panels stay in order while local FFmpeg assembles motion, Lyria backing music, and the existing narration/voice mix into a validated widescreen MP4.',
       metadata: {
         ...(artifact.metadata ?? {}),
         storyLane: lane,
         falModelSlug: selectedModel?.slug ?? null,
-        storyModelSlug: isHosted ? selectedModel?.slug ?? null : null,
+        pollinationsModelSlug: lane === 'pollinations' ? selectedModel?.slug ?? null : null,
+        storyModelSlug: isHosted || lane === 'pollinations' ? selectedModel?.slug ?? null : null,
       },
     };
     activeCreativeArtifactRef.current = next;
@@ -2186,8 +2210,10 @@ export function SurrogateOracleImmersion() {
     if (artifact.kind === 'film') {
       const isLocalIllustrationStory = ['illustration-story-studio', 'illustration-story-proof'].includes(String(artifact.metadata?.production))
         && artifact.metadata?.storyLane !== 'fal'
-        && artifact.metadata?.storyLane !== 'minimax';
+        && artifact.metadata?.storyLane !== 'minimax'
+        && artifact.metadata?.storyLane !== 'pollinations';
       const isIllustrationStory = isHostedIllustrationStoryArtifact(artifact);
+      const isPollinationsStory = isPollinationsIllustrationStoryArtifact(artifact);
       if (isLocalIllustrationStory) {
         void (async () => {
           try {
@@ -2289,6 +2315,94 @@ export function SurrogateOracleImmersion() {
               storyPages: storyPagesAfterFailure,
             }, claim);
             logStep('ILLUSTRATION STORY FAILED — RETRY AVAILABLE', 'warn');
+          }
+        })();
+        return;
+      }
+      if (isPollinationsStory) {
+        void (async () => {
+          const pollinationsModel = illustrationStoryPollinationsModel(artifact.metadata?.pollinationsModelSlug);
+          try {
+            updateCreativeArtifact(artifact.id, {
+              status: 'generating',
+              progress: 2,
+              provider: 'pollinations-film',
+              providerLabel: `Pollinations / ${pollinationsModel?.label ?? 'open short-shot model'} · 32 shots`,
+              outputLabel: undefined,
+              metadata: {
+                ...(artifact.metadata ?? {}),
+                storyStage: 'preparing locked panel references',
+                pageCount: artifact.storyPages?.length ?? 32,
+              },
+            }, claim);
+            if (!pollinationsModel) throw new Error('Choose the open Pollinations shot model before confirming the story lane.');
+            const musicUrl = lyria.audioUrl ?? await lyria.generate(
+              'Gentle child-friendly instrumental bedtime story music, warm felt piano, soft marimba, light ocean sparkle, no vocals, calm and curious.',
+            );
+            if (!musicUrl) throw new Error(lyria.error ?? 'Lyria did not return a playable story soundtrack.');
+            const pages = artifact.storyPages?.length
+              ? artifact.storyPages
+              : createIllustrationStoryPages(artifact.prompt, artifact.createdAt);
+            const result = await illustrationStoryFilm.renderPollinationsStory(
+              [storySheetOneUrl, storySheetTwoUrl],
+              pages,
+              musicUrl,
+              pollinationsModel,
+              progress => {
+                if (isCurrent()) updateCreativeArtifact(artifact.id, {
+                  status: 'generating',
+                  progress,
+                  provider: 'pollinations-film',
+                  providerLabel: `Pollinations / ${pollinationsModel.label} · 32 shots`,
+                  metadata: {
+                    ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+                    storyStage: progress < 34
+                      ? 'preparing panels, narration, and voice tracks'
+                      : 'generating single short shots and stitching with FFmpeg',
+                    currentPage: Math.min(32, Math.max(1, Math.ceil((progress / 100) * 32))),
+                  },
+                }, claim);
+              },
+            );
+            if (!isCurrent()) return;
+            updateCreativeArtifact(artifact.id, {
+              status: 'partial',
+              progress: 100,
+              outputUrl: result.url,
+              reviewManifest: result.reviewManifest,
+              outputLabel: `Unreviewed 32-shot narrated studio render · ${Math.round(result.durationSeconds)}s MP4`,
+              provider: 'pollinations-film',
+              providerLabel: `Pollinations / ${pollinationsModel.label} · local FFmpeg`,
+              metadata: {
+                ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+                storyStage: 'rendered; studio watch + listen approval required',
+                studioReview: { status: 'unreviewed', required: 'watch-and-listen' },
+                pageCount: result.pageCount,
+                totalDurationSeconds: result.durationSeconds,
+                audioManifest: result.audioManifest,
+                ffmpegStitch: 'complete',
+                shotLane: 'one Pollinations image-to-video request per panel',
+              },
+              storyPages: updateIllustrationStoryPages(
+                activeCreativeArtifactRef.current?.storyPages ?? pages,
+                100,
+              ),
+            }, claim);
+            logStep('OPEN SHORT-SHOT STORY RENDERED — STUDIO REVIEW REQUIRED', 'ok');
+          } catch (error) {
+            if (!isCurrent()) return;
+            updateCreativeArtifact(artifact.id, {
+              status: 'failed',
+              progress: 0,
+              provider: 'pollinations-film',
+              providerLabel: 'Pollinations open short-shot lane',
+              error: error instanceof Error ? error.message : 'Pollinations story film failed.',
+              metadata: {
+                ...(activeCreativeArtifactRef.current?.metadata ?? {}),
+                storyStage: 'failed; no paid fallback was attempted',
+              },
+            }, claim);
+            logStep('OPEN SHORT-SHOT STORY FAILED — NO PAID FALLBACK', 'warn');
           }
         })();
         return;

@@ -1068,6 +1068,103 @@ export function useIllustrationStoryFilm(
     );
   }, [persistAssembly, publish, sessionId, stableOwnerKey]);
 
+  const renderPollinationsStory = useCallback(async (
+    sheetUrls: [string, string],
+    pages: IllustrationStoryPage[],
+    musicUrl: string,
+    model: IllustrationStoryModelOption,
+    onProgress?: (progress: number) => void,
+  ): Promise<IllustrationStoryFilmResult> => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    onProgress?.(8);
+
+    if (pages.length !== 32) throw new Error('Open short-shot story production requires exactly 32 pages.');
+    const [panels, music] = await Promise.all([
+      createLockedPanelAssets(sheetUrls, pages),
+      urlToBase64(musicUrl),
+    ]);
+    if (controller.signal.aborted) throw new Error('Open short-shot story render cancelled.');
+    onProgress?.(18);
+
+    const narrationBundle = await createNarrationAudio(pages, sessionId ?? 'anonymous-story-session');
+    if (controller.signal.aborted) throw new Error('Open short-shot story render cancelled.');
+    onProgress?.(28);
+
+    const { data: localJobData, error: localJobError } = await supabase.functions.invoke('oracle-story-film-job', {
+      body: {
+        action: 'create-local',
+        sessionId: sessionId ?? 'anonymous-story-session',
+        ownerKey: stableOwnerKey,
+        pages,
+        panels,
+        musicBase64: music.base64,
+        musicMimeType: music.mimeType,
+        narrationBase64: narrationBundle.narration.base64,
+        narrationMimeType: narrationBundle.narration.mimeType,
+        characterVoiceTracks: narrationBundle.characterTracks,
+      },
+    });
+    if (localJobError) throw new Error(`Open story review record could not start: ${localJobError.message}`);
+    if (!localJobData?.id) throw new Error(localJobData?.error || 'Open story review record returned no id.');
+    activeJobIdRef.current = localJobData.id;
+    publish(localJobData as IllustrationStoryFilmJob);
+
+    const { data: stitchOrderData, error: stitchOrderError } = await supabase.functions.invoke('oracle-story-film-job', {
+      body: {
+        action: 'stitch-order',
+        jobId: localJobData.id,
+        ownerKey: stableOwnerKey,
+      },
+    });
+    if (stitchOrderError) throw new Error(`Open story cell order review failed: ${stitchOrderError.message}`);
+    if (!Array.isArray(stitchOrderData?.cellUrls) || stitchOrderData.cellUrls.length !== pages.length) {
+      throw new Error(stitchOrderData?.error || 'Open story cell order review returned an incomplete list.');
+    }
+    if (stitchOrderData.job?.id) publish(stitchOrderData.job as IllustrationStoryFilmJob);
+    onProgress?.(34);
+
+    const response = await fetch(`${import.meta.env.BASE_URL}api/pollinations-story-stitch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cellUrls: stitchOrderData.cellUrls,
+        model: model.slug,
+        music,
+        narration: narrationBundle.narration,
+        characterVoiceTracks: narrationBundle.characterTracks,
+        pages,
+      } satisfies LocalStitchInput & { model: string }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      let detail = '';
+      try { detail = (await response.json()).error ?? ''; } catch { /* keep status */ }
+      throw new Error(detail || `Pollinations short-shot render failed (${response.status}).`);
+    }
+    const audioManifest = createStoryAudioManifest({
+      narrationAvailable: Boolean(narrationBundle.narration),
+      narrationSourceLabel: 'Generated story narration',
+      characterTracks: narrationBundle.characterTracks,
+      musicPreviewUrl: musicUrl,
+      musicSourceLabel: 'Lyria instrumental anchor',
+      soundEffectsCount: pages.reduce(
+        (sum, page) => sum + (page.soundEffects?.length || page.sfx?.length || 0),
+        0,
+      ),
+    });
+    return readLocalStitchResponse(
+      response,
+      pages,
+      onProgress,
+      localObjectUrlRef,
+      audioManifest,
+      (stitchOrderData.job?.scenes ?? localJobData.scenes ?? []) as IllustrationStoryScene[],
+      persistAssembly,
+    );
+  }, [persistAssembly, publish, sessionId, stableOwnerKey]);
+
   const cancel = useCallback(async () => {
     abortRef.current?.abort();
     if (pollTimerRef.current) window.clearTimeout(pollTimerRef.current);
@@ -1178,6 +1275,7 @@ export function useIllustrationStoryFilm(
     job,
     renderStory,
     renderLocalStory,
+    renderPollinationsStory,
     retryAssembly,
     recoverAssembly,
     recover,

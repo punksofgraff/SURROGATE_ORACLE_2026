@@ -22,7 +22,7 @@ const DEFAULT_VOICE  = Deno.env.get('ORACLE_TTS_VOICE') ?? 'Sadaltager';
 const GEMINI_TTS_URL = `https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent`;
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': 'https://thesurrogate.me',
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-oracle-request-id, x-oracle-session-id',
 };
 

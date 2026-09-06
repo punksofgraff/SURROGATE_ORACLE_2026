@@ -20,7 +20,7 @@
  */
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://thesurrogate.me',
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, x-oracle-request-id, x-oracle-session-id',
 };

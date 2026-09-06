@@ -46,7 +46,7 @@ page.on('request', (request) => {
       headers: {
         'Accept-Ranges': 'bytes',
         'Cache-Control': 'no-store',
-        'Access-Control-Allow-Origin': 'https://thesurrogate.me',
+        'Access-Control-Allow-Origin': '*',
       },
       body: bundledAudio,
     }).catch(() => {});

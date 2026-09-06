@@ -343,7 +343,7 @@ Deno.serve(async (req: Request) => {
       free_fail_count: state.free_fail_count,
       switched_to_paid_at: state.switched_to_paid_at,
       paid_resets_in_hours: hoursLeft,
-    }), { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } });
+    }), { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': 'https://thesurrogate.me' } });
   }
 
   return new Response('Expected WebSocket upgrade', { status: 426 });

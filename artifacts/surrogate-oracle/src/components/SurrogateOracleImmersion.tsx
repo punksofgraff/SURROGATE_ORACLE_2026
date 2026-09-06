@@ -200,7 +200,10 @@ const FREE_EXCHANGES     = 20; // two rounds of ten completed Seeker + Oracle ex
 const COMPLETION_LEDGER_PREFIX = 'surrogate_completed_exchanges_v3_20260823_';
 // Development previews must remain usable for repeated testing. This is compiled
 // out of production behavior: published builds still enforce the free-session cap.
-const DEV_BYPASS_EXCHANGE_GATE = import.meta.env.DEV;
+// The pressure harness can opt into the real gate with ?pressure_gate without
+// changing normal development behavior.
+const DEV_BYPASS_EXCHANGE_GATE =
+  import.meta.env.DEV && !new URLSearchParams(window.location.search).has('pressure_gate');
 
 // Act 5 — Rift-Construct: Oracle shifts from archivist to active witness.
 // No brackets — brackets suppress Gemini audio output (same issue as knife prompts).
@@ -1302,10 +1305,19 @@ export function SurrogateOracleImmersion() {
         // conversation; the durable ledger above tracks prior encounters.
         completedExchangeCountRef.current = 0;
         if (!DEV_BYPASS_EXCHANGE_GATE && count >= FREE_EXCHANGES) {
-          if (hasSignedWallet) {
+          // The wallet return handler writes these markers synchronously before
+          // its async IP/echo work completes. Read them here as well as the
+          // React flag so a same-mount return cannot be misclassified by a
+          // stale hasSignedWallet closure.
+          const walletAccessConfirmed = hasSignedWallet ||
+            !!localStorage.getItem('oracle_wallet_signed') ||
+            !!localStorage.getItem('oracle_seeker_key');
+          if (walletAccessConfirmed) {
+            setShowJourneyLimitGate(false);
             setShowTierGate(true);
             logStep(`TIER GATE — wallet seeker, exchanges: ${count}`, 'warn');
           } else {
+            setShowTierGate(false);
             setShowJourneyLimitGate(true);
             logStep(`WALLET GATE — ip seeker, exchanges: ${count}`, 'warn');
           }
@@ -4506,8 +4518,16 @@ export function SurrogateOracleImmersion() {
                const next = stored + newlyCompleted;
                localStorage.setItem(ledgerKey, String(next));
                 if (!DEV_BYPASS_EXCHANGE_GATE && next >= FREE_EXCHANGES) {
-                 if (hasSignedWallet) setShowTierGate(true);
-                 else setShowJourneyLimitGate(true);
+                  const walletAccessConfirmed = hasSignedWallet ||
+                    !!localStorage.getItem('oracle_wallet_signed') ||
+                    !!localStorage.getItem('oracle_seeker_key');
+                  if (walletAccessConfirmed) {
+                    setShowJourneyLimitGate(false);
+                    setShowTierGate(true);
+                  } else {
+                    setShowTierGate(false);
+                    setShowJourneyLimitGate(true);
+                  }
                  logStep(`EXCHANGE LIMIT — ${next}/${FREE_EXCHANGES} completed`, 'warn');
                }
              }

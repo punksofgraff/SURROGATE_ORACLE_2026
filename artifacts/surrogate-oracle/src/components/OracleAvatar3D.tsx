@@ -624,6 +624,74 @@ export function OracleAvatar3D({
       };
     }
 
+    // ── Calibration must run even while transporter hides the scene ────────────
+    // The avatar is invisible during transporter (transportTarget < 0.5) but the
+    // GLB is loaded and the scene graph is settled. Calibration reads world
+    // positions from bones — it does NOT require the mesh to be visible.
+    // Run calibration BEFORE the early return so it completes before avatar reveals.
+
+    // ── Calibrate eye-level camera target (once, from the settled scene) ─────
+    // Read the eye bone's true world Y now that the group offset + scale are applied
+    // — useMemo-time positions are unreliable (bind pose/scale not final). The camera
+    // then looks dead-level at the eyes instead of down at them (old hardcoded 1.32
+    // sat above the real face → it read as tilting up).
+    if (!camTargetYCalibrated.current && groupRef.current) {
+      const eyeSrc = meshData.leftEyeBone ?? meshData.rightEyeBone ?? meshData.headBone;
+      if (eyeSrc) {
+        groupRef.current.updateWorldMatrix(true, true);
+        const eyeWorld = new THREE.Vector3();
+        (eyeSrc as THREE.Object3D).getWorldPosition(eyeWorld);
+        if (Number.isFinite(eyeWorld.y) && eyeWorld.y > 0.01) {
+          camTargetYRef.current = eyeWorld.y;
+          camTargetYCalibrated.current = true;
+          if (import.meta.env.DEV) console.log('[OracleAvatar3D] calibrated camTargetY (eye level) =', eyeWorld.y);
+        }
+      }
+    }
+
+    // Horizontal centering must be measured after the GLB is attached to the
+    // live Canvas. The old useMemo-time measurement could see the asset's
+    // preload transform and bake a large permanent X offset into the group,
+    // which is especially visible on iPhone Safari. Parallax is intentionally
+    // applied later by the DOM stage, so this one-time correction establishes
+    // the stable cabinet baseline first.
+    if (!avatarXCalibrated.current && groupRef.current && meshData.headBone) {
+      const root = groupRef.current;
+      root.updateWorldMatrix(true, true);
+      const headWorld = new THREE.Vector3();
+      meshData.headBone.getWorldPosition(headWorld);
+      if (Number.isFinite(headWorld.x)) {
+        root.position.x -= headWorld.x;
+        root.updateWorldMatrix(true, true);
+        avatarXCalibrated.current = true;
+        if (import.meta.env.DEV) {
+          console.log('[OracleAvatar3D] calibrated avatar X to cabinet center from settled head X =', headWorld.x);
+        }
+      }
+    }
+    const camTargetY = camTargetYRef.current;
+
+    if (import.meta.env.DEV && groupRef.current && meshData.headBone) {
+      const headWorld = new THREE.Vector3();
+      meshData.headBone.getWorldPosition(headWorld);
+      const projected = headWorld.clone().project(camera);
+      const canvasRect = gl.domElement.getBoundingClientRect();
+      const headScreenX = canvasRect.left + ((projected.x + 1) / 2) * canvasRect.width;
+      const stageRect = document.querySelector('.oracle-stage')?.getBoundingClientRect();
+      (window as unknown as { __oracle_avatar_debug?: Record<string, number> }).__oracle_avatar_debug = {
+        headWorldX: Number(headWorld.x.toFixed(4)),
+        projectedX: Number(projected.x.toFixed(4)),
+        headScreenX: Number(headScreenX.toFixed(2)),
+        stageCenterX: Number(((stageRect?.left ?? 0) + (stageRect?.width ?? 0) / 2).toFixed(2)),
+        visualCenterOffset: Number((headScreenX - ((stageRect?.left ?? 0) + (stageRect?.width ?? 0) / 2)).toFixed(2)),
+        rootX: Number(groupRef.current.position.x.toFixed(4)),
+        cameraX: Number(camera.position.x.toFixed(4)),
+        cameraZ: Number(camera.position.z.toFixed(4)),
+        canvasLeft: Number(canvasRect.left.toFixed(2)),
+        canvasWidth: Number(canvasRect.width.toFixed(2)),
+      };
+    }
+
     // Keep bones, visemes, gestures, and breathing in the pose that the
     // transporter started from while the solid model is hidden. Otherwise a
     // moving face/gesture can appear out of a point cloud sampled from a

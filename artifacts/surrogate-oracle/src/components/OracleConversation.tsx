@@ -3,8 +3,8 @@
  *
  * SURROGATE:ORACLE — Conversational AI Engine
  *
- * LLM + TTS + STT: Gemini 2.5 Flash Live (Native Audio) via gemini-live-proxy
- * Zero-latency implementation — direct PCM streaming, no WAV worker bloat.
+ * LLM + TTS + STT: Vertex Gemini 2.5 Flash Live (Native Audio) via sneakar-vertex-live-token
+ * Zero-latency implementation — direct PCM streaming from browser to Vertex.
  */
 
 import React, {
@@ -22,14 +22,14 @@ import { trackOracleEvent } from '../lib/analytics';
 import { Mic, MicOff, Send, Terminal, X, Zap } from 'lucide-react';
 import { getAudioContext, playSignalLockedSfx } from '../lib/oracleSfx';
 import { createAudioContext } from '../lib/browserCapabilities';
-import { useGeminiSession, GEMINI_MODEL, type GeminiSessionHandlers } from '../hooks/useGeminiSession';
+import { useVertexGeminiSession, VERTEX_GEMINI_LIVE_MODEL, type GeminiSessionHandlers } from '../hooks/useVertexGeminiSession';
 import { setTraceSession, traceEvent } from '../lib/sessionTrace';
 import { tracedFetch } from '../lib/tracedFetch';
 import { useVisionFrames } from '../hooks/useVisionFrames';
 import { useConversationCompactor } from '../hooks/useConversationCompactor';
 
 // GEMINI_MODEL, ORACLE_SYSTEM_PROMPT and its supporting prompt blocks moved to
-// useGeminiSession.ts — they are pure inputs to the WS session.config payload
+// useVertexGeminiSession.ts — they are pure inputs to the WS session.config payload
 // and have no dependency on component state.
 
 export type OracleScore = {
@@ -665,7 +665,7 @@ const OracleConversation = forwardRef(
 
     // Domain/UI handlers for the Gemini session hook. Each function only ever
     // touches refs and stable setState setters, so this object is safe to build
-    // once and hand to useGeminiSession — see GeminiSessionHandlers for contract.
+    // once and hand to useVertexGeminiSession — see GeminiSessionHandlers for contract.
     const handlersRef = useRef<GeminiSessionHandlers>({
       onConnectStart: () => {
         seekerEntryCountRef.current = 0;
@@ -916,7 +916,7 @@ const OracleConversation = forwardRef(
       },
     });
 
-    const geminiSession = useGeminiSession({
+    const geminiSession = useVertexGeminiSession({
       autoStart,
       seekerSummary,
       turnsRef,
@@ -1430,7 +1430,7 @@ const OracleConversation = forwardRef(
       },
       getWsDebugInfo: () => ({
         wsState: wsRef.current?.readyState,
-        model: GEMINI_MODEL,
+        model: VERTEX_GEMINI_LIVE_MODEL,
         turnCount: debugInfo.current.turnCount,
         audioChunksReceived: debugInfo.current.audioChunksReceived,
         audioChunksSent: debugInfo.current.audioChunksSent,

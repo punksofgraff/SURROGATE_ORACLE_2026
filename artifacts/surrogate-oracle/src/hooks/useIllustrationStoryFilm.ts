@@ -14,6 +14,7 @@ import type {
   IllustrationStoryReviewState,
   IllustrationStorySoundEffect,
   IllustrationStoryVoiceLine,
+  IllustrationStoryVisualMotionEvidence,
 } from '../lib/creativeProduction';
 
 export type IllustrationStoryFailureKind =
@@ -65,6 +66,7 @@ export type IllustrationStorySceneState = {
   error?: string | null;
   failureKind?: Exclude<IllustrationStoryFailureKind, 'audio-gate'>;
   recovery?: 'retry' | 'replace' | null;
+  motionEvidence?: IllustrationStoryVisualMotionEvidence;
 };
 
 export type IllustrationStoryFilmJob = {
@@ -225,6 +227,25 @@ function toBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
   }
   return btoa(binary);
+}
+
+function readMotionEvidenceHeader(response: Response): IllustrationStoryVisualMotionEvidence[] {
+  const encoded = response.headers.get('X-Story-Motion');
+  if (!encoded) return [];
+  try {
+    const decoded = atob(encoded);
+    const parsed = JSON.parse(decoded);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is IllustrationStoryVisualMotionEvidence => (
+      item
+      && typeof item === 'object'
+      && (item.status === 'passed' || item.status === 'failed' || item.status === 'unavailable')
+      && (item.method === 'aligned-residual' || item.method === 'provider-attestation' || item.method === 'human-review')
+      && typeof item.note === 'string'
+    ));
+  } catch {
+    return [];
+  }
 }
 
 async function urlToBase64(url: string): Promise<StoryAsset> {
@@ -569,6 +590,23 @@ async function readLocalStitchResponse(
   localObjectUrlRef.current = URL.createObjectURL(blob);
   onProgress?.(100);
   const soundEffectsMixed = Number(response.headers.get('X-Story-SFX') || 0);
+  const motionEvidence = readMotionEvidenceHeader(response);
+  const scenesWithMotionEvidence = scenes.map(scene => ({
+    ...scene,
+    status: motionEvidence.some(item => (
+      item.pageNumber === scene.pageNumber && item.status === 'passed'
+    ))
+      ? 'ready' as const
+      : scene.status,
+    progress: motionEvidence.some(item => (
+      item.pageNumber === scene.pageNumber && item.status === 'passed'
+    ))
+      ? 100
+      : scene.progress,
+    motionEvidence: motionEvidence.find(item => (
+      (item as IllustrationStoryVisualMotionEvidence & { pageNumber?: number }).pageNumber === scene.pageNumber
+    )) ?? scene.motionEvidence,
+  }));
   const resolvedAudioManifest = audioManifest.length
     ? updateAssembledAudioManifest(audioManifest, soundEffectsMixed)
     : createStoryAudioManifest({
@@ -580,7 +618,7 @@ async function readLocalStitchResponse(
     });
   const localReviewManifest = createIllustrationStoryReviewManifest(
     pages,
-    scenes,
+    scenesWithMotionEvidence,
     localObjectUrlRef.current,
     resolvedAudioManifest,
   );
@@ -706,6 +744,12 @@ export function useIllustrationStoryFilm(
 
     if (pages.length !== 32) throw new Error('Hosted story production requires exactly 32 pages.');
     const isH3ChunkLane = model.slug === 'minimax/h3/image-to-video';
+    if (isH3ChunkLane) {
+      throw new Error(
+        'MiniMax H3 is held before submission: no server-verified representative action proof has passed yet. '
+        + 'No H3 jobs were submitted.',
+      );
+    }
     const [visualInputs, music, narrationBundle] = await Promise.all([
       isH3ChunkLane
         ? createH3ChunkAssets(sheetUrls, pages)

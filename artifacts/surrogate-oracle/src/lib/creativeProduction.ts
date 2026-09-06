@@ -301,6 +301,22 @@ export type IllustrationStoryScene = {
   error?: string | null;
   failureKind?: 'provider-safety' | 'provider' | 'submission' | null;
   recovery?: 'retry' | 'replace' | null;
+  /**
+   * Machine-checked evidence that pixels changed after camera motion was
+   * aligned away. A shot plan is not evidence; this field is intentionally
+   * optional on old persisted jobs and required by the review gate.
+   */
+  motionEvidence?: IllustrationStoryVisualMotionEvidence;
+};
+
+export type IllustrationStoryVisualMotionEvidence = {
+  pageNumber?: number;
+  status: 'passed' | 'failed' | 'unavailable';
+  method: 'aligned-residual' | 'provider-attestation' | 'human-review';
+  globalMotionRatio?: number;
+  residualMotionRatio?: number;
+  note: string;
+  checkedAt?: string;
 };
 
 export type IllustrationStoryReviewAudioStatus =
@@ -342,6 +358,7 @@ export type IllustrationStoryReviewShot = {
     status: IllustrationStoryScene['status'] | 'missing';
     sceneUrl: string | null;
     evidence: IllustrationStoryReviewEvidence[];
+    visualMotion: IllustrationStoryVisualMotionEvidence;
   };
   shotPlan: IllustrationStoryShotPlan;
 };
@@ -463,6 +480,11 @@ export function createIllustrationStoryReviewManifest(
         status: scene?.status ?? (finalMediaUrl ? 'ready' : 'missing'),
         sceneUrl,
         evidence,
+        visualMotion: scene?.motionEvidence ?? {
+          status: 'unavailable',
+          method: 'aligned-residual',
+          note: 'No machine-checked subject or environment motion evidence was persisted.',
+        },
       },
       shotPlan: page.shotPlan,
     };
@@ -475,6 +497,7 @@ export function createIllustrationStoryReviewManifest(
     && shots.every(shot => (
       Boolean(shot.source.assetUrl)
       && shot.rendered.evidence.every(sample => sample.available)
+      && shot.rendered.visualMotion.status === 'passed'
     ));
   return {
     version: 1,
@@ -505,6 +528,7 @@ export function canApproveIllustrationStoryReview(
         shot.rendered.status === 'ready'
         && shot.rendered.evidence.length === 3
         && shot.rendered.evidence.every(evidence => evidence.available && evidence.mediaUrl)
+        && shot.rendered.visualMotion.status === 'passed'
       ))
       && requiredAudio.length >= 8
       && requiredAudio.every(source => source.status === 'available')

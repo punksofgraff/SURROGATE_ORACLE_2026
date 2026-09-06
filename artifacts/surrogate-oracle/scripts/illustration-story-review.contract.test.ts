@@ -52,6 +52,14 @@ function scenes(): IllustrationStoryScene[] {
     status: 'ready',
     progress: 100,
     outputUrl: `https://example.test/scene-${page.pageNumber}.mp4`,
+    motionEvidence: {
+      pageNumber: page.pageNumber,
+      status: 'passed',
+      method: 'provider-attestation',
+      globalMotionRatio: 0.18,
+      residualMotionRatio: 0.09,
+      note: 'Representative subject and environment motion remains after alignment.',
+    },
   }));
 }
 
@@ -100,6 +108,7 @@ assert.ok(manifest.shots.every(shot => shot.rendered.evidence.every(evidence => 
   && evidence.mediaUrl
   && evidence.source === 'scene'
 ))));
+assert.ok(manifest.shots.every(shot => shot.rendered.visualMotion.status === 'passed'));
 assert.equal(manifest.shots[0].rendered.evidence[0].offsetSeconds, 0.15);
 assert.equal(manifest.shots[0].rendered.evidence[1].offsetSeconds, 1.875);
 assert.equal(manifest.shots[0].rendered.evidence[2].offsetSeconds, 3.525);
@@ -254,5 +263,38 @@ const missingEvidenceManifest = createIllustrationStoryReviewManifest(
 );
 assert.equal(missingEvidenceManifest.complete, false);
 assert.equal(missingEvidenceManifest.shots[6].rendered.evidence.every(evidence => !evidence.available), true);
+assert.equal(missingEvidenceManifest.shots[6].rendered.visualMotion.status, 'passed');
+
+const cameraOnlyManifest = createIllustrationStoryReviewManifest(
+  pages(),
+  scenes().map(scene => scene.pageNumber === 4
+    ? {
+      ...scene,
+      motionEvidence: {
+        pageNumber: scene.pageNumber,
+        status: 'failed' as const,
+        method: 'aligned-residual' as const,
+        globalMotionRatio: 0.12,
+        residualMotionRatio: 0.008,
+        note: 'Camera movement explains the returned pixel differences.',
+      },
+    }
+    : scene),
+  'blob:camera-only',
+  audioSources(),
+);
+assert.equal(cameraOnlyManifest.complete, false);
+assert.equal(
+  canApproveIllustrationStoryReview({
+    ...cameraOnlyManifest,
+    review: {
+      inspectedShotNumbers: pages().map(page => page.pageNumber),
+      audioListened: true,
+      updatedAt: '2026-09-02T12:01:00.000Z',
+    },
+  }),
+  false,
+  'camera-only evidence must keep the story locked even after watch-and-listen attestation',
+);
 
 console.log('illustration story review contract passed (32 exact crops, three checkpoints, truthful audio inventory, blocked evidence state)');

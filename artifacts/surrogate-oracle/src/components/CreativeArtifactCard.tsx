@@ -151,7 +151,11 @@ function StoryPizzaTracker({
   scenes: IllustrationStoryScene[];
 }) {
   const references = scenes.filter(scene => Boolean(scene.referenceUrl)).length;
-  const animated = scenes.filter(scene => scene.status === 'ready').length;
+  const rendered = scenes.filter(scene => scene.status === 'ready').length;
+  const animated = scenes.filter(scene => (
+    scene.status === 'ready' && scene.motionEvidence?.status === 'passed'
+  )).length;
+  const unprovenMotion = rendered - animated;
   const blocked = scenes.filter(scene => scene.failureKind === 'provider-safety').length;
   const failed = scenes.filter(scene => scene.status === 'failed' && scene.failureKind !== 'provider-safety').length;
   const pending = scenes.filter(scene => ['planned', 'queued', 'generating'].includes(scene.status)).length;
@@ -180,7 +184,9 @@ function StoryPizzaTracker({
     {
       key: 'bake',
        label: 'Visual motion',
-       value: blocked ? `${animated}/32 · ${blocked} blocked` : `${animated}/32${pending ? ` · ${pending} in progress` : ''}`,
+       value: blocked
+         ? `${animated}/32 · ${blocked} blocked`
+         : `${animated}/32${unprovenMotion ? ` · ${unprovenMotion} unproven` : pending ? ` · ${pending} in progress` : ''}`,
       complete: animated === 32,
       active: references === 32 && animated < 32 && pending > 0,
     },
@@ -202,7 +208,9 @@ function StoryPizzaTracker({
           <strong>
             {ready
                ? 'Provider coverage and local audio checks passed.'
-              : blocked
+               : unprovenMotion
+                 ? `${unprovenMotion} rendered slice${unprovenMotion === 1 ? '' : 's'} lack verified subject motion.`
+               : blocked
                 ? `${blocked} slice${blocked === 1 ? '' : 's'} blocked by provider safety review.`
                 : failed
                   ? `${failed} slice${failed === 1 ? '' : 's'} needs a retry.`
@@ -1207,8 +1215,8 @@ export function CreativeArtifactCard({
                         ?? null,
                     )}
                   >
-                    <strong>LIVING STORY / PREMIUM</strong>
-                    <span>Hosted H3 video gives the comic real movement between the cells. Requires explicit metered-run confirmation.</span>
+                    <strong>LIVING STORY / PREMIUM · HOLD</strong>
+                    <span>H3 stays blocked until a server-verified representative action proof passes. No metered H3 jobs are submitted before that proof.</span>
                   </button>
                 </div>
                 {storyLane === 'pollinations' && (
@@ -1254,7 +1262,7 @@ export function CreativeArtifactCard({
                 )}
                 {storyLane === 'fal' && (
                   <p className="creative-story-choice__warning">
-                     Premium is metered. Confirmation submits exactly 10 MiniMax H3 image-to-video jobs, one composite image per job, covering the 32 story cells in order. Per-page retries and replacements are disabled.
+                     Premium is currently held. The app will not submit the ten metered H3 jobs until representative action proof is available; camera-only evidence is rejected.
                   </p>
                 )}
               </div>
@@ -1267,7 +1275,7 @@ export function CreativeArtifactCard({
               {isIllustrationStory && storyLane === 'pollinations'
                 ? 'This explicitly confirms 32 ordered Pollinations short-shot requests followed by local FFmpeg assembly. The provider must pass the live non-paid-only catalog check; human watch-and-listen review remains required.'
                 : isIllustrationStory && storyLane === 'fal'
-                ? `This explicitly confirms ${models.find(model => model.slug === storyModelSlug)?.label ?? 'the selected approved FAL model'} for 10 ordered H3 chunk jobs. Local assembly trims the returned chunks to the 32-page story timeline, and human review remains required.`
+                 ? 'The premium H3 lane is staged but held: representative action proof must pass before any metered chunk jobs can be submitted.'
                 : artifact.confirmationCopy
                 ?? (artifact.requiresConfirmation
                   ? 'Money Mite will send this brief into the production lane only after you clear it.'

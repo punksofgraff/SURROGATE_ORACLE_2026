@@ -95,6 +95,15 @@ type StoryPageRequest = {
   };
 };
 
+type StoryMotionEvidence = {
+  pageNumber?: number;
+  status: 'passed' | 'failed' | 'unavailable';
+  method: 'aligned-residual';
+  globalMotionRatio?: number;
+  residualMotionRatio?: number;
+  note: string;
+};
+
 type StoryCharacterTrackRequest = {
   public_url?: string;
   publicUrl?: string;
@@ -504,6 +513,131 @@ async function probeStoryVideo(file: string): Promise<{ durationSeconds: number;
   };
 }
 
+const MOTION_SAMPLE_WIDTH = 32;
+const MOTION_SAMPLE_HEIGHT = 18;
+
+async function readMotionFrame(file: string, offsetSeconds: number): Promise<Buffer> {
+  const { stdout } = await execFileAsync('ffmpeg', [
+    '-v', 'error',
+    '-ss', String(Math.max(0, offsetSeconds)),
+    '-i', file,
+    '-frames:v', '1',
+    '-vf', `scale=${MOTION_SAMPLE_WIDTH}:${MOTION_SAMPLE_HEIGHT}:force_original_aspect_ratio=decrease,pad=${MOTION_SAMPLE_WIDTH}:${MOTION_SAMPLE_HEIGHT}:(ow-iw)/2:(oh-ih)/2,format=gray`,
+    '-f', 'rawvideo',
+    '-',
+  ], { maxBuffer: 2 * 1024 * 1024, encoding: 'buffer' } as any);
+  const frame = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
+  const expectedBytes = MOTION_SAMPLE_WIDTH * MOTION_SAMPLE_HEIGHT;
+  if (frame.length < expectedBytes) {
+    throw new Error('Visual motion check could not decode a complete grayscale frame.');
+  }
+  return frame.subarray(0, expectedBytes);
+}
+
+function pixelAt(frame: Buffer, x: number, y: number): number {
+  return frame[y * MOTION_SAMPLE_WIDTH + x] ?? 0;
+}
+
+function alignedResidualMotion(before: Buffer, after: Buffer): {
+  globalMotionRatio: number;
+  residualMotionRatio: number;
+} {
+  let directTotal = 0;
+  for (let y = 0; y < MOTION_SAMPLE_HEIGHT; y += 1) {
+    for (let x = 0; x < MOTION_SAMPLE_WIDTH; x += 1) {
+      directTotal += Math.abs(pixelAt(before, x, y) - pixelAt(after, x, y));
+    }
+  }
+  const pixelCount = MOTION_SAMPLE_WIDTH * MOTION_SAMPLE_HEIGHT;
+  const globalMotionRatio = directTotal / pixelCount / 255;
+
+  // Brute-force a small similarity transform. This removes ordinary push,
+  // pan, and crop motion without depending on native OpenCV availability.
+  let bestResidual = Number.POSITIVE_INFINITY;
+  for (const scale of [0.9, 0.94, 0.98, 1, 1.02, 1.06, 1.1]) {
+    for (let translateY = -3; translateY <= 3; translateY += 1) {
+      for (let translateX = -3; translateX <= 3; translateX += 1) {
+        let total = 0;
+        let count = 0;
+        for (let y = 2; y < MOTION_SAMPLE_HEIGHT - 2; y += 1) {
+          for (let x = 2; x < MOTION_SAMPLE_WIDTH - 2; x += 1) {
+            const sourceX = Math.round((x - translateX - MOTION_SAMPLE_WIDTH / 2) / scale + MOTION_SAMPLE_WIDTH / 2);
+            const sourceY = Math.round((y - translateY - MOTION_SAMPLE_HEIGHT / 2) / scale + MOTION_SAMPLE_HEIGHT / 2);
+            if (sourceX < 0 || sourceX >= MOTION_SAMPLE_WIDTH || sourceY < 0 || sourceY >= MOTION_SAMPLE_HEIGHT) continue;
+            total += Math.abs(pixelAt(before, sourceX, sourceY) - pixelAt(after, x, y));
+            count += 1;
+          }
+        }
+        if (count) bestResidual = Math.min(bestResidual, total / count / 255);
+      }
+    }
+  }
+  return {
+    globalMotionRatio,
+    residualMotionRatio: Number.isFinite(bestResidual) ? bestResidual : globalMotionRatio,
+  };
+}
+
+async function checkStoryMotion(
+  file: string,
+  startSeconds = 0,
+  durationSeconds?: number,
+  pageNumber?: number,
+): Promise<StoryMotionEvidence> {
+  const probe = await probeStoryVideo(file);
+  const availableDuration = Math.max(0.1, Math.min(
+    durationSeconds ?? probe.durationSeconds,
+    probe.durationSeconds - Math.max(0, startSeconds),
+  ));
+  if (availableDuration < 0.6) {
+    return {
+      pageNumber,
+      status: 'failed',
+      method: 'aligned-residual',
+      note: 'The visual segment is too short to prove motion.',
+    };
+  }
+  const first = await readMotionFrame(file, startSeconds + Math.min(0.15, availableDuration * 0.08));
+  const middle = await readMotionFrame(file, startSeconds + availableDuration * 0.5);
+  const last = await readMotionFrame(
+    file,
+    startSeconds + Math.min(
+      Math.max(0.15, availableDuration * 0.92),
+      Math.max(0.05, availableDuration - 0.05),
+    ),
+  );
+  const comparisons = [
+    alignedResidualMotion(first, middle),
+    alignedResidualMotion(middle, last),
+  ];
+  const globalMotionRatio = Math.max(...comparisons.map(item => item.globalMotionRatio));
+  const residualMotionRatio = Math.max(...comparisons.map(item => item.residualMotionRatio));
+  const passed = globalMotionRatio >= 0.035 && residualMotionRatio >= 0.022;
+  return {
+    pageNumber,
+    status: passed ? 'passed' : 'failed',
+    method: 'aligned-residual',
+    globalMotionRatio: Number(globalMotionRatio.toFixed(5)),
+    residualMotionRatio: Number(residualMotionRatio.toFixed(5)),
+    note: passed
+      ? 'Frame differences remain after global pan/zoom alignment.'
+      : 'The returned pixels are static or explainable by global camera motion.',
+  };
+}
+
+async function requireStoryMotion(
+  file: string,
+  startSeconds = 0,
+  durationSeconds?: number,
+  pageNumber?: number,
+): Promise<StoryMotionEvidence> {
+  const evidence = await checkStoryMotion(file, startSeconds, durationSeconds, pageNumber);
+  if (evidence.status !== 'passed') {
+    throw new Error(`Story page ${pageNumber ?? 'segment'} failed the real-motion gate: ${evidence.note}`);
+  }
+  return evidence;
+}
+
 async function stitchIllustrationStory(body: any): Promise<{
   bytes: Buffer;
   narrationAvailable: boolean;
@@ -511,6 +645,7 @@ async function stitchIllustrationStory(body: any): Promise<{
   audioTrackPresent: boolean;
   soundEffectsMixed: number;
   characterTimingApplied: number;
+  motionEvidence: StoryMotionEvidence[];
 }> {
   const sheets = Array.isArray(body?.sheets) ? body.sheets : [];
   const sceneUrls = Array.isArray(body?.sceneUrls) ? body.sceneUrls : [];
@@ -549,6 +684,7 @@ async function stitchIllustrationStory(body: any): Promise<{
     throw new Error('Story pages must be contiguous 01–32 in sheet order with a non-generic performance plan and valid 4×4 timing.');
   }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-story-'));
+  const motionEvidence: StoryMotionEvidence[] = [];
   try {
     const sheetFiles = usingRemoteScenes || usingRemoteCells || usingRemoteChunks || usingPollinationsShots || usingHostedFilm ? [] : sheets.map((asset: unknown, index: number) => {
       const decoded = decodeDataAsset(asset);
@@ -582,6 +718,16 @@ async function stitchIllustrationStory(body: any): Promise<{
       if (Math.abs(hostedProbe.durationSeconds - duration) > 0.75) {
         throw new Error(`Hosted workflow film duration validation failed (${hostedProbe.durationSeconds.toFixed(2)}s; expected ${duration}s).`);
       }
+      let storyOffset = 0;
+      for (const page of pages) {
+        motionEvidence.push(await requireStoryMotion(
+          remoteFile,
+          storyOffset,
+          Number(page.durationSeconds),
+          page.pageNumber,
+        ));
+        storyOffset += Number(page.durationSeconds);
+      }
       const clipFile = path.join(dir, 'hosted-workflow-clip.mp4');
       const visual = 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p';
       const clipArgs = ['-y', '-i', remoteFile];
@@ -605,20 +751,7 @@ async function stitchIllustrationStory(body: any): Promise<{
       await runFfmpeg(clipArgs);
       clipFiles.push(clipFile);
     } else if (usingRemoteCells) {
-      for (const [index, page] of pages.entries()) {
-        const remoteFile = path.join(dir, `cell-${String(page.pageNumber).padStart(2, '0')}.jpg`);
-        fs.writeFileSync(remoteFile, await downloadRemoteAsset(cellUrls[index], `Persisted story cell ${page.pageNumber}`));
-        const clipFile = path.join(dir, `page-${String(page.pageNumber).padStart(2, '0')}.mp4`);
-        await runFfmpeg([
-          '-y', '-loop', '1', '-i', remoteFile,
-          '-vf', storyCellPerformanceFilter(page),
-          '-t', String(page.durationSeconds),
-          '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p',
-          '-movflags', '+faststart',
-          clipFile,
-        ]);
-        clipFiles.push(clipFile);
-      }
+      throw new Error('Static persisted story cells cannot satisfy the real-motion gate; use a verified video lane.');
     } else if (usingRemoteChunks) {
       const chunkSizes = [4, 4, ...Array.from({ length: 8 }, () => 3)];
       let pageCursor = 0;
@@ -628,6 +761,16 @@ async function stitchIllustrationStory(body: any): Promise<{
         const targetDuration = pageGroup.reduce((sum, page) => sum + Number(page.durationSeconds || 0), 0);
         const remoteFile = path.join(dir, `h3-chunk-${String(index + 1).padStart(2, '0')}.mp4`);
         fs.writeFileSync(remoteFile, await downloadRemoteAsset(chunkUrl, `MiniMax H3 chunk ${index + 1}`));
+        let chunkOffset = 0;
+        for (const page of pageGroup) {
+          motionEvidence.push(await requireStoryMotion(
+            remoteFile,
+            chunkOffset,
+            Number(page.durationSeconds),
+            page.pageNumber,
+          ));
+          chunkOffset += Number(page.durationSeconds);
+        }
         const clipFile = path.join(dir, `h3-page-group-${String(index + 1).padStart(2, '0')}.mp4`);
         const remoteHasAudio = await hasAudioStream(remoteFile);
         const clipArgs = ['-y', '-i', remoteFile];
@@ -654,6 +797,12 @@ async function stitchIllustrationStory(body: any): Promise<{
       }
     } else if (usingPollinationsShots) {
       for (const [index, page] of pages.entries()) {
+        motionEvidence.push(await requireStoryMotion(
+          pollinationsShotFiles[index],
+          0,
+          Number(page.durationSeconds),
+          page.pageNumber,
+        ));
         const clipFile = path.join(dir, `pollinations-page-${String(page.pageNumber).padStart(2, '0')}.mp4`);
         await runFfmpeg([
           '-y', '-i', pollinationsShotFiles[index],
@@ -669,6 +818,7 @@ async function stitchIllustrationStory(body: any): Promise<{
       for (const [index, page] of pages.entries()) {
         const remoteFile = path.join(dir, `remote-${String(page.pageNumber).padStart(2, '0')}.mp4`);
         fs.writeFileSync(remoteFile, await downloadRemoteAsset(sceneUrls[index], `Hosted scene ${page.pageNumber}`));
+        motionEvidence.push(await requireStoryMotion(remoteFile, 0, Number(page.durationSeconds), page.pageNumber));
         const clipFile = path.join(dir, `page-${String(page.pageNumber).padStart(2, '0')}.mp4`);
         const fadeOutStart = Math.max(0.1, Number(page.durationSeconds) - 0.22);
         const visual = `scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p,fade=t=in:st=0:d=0.22,fade=t=out:st=${fadeOutStart}:d=0.22`;
@@ -694,15 +844,8 @@ async function stitchIllustrationStory(body: any): Promise<{
         await runFfmpeg(clipArgs);
         clipFiles.push(clipFile);
       }
-    } else for (const page of pages) {
-      const clipFile = path.join(dir, `page-${String(page.pageNumber).padStart(2, '0')}.mp4`);
-      const visual = storyPerformanceFilter(page);
-      await runFfmpeg([
-        '-y', '-loop', '1', '-i', sheetFiles[page.sheetIndex],
-        '-vf', visual, '-t', String(page.durationSeconds), '-r', '24',
-        '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', clipFile,
-      ]);
-      clipFiles.push(clipFile);
+    } else {
+      throw new Error('Sheet-only and camera-authored local story renders are retired; no real-action video was supplied.');
     }
 
     const concatFile = path.join(dir, 'story.ffconcat');
@@ -805,6 +948,7 @@ async function stitchIllustrationStory(body: any): Promise<{
       narrationAvailable: Boolean(narrationFile),
       soundEffectsMixed: soundEffects.length + authoredSoundEffects.length,
       characterTimingApplied: timingApplied,
+      motionEvidence,
       ...validation,
     };
   } finally {
@@ -819,6 +963,7 @@ async function renderPollinationsShortShotStory(body: any): Promise<{
   audioTrackPresent: boolean;
   soundEffectsMixed: number;
   characterTimingApplied: number;
+  motionEvidence: StoryMotionEvidence[];
 }> {
   const apiKey = process.env.POLLINATIONS_API_KEY;
   if (!apiKey) {
@@ -861,8 +1006,8 @@ async function renderPollinationsShortShotStory(body: any): Promise<{
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-pollinations-story-'));
   try {
-    const shotFiles: string[] = [];
-    for (const [index, page] of pages.entries()) {
+    const shotFiles: string[] = Array.from({ length: pages.length });
+    const generateShot = async (index: number, page: any): Promise<string> => {
       const prompt = [
         'Animate this single child-friendly illustrated story panel as a living story shot.',
         'Preserve the characters, costume, setting, composition, and readable artwork. Do not redesign the panel.',
@@ -897,7 +1042,20 @@ async function renderPollinationsShortShotStory(body: any): Promise<{
       if (!bytes.length || bytes.length > 80_000_000) throw new Error(`Pollinations shot ${index + 1}/32 was empty or too large.`);
       const file = path.join(dir, `shot-${String(index + 1).padStart(2, '0')}.mp4`);
       fs.writeFileSync(file, bytes);
-      shotFiles.push(file);
+      return file;
+    };
+
+    // Do not spend the remaining provider budget until both stories have
+    // produced representative subject/environment motion. This is a real
+    // preflight, not a prompt or shot-plan assertion.
+    for (const index of [0, 16]) {
+      const file = await generateShot(index, pages[index]);
+      await requireStoryMotion(file, 0, Number(pages[index].durationSeconds), pages[index].pageNumber);
+      shotFiles[index] = file;
+    }
+    for (const [index, page] of pages.entries()) {
+      if (shotFiles[index]) continue;
+      shotFiles[index] = await generateShot(index, page);
     }
     return stitchIllustrationStory({ ...body, pollinationsShotFiles: shotFiles });
   } finally {
@@ -931,8 +1089,9 @@ function illustrationStoryStitchPlugin() {
               'X-Story-Narration': result.narrationAvailable ? 'available' : 'unavailable',
               'X-Story-Duration': String(result.durationSeconds),
               'X-Story-Audio': result.audioTrackPresent ? 'present' : 'missing',
-            'X-Story-SFX': String(result.soundEffectsMixed),
-            'X-Story-Character-Timing': String(result.characterTimingApplied),
+             'X-Story-SFX': String(result.soundEffectsMixed),
+             'X-Story-Character-Timing': String(result.characterTimingApplied),
+             'X-Story-Motion': Buffer.from(JSON.stringify(result.motionEvidence), 'utf8').toString('base64'),
             });
             res.end(result.bytes);
           } catch (error) {
@@ -965,6 +1124,7 @@ function illustrationStoryStitchPlugin() {
               'X-Story-Audio': result.audioTrackPresent ? 'present' : 'missing',
               'X-Story-SFX': String(result.soundEffectsMixed),
               'X-Story-Character-Timing': String(result.characterTimingApplied),
+              'X-Story-Motion': Buffer.from(JSON.stringify(result.motionEvidence), 'utf8').toString('base64'),
               'X-Story-Provider': 'pollinations',
             });
             res.end(result.bytes);

@@ -73,3 +73,7 @@ artifacts/surrogate-oracle/.oracle-dev-log.jsonl
 **/*.glb.bak
 **/*.glb.broken
 **/*.glb.no-morphs
+
+.env
+.env.*
+!.env.example

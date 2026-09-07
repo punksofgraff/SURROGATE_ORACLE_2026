@@ -32,6 +32,12 @@ import { isInIframe, needsDeviceOrientationPermission, requestDeviceOrientationP
 import { trackOracleEvent } from '../lib/analytics';
 import type { SensorLifecycleState } from '../lib/sensorLifecycle';
 import { logStep } from '../components/CodeAuditor';
+import {
+  isTrustedHolodeXRMessage,
+  postToTrustedParent,
+  resolveTrustedParentOrigin,
+  stopMediaStreamTracks,
+} from '../lib/xrBridge';
 import * as THREE from 'three';
 
 const THREE_MathUtils = THREE.MathUtils;
@@ -111,6 +117,8 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   const cameraDesiredActiveRef = useRef(false);
   const cameraAcquiringRef = useRef(false);
   const cameraSuspendedRef = useRef(false);
+  const trustedParentWindowRef = useRef<Window | null>(null);
+  const trustedParentOriginRef = useRef<string | null>(null);
   const seekerMotionRef = useRef<SeekerMotion>({
     phoneTilt: { x: 0, y: 0 },
     facePos:   { x: 0, y: 0 },
@@ -470,7 +478,7 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   const stopCamera = useCallback(() => {
     cameraDesiredActiveRef.current = false;
     cameraSuspendedRef.current = false;
-    streamRef.current?.getTracks().forEach(t => t.stop());
+    stopMediaStreamTracks(streamRef.current);
     streamRef.current = null;
     setCameraReady(false);
     setCameraActive(false);
@@ -584,6 +592,20 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   useEffect(() => {
     if (!isXRMode) return;
 
+    const parentWindow = window.parent === window ? null : window.parent;
+    const ancestorOrigins = (
+      window.location as Location & {
+        ancestorOrigins?: { [index: number]: string; length: number };
+      }
+    ).ancestorOrigins;
+    const parentOrigin = resolveTrustedParentOrigin({
+      configuredOrigin: import.meta.env.VITE_HOLODEXR_PARENT_ORIGIN,
+      ancestorOrigin: ancestorOrigins?.[0],
+      referrer: document.referrer,
+    });
+    trustedParentWindowRef.current = parentWindow;
+    trustedParentOriginRef.current = parentOrigin;
+
     // Keep body transparent in XR context — WebView overlay may composite against
     // camera feed when user opts in. Does not auto-start camera.
     document.documentElement.style.background = 'transparent';
@@ -594,15 +616,24 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
 
     // ── HolodeXR postMessage bridge ──────────────────────────────────────────
     const handleMessage = (e: MessageEvent) => {
-      const msg = e.data as { type?: string; markerId?: string };
-      if (typeof msg?.type !== 'string' || !msg.type.startsWith('holodexr:')) return;
+      if (!isTrustedHolodeXRMessage(
+        e,
+        trustedParentOriginRef.current,
+        trustedParentWindowRef.current,
+      )) return;
+
+      const msg = e.data as { type: string; markerId?: string };
 
       switch (msg.type) {
         case 'holodexr:init':
           setIsXRMode(true);
           startCamera('HolodeXR init');
           try {
-            (e.source as Window)?.postMessage({ type: 'oracle:ready', version: '2.0' }, '*');
+            postToTrustedParent(
+              trustedParentWindowRef.current,
+              trustedParentOriginRef.current,
+              { type: 'oracle:ready', version: '2.0' },
+            );
           } catch (err) {
             console.warn('[XR] postMessage(oracle:ready) failed:', err);
           }
@@ -612,7 +643,11 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
           setMarkerActive(true);
           onMarkerRef.current?.();
           try {
-            (e.source as Window)?.postMessage({ type: 'oracle:awakened' }, '*');
+            postToTrustedParent(
+              trustedParentWindowRef.current,
+              trustedParentOriginRef.current,
+              { type: 'oracle:awakened' },
+            );
           } catch (err) {
             console.warn('[XR] postMessage(oracle:awakened) failed:', err);
           }
@@ -621,7 +656,11 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
         case 'holodexr:marker-lost':
           setMarkerActive(false);
           try {
-            (e.source as Window)?.postMessage({ type: 'oracle:dormant' }, '*');
+            postToTrustedParent(
+              trustedParentWindowRef.current,
+              trustedParentOriginRef.current,
+              { type: 'oracle:dormant' },
+            );
           } catch (err) {
             console.warn('[XR] postMessage(oracle:dormant) failed:', err);
           }
@@ -656,6 +695,8 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
 
     return () => {
       window.removeEventListener('message', handleMessage);
+      trustedParentWindowRef.current = null;
+      trustedParentOriginRef.current = null;
     };
   // startCamera is stable (useCallback []), isXRMode triggers re-setup only if it flips
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -665,16 +706,20 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
   useEffect(() => {
     return () => {
       cameraDesiredActiveRef.current = false;
-      streamRef.current?.getTracks().forEach(t => t.stop());
+      stopMediaStreamTracks(streamRef.current);
       streamRef.current = null;
     };
   }, []);
 
   // Notify HolodeXR parent when camera stream is live
   useEffect(() => {
-    if (!isXRMode || !cameraReady) return;
+    if (!isXRMode || !cameraReady || !trustedParentWindowRef.current || !trustedParentOriginRef.current) return;
     try {
-      window.parent.postMessage({ type: 'oracle:camera-ready' }, '*');
+      postToTrustedParent(
+        trustedParentWindowRef.current,
+        trustedParentOriginRef.current,
+        { type: 'oracle:camera-ready' },
+      );
     } catch (err) {
       console.warn('[XR] postMessage(oracle:camera-ready) failed:', err);
     }

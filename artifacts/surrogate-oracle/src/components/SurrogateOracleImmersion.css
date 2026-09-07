@@ -2835,7 +2835,11 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   }
 
   /* ── Knife territory rows ──────────────────────────────────────────────── */
-  .oracle-knife-section { padding: 24px 12px 36px; max-height: 68vh; }
+  .oracle-knife-section {
+    padding: 24px 12px 36px;
+    max-height: 68vh;
+    max-height: 68dvh;
+  }
   .oracle-knife-row { padding: 12px 14px 12px 14px; }
   .oracle-knife-row-question { font-size: 0.84rem; line-height: 1.55; }
 
@@ -3618,8 +3622,12 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   left: 0;
   right: 0;
   height: 72vh;
+  box-sizing: border-box;
   z-index: var(--z-oracle);
-  background: transparent;
+  background:
+    linear-gradient(180deg, rgba(0, 8, 17, 0.06), rgba(0, 2, 9, 0.32));
+  backdrop-filter: blur(4px) saturate(1.15);
+  -webkit-backdrop-filter: blur(4px) saturate(1.15);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3627,15 +3635,41 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   padding: 0 20px 90px;
   pointer-events: none;
   gap: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 255, 204, 0.34) transparent;
+  touch-action: pan-y;
 }
 
 .oracle-knife-section > * {
   pointer-events: auto;
 }
 
+.oracle-knife-section::-webkit-scrollbar {
+  width: 4px;
+}
+
+.oracle-knife-section::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.oracle-knife-section::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 255, 136, 0.62),
+    rgba(0, 255, 204, 0.42),
+    rgba(176, 38, 255, 0.46)
+  );
+}
+
 /* ── Card stage — the materialization zone ──────────────────────────── */
 .oracle-knife-stage {
-  flex: 1;
+  flex: 1 0 auto;
+  min-height: 0;
   width: 100%;
   display: flex;
   align-items: center;

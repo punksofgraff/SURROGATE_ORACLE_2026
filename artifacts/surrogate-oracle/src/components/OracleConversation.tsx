@@ -157,6 +157,7 @@ export interface OracleConversationHandle {
   startMic: () => Promise<void>;
   toggleTypeMode: () => void;
   enableMicAutoRestart: () => void;
+  resetSessionBoot: () => void;
 }
 
 const SAMPLE_RATE_INPUT = 16000;
@@ -940,6 +941,7 @@ const OracleConversation = forwardRef(
       disconnect,
       prewarm,
       startSession,
+      resetSessionBoot,
       sessionBootedRef,
     } = geminiSession;
 
@@ -1465,6 +1467,9 @@ const OracleConversation = forwardRef(
       },
       enableMicAutoRestart: () => {
         micAutoRestartEnabledRef.current = true;
+      },
+      resetSessionBoot: () => {
+        resetSessionBoot();
       }
     }));
 

@@ -68,6 +68,16 @@ import { useRadioAtmosphere } from '../hooks/useRadioAtmosphere';
 import { useLyriaMusic } from '../hooks/useLyriaMusic';
 import WalletGateCard from './WalletGateCard';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
+import { 
+  AlertDialog, 
+  AlertDialogTrigger, 
+  AlertDialogContent, 
+  AlertDialogHeader, 
+  AlertDialogTitle, 
+  AlertDialogDescription, 
+  AlertDialogAction, 
+  AlertDialogCancel 
+} from './ui/alert-dialog';
 
 // Data
 import { COST_NAMES } from '../data/archetypes';
@@ -279,6 +289,7 @@ export function SurrogateOracleImmersion() {
   const [showArchiveOpen, setShowArchiveOpen] = useState(false);
   const [showNamePrompt, setShowNamePrompt]   = useState(false);
   const [nameInput, setNameInput]             = useState('');
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   // Talisman — post-session walk-away card shown between session end and dormant
   const [talismanData, setTalismanData]       = useState<TalismanData | null>(null);
   // Ghost transmissions — Oracle-voiced phrases from the ghost_phrase column,
@@ -424,6 +435,9 @@ export function SurrogateOracleImmersion() {
     onStartSession: handleStartSession,
     onCleanup: handleCleanup,
     onWritesSettled: handleWritesSettled,
+    onResetSessionBoot: () => {
+      oracleConversationRef.current?.resetSessionBoot();
+    },
   });
 
   const { scenePhase, enterTerminal, enterTour, awakeFromTerminal, exitOracleMode, selectKnifeQuestion, resetJourney } = journey;
@@ -475,7 +489,7 @@ export function SurrogateOracleImmersion() {
 
     document.body.setAttribute('data-rift-opening', 'true');
     setTimeout(() => {
-      journey.awakeFromTerminal();
+      journey.awakeFromTerminal({ bypassLore: true });
       document.body.removeAttribute('data-rift-opening');
     }, 850);
   }, [markLoreCompleted, journey, hasCompletedLore, currentUserId]);
@@ -2702,7 +2716,28 @@ export function SurrogateOracleImmersion() {
           {hamburgerOpen && (
             <motion.div initial={{ opacity: 0, scale: 0.94, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.94, y: -6 }} style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'rgba(0,4,2,0.94)', border: '1px solid rgba(0,255,136,0.35)', borderRadius: '8px', overflow: 'hidden', minWidth: '160px', backdropFilter: 'blur(14px)' }}>
               <button onClick={() => { finalizeOracleSession(echoTrackRef.current.alignment, echoTrackRef.current.totemLevel); exitOracleMode(echoTrackRef.current.alignment); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>EXIT</button>
-              <button onClick={() => { if (confirm('Reset?')) { resetJourney(); setHamburgerOpen(false); } }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>RESET</button>
+              <button onClick={() => { finalizeOracleSession(echoTrackRef.current.alignment, echoTrackRef.current.totemLevel); exitOracleMode(echoTrackRef.current.alignment); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>EXIT</button>
+              <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+                <AlertDialogTrigger asChild>
+                  <button onClick={() => setShowResetConfirm(true)} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>RESET</button>
+                </AlertDialogTrigger>
+                <AlertDialogContent style={{ background: 'rgba(0,4,2,0.94)', border: '1px solid rgba(0,255,136,0.35)', borderRadius: '8px' }}>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle style={{ color: '#00ff88' }}>RESET JOURNEY?</AlertDialogTitle>
+                    <AlertDialogDescription style={{ color: 'rgba(0,255,204,0.8)' }}>
+                      This will end your current session and return to dormant. All progress will be lost.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+                    <AlertDialogCancel style={{ background: 'transparent', border: '1px solid rgba(0,255,136,0.4)', color: '#00ffcc', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer' }}>
+                      CANCEL
+                    </AlertDialogCancel>
+                    <AlertDialogAction onClick={() => { resetJourney(); setHamburgerOpen(false); }} style={{ background: '#b026ff', border: 'none', color: '#fff', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer' }}>
+                      RESET
+                    </AlertDialogAction>
+                  </div>
+                </AlertDialogContent>
+              </AlertDialog>
               <button onClick={() => { if (isXRMode) deactivateXRMode(); else handleActivateXRMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#b026ff', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isXRMode ? '◈ EXIT AR' : '◈ AR MODE'}</button>
               <button onClick={() => { oracleConversationRef.current?.toggleTypeMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isTypeMode ? 'CLOSE PAD' : 'TYPE SIGNAL'}</button>
               {currentUserId && (

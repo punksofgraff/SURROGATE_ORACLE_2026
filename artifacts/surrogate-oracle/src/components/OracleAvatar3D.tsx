@@ -271,6 +271,10 @@ export function OracleAvatar3D({
   const groupRef   = useRef<THREE.Group>(null);
   const transporterProgressRef = useRef(1);
   const transporterWasActiveRef = useRef(false);
+  // Stores the headBone rotation at transporter entry so we can restore it
+  // when the transporter exits — prevents avatar snapping to a different pose
+  // after the point-cloud dispersal animation completes.
+  const headBoneRestPoseRef = useRef<THREE.Euler | null>(null);
   // Smooth camera target — avoids snapping on sudden gesture changes
   const camTarget = useRef(new THREE.Vector3(0, CAM_Y_CENTER, CAM_DEFAULT_Z));
   // World Y the camera should look at (eye level, post group-offset). Computed once
@@ -309,13 +313,26 @@ export function OracleAvatar3D({
       // to 0 here would skip the manifestation and begin already dispersed.
       transporterProgressRef.current = 1;
       scene.visible = true;
+      // Capture headBone rotation at transporter entry so we can restore it
+      // when the transporter returns — prevents the avatar snapping back to
+      // a different pose after the point-cloud dispersal.
+      if (meshData.headBone) {
+        headBoneRestPoseRef.current = meshData.headBone.rotation.clone();
+      }
+    }
+    if (!transporterActive && transporterWasActiveRef.current) {
+      // Transporter exited — restore the captured rest pose so the avatar
+      // doesn't glitch back to a different orientation.
+      if (meshData.headBone && headBoneRestPoseRef.current) {
+        meshData.headBone.rotation.copy(headBoneRestPoseRef.current);
+      }
     }
     if (!transporterActive) {
       transporterProgressRef.current = 1;
       scene.visible = true;
     }
     transporterWasActiveRef.current = transporterActive;
-  }, [scene, transporterActive]);
+  }, [scene, transporterActive, meshData.headBone]);
 
   // Biological head physics (nodding/tilting spring-damper system driven by vocal transients)
   const headPhysRef = useRef({

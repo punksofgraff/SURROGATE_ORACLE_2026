@@ -415,12 +415,14 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
       const msg = e.data as { type?: string; markerId?: string };
       if (typeof msg?.type !== 'string' || !msg.type.startsWith('holodexr:')) return;
 
+      const targetOrigin = e.origin;
+
       switch (msg.type) {
         case 'holodexr:init':
           setIsXRMode(true);
           startCamera();
           try {
-            (e.source as Window)?.postMessage({ type: 'oracle:ready', version: '2.0' }, '*');
+            (e.source as Window)?.postMessage({ type: 'oracle:ready', version: '2.0' }, targetOrigin);
           } catch (err) {
             console.warn('[XR] postMessage(oracle:ready) failed:', err);
           }
@@ -430,7 +432,7 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
           setMarkerActive(true);
           onMarkerRef.current?.();
           try {
-            (e.source as Window)?.postMessage({ type: 'oracle:awakened' }, '*');
+            (e.source as Window)?.postMessage({ type: 'oracle:awakened' }, targetOrigin);
           } catch (err) {
             console.warn('[XR] postMessage(oracle:awakened) failed:', err);
           }
@@ -439,7 +441,7 @@ export function useXRMode(onMarkerDetected?: () => void): UseXRModeReturn {
         case 'holodexr:marker-lost':
           setMarkerActive(false);
           try {
-            (e.source as Window)?.postMessage({ type: 'oracle:dormant' }, '*');
+            (e.source as Window)?.postMessage({ type: 'oracle:dormant' }, targetOrigin);
           } catch (err) {
             console.warn('[XR] postMessage(oracle:dormant) failed:', err);
           }

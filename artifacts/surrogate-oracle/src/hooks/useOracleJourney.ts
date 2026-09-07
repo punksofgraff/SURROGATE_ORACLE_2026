@@ -18,6 +18,8 @@ export type ScenePhase = 'dormant' | 'terminal' | 'tour' | 'awakened' | 'oracle'
 interface UseOracleJourneyProps {
   onStartSession: () => void;
   onCleanup: () => void;
+  /** Optional: reset the Vertex Gemini session boot state so Oracle re-greets on next journey. */
+  onResetSessionBoot?: () => void;
   /** Optional: returns a promise that resolves when post-session writes are
    *  settled (or times out). exitOracleMode awaits this before calling onCleanup
    *  so background writes land before the session is fully torn down. */
@@ -96,11 +98,11 @@ export function useOracleJourney({
     playActivationSfx();
   }, []);
 
-  const awakeFromTerminal = useCallback(() => {
+  const awakeFromTerminal = useCallback((opts?: { bypassLore?: boolean }) => {
     // Guard: only terminal→awakened or tour→awakened.
     if (scenePhaseRef.current !== 'terminal' && scenePhaseRef.current !== 'tour') return;
     scenePhaseRef.current = 'awakened';
-    logStep('LORE DONE → AWAKENED', 'ok');
+    logStep(opts?.bypassLore ? 'LORE SKIPPED (RETURNING SEEKER)' : 'LORE DONE → AWAKENED', 'ok');
     setScenePhase('awakened');
     // Mark that the seeker has passed through awakened at least once this session.
     // Used by the Canvas warmup to skip the Suspense fallback on re-entry.
@@ -158,8 +160,9 @@ export function useOracleJourney({
     alleyAmbienceStopRef.current = null;
 
     onCleanup();
+    onResetSessionBoot?.();
     logStep('JOURNEY RESET → DORMANT', 'ok');
-  }, [onCleanup]);
+  }, [onCleanup, onResetSessionBoot]);
 
   const exitOracleMode = useCallback((alignment?: string | null) => {
     logStep('EXIT INITIATED', 'ok');

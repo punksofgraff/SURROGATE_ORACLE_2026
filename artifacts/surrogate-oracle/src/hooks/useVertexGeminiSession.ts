@@ -542,6 +542,7 @@ export function useVertexGeminiSession(params: UseVertexGeminiSessionParams): Us
   const disconnect = useCallback(() => {
     userInitiatedCloseRef.current = true;
     wsRef.current?.close(1000, 'User disconnected');
+    sessionBootedRef.current = false;
   }, []);
 
   const prewarm = useCallback(() => {
@@ -551,6 +552,7 @@ export function useVertexGeminiSession(params: UseVertexGeminiSessionParams): Us
     if (wsState !== WebSocket.OPEN && wsState !== WebSocket.CONNECTING) {
       connectToGemini();
     }
+    sessionBootedRef.current = false;
   }, [connectToGemini, ensureWorldBriefingFetch]);
 
   const startSession = useCallback((bootMessage?: string, loreOnly = false) => {

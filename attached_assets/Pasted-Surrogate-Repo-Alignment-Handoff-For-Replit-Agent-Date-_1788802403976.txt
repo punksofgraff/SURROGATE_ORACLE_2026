@@ -1,0 +1,158 @@
+Surrogate Repo Alignment Handoff — For Replit Agent
+**Date:** 2026-09-07  
+**Source:** KREAIT-PRO `ANTIGRAVITY-JELLOCAT` worktree (`D:/AntiGravity/worktrees/kreait-jellocat`)  
+**Target:** Your standalone Surrogate repo (where `thesurrogate.me` deploys from)
+
+---
+
+## What Changed in This Clone (Needs Sync to Your Repo)
+
+### 1. **Oracle → Vertex Live Migration** (Complete)
+| File | Change |
+|------|--------|
+| `supabase/functions/oracle-world-briefing/index.ts` | Migrated from AI Studio `generateContent` → Vertex `vertexResearch()` using `GOOGLE_SERVICE_ACCOUNT_JSON` |
+| `artifacts/surrogate-oracle/src/hooks/useVertexGeminiSession.ts` | **NEW** — Vertex Live WS hook (browser → `sneakar-vertex-live-token` → Vertex `BidiGenerateContent`) |
+| `artifacts/surrogate-oracle/src/components/OracleConversation.tsx` | Switched from `useGeminiSession` (AI Studio proxy) → `useVertexGeminiSession` |
+| `supabase/functions/gemini-live-proxy/index.ts` | **Can deprecate** — no longer used by Oracle path |
+| `supabase/migrations/20260906000000_oracle_key_state.sql` | **Can remove** — no key rotation on Vertex |
+
+**Supabase Secrets Required** (verify in your project):
+- `GOOGLE_SERVICE_ACCOUNT_JSON` ✅ (already set)
+- `GOOGLE_CLOUD_PROJECT_ID` ✅
+- `GOOGLE_CLOUD_LOCATION` ✅ (us-central1)
+
+### 2. **6 P0 Blockers Fixed** (Code Changes)
+| ID | Fix | Files |
+|----|-----|-------|
+| F1.R-1 | `awakeFromTerminal({ bypassLore })` for returning seekers | `useOracleJourney.ts`, `SurrogateOracleImmersion.tsx` |
+| F1.R-2 | `resetJourney()` → disconnect WS + reset boot state | `useOracleJourney.ts`, `useVertexGeminiSession.ts`, `OracleConversation.tsx` |
+| F2.R-1 | RESET button → `AlertDialog` (Radix) instead of `confirm()` | `SurrogateOracleImmersion.tsx` |
+| F2.R-3 | Hamburger visible in `awakened` + `oracle` phases | `SurrogateOracleImmersion.tsx` |
+| F4.R-3 | `prewarm()`/`disconnect()` reset `sessionBootedRef` | `useVertexGeminiSession.ts` |
+| F5.R-6 | Capture/restore `headBone.rotation` on transporter | `OracleAvatar3D.tsx` |
+| F6.R-4 | `postMessage` `targetOrigin = e.origin` (security) | `useXRMode.ts` |
+
+### 3. **P1 Fixes Applied**
+| Fix | Files |
+|-----|-------|
+| **Lyria/Oracle audio collision** — shared `radioGainRef` | `useLyriaMusic.ts` (accepts `externalGain`), `useRadioAtmosphere.ts` (exports `radioGainRef`), `SurrogateOracleImmersion.tsx` |
+| **Oscilloscope RMS clamp** — prevents visual spikes | `BackendControlPanel.tsx` |
+| **Hamburger duplicate EXIT button removed** | `SurrogateOracleImmersion.tsx` |
+
+### 4. **New P1 Fixes (This Session)**
+| Fix | Files |
+|-----|-------|
+| **F5.R-1 Gaze coordinate unification** — `getUnifiedGaze()` returns WORLD-space gaze from face/touch/parallax | `useXRMode.ts` |
+| **F5.R-3 OVR names probe** — logs which standard visemes the GLB actually has at mount | `OracleAvatar3D.tsx` |
+| **F6.R-1 Camera cleanup** — auto-stops stream when XR mode deactivates | `useXRMode.ts` |
+| **F6.R-2 Iframe auto-XR** — `?autostart` in iframe triggers camera immediately | `useXRMode.ts` |
+| **F4.R-1 Vertex docs** — architecture comparison document | `docs/oracle-vertex-vs-ai-studio.md` |
+
+### 5. **Migrations Applied to Supabase** (Your project needs these)
+```sql
+-- 20260815120000_oracle_session_traces.sql
+-- 20260817000000_add_oracle_world_briefing.sql  
+-- 20260818000000_briefing_generation_lease.sql
+```
+
+### 6. **Playwright Test Framework** (Ready to Run)
+```bash
+# In your repo:
+PLAYWRIGHT_BASE_URL=https://thesurrogate.me npx playwright test --project=chromium tests/e2e/cartridge-clickthrough.spec.ts
+```
+- 46 cartridge click-through tests
+- Uses system Chrome (`channel: 'chrome'`)
+- Tests all 9 cartridges: deep-link, tray click, coach cards, Escape exit, iframe failure, WebGL context, telemetry
+
+---
+
+## What Your Repo Needs (Sync Checklist)
+- [ ] Copy `useVertexGeminiSession.ts` → replace `useGeminiSession.ts` usage in `OracleConversation.tsx`
+- [ ] Copy `OracleConversation.tsx` changes (Vertex hook, `resetSessionBoot` in handle)
+- [ ] Copy `OracleAvatar3D.tsx` (transporter rest-pose capture/restore, OVR probe)
+- [ ] Copy `useXRMode.ts` (postMessage `targetOrigin = e.origin`, `getUnifiedGaze()`, camera cleanup, iframe auto-XR)
+- [ ] Copy `useOracleJourney.ts` (`awakeFromTerminal({ bypassLore })`, `onResetSessionBoot`)
+- [ ] Copy `SurrogateOracleImmersion.tsx` (AlertDialog, hamburger in awakened, duplicate EXIT removed)
+- [ ] Copy `useLyriaMusic.ts` (accepts `externalGain`), `useRadioAtmosphere.ts` (exports `radioGainRef`)
+- [ ] Copy `BackendControlPanel.tsx` (Oscilloscope clamp)
+- [ ] Apply 3 Supabase migrations
+- [ ] Deploy `oracle-world-briefing` (Vertex version)
+- [ ] **Deprecate** `gemini-live-proxy` and `oracle_key_state` migration
+- [ ] Run Playwright tests against `thesurrogate.me`
+
+---
+
+## Known Divergences (Your Repo May Differ)
+| Area | This Clone | Your Repo (Likely) |
+|------|------------|-------------------|
+| Oracle Path | **Vertex Live** | AI Studio (`gemini-live-proxy`) |
+| Key Rotation | **None** | `oracle_key_state` table + free/paid rotation |
+| Audio Collision | **Fixed** (shared gain) | May have Lyria/Oracle clash |
+| Avatar Transporter | **Rest-pose fixed** | May glitch on return |
+| Hamburger Menu | **Visible in awakened** | Hidden until oracle |
+
+---
+
+## Remaining P1/P2 Items (Not Yet Done)
+| Item | Status |
+|------|--------|
+| F4.R-1: Vertex vs AI Studio route clarity (docs) | ✅ Done (`docs/oracle-vertex-vs-ai-studio.md`) |
+| F5.R-1: Gaze coordinate unification | ✅ Done (`useXRMode.ts` → `getUnifiedGaze()`) |
+| F5.R-3: OVR names probe | ✅ Done (`OracleAvatar3D.tsx`) |
+| F6.R-1: Camera cleanup | ✅ Done (`useXRMode.ts`) |
+| F6.R-2: iframe auto-XR | ✅ Done (`useXRMode.ts` → `autoStart`) |
+| F6.R-5: URL-change reactivity | ⏳ Pending |
+| Iframe error boundaries (7 cartridges) | ⏳ Pending |
+| Coach card consistency | ⏳ Pending |
+
+---
+
+## Next Steps for You
+1. **Sync code** from `D:/AntiGravity/worktrees/kreait-jellocat/sneakar-xr-engine/scratch/surrogate-oracle-2026/artifacts/surrogate-oracle/src/` → your repo
+2. **Apply migrations** to your Supabase project
+3. **Deploy** `oracle-world-briefing` (Vertex version)
+4. **Run Playwright** against `thesurrogate.me` to validate
+5. **Deprecate** `gemini-live-proxy` and `oracle_key_state`
+
+---
+
+## Files to Copy (Exact Paths)
+
+### New Files
+```
+artifacts/surrogate-oracle/src/hooks/useVertexGeminiSession.ts
+artifacts/surrogate-oracle/docs/oracle-vertex-vs-ai-studio.md
+```
+
+### Modified Files
+```
+artifacts/surrogate-oracle/src/hooks/useOracleJourney.ts
+artifacts/surrogate-oracle/src/hooks/useVertexGeminiSession.ts
+artifacts/surrogate-oracle/src/hooks/useXRMode.ts
+artifacts/surrogate-oracle/src/hooks/useLyriaMusic.ts
+artifacts/surrogate-oracle/src/hooks/useRadioAtmosphere.ts
+artifacts/surrogate-oracle/src/components/OracleConversation.tsx
+artifacts/surrogate-oracle/src/components/OracleAvatar3D.tsx
+artifacts/surrogate-oracle/src/components/SurrogateOracleImmersion.tsx
+artifacts/surrogate-oracle/src/components/BackendControlPanel.tsx
+supabase/functions/oracle-world-briefing/index.ts
+```
+
+### To Remove/Deprecate
+```
+supabase/functions/gemini-live-proxy/
+supabase/migrations/20260906000000_oracle_key_state.sql
+```
+
+---
+
+## Verify Supabase Secrets
+- `GOOGLE_SERVICE_ACCOUNT_JSON` ✅
+- `GOOGLE_CLOUD_PROJECT_ID` ✅
+- `GOOGLE_CLOUD_LOCATION` ✅ (us-central1)
+
+**Deploy:**
+```bash
+supabase functions deploy oracle-world-briefing --project-ref <your-ref>
+# DO NOT deploy gemini-live-proxy
+```

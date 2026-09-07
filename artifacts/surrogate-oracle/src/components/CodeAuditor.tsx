@@ -155,7 +155,7 @@ export function CodeAuditor() {
   if (!enabled) return null;
 
   return (
-    <div style={{
+      <div className="oracle-dev-console oracle-dev-console--auditor" style={{
       position:     'fixed',
       bottom:       12,
       right:        12,

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Archive, CalendarDays, ChevronRight, FileText, Image as ImageIcon, Video, X } from 'lucide-react';
 import type { ArchivedDocumentReadout } from '../lib/documentArchive';
+import { ConsoleSurface } from './ConsoleSurface';
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
@@ -23,7 +24,7 @@ export function DocumentArchive({
 }) {
   return (
     <div className="oracle-document-archive" role="dialog" aria-modal="true" aria-labelledby="document-archive-title">
-      <div className="oracle-document-archive__panel">
+      <ConsoleSurface className="oracle-document-archive__panel">
         <div className="oracle-document-archive__header">
           <div>
             <div className="oracle-document-archive__eyebrow"><Archive size={16} /> PRIVATE READOUT ARCHIVE</div>
@@ -52,7 +53,7 @@ export function DocumentArchive({
             ))}
           </div>
         )}
-      </div>
+      </ConsoleSurface>
     </div>
   );
 }

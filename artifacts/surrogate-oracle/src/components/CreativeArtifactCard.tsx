@@ -1096,7 +1096,7 @@ export function CreativeArtifactCard({
 
   return (
     <section
-      className="creative-artifact-card"
+      className="creative-artifact-card oracle-console-frame"
       data-status={status}
       data-story={isIllustrationStory || undefined}
       data-testid="creative-artifact-card"

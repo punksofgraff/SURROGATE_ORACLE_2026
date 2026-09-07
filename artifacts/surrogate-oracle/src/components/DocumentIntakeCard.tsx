@@ -5,6 +5,7 @@ import { jsPDF } from 'jspdf';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import mammoth from 'mammoth';
 import { ParticleTypographyCard } from './ParticleTypographyCard';
+import { ConsoleSurface } from './ConsoleSurface';
 import type { ArchivedDocumentReadout } from '../lib/documentArchive';
 
 export type DocumentIntakeFile = { file: File; requestId: number };
@@ -169,7 +170,7 @@ export function DocumentIntakeCard({
   }, [analysis?.kind]);
 
   return (
-    <article className="oracle-document-card" aria-live="polite">
+    <ConsoleSurface className="oracle-document-card" aria-live="polite" role="article">
       <div className="oracle-document-card__topline">
         <span className="oracle-document-card__eyebrow">{icon} ORACLE DOCUMENT VIEWER</span>
         <button type="button" className="oracle-document-card__close" onClick={onClose} aria-label="Close document viewer"><X size={16} /></button>
@@ -215,7 +216,7 @@ export function DocumentIntakeCard({
           </div>
         </>
       )}
-    </article>
+    </ConsoleSurface>
   );
 }
 

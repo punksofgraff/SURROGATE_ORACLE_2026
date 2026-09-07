@@ -4922,6 +4922,51 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   font-family: 'PhillySans', 'Share Tech Mono', monospace;
   letter-spacing: .04em;
 }
+
+/* ── Shared command-center surface language ────────────────────────────────
+   Console tools are readable field notes above the alley, not a second
+   immersive scene. Keep this token shared across documents, creative review,
+   and the dev-only panels while allowing each surface to keep its own accent. */
+.oracle-console-frame {
+  --console-accent: #00ffcc;
+  --console-accent-soft: rgba(0,255,204,.16);
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--console-accent) 58%, transparent);
+  background:
+    linear-gradient(135deg, rgba(2,18,24,.98), rgba(7,4,20,.97)),
+    radial-gradient(circle at 100% 0, var(--console-accent-soft), transparent 42%);
+  box-shadow:
+    0 24px 90px rgba(0,0,0,.56),
+    0 0 35px color-mix(in srgb, var(--console-accent) 16%, transparent),
+    inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+.oracle-console-frame::before {
+  position: absolute;
+  top: 0;
+  right: 18px;
+  left: 18px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--console-accent) 80%, transparent), transparent);
+  content: '';
+  pointer-events: none;
+}
+
+.oracle-console-frame :is(button, input, textarea, select):focus-visible,
+.oracle-dev-console :is(button, input, textarea, select):focus-visible {
+  outline: 2px solid var(--console-accent, #00ffcc);
+  outline-offset: 3px;
+}
+
+.oracle-console-frame.oracle-document-card {
+  --console-accent: #00ffcc;
+  position: absolute;
+  border-radius: 14px;
+}
+
+.oracle-document-card__eyebrow {
+  text-shadow: 0 0 14px rgba(0,255,204,.24);
+}
 .oracle-document-card__topline,
 .oracle-document-card__actions {
   display: flex;
@@ -5033,14 +5078,12 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   backdrop-filter: blur(12px);
 }
 .oracle-document-archive__panel {
+  --console-accent: #00ffcc;
   width: min(92vw, 620px);
   max-height: min(80vh, 720px);
   overflow: auto;
   padding: 22px;
-  border: 1px solid rgba(0,255,204,.55);
-  border-radius: 8px;
-  background: linear-gradient(150deg, rgba(2,18,24,.98), rgba(6,3,18,.98));
-  box-shadow: 0 0 35px rgba(0,255,204,.2), inset 0 0 28px rgba(0,255,136,.05);
+  border-radius: 14px;
   color: rgba(235,255,249,.94);
   font-family: 'PhillySans', 'Share Tech Mono', monospace;
 }
@@ -5134,6 +5177,32 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 }
 .oracle-document-archive__empty strong { color: #00ffcc; font-size: .75rem; letter-spacing: .13em; }
 .oracle-document-archive__empty span { max-width: 320px; font-size: .66rem; line-height: 1.45; }
+
+/* Dev-only tools use the same compact field-manual language, but remain
+   opt-in and anchored so they never obscure a real seeker session. */
+.oracle-dev-console {
+  --console-accent: #00ff88;
+  letter-spacing: .045em;
+}
+.oracle-dev-console--trace {
+  --console-accent: #c9a7ff;
+}
+.oracle-dev-console::before {
+  content: 'DEV CONSOLE';
+  position: absolute;
+  top: -18px;
+  left: 10px;
+  color: color-mix(in srgb, var(--console-accent) 72%, transparent);
+  font: 9px/1 monospace;
+  letter-spacing: .18em;
+  pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .oracle-console-frame {
+    max-width: calc(100vw - 20px);
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .oracle-document-card__bar span { transition: none; }
@@ -7262,6 +7331,9 @@ body[data-exit-alignment="profane"] .oracle-stage[data-oracle-state="oracle"] .o
 .oracle-creative-artifact-overlay .creative-artifact-card {
   position: relative;
   z-index: 1;
+  --console-accent: #00ffcc;
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
 }
 
 @media (max-width: 520px) {

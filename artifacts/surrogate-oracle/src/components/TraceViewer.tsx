@@ -176,7 +176,7 @@ export function TraceViewer() {
   };
 
   return (
-    <div style={panelStyle} data-testid="trace-viewer">
+    <div className="oracle-dev-console oracle-dev-console--trace" style={panelStyle} data-testid="trace-viewer">
       <div
         onClick={() => setOpen((o) => !o)}
         style={{

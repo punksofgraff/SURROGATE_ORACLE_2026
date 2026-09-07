@@ -402,6 +402,10 @@ export const BackendControlPanel = ({
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="ec-hdr">
           <div>
+              <div className="ec-hdr__context">
+                <span>COMMAND CENTER / ORIENTATION</span>
+                <span>Six frequencies · reversible tools · return to alley anytime</span>
+              </div>
             <div className="ec-hdr__brand">ENCULTURATE CRATE</div>
             <div className="ec-hdr__meta">{activeFreq.mhz}MHz · {activeFreq.label} · SURROGATE:ORACLE</div>
           </div>

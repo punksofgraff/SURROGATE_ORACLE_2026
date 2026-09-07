@@ -1,0 +1,268 @@
+@font-face {
+  font-family: "Oracle Philly";
+  src: url("/__mockup/images/PhillySans.otf") format("opentype");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Oracle Tag";
+  src: url("/__mockup/images/aAnotherTag.otf") format("opentype");
+  font-display: swap;
+}
+
+.oracle-live-session {
+  --oracle-green: #00ff88;
+  --oracle-cyan: #00e7ff;
+  --oracle-purple: #b026ff;
+  position: relative;
+  width: 100vw;
+  min-width: 320px;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  color: #fff;
+  background: #01050a;
+  font-family: "Oracle Philly", "Share Tech Mono", monospace;
+  isolation: isolate;
+}
+
+.oracle-live-session *,
+.oracle-live-session *::before,
+.oracle-live-session *::after { box-sizing: border-box; }
+
+.oracle-live-session__alley {
+  position: absolute;
+  inset: -3%;
+  z-index: -3;
+  background:
+    radial-gradient(ellipse at 50% 45%, rgba(0, 24, 42, .24), rgba(0, 0, 0, .78) 74%),
+    url("/__mockup/images/alley-bg.png") center / cover no-repeat;
+  filter: saturate(.82) brightness(.58) blur(1px);
+  transform: scale(1.04);
+}
+
+.oracle-live-session__alley::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 45%, transparent 15%, rgba(0, 0, 0, .7) 78%, #000 100%);
+}
+
+.oracle-live-session__alley::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 255, 136, .05), transparent 28%, rgba(0, 255, 136, .11) 100%);
+  mix-blend-mode: screen;
+}
+
+.oracle-live-session__grain {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  opacity: .08;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.65' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.oracle-live-session__brand {
+  position: absolute;
+  top: clamp(22px, 6vh, 58px);
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  text-align: center;
+  text-shadow: 0 0 18px rgba(0, 255, 136, .4);
+}
+
+.oracle-live-session__brand h1 {
+  margin: 0;
+  color: var(--oracle-green);
+  font-family: "Oracle Tag", "Oracle Philly", monospace;
+  font-size: clamp(1.15rem, 3vw, 2rem);
+  font-weight: 400;
+  letter-spacing: .2em;
+  white-space: nowrap;
+}
+
+.oracle-live-session__brand p {
+  margin: 8px 0 0;
+  color: rgba(0, 255, 136, .62);
+  font-family: monospace;
+  font-size: clamp(.48rem, 1vw, .68rem);
+  letter-spacing: .24em;
+}
+
+.oracle-live-session__hud {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  color: rgba(0, 255, 136, .62);
+  font-family: monospace;
+  font-size: clamp(.5rem, .9vw, .68rem);
+  letter-spacing: .14em;
+  line-height: 1.6;
+}
+
+.oracle-live-session__hud-corner { position: absolute; padding: 14px; }
+.oracle-live-session__hud-corner--tl { top: 10px; left: 8px; }
+.oracle-live-session__hud-corner--tr { top: 10px; right: 8px; text-align: right; }
+.oracle-live-session__hud-corner--bl { bottom: 112px; left: 8px; }
+.oracle-live-session__hud-corner--br { right: 8px; bottom: 112px; text-align: right; }
+.oracle-live-session__hud strong { display: block; color: rgba(255,255,255,.8); font-weight: 400; }
+.oracle-live-session__hud .dim { color: rgba(0,255,136,.32); }
+
+.oracle-live-session__menu {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  z-index: 6;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(0,255,136,.36);
+  border-radius: 50%;
+  color: var(--oracle-green);
+  background: rgba(0, 12, 17, .68);
+  box-shadow: 0 0 18px rgba(0,255,136,.14);
+}
+
+.oracle-live-session__cabinet {
+  position: absolute;
+  top: 43%;
+  left: 50%;
+  z-index: 3;
+  width: min(54vw, 430px);
+  aspect-ratio: 1 / 1.08;
+  transform: translate(-50%, -50%);
+}
+
+.oracle-live-session__cabinet::before {
+  content: "";
+  position: absolute;
+  inset: 9% 4% 0;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(0,255,136,.28), transparent 60%);
+  filter: blur(28px);
+  animation: oracle-breathe 4s ease-in-out infinite;
+}
+
+.oracle-live-session__ring {
+  position: absolute;
+  inset: 3%;
+  border: 1px solid rgba(0,255,136,.35);
+  border-radius: 50%;
+  box-shadow: 0 0 16px rgba(0,255,136,.25), inset 0 0 24px rgba(0,255,136,.1);
+  animation: oracle-ring 8s linear infinite;
+}
+
+.oracle-live-session__ring::after {
+  content: "";
+  position: absolute;
+  inset: 7%;
+  border: 1px dashed rgba(0,231,255,.34);
+  border-radius: 50%;
+}
+
+.oracle-live-session__avatar {
+  position: absolute;
+  inset: 11% 12% 5%;
+  width: 76%;
+  height: 84%;
+  object-fit: contain;
+  object-position: center;
+  filter: drop-shadow(0 0 16px rgba(0,255,136,.48)) drop-shadow(0 0 34px rgba(0,255,136,.18));
+  animation: oracle-float 4s ease-in-out infinite;
+}
+
+.oracle-live-session__scan {
+  position: absolute;
+  top: 35%;
+  left: 15%;
+  width: 70%;
+  height: 1px;
+  background: var(--oracle-green);
+  box-shadow: 0 0 10px var(--oracle-green);
+  opacity: .55;
+  animation: oracle-scan 3.2s ease-in-out infinite;
+}
+
+.oracle-live-session__status {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--oracle-green);
+  font-family: monospace;
+  font-size: clamp(.47rem, 1vw, .66rem);
+  letter-spacing: .16em;
+  white-space: nowrap;
+}
+
+.oracle-live-session__conversation {
+  position: absolute;
+  right: 50%;
+  bottom: clamp(125px, 19vh, 170px);
+  z-index: 5;
+  width: min(460px, 78vw);
+  max-height: 152px;
+  overflow: hidden;
+  padding: 11px 15px;
+  border-left: 1px solid rgba(0,255,136,.5);
+  background: linear-gradient(90deg, rgba(0,8,13,.86), rgba(0,8,13,.15));
+  transform: translateX(50%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 8%, #000 88%, transparent);
+}
+
+.oracle-live-session__turn {
+  margin: 7px 0;
+  font-family: monospace;
+  font-size: clamp(.58rem, 1.15vw, .74rem);
+  line-height: 1.45;
+  letter-spacing: .04em;
+}
+
+.oracle-live-session__turn span { margin-right: 10px; color: var(--oracle-green); font-size: .65em; letter-spacing: .16em; }
+.oracle-live-session__turn--user { color: rgba(255,255,255,.5); }
+.oracle-live-session__turn--oracle { color: rgba(255,255,255,.92); text-shadow: 0 0 9px rgba(0,255,136,.2); }
+
+.oracle-live-session__controls {
+  position: absolute;
+  bottom: 4.5%;
+  left: 50%;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: clamp(12px, 3vw, 28px);
+  transform: translateX(-50%);
+}
+
+.oracle-live-session__control {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: 1px solid rgba(0,255,136,.28);
+  border-radius: 18px;
+  color: rgba(255,255,255,.72);
+  background: rgba(0,8,13,.62);
+  box-shadow: 0 5px 18px rgba(0,0,0,.5), 0 0 16px rgba(0,255,136,.1);
+}
+
+.oracle-live-session__control small { margin-top: -11px; color: rgba(0,255,136,.68); font: .47rem monospace; letter-spacing: .1em; }
+.oracle-live-session__control--mic { width: 72px; height: 72px; border-color: var(--oracle-green); border-radius: 50%; color: var(--oracle-green); box-shadow: 0 0 24px rgba(0,255,136,.28), inset 0 0 18px rgba(0,255,136,.08); }
+.oracle-live-session__control--mic small { color: var(--oracle-green); }
+
+@keyframes oracle-breathe { 0%,100% { opacity:.6; transform:scale(.94); } 50% { opacity:1; transform:scale(1.05); } }
+@keyframes oracle-ring { to { transform: rotate(360deg); } }
+@keyframes oracle-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@keyframes oracle-scan { 0%,100% { top: 28%; opacity:0; } 50% { top: 68%; opacity:.6; } }
+
+@media (max-width: 600px) {
+  .oracle-live-session__hud-corner { padding: 8px; font-size: .46rem; }
+  .oracle-live-session__hud-corner--bl, .oracle-live-session__hud-corner--br { bottom: 105px; }
+  .oracle-live-session__cabinet { top: 40%; width: min(84vw, 390px); }
+  .oracle-live-session__conversation { bottom: 143px; width: 88vw; }
+  .oracle-live-session__controls { bottom: 3%; }
+}

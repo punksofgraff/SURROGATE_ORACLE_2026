@@ -241,6 +241,7 @@
 /* ── Page — scrollable domino column ─────────────────────────────────────── */
 .ec-page {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -252,6 +253,7 @@
   z-index: 5;
   overscroll-behavior-y: contain;
   scroll-snap-type: y proximity;
+  touch-action: pan-y;
   scrollbar-width: thin;
   scrollbar-color: rgba(0,255,136,0.14) transparent;
 }

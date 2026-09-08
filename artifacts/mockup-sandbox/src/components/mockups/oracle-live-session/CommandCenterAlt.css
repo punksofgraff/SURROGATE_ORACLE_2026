@@ -1,0 +1,557 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+.oracle-command-center-alt {
+  --ink: #151b1b;
+  --ink-soft: #253332;
+  --paper: #e9e4d8;
+  --paper-deep: #d8d0c1;
+  --line: rgba(21, 27, 27, .22);
+  --muted: #65706c;
+  --signal: #da5b36;
+  --signal-dark: #a83d28;
+  --lime: #c7d669;
+  min-height: 100dvh;
+  position: relative;
+  overflow: hidden;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 81% 4%, rgba(218, 91, 54, .19), transparent 28rem),
+    linear-gradient(118deg, #e9e4d8 0%, #e9e4d8 58%, #ded8cb 100%);
+  font-family: "Space Grotesk", system-ui, sans-serif;
+}
+
+.oracle-command-center-alt::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: .14;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.28'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+
+.oracle-command-center-alt__wash {
+  position: absolute;
+  top: 0;
+  right: 8%;
+  width: min(43vw, 580px);
+  height: 100%;
+  opacity: .42;
+  pointer-events: none;
+  background: repeating-linear-gradient(94deg, transparent 0 28px, rgba(21,27,27,.045) 29px 30px);
+  transform: skewX(-12deg);
+}
+
+.oracle-command-center-alt__topbar {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 24px;
+  padding: 22px clamp(22px, 4vw, 64px) 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.oracle-command-center-alt button {
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.oracle-command-center-alt__back,
+.oracle-command-center-alt__menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  width: fit-content;
+  border: 0;
+  background: transparent;
+  font: 500 10px "DM Mono", monospace;
+  letter-spacing: .13em;
+}
+
+.oracle-command-center-alt__back {
+  padding: 8px 0;
+}
+
+.oracle-command-center-alt__menu {
+  justify-self: end;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+}
+
+.oracle-command-center-alt__menu:hover,
+.oracle-command-center-alt__back:hover {
+  color: var(--signal-dark);
+}
+
+.oracle-command-center-alt__wordmark {
+  text-align: center;
+  line-height: 1.05;
+}
+
+.oracle-command-center-alt__wordmark strong {
+  display: block;
+  font-size: 14px;
+  letter-spacing: .16em;
+  font-weight: 700;
+}
+
+.oracle-command-center-alt__wordmark small,
+.oracle-command-center-alt__status,
+.oracle-command-center-alt__rail-kicker,
+.oracle-command-center-alt__eyebrow,
+.oracle-command-center-alt__kicker,
+.oracle-command-center-alt__mono {
+  font: 500 9px "DM Mono", monospace;
+  letter-spacing: .12em;
+}
+
+.oracle-command-center-alt__wordmark small {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  letter-spacing: .08em;
+}
+
+.oracle-command-center-alt__status {
+  display: inline-flex;
+  justify-self: end;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.oracle-command-center-alt__status-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--signal);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(218,91,54,.12);
+}
+
+.oracle-command-center-alt__frequency-strip {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 0;
+  padding: 0 clamp(22px, 4vw, 64px);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.oracle-command-center-alt__frequency-strip::-webkit-scrollbar { display: none; }
+
+.oracle-command-center-alt__frequency {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  min-width: 128px;
+  padding: 16px 19px 14px 0;
+  margin-right: 20px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  text-align: left;
+}
+
+.oracle-command-center-alt__frequency:hover,
+.oracle-command-center-alt__frequency.is-active {
+  color: var(--signal-dark);
+}
+
+.oracle-command-center-alt__frequency.is-active {
+  border-bottom-color: var(--signal);
+}
+
+.oracle-command-center-alt__frequency-index {
+  grid-row: 1 / 3;
+  align-self: center;
+  color: var(--muted);
+  font: 10px "DM Mono", monospace;
+}
+
+.oracle-command-center-alt__frequency strong {
+  font-size: 11px;
+  letter-spacing: .1em;
+}
+
+.oracle-command-center-alt__frequency small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.oracle-command-center-alt__body {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(340px, .85fr);
+  gap: clamp(34px, 6vw, 96px);
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: clamp(38px, 6vw, 76px) clamp(22px, 4vw, 64px) 54px;
+}
+
+.oracle-command-center-alt__intro {
+  max-width: 700px;
+}
+
+.oracle-command-center-alt__eyebrow {
+  color: var(--signal-dark);
+}
+
+.oracle-command-center-alt h1 {
+  max-width: 620px;
+  margin: 17px 0 13px;
+  font-size: clamp(54px, 8vw, 110px);
+  line-height: .88;
+  letter-spacing: -.07em;
+  font-weight: 600;
+}
+
+.oracle-command-center-alt__intro p {
+  max-width: 450px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.oracle-command-center-alt__intro-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 13px 26px;
+  margin-top: 36px;
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font: 10px "DM Mono", monospace;
+  letter-spacing: .08em;
+}
+
+.oracle-command-center-alt__deck {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(180px, .95fr);
+  gap: 1px;
+  margin-top: clamp(38px, 7vw, 78px);
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.oracle-command-center-alt__card {
+  min-height: 182px;
+  padding: 22px;
+  background: rgba(233, 228, 216, .8);
+}
+
+.oracle-command-center-alt__card--hero {
+  min-height: 248px;
+  grid-row: span 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: var(--paper);
+  background: var(--ink);
+}
+
+.oracle-command-center-alt__kicker {
+  display: block;
+  color: var(--muted);
+}
+
+.oracle-command-center-alt__card--hero .oracle-command-center-alt__kicker {
+  color: var(--lime);
+}
+
+.oracle-command-center-alt__balance {
+  display: block;
+  margin-top: 32px;
+  font-size: clamp(66px, 8vw, 112px);
+  line-height: .8;
+  letter-spacing: -.08em;
+  font-weight: 500;
+}
+
+.oracle-command-center-alt__card-note {
+  display: block;
+  margin-top: 12px;
+  color: #adb5a8;
+  font-size: 11px;
+}
+
+.oracle-command-center-alt__progress {
+  height: 4px;
+  margin-top: 27px;
+  background: #424b49;
+}
+
+.oracle-command-center-alt__progress span {
+  display: block;
+  width: 72%;
+  height: 100%;
+  background: var(--lime);
+}
+
+.oracle-command-center-alt__progress-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  color: #adb5a8;
+  font: 9px "DM Mono", monospace;
+}
+
+.oracle-command-center-alt__card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.oracle-command-center-alt__card-head strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.oracle-command-center-alt__handle {
+  margin-top: 30px;
+  color: var(--signal-dark);
+  font: 500 clamp(21px, 3vw, 31px) "DM Mono", monospace;
+  letter-spacing: -.08em;
+}
+
+.oracle-command-center-alt__stable {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 19px;
+  color: var(--muted);
+  font: 9px "DM Mono", monospace;
+  letter-spacing: .08em;
+}
+
+.oracle-command-center-alt__stable span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6f8d47;
+}
+
+.oracle-command-center-alt__readouts-card {
+  grid-column: 1 / -1;
+  min-height: auto;
+}
+
+.oracle-command-center-alt__text-button,
+.oracle-command-center-alt__context-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--signal-dark);
+  font: 500 9px "DM Mono", monospace;
+  letter-spacing: .08em;
+}
+
+.oracle-command-center-alt__readouts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 22px;
+}
+
+.oracle-command-center-alt__readout {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 11px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.oracle-command-center-alt__readout > span {
+  min-width: 0;
+}
+
+.oracle-command-center-alt__readout strong,
+.oracle-command-center-alt__readout small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oracle-command-center-alt__readout strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.oracle-command-center-alt__readout small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.oracle-command-center-alt__aside {
+  align-self: start;
+  padding: clamp(24px, 4vw, 42px);
+  border: 1px solid var(--line);
+  background: rgba(216, 208, 193, .48);
+}
+
+.oracle-command-center-alt__aside h2 {
+  max-width: 320px;
+  margin: 22px 0 16px;
+  font-size: clamp(29px, 3vw, 42px);
+  line-height: .99;
+  letter-spacing: -.055em;
+  font-weight: 500;
+}
+
+.oracle-command-center-alt__aside p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.oracle-command-center-alt__rule {
+  height: 1px;
+  margin: 43px 0 24px;
+  background: var(--line);
+}
+
+.oracle-command-center-alt__next {
+  color: var(--muted);
+  font: 9px "DM Mono", monospace;
+  letter-spacing: .1em;
+}
+
+.oracle-command-center-alt__aside strong {
+  display: block;
+  margin: 9px 0 22px;
+  font-size: 16px;
+  letter-spacing: .06em;
+}
+
+.oracle-command-center-alt__context-button {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--signal);
+}
+
+.oracle-command-center-alt__evidence {
+  display: grid;
+  grid-template-columns: 1.15fr 2fr;
+  gap: 25px;
+  padding: 24px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.oracle-command-center-alt__evidence-heading span {
+  display: block;
+  font: 10px "DM Mono", monospace;
+  letter-spacing: .1em;
+}
+
+.oracle-command-center-alt__evidence-heading small {
+  display: block;
+  max-width: 180px;
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.oracle-command-center-alt__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-left: 1px solid var(--line);
+}
+
+.oracle-command-center-alt__metric {
+  min-height: 74px;
+  padding-left: 18px;
+  border-right: 1px solid var(--line);
+}
+
+.oracle-command-center-alt__metric:last-child { border-right: 0; }
+
+.oracle-command-center-alt__metric span {
+  display: block;
+  color: var(--muted);
+  font: 9px "DM Mono", monospace;
+  letter-spacing: .08em;
+}
+
+.oracle-command-center-alt__metric strong {
+  display: block;
+  margin-top: 9px;
+  font-size: 23px;
+  font-weight: 500;
+}
+
+.oracle-command-center-alt__metric small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.oracle-command-center-alt__footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px clamp(22px, 4vw, 64px);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font: 9px "DM Mono", monospace;
+  letter-spacing: .08em;
+}
+
+.oracle-command-center-alt__notice {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 2;
+  padding: 12px 16px;
+  color: var(--paper);
+  background: var(--ink);
+  font: 10px "DM Mono", monospace;
+  letter-spacing: .06em;
+  animation: oracle-alt-rise .25s ease-out both;
+}
+
+@keyframes oracle-alt-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 850px) {
+  .oracle-command-center-alt__topbar {
+    grid-template-columns: 1fr auto;
+  }
+  .oracle-command-center-alt__wordmark { order: -1; text-align: left; }
+  .oracle-command-center-alt__back { display: none; }
+  .oracle-command-center-alt__status { grid-column: 2; grid-row: 1; }
+  .oracle-command-center-alt__body { grid-template-columns: 1fr; }
+  .oracle-command-center-alt__aside { max-width: none; }
+  .oracle-command-center-alt__evidence { grid-template-columns: 1fr; }
+  .oracle-command-center-alt__metrics { border-left: 0; }
+}
+
+@media (max-width: 560px) {
+  .oracle-command-center-alt__frequency-strip { padding-right: 0; }
+  .oracle-command-center-alt__frequency { min-width: 106px; margin-right: 12px; padding-right: 12px; }
+  .oracle-command-center-alt h1 { font-size: clamp(56px, 18vw, 88px); }
+  .oracle-command-center-alt__deck { grid-template-columns: 1fr; }
+  .oracle-command-center-alt__card--hero { grid-row: auto; min-height: 218px; }
+  .oracle-command-center-alt__readouts { grid-template-columns: 1fr; }
+  .oracle-command-center-alt__footer { flex-direction: column; gap: 8px; }
+}

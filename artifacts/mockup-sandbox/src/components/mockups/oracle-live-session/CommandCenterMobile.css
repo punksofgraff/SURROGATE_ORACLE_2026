@@ -1,0 +1,690 @@
+.oracle-command-mobile {
+  --ink: #202b2b;
+  --muted: #667271;
+  --paper: #e8e8dc;
+  --paper-deep: #d9ded4;
+  --line: rgba(32, 43, 43, 0.17);
+  --acid: #d8f14a;
+  --acid-deep: #aabd29;
+  --rust: #b65f44;
+  --blue: #9dbfc7;
+  min-height: 100dvh;
+  position: relative;
+  overflow: hidden;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 9% 8%, rgba(216, 241, 74, 0.58), transparent 28%),
+    radial-gradient(circle at 92% 38%, rgba(157, 191, 199, 0.42), transparent 31%),
+    linear-gradient(118deg, #e8e8dc 0%, #dfe4d9 54%, #d7d9ce 100%);
+  font-family: "DM Sans", "Avenir Next", sans-serif;
+  isolation: isolate;
+}
+
+.oracle-command-mobile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.23;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 140 140' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.22'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+
+.oracle-command-mobile__glow {
+  position: absolute;
+  top: 7rem;
+  right: -6rem;
+  width: 15rem;
+  height: 15rem;
+  border: 1px solid rgba(32, 43, 43, 0.12);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2rem rgba(32, 43, 43, 0.025),
+    0 0 0 5rem rgba(32, 43, 43, 0.018);
+  pointer-events: none;
+}
+
+.oracle-command-mobile__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  min-height: 4.5rem;
+  padding: 1.05rem 1.15rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.oracle-command-mobile__back,
+.oracle-command-mobile__menu,
+.oracle-command-mobile__frequency,
+.oracle-command-mobile__open,
+.oracle-command-mobile__readout-button,
+.oracle-command-mobile__return {
+  border: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.oracle-command-mobile__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0;
+  background: transparent;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  transition: transform 180ms ease, color 180ms ease;
+}
+
+.oracle-command-mobile__back:hover {
+  color: var(--rust);
+  transform: translateX(-2px);
+}
+
+.oracle-command-mobile__back small {
+  display: none;
+}
+
+.oracle-command-mobile__mark {
+  display: grid;
+  place-items: center;
+  width: 2.05rem;
+  height: 2.05rem;
+  border: 1px solid rgba(32, 43, 43, 0.24);
+  border-radius: 50%;
+  color: var(--rust);
+  font-family: "Space Mono", monospace;
+  font-size: 0.55rem;
+  font-weight: 700;
+}
+
+.oracle-command-mobile__wordmark {
+  display: none;
+  margin-left: auto;
+  text-align: right;
+}
+
+.oracle-command-mobile__wordmark strong,
+.oracle-command-mobile__wordmark span {
+  display: block;
+}
+
+.oracle-command-mobile__wordmark strong {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 1.17rem;
+  font-weight: 400;
+  letter-spacing: -0.04em;
+}
+
+.oracle-command-mobile__wordmark span {
+  margin-top: 0.18rem;
+  color: var(--muted);
+  font-family: "Space Mono", monospace;
+  font-size: 0.49rem;
+  letter-spacing: 0.08em;
+}
+
+.oracle-command-mobile__status {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  color: var(--muted);
+  font-family: "Space Mono", monospace;
+  font-size: 0.52rem;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.oracle-command-mobile__status-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--rust);
+  box-shadow: 0 0 0 4px rgba(182, 95, 68, 0.12);
+}
+
+.oracle-command-mobile__menu {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  background: transparent;
+}
+
+.oracle-command-mobile__menu:hover {
+  color: var(--rust);
+}
+
+.oracle-command-mobile__menu-panel {
+  position: absolute;
+  top: 3.95rem;
+  right: 1rem;
+  z-index: 5;
+  width: 11rem;
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  background: rgba(235, 237, 225, 0.95);
+  box-shadow: 0.45rem 0.45rem 0 rgba(32, 43, 43, 0.11);
+}
+
+.oracle-command-mobile__menu-panel span {
+  display: block;
+  padding: 0.65rem 0.7rem;
+  color: var(--muted);
+  font-family: "Space Mono", monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.04em;
+}
+
+.oracle-command-mobile__frequency-nav {
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding: 0.9rem 1.15rem 0.85rem;
+  scrollbar-width: none;
+}
+
+.oracle-command-mobile__frequency-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.oracle-command-mobile__frequency {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.46rem;
+  min-height: 2.08rem;
+  padding: 0.48rem 0.72rem;
+  border: 1px solid var(--line);
+  background: rgba(235, 237, 225, 0.43);
+  color: var(--muted);
+  font-family: "Space Mono", monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.05em;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.oracle-command-mobile__frequency:hover {
+  transform: translateY(-1px);
+}
+
+.oracle-command-mobile__frequency.is-active {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--acid);
+}
+
+.oracle-command-mobile__frequency-index {
+  color: currentColor;
+  opacity: 0.64;
+  font-size: 0.48rem;
+}
+
+.oracle-command-mobile__workspace {
+  padding: 0.7rem 1.15rem 1.4rem;
+}
+
+.oracle-command-mobile__workspace-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.6rem 0 1.35rem;
+}
+
+.oracle-command-mobile__eyebrow,
+.oracle-command-mobile__kicker,
+.oracle-command-mobile__micro {
+  display: block;
+  color: var(--muted);
+  font-family: "Space Mono", monospace;
+  font-size: 0.53rem;
+  letter-spacing: 0.08em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+.oracle-command-mobile__workspace-head h1 {
+  max-width: 14rem;
+  margin: 0.5rem 0 0.45rem;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: clamp(2.8rem, 15vw, 4.8rem);
+  font-weight: 400;
+  letter-spacing: -0.065em;
+  line-height: 0.83;
+}
+
+.oracle-command-mobile__workspace-head p {
+  max-width: 18rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.oracle-command-mobile__live-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid rgba(182, 95, 68, 0.42);
+  color: var(--rust);
+  font-family: "Space Mono", monospace;
+  font-size: 0.5rem;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.oracle-command-mobile__live-tag i {
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  background: var(--rust);
+}
+
+.oracle-command-mobile__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding: 0.72rem 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-family: "Space Mono", monospace;
+  font-size: 0.51rem;
+  letter-spacing: 0.04em;
+}
+
+.oracle-command-mobile__stack {
+  display: grid;
+  gap: 0.65rem;
+  padding-top: 0.7rem;
+}
+
+.oracle-command-mobile__card {
+  position: relative;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: rgba(236, 238, 226, 0.68);
+  box-shadow: 0.25rem 0.25rem 0 rgba(32, 43, 43, 0.08);
+}
+
+.oracle-command-mobile__card--signal {
+  min-height: 12.4rem;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.oracle-command-mobile__card--signal::after {
+  content: "03";
+  position: absolute;
+  right: 0.4rem;
+  bottom: -1.9rem;
+  color: rgba(216, 241, 74, 0.15);
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 11rem;
+  line-height: 1;
+}
+
+.oracle-command-mobile__card--signal .oracle-command-mobile__kicker {
+  color: rgba(232, 232, 220, 0.58);
+}
+
+.oracle-command-mobile__signal-line {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.2rem;
+}
+
+.oracle-command-mobile__signal-line strong {
+  color: var(--acid);
+  font-family: "Space Mono", monospace;
+  font-size: 3rem;
+  font-weight: 400;
+  letter-spacing: -0.14em;
+  line-height: 0.85;
+}
+
+.oracle-command-mobile__signal-line span {
+  max-width: 6rem;
+  color: rgba(232, 232, 220, 0.72);
+  font-family: "Space Mono", monospace;
+  font-size: 0.51rem;
+  line-height: 1.45;
+}
+
+.oracle-command-mobile__meter {
+  height: 0.4rem;
+  margin-top: 1.45rem;
+  background: rgba(232, 232, 220, 0.16);
+}
+
+.oracle-command-mobile__meter span {
+  display: block;
+  width: 72%;
+  height: 100%;
+  background: var(--acid);
+}
+
+.oracle-command-mobile__meter-copy {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  color: rgba(232, 232, 220, 0.58);
+  font-family: "Space Mono", monospace;
+  font-size: 0.49rem;
+}
+
+.oracle-command-mobile__card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.oracle-command-mobile__card-head strong {
+  display: block;
+  margin-top: 0.25rem;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 1.4rem;
+  font-weight: 400;
+  letter-spacing: -0.04em;
+}
+
+.oracle-command-mobile__card-icon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--line);
+  color: var(--rust);
+}
+
+.oracle-command-mobile__handle {
+  margin: 1.2rem 0 0.85rem;
+  font-family: "Space Mono", monospace;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+}
+
+.oracle-command-mobile__stable {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-family: "Space Mono", monospace;
+  font-size: 0.5rem;
+}
+
+.oracle-command-mobile__stable i {
+  display: block;
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 50%;
+  background: var(--acid-deep);
+}
+
+.oracle-command-mobile__readouts {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.oracle-command-mobile__readout {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.oracle-command-mobile__readout-button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.oracle-command-mobile__readout-button svg {
+  flex: 0 0 auto;
+  color: var(--rust);
+}
+
+.oracle-command-mobile__readout-button span {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.oracle-command-mobile__readout-button strong {
+  font-family: "Space Mono", monospace;
+  font-size: 0.6rem;
+  font-weight: 400;
+}
+
+.oracle-command-mobile__readout-button small {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.oracle-command-mobile__readout > svg {
+  color: var(--muted);
+}
+
+.oracle-command-mobile__evidence {
+  margin-top: 1.55rem;
+}
+
+.oracle-command-mobile__evidence-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.oracle-command-mobile__evidence-head strong {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 1.4rem;
+  font-weight: 400;
+}
+
+.oracle-command-mobile__evidence-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--rust);
+  cursor: pointer;
+  font-family: "Space Mono", monospace;
+  font-size: 0.5rem;
+  letter-spacing: 0.04em;
+}
+
+.oracle-command-mobile__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.oracle-command-mobile__metric {
+  min-height: 5.8rem;
+  padding: 0.85rem 0.55rem 0.8rem 0;
+  border-right: 1px solid var(--line);
+}
+
+.oracle-command-mobile__metric:not(:first-child) {
+  padding-left: 0.65rem;
+}
+
+.oracle-command-mobile__metric:last-child {
+  border-right: 0;
+}
+
+.oracle-command-mobile__metric span,
+.oracle-command-mobile__metric small {
+  display: block;
+  color: var(--muted);
+  font-family: "Space Mono", monospace;
+  font-size: 0.48rem;
+  line-height: 1.35;
+}
+
+.oracle-command-mobile__metric strong {
+  display: block;
+  margin: 0.55rem 0 0.35rem;
+  font-family: "Space Mono", monospace;
+  font-size: 0.74rem;
+  font-weight: 400;
+}
+
+.oracle-command-mobile__return {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  margin-top: 1.2rem;
+  padding: 0.9rem 0.95rem;
+  background: var(--rust);
+  color: #f2eadc;
+  text-align: left;
+  transition: transform 180ms ease, background 180ms ease;
+}
+
+.oracle-command-mobile__return:hover {
+  background: #954d3a;
+  transform: translateY(-2px);
+}
+
+.oracle-command-mobile__return-copy {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.oracle-command-mobile__return-copy strong {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 1.25rem;
+  font-weight: 400;
+  letter-spacing: -0.03em;
+}
+
+.oracle-command-mobile__return-copy small {
+  color: rgba(242, 234, 220, 0.74);
+  font-family: "Space Mono", monospace;
+  font-size: 0.49rem;
+  letter-spacing: 0.04em;
+}
+
+.oracle-command-mobile__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 1.15rem 1rem;
+  color: var(--muted);
+  font-family: "Space Mono", monospace;
+  font-size: 0.46rem;
+  letter-spacing: 0.05em;
+}
+
+.oracle-command-mobile__footer span:last-child {
+  text-align: right;
+}
+
+.oracle-command-mobile__toast {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 10;
+  padding: 0.7rem 0.8rem;
+  background: var(--ink);
+  color: var(--acid);
+  font-family: "Space Mono", monospace;
+  font-size: 0.53rem;
+  letter-spacing: 0.04em;
+  box-shadow: 0.3rem 0.3rem 0 rgba(32, 43, 43, 0.18);
+  animation: oracle-mobile-toast-in 220ms ease both;
+}
+
+@keyframes oracle-mobile-toast-in {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (min-width: 760px) {
+  .oracle-command-mobile__topbar {
+    min-height: 5.2rem;
+    padding: 1.2rem 2rem;
+  }
+
+  .oracle-command-mobile__back small,
+  .oracle-command-mobile__wordmark {
+    display: block;
+  }
+
+  .oracle-command-mobile__back small {
+    margin-left: 0.15rem;
+    color: var(--muted);
+    font-family: "Space Mono", monospace;
+    font-size: 0.5rem;
+    letter-spacing: 0.04em;
+  }
+
+  .oracle-command-mobile__wordmark {
+    margin-right: 1.4rem;
+  }
+
+  .oracle-command-mobile__frequency-nav {
+    padding: 1.25rem 2rem 1rem;
+  }
+
+  .oracle-command-mobile__workspace {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: 1rem 2rem 2rem;
+  }
+
+  .oracle-command-mobile__workspace-head {
+    padding-top: 1.1rem;
+  }
+
+  .oracle-command-mobile__workspace-head h1 {
+    font-size: clamp(4rem, 9vw, 6rem);
+  }
+
+  .oracle-command-mobile__stack {
+    grid-template-columns: 1.02fr 0.98fr;
+    align-items: stretch;
+    gap: 0.8rem;
+  }
+
+  .oracle-command-mobile__card--signal {
+    grid-row: span 2;
+  }
+
+  .oracle-command-mobile__evidence {
+    margin-top: 2rem;
+  }
+
+  .oracle-command-mobile__return {
+    width: auto;
+    min-width: 22rem;
+    margin-left: auto;
+  }
+
+  .oracle-command-mobile__footer {
+    padding: 1rem 2rem 1.2rem;
+  }
+}

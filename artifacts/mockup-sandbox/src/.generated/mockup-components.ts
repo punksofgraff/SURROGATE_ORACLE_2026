@@ -2,5 +2,6 @@
 type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/oracle-live-session/CommandCenter.tsx": () => import("../components/mockups/oracle-live-session/CommandCenter.tsx"),
+  "./components/mockups/oracle-live-session/CommandCenterMobile.tsx": () => import("../components/mockups/oracle-live-session/CommandCenterMobile.tsx"),
   "./components/mockups/oracle-live-session/Current.tsx": () => import("../components/mockups/oracle-live-session/Current.tsx")
 };

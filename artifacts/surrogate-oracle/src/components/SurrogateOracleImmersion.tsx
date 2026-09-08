@@ -5241,6 +5241,7 @@ export function SurrogateOracleImmersion() {
           onClose={() => setDebugMode(false)}
           userId={currentUserId || undefined}
           sessionId={currentSessionId}
+          savedReadoutCount={documentArchive.length}
           userEmail={userEmail || undefined}
           isAuthenticated={!!currentUserId}
           pendingCoins={sessionCoins}

@@ -5,13 +5,12 @@
  */
 import './BackendControlPanel.css';
 import { useState, useEffect, useRef, RefObject, useCallback } from 'react';
-import { X, Wallet, Radio, Image, Cpu, Database, Layers, RefreshCw } from 'lucide-react';
+import { ArrowLeft, X, Wallet, Radio, Image, Cpu, Database, Layers, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { CultureCoinDisplay } from './CultureCoinDisplay';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { PortraitGalleryDashboard } from './PortraitGalleryDashboard';
 import { Learn2EarnInterface } from './Learn2EarnInterface';
-import { OracleInfoCard } from './OracleInfoCard';
 import { supabase, supabaseEdgeFunctionHeaders } from '../lib/supabase';
 import { useChainFuelz } from '../hooks/useChainFuelz';
 import { checkDevUnlock } from '../lib/devAccess';
@@ -296,6 +295,7 @@ function ManifestPanel({ pendingCoins }: { pendingCoins: number }) {
 interface BackendControlPanelProps {
   userId?: string;
   sessionId?: string;
+  savedReadoutCount?: number;
   isVisible?: boolean;
   initialTab?: string;
   onClose?: () => void;
@@ -308,7 +308,7 @@ interface BackendControlPanelProps {
 // ── Main ───────────────────────────────────────────────────────────────────────
 export const BackendControlPanel = ({
   userId, sessionId, isVisible = true, initialTab = 'vault',
-  onClose, userEmail, pendingCoins = 0, oracleConversationRef,
+  onClose, userEmail, pendingCoins = 0, oracleConversationRef, savedReadoutCount = 0,
 }: BackendControlPanelProps) => {
   const [activeIdx, setActiveIdx]     = useState<number>(() => {
     const saved = localStorage.getItem('oracle_crate_active_freq') as Frequency | null;
@@ -388,6 +388,13 @@ export const BackendControlPanel = ({
   const activeFreq = FREQUENCIES[activeIdx];
   const accentHex  = ACCENT[activeFreq.accent];
   const slideDir   = activeIdx > prevIdx ? 1 : -1;
+  const activeJourney = FREQUENCY_JOURNEYS[activeFreq.id];
+  const nextFrequency = FREQUENCIES[(activeIdx + 1) % FREQUENCIES.length];
+  const seekerLabel = sessionId ? `SEEKER / ${sessionId.slice(-4).toUpperCase()}` : 'SEEKER / GUEST';
+  const connectionEvidence = geminiInfo
+    ? geminiInfo.wsState === 1 ? 'OPEN' : 'CHECK'
+    : 'SELECT DIAG';
+  const turnEvidence = geminiInfo ? String(geminiInfo.turnCount) : '—';
 
   return (
     <>
@@ -415,6 +422,7 @@ export const BackendControlPanel = ({
                 SID:{sessionId.slice(-6).toUpperCase()}
               </span>
             )}
+            <span className="ec-hdr__session">SESSION LIVE</span>
             <motion.div
               className="ec-hdr__dot"
               animate={{ scale: [1, 1.5, 1] }}
@@ -437,56 +445,85 @@ export const BackendControlPanel = ({
           style={{ height: 2, background: `linear-gradient(90deg, transparent, ${accentHex}, transparent)`, filter: 'blur(1px)', transformOrigin: 'left', flexShrink: 0 }}
         />
 
-        {/* ── Tab nav — sliding pill indicator via framer-motion layoutId ──── */}
-        <LayoutGroup id="ec-tab-nav">
-          <nav className="ec-nav" role="tablist">
-            {FREQUENCIES.map((freq, i) => {
-              const isOn = i === activeIdx;
-              let cls = 'ec-nav__btn';
-              if (isOn) cls += freq.accent === 'purple' ? ' ec-nav__btn--on-purple' : freq.accent === 'cyan' ? ' ec-nav__btn--on-cyan' : ' ec-nav__btn--on';
-              const testId = freq.id==='RESONANCE' ? 'tab-vault' : freq.id==='SQUAD' ? 'tab-squad' : freq.id==='PRINTS' ? 'tab-portraits' : freq.id==='CORE_DIAG' ? 'tab-gemini' : freq.id==='SALVAGE' ? 'tab-dev' : 'tab-manifest';
-              const pillColor = ACCENT[freq.accent];
-              return (
-                <button key={freq.id} role="tab" aria-selected={isOn} data-testid={testId} className={cls} onClick={() => goTo(i)}>
-                  {/* Sliding pill — framer-motion FLIP-animates it between tab buttons */}
-                  {isOn && (
-                    <motion.div
-                      layoutId="ec-tab-pill"
-                      className="ec-nav__pill"
-                      style={{ background: `${pillColor}18`, boxShadow: `0 0 16px ${pillColor}22, inset 0 1px 0 ${pillColor}22` }}
-                      transition={{ type: 'spring', damping: 30, stiffness: 420, mass: 0.7 }}
-                    />
-                  )}
-                  <span className="ec-nav__icon"><freq.Icon size={20} /></span>
-                  <span className="ec-nav__label">{freq.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </LayoutGroup>
+        <div className="ec-command-body">
+          <aside className="ec-rail" aria-label="Console frequencies">
+            <div className="ec-rail__head">
+              <span className="ec-rail__kicker">COMMAND CENTER</span>
+              <strong>ORIENTATION</strong>
+              <span>06 frequencies / {userId ? '01 seeker' : 'guest access'}</span>
+            </div>
 
-        {/* ── Page content — domino card scroll ───────────────────────────── */}
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={activeFreq.id}
-            className="ec-page"
-            initial={{ x: slideDir * 60, opacity: 0, filter: 'blur(6px)' }}
-            animate={{ x: 0,             opacity: 1, filter: 'blur(0px)' }}
-            exit={{   x: -slideDir * 48, opacity: 0, filter: 'blur(8px)' }}
-            transition={{ type: 'spring', damping: 26, stiffness: 260, mass: 0.85 }}
-            onPointerDown={handlePagePointerDown}
-            onPointerUp={handlePagePointerUp}
-            onPointerCancel={handlePagePointerCancel}
-          >
-            <OracleInfoCard
-              eyebrow={FREQUENCY_JOURNEYS[activeFreq.id].eyebrow}
-              title={FREQUENCY_JOURNEYS[activeFreq.id].title}
-              copy={FREQUENCY_JOURNEYS[activeFreq.id].copy}
-              signal={FREQUENCY_JOURNEYS[activeFreq.id].signal}
-              accent={FREQUENCY_JOURNEYS[activeFreq.id].accent}
-              index={`${String(activeIdx + 1).padStart(2, '0')} / 06`}
-              className="ec-journey-card"
-            />
+            {/* ── Frequency rail — the existing six state machine, reframed ── */}
+            <LayoutGroup id="ec-tab-nav">
+              <nav className="ec-nav" role="tablist" aria-label="Backend frequencies">
+                {FREQUENCIES.map((freq, i) => {
+                  const isOn = i === activeIdx;
+                  let cls = 'ec-nav__btn';
+                  if (isOn) cls += freq.accent === 'purple' ? ' ec-nav__btn--on-purple' : freq.accent === 'cyan' ? ' ec-nav__btn--on-cyan' : ' ec-nav__btn--on';
+                  const testId = freq.id==='RESONANCE' ? 'tab-vault' : freq.id==='SQUAD' ? 'tab-squad' : freq.id==='PRINTS' ? 'tab-portraits' : freq.id==='CORE_DIAG' ? 'tab-gemini' : freq.id==='SALVAGE' ? 'tab-dev' : 'tab-manifest';
+                  const pillColor = ACCENT[freq.accent];
+                  return (
+                    <button key={freq.id} role="tab" aria-selected={isOn} data-testid={testId} className={cls} onClick={() => goTo(i)}>
+                      {isOn && (
+                        <motion.div
+                          layoutId="ec-tab-pill"
+                          className="ec-nav__pill"
+                          style={{ background: `${pillColor}18`, boxShadow: `0 0 16px ${pillColor}22, inset 0 1px 0 ${pillColor}22` }}
+                          transition={{ type: 'spring', damping: 30, stiffness: 420, mass: 0.7 }}
+                        />
+                      )}
+                      <span className="ec-nav__index">{String(i + 1).padStart(2, '0')}</span>
+                      <span className="ec-nav__icon"><freq.Icon size={17} /></span>
+                      <span className="ec-nav__copy">
+                        <span className="ec-nav__label">{freq.label}</span>
+                        <small>{FREQUENCY_JOURNEYS[freq.id].signal.split('→')[0].trim().toLowerCase()}</small>
+                      </span>
+                      {isOn && <span className="ec-nav__mark">●</span>}
+                    </button>
+                  );
+                })}
+              </nav>
+            </LayoutGroup>
+
+            <div className="ec-rail__foot">
+              <span>ESC / CLOSE</span>
+              {onClose && (
+                <button type="button" className="ec-rail__return" onClick={onClose}>
+                  <ArrowLeft size={13} aria-hidden="true" />
+                  RETURN TO ALLEY
+                </button>
+              )}
+            </div>
+          </aside>
+
+          <main className="ec-workspace" aria-labelledby="ec-workspace-title">
+            <header className="ec-workspace__head">
+              <div>
+                <span className="ec-workspace__eyebrow">{String(activeIdx + 1).padStart(2, '0')} · {activeFreq.label} FREQUENCY / {activeFreq.mhz}MHZ</span>
+                <h1 id="ec-workspace-title">{activeJourney.title}</h1>
+                <p>{activeJourney.copy}</p>
+              </div>
+              <div className="ec-workspace__meta">
+                <span>{seekerLabel}</span>
+                <span>LOCAL SESSION / READY</span>
+              </div>
+            </header>
+
+            <div className="ec-workspace__divider" />
+
+            {/* ── Page content — existing frequency workflows, bounded here ── */}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={activeFreq.id}
+                className="ec-page"
+                initial={{ x: slideDir * 60, opacity: 0, filter: 'blur(6px)' }}
+                animate={{ x: 0,             opacity: 1, filter: 'blur(0px)' }}
+                exit={{   x: -slideDir * 48, opacity: 0, filter: 'blur(8px)' }}
+                transition={{ type: 'spring', damping: 26, stiffness: 260, mass: 0.85 }}
+                onPointerDown={handlePagePointerDown}
+                onPointerUp={handlePagePointerUp}
+                onPointerCancel={handlePagePointerCancel}
+              >
 
             {/* ════════════════════════════════════════════════════════════
                 RESONANCE — VAULT
@@ -785,8 +822,44 @@ export const BackendControlPanel = ({
             ════════════════════════════════════════════════════════════ */}
             {activeFreq.id === 'MANIFEST' && <ManifestPanel pendingCoins={pendingCoins} />}
 
-          </motion.div>
-        </AnimatePresence>
+              </motion.div>
+            </AnimatePresence>
+          </main>
+
+          <aside className="ec-context" aria-label="Console orientation">
+            <span className="ec-context__eyebrow">FIELD NOTE</span>
+            <h2>Tools stay close. The alley stays intact.</h2>
+            <p>Every surface opens as a reversible workspace. Close it, and the Oracle is waiting where you left it.</p>
+            <div className="ec-context__rule" />
+
+            <div className="ec-context__evidence">
+              <div className="ec-context__section-label">SESSION EVIDENCE</div>
+              <div className="ec-context__metric">
+                <span>CONNECTION</span>
+                <strong>{connectionEvidence}</strong>
+                <small>{geminiInfo ? 'Gemini live' : 'live voice health'}</small>
+              </div>
+              <div className="ec-context__metric">
+                <span>TURN RHYTHM</span>
+                <strong>{turnEvidence}</strong>
+                <small>{geminiInfo ? 'exchanges' : 'select DIAG to inspect'}</small>
+              </div>
+              <div className="ec-context__metric">
+                <span>ARCHIVE</span>
+                <strong>{String(savedReadoutCount).padStart(2, '0')}</strong>
+                <small>private readouts</small>
+              </div>
+            </div>
+
+            <div className="ec-context__rule" />
+            <span className="ec-context__section-label">NEXT AVAILABLE</span>
+            <strong className="ec-context__next">{nextFrequency.label}</strong>
+            <button type="button" className="ec-context__button" onClick={() => goTo((activeIdx + 1) % FREQUENCIES.length)}>
+              OPEN {nextFrequency.label}
+              <RefreshCw size={14} aria-hidden="true" />
+            </button>
+          </aside>
+        </div>
 
         <div className="ec-safe" />
       </motion.div>

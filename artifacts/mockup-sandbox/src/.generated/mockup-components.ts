@@ -4,5 +4,6 @@ export const modules: ModuleMap = {
   "./components/mockups/oracle-live-session/CommandCenter.tsx": () => import("../components/mockups/oracle-live-session/CommandCenter.tsx"),
   "./components/mockups/oracle-live-session/CommandCenterAlt.tsx": () => import("../components/mockups/oracle-live-session/CommandCenterAlt.tsx"),
   "./components/mockups/oracle-live-session/CommandCenterMobile.tsx": () => import("../components/mockups/oracle-live-session/CommandCenterMobile.tsx"),
+  "./components/mockups/oracle-live-session/CommandCenterStacked.tsx": () => import("../components/mockups/oracle-live-session/CommandCenterStacked.tsx"),
   "./components/mockups/oracle-live-session/Current.tsx": () => import("../components/mockups/oracle-live-session/Current.tsx")
 };

@@ -42,6 +42,7 @@ import { TourSelection } from './TourSelection';
 import { TalismanCard, TalismanData, extractProphecy } from './TalismanCard';
 import { OracleHaloRing } from './OracleHaloRing';
 import { Canvas, useThree } from '@react-three/fiber';
+import { WebGPURenderer } from 'three/webgpu';
 import { OracleAvatar3D } from './OracleAvatar3D';
 import { OracleQuarks } from './OracleQuarks';
 import { EffectComposer, DepthOfField, Bloom, ChromaticAberration, Noise, Scanline } from '@react-three/postprocessing';
@@ -238,6 +239,21 @@ const PORTRAIT_REVEAL_VARIANTS: Record<string, any> = {
 };
 
 const SILENCE_VISEME_STATE: VisemeState = { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
+
+/**
+ * R3F accepts an async renderer factory. Use Three's WebGPURenderer on browsers
+ * that passed the WebGPU canvas admission probe; use the existing WebGL props
+ * only for the explicit compatibility backend.
+ */
+const createOracleWebGPURenderer = async (defaults: { canvas: HTMLCanvasElement }) => {
+  const renderer = new WebGPURenderer({
+    canvas: defaults.canvas,
+    alpha: true,
+    antialias: true,
+  });
+  await renderer.init();
+  return renderer as unknown as import('three').WebGLRenderer;
+};
 
 const DEBRIS = [
   ['◈','#00ff88','12%','22%','0s','6.1s'],
@@ -3721,16 +3737,18 @@ export function SurrogateOracleImmersion() {
       <div className="oracle-side-bleeds" />
       <div className="oracle-light-rays" />
 
-      {gpu.ready && renderTier >= 1 && scenePhase === 'dormant' && (
+      {gpu.ready && gpu.backend !== 'none' && renderTier >= 1 && scenePhase === 'dormant' && (
         <div className="oracle-landing-field" aria-hidden="true">
           <Canvas
             camera={{ position: [0, 0, 1.8], fov: 68 }}
             dpr={renderTier === 1 ? Math.min(window.devicePixelRatio, 1.25) : Math.min(window.devicePixelRatio, 1.75)}
-            gl={{
-              antialias: renderTier >= 2,
-              alpha: true,
-              powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
-            }}
+             gl={gpu.backend === 'webgpu'
+               ? createOracleWebGPURenderer
+               : {
+                   antialias: renderTier >= 2,
+                   alpha: true,
+                   powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
+                 }}
             style={{ width: '100%', height: '100%', background: 'transparent' }}
             frameloop="always"
           >
@@ -3846,7 +3864,7 @@ export function SurrogateOracleImmersion() {
                 CSS opacity + transition handles the same 1.2 s fade-in that motion.div gave.
                 Suspense fallback: transparent (null) when canvasWarmed, so re-entering seekers
                 never see a "frozen static image" flash during WebGL context init. */}
-            {gpu.ready && renderTier >= 1 && (awakened || scenePhase === 'terminal' || canvasWarmed) && (
+            {gpu.ready && gpu.backend !== 'none' && renderTier >= 1 && (awakened || scenePhase === 'terminal' || canvasWarmed) && (
               <div
                  className="oracle-avatar-canvas oracle-avatar-smoke-hook"
                 style={{
@@ -3894,11 +3912,13 @@ export function SurrogateOracleImmersion() {
                           // above base/2 would silently increase the mobile budget.
                           return oracleCanvasExpanded ? base / ORACLE_ORBIT_EXPANSION : base;
                         })()}
-                        gl={{
-                          antialias: renderTier >= 2,
-                          alpha: true,
-                          powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
-                        }}
+                         gl={gpu.backend === 'webgpu'
+                           ? createOracleWebGPURenderer
+                           : {
+                               antialias: renderTier >= 2,
+                               alpha: true,
+                               powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
+                             }}
                          style={{
                            width: '100%',
                            height: '100%',

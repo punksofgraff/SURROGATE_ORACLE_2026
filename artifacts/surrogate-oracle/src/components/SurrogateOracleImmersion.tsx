@@ -190,6 +190,7 @@ import { defaultAudioTracks } from '../config/audioTracks';
 import './SurrogateOracleImmersion.css';
 
 const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
+const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = '/alley-bg.png';
 const DEFAULT_STATION    = 0; // Graff Punks — sole station
 const FREE_EXCHANGES     = 20; // two rounds of ten completed Seeker + Oracle exchanges, not exits
@@ -326,7 +327,7 @@ export function SurrogateOracleImmersion() {
   // available. A confirmed renderer can still fall back to tier 1 under the
   // runtime FPS guard; an unresolved or unsupported renderer remains dark.
   const renderTier = (
-    !gpu.ready ? 0 : isDegraded && gpu.tier > 0 ? Math.max(1, gpu.tier) : gpu.tier
+    !gpu.ready ? 0 : isDegraded ? Math.max(1, gpu.tier) : gpu.tier
   ) as 0 | 1 | 2 | 3;
   useEffect(() => {
     logStep(
@@ -351,6 +352,7 @@ export function SurrogateOracleImmersion() {
     typeof window !== 'undefined' && !!sessionStorage.getItem('oracle_canvas_warmed')
   );
 
+  const [oracleAvatarDataUrl] = useState<string>(ORACLE_AVATAR_URL);
   const [currentUserId, setCurrentUserId]   = useState<string | null>(() => localStorage.getItem('oracle_seeker_key'));
   const [currentSessionId, setCurrentSessionId] = useState(() => {
     const stored = localStorage.getItem('oracle_active_session_id');
@@ -3402,10 +3404,7 @@ export function SurrogateOracleImmersion() {
   const oracleManifestReady = awakened && (hasManifested || isGeminiConnected || forceOracleManifest);
   const oracleEntranceActive = awakened && !!journey.selectedKnifeQuestion && !isMusicMode && !isMusicReturning;
   const oracleWarmupActive = oracleEntranceActive && !isGeminiSessionLive;
-  // The live orbit must be expanded in XR too. XR enlarges the avatar wrapper,
-  // but excluding it from the canvas expansion leaves a visible rectangular
-  // WebGL viewport around the otherwise full-bleed hologram.
-  const oracleCanvasExpanded = oracleEntranceActive;
+  const oracleCanvasExpanded = oracleEntranceActive && !isXRMode;
   // True when the 6s fallback fired but we still have no live session — shows "FRACTURE MANIFESTING"
   // instead of a silently frozen face so the seeker knows the system is trying to reconnect.
   const isFractureManifesting = isOracleMode && forceOracleManifest && !isGeminiConnected;
@@ -3820,21 +3819,10 @@ export function SurrogateOracleImmersion() {
           <div data-halo-ghost={awakened ? 'true' : undefined}>
             <OracleHaloRing active={awakened} isXRMode={isXRMode} />
           </div>
-          <div
-            className="oracle-avatar-wrapper"
-            style={isOracleMode ? {
-              overflow: 'visible',
-              borderRadius: 0,
-              clipPath: 'none',
-              maskImage: 'none',
-              WebkitMaskImage: 'none',
-            } : undefined}
-          >
+          <div className="oracle-avatar-wrapper">
             {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} alignment={oracleAlignment === 'sacred' || oracleAlignment === 'profane' ? oracleAlignment : null} />}
             <div className="oracle-scanlines" />
-            {!isOracleMode && (
-              <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
-            )}
+            <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
             {isFractureManifesting && (
               <div className="oracle-fracture-label" aria-live="polite">FRACTURE MANIFESTING</div>
             )}
@@ -3866,14 +3854,7 @@ export function SurrogateOracleImmersion() {
                   zIndex: 3,
                 }}
               >
-                <div
-                  className="oracle-avatar-headroom-hook"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    overflow: isOracleMode ? 'visible' : undefined,
-                  }}
-                >
+                <div className="oracle-avatar-headroom-hook" style={{ width: '100%', height: '100%' }}>
                   <OracleErrorBoundary>
                     <Suspense fallback={canvasWarmed ? null : <OracleAvatarFallback />}>
                       <Canvas
@@ -3899,21 +3880,7 @@ export function SurrogateOracleImmersion() {
                           alpha: true,
                           powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
                         }}
-                         style={{
-                           width: '100%',
-                           height: '100%',
-                           display: 'block',
-                           background: 'transparent',
-                           borderRadius: 0,
-                           clipPath: 'none',
-                           maskImage: 'none',
-                           WebkitMaskImage: 'none',
-                         }}
-                         onCreated={({ gl, scene }) => {
-                           gl.setClearColor(0x000000, 0);
-                           gl.setClearAlpha(0);
-                           scene.background = null;
-                         }}
+                        style={{ width: '100%', height: '100%', background: 'transparent' }}
                         frameloop="always"
                       >
                          <OrbitZoomCompensator enabled={oracleCanvasExpanded} />
@@ -3989,7 +3956,7 @@ export function SurrogateOracleImmersion() {
                             </Physics>
                           </Suspense>
                         )}
-                         {renderTier >= 1 && !isOracleMode && (
+                        {renderTier >= 1 && (
                           <EffectComposer multisampling={renderTier >= 2 ? 4 : 0}>
                             {[
                               <Bloom

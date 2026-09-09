@@ -42,7 +42,6 @@ import { TourSelection } from './TourSelection';
 import { TalismanCard, TalismanData, extractProphecy } from './TalismanCard';
 import { OracleHaloRing } from './OracleHaloRing';
 import { Canvas, useThree } from '@react-three/fiber';
-import { WebGPURenderer } from 'three/webgpu';
 import { OracleAvatar3D } from './OracleAvatar3D';
 import { OracleQuarks } from './OracleQuarks';
 import { EffectComposer, DepthOfField, Bloom, ChromaticAberration, Noise, Scanline } from '@react-three/postprocessing';
@@ -240,21 +239,6 @@ const PORTRAIT_REVEAL_VARIANTS: Record<string, any> = {
 
 const SILENCE_VISEME_STATE: VisemeState = { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
 
-/**
- * R3F accepts an async renderer factory. Use Three's WebGPURenderer on browsers
- * that passed the WebGPU canvas admission probe; use the existing WebGL props
- * only for the explicit compatibility backend.
- */
-const createOracleWebGPURenderer = async (defaults: { canvas: HTMLCanvasElement }) => {
-  const renderer = new WebGPURenderer({
-    canvas: defaults.canvas,
-    alpha: true,
-    antialias: true,
-  });
-  await renderer.init();
-  return renderer as unknown as import('three').WebGLRenderer;
-};
-
 const DEBRIS = [
   ['◈','#00ff88','12%','22%','0s','6.1s'],
   ['▸','#00ccff','78%','18%','1.3s','5.4s'],
@@ -342,12 +326,8 @@ export function SurrogateOracleImmersion() {
   // available. A confirmed renderer can still fall back to tier 1 under the
   // runtime FPS guard; an unresolved or unsupported renderer remains dark.
   const renderTier = (
-    !gpu.ready ? 0 : isDegraded ? Math.max(1, gpu.tier) : gpu.tier
+    !gpu.ready ? 0 : isDegraded && gpu.tier > 0 ? Math.max(1, gpu.tier) : gpu.tier
   ) as 0 | 1 | 2 | 3;
-  // The static Oracle remains a real live-mode surface when no renderer can be
-  // admitted. This keeps the cabinet inhabited in restricted preview browsers
-  // without ever mounting a Canvas that will throw a context error.
-  const canMountOracleCanvas = gpu.ready && gpu.backend !== 'none' && renderTier >= 1;
   useEffect(() => {
     logStep(
       `RENDER TIER — tier=${renderTier} degraded=${isDegraded ? 'true' : 'false'} gpu=${gpu.tier}`,
@@ -3741,18 +3721,16 @@ export function SurrogateOracleImmersion() {
       <div className="oracle-side-bleeds" />
       <div className="oracle-light-rays" />
 
-      {canMountOracleCanvas && scenePhase === 'dormant' && (
+      {gpu.ready && renderTier >= 1 && scenePhase === 'dormant' && (
         <div className="oracle-landing-field" aria-hidden="true">
           <Canvas
             camera={{ position: [0, 0, 1.8], fov: 68 }}
             dpr={renderTier === 1 ? Math.min(window.devicePixelRatio, 1.25) : Math.min(window.devicePixelRatio, 1.75)}
-             gl={gpu.backend === 'webgpu'
-               ? createOracleWebGPURenderer
-               : {
-                   antialias: renderTier >= 2,
-                   alpha: true,
-                   powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
-                 }}
+            gl={{
+              antialias: renderTier >= 2,
+              alpha: true,
+              powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
+            }}
             style={{ width: '100%', height: '100%', background: 'transparent' }}
             frameloop="always"
           >
@@ -3854,14 +3832,8 @@ export function SurrogateOracleImmersion() {
           >
             {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} alignment={oracleAlignment === 'sacred' || oracleAlignment === 'profane' ? oracleAlignment : null} />}
             <div className="oracle-scanlines" />
-            {(!isOracleMode || !canMountOracleCanvas) && (
-              <img
-                ref={staticAvatarRef}
-                src={ORACLE_STATIC_URL}
-                alt=""
-                aria-hidden="true"
-                className={`oracle-avatar-static${isOracleMode && !canMountOracleCanvas ? ' oracle-avatar-static--gpu-fallback' : ''}`}
-              />
+            {!isOracleMode && (
+              <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
             )}
             {isFractureManifesting && (
               <div className="oracle-fracture-label" aria-live="polite">FRACTURE MANIFESTING</div>
@@ -3874,7 +3846,7 @@ export function SurrogateOracleImmersion() {
                 CSS opacity + transition handles the same 1.2 s fade-in that motion.div gave.
                 Suspense fallback: transparent (null) when canvasWarmed, so re-entering seekers
                 never see a "frozen static image" flash during WebGL context init. */}
-            {canMountOracleCanvas && (awakened || scenePhase === 'terminal' || canvasWarmed) && (
+            {gpu.ready && renderTier >= 1 && (awakened || scenePhase === 'terminal' || canvasWarmed) && (
               <div
                  className="oracle-avatar-canvas oracle-avatar-smoke-hook"
                 style={{
@@ -3922,13 +3894,11 @@ export function SurrogateOracleImmersion() {
                           // above base/2 would silently increase the mobile budget.
                           return oracleCanvasExpanded ? base / ORACLE_ORBIT_EXPANSION : base;
                         })()}
-                         gl={gpu.backend === 'webgpu'
-                           ? createOracleWebGPURenderer
-                           : {
-                               antialias: renderTier >= 2,
-                               alpha: true,
-                               powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
-                             }}
+                        gl={{
+                          antialias: renderTier >= 2,
+                          alpha: true,
+                          powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
+                        }}
                          style={{
                            width: '100%',
                            height: '100%',

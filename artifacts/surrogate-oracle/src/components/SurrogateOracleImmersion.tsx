@@ -1291,6 +1291,12 @@ export function SurrogateOracleImmersion() {
       knifeSelectedRef.current = false;
       oracleHasSpokenRef.current = false;
     }
+    if (scenePhase !== 'oracle') {
+      // A failed Oracle handshake must not leak its recovery latch into the
+      // alley or the next visit. The static warm-up surface is allowed there,
+      // but the fracture state belongs only to the current Oracle attempt.
+      setForceOracleManifest(false);
+    }
     if (scenePhase === 'oracle') {
       sessionEndedRef.current = false; mirrorRevealedRef.current = false; portraitTriggeredRef.current = false; portraitGenerationCountRef.current = 0; setPortraitGenerationCount(0); pendingPortraitUrlRef.current = null;
       exitWritesRef.current = null; // fresh session — no stale writes to wait on at next exit
@@ -1339,6 +1345,14 @@ export function SurrogateOracleImmersion() {
       setTalismanData(null);
     }
   }, [scenePhase]);
+
+  useEffect(() => {
+    if (isGeminiConnected) {
+      // Recovery is authoritative: once Live is back, remove the fallback
+      // state immediately instead of waiting for the next scene transition.
+      setForceOracleManifest(false);
+    }
+  }, [isGeminiConnected]);
 
   // Mirror reveal auto-dismiss — generous dwell, but never blocks the mic permanently.
   useEffect(() => {
@@ -1406,6 +1420,12 @@ export function SurrogateOracleImmersion() {
         setForceOracleManifest(true);
         oracleConversationRef.current?.prewarm();
         logStep('ORACLE MANIFEST FALLBACK — Gemini slow, reconnecting + FRACTURE MANIFESTING', 'warn');
+        // Do not leave the recovery label permanently painted over the
+        // interface when a provider is unavailable for the whole attempt.
+        fallbackTimer = setTimeout(() => {
+          setForceOracleManifest(false);
+          logStep('ORACLE MANIFEST FALLBACK — recovery label expired', 'warn');
+        }, 12000);
       }, 6000);
     }
     return () => {
@@ -3797,7 +3817,9 @@ export function SurrogateOracleImmersion() {
           <div className="oracle-avatar-wrapper">
             {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} alignment={oracleAlignment === 'sacred' || oracleAlignment === 'profane' ? oracleAlignment : null} />}
             <div className="oracle-scanlines" />
-            <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
+            {!isOracleMode && (
+              <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
+            )}
             {isFractureManifesting && (
               <div className="oracle-fracture-label" aria-live="polite">FRACTURE MANIFESTING</div>
             )}

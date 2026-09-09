@@ -6084,6 +6084,19 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   border: none !important;
   border-radius: 0 !important;
   overflow: visible !important;
+  clip-path: none !important;
+  mask: none !important;
+  -webkit-mask: none !important;
+}
+
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-headroom-hook,
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas,
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas canvas {
+  overflow: visible !important;
+  border-radius: 0 !important;
+  clip-path: none !important;
+  mask: none !important;
+  -webkit-mask: none !important;
 }
 
 /* ── Free the orbit: grow the WebGL canvas box beyond the avatar footprint ────
@@ -6102,8 +6115,8 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
    in SurrogateOracleImmersion.tsx: OrbitZoomCompensator divides camera.zoom and
    the dpr budget by the same factor so the avatar's on-screen size and the
    total rendered pixel count are IDENTICAL to the card-sized canvas. */
- .oracle-stage[data-oracle-entrance="warming"]:not([data-xr-mode="true"]) .oracle-avatar-canvas,
- .oracle-stage[data-oracle-entrance="live"]:not([data-xr-mode="true"]) .oracle-avatar-canvas {
+  .oracle-stage[data-oracle-entrance="warming"] .oracle-avatar-canvas,
+  .oracle-stage[data-oracle-entrance="live"] .oracle-avatar-canvas {
   inset: -50% !important;
   width: auto !important;
   height: auto !important;
@@ -6113,7 +6126,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
  /* R3F's inner canvas can retain the wrapper's pre-expansion measured width.
     Explicitly center that drawing surface in the expanded orbit wrapper so
     its projected avatar and particles share the wrapper/stage midpoint. */
- .oracle-stage[data-oracle-state="oracle"]:not([data-xr-mode="true"]) .oracle-avatar-canvas canvas {
+  .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas canvas {
    position: absolute !important;
    left: 50% !important;
    top: 50% !important;
@@ -6384,7 +6397,7 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
 /* ── Canvas: resting aura — drop-shadow follows the figure, not a box ───────
    Masks removed: iOS Safari cannot apply CSS mask-image to hardware-composited
    (WebGL) layers. Drop-shadow alone handles the holographic edge bleed.       */
-  .oracle-stage[data-oracle-state="oracle"]:not([data-xr-mode="true"]) .oracle-avatar-canvas {
+  .oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas {
   border-radius: 0 !important;
   filter:
     drop-shadow(0 0 28px rgba(0,255,136,0.28))

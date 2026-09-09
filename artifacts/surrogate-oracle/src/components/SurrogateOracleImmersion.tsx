@@ -3838,10 +3838,21 @@ export function SurrogateOracleImmersion() {
           <div data-halo-ghost={awakened ? 'true' : undefined}>
             <OracleHaloRing active={awakened} isXRMode={isXRMode} />
           </div>
-          <div className="oracle-avatar-wrapper">
+          <div
+            className="oracle-avatar-wrapper"
+            style={isOracleMode ? {
+              overflow: 'visible',
+              borderRadius: 0,
+              clipPath: 'none',
+              maskImage: 'none',
+              WebkitMaskImage: 'none',
+            } : undefined}
+          >
             {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} alignment={oracleAlignment === 'sacred' || oracleAlignment === 'profane' ? oracleAlignment : null} />}
             <div className="oracle-scanlines" />
-            <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
+            {!isOracleMode && (
+              <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
+            )}
             {isFractureManifesting && (
               <div className="oracle-fracture-label" aria-live="polite">FRACTURE MANIFESTING</div>
             )}
@@ -3873,7 +3884,14 @@ export function SurrogateOracleImmersion() {
                   zIndex: 3,
                 }}
               >
-                <div className="oracle-avatar-headroom-hook" style={{ width: '100%', height: '100%' }}>
+                <div
+                  className="oracle-avatar-headroom-hook"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    overflow: isOracleMode ? 'visible' : undefined,
+                  }}
+                >
                   <OracleErrorBoundary>
                     <Suspense fallback={canvasWarmed ? null : <OracleAvatarFallback />}>
                       <Canvas
@@ -3901,7 +3919,21 @@ export function SurrogateOracleImmersion() {
                                alpha: true,
                                powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
                              }}
-                        style={{ width: '100%', height: '100%', background: 'transparent' }}
+                         style={{
+                           width: '100%',
+                           height: '100%',
+                           display: 'block',
+                           background: 'transparent',
+                           borderRadius: 0,
+                           clipPath: 'none',
+                           maskImage: 'none',
+                           WebkitMaskImage: 'none',
+                         }}
+                         onCreated={({ gl, scene }) => {
+                           gl.setClearColor(0x000000, 0);
+                           gl.setClearAlpha(0);
+                           scene.background = null;
+                         }}
                         frameloop="always"
                       >
                          <OrbitZoomCompensator enabled={oracleCanvasExpanded} />

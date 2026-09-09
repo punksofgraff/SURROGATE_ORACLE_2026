@@ -190,7 +190,6 @@ import { defaultAudioTracks } from '../config/audioTracks';
 import './SurrogateOracleImmersion.css';
 
 const ORACLE_STATIC_URL  = 'https://i.postimg.cc/26pvW2SN/orackle-only-static.png';
-const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = '/alley-bg.png';
 const DEFAULT_STATION    = 0; // Graff Punks — sole station
 const FREE_EXCHANGES     = 20; // two rounds of ten completed Seeker + Oracle exchanges, not exits
@@ -352,7 +351,6 @@ export function SurrogateOracleImmersion() {
     typeof window !== 'undefined' && !!sessionStorage.getItem('oracle_canvas_warmed')
   );
 
-  const [oracleAvatarDataUrl] = useState<string>(ORACLE_AVATAR_URL);
   const [currentUserId, setCurrentUserId]   = useState<string | null>(() => localStorage.getItem('oracle_seeker_key'));
   const [currentSessionId, setCurrentSessionId] = useState(() => {
     const stored = localStorage.getItem('oracle_active_session_id');
@@ -3399,7 +3397,10 @@ export function SurrogateOracleImmersion() {
   const oracleManifestReady = awakened && (hasManifested || isGeminiConnected || forceOracleManifest);
   const oracleEntranceActive = awakened && !!journey.selectedKnifeQuestion && !isMusicMode && !isMusicReturning;
   const oracleWarmupActive = oracleEntranceActive && !isGeminiSessionLive;
-  const oracleCanvasExpanded = oracleEntranceActive && !isXRMode;
+  // The live orbit must be expanded in XR too. XR enlarges the avatar wrapper,
+  // but excluding it from the canvas expansion leaves a visible rectangular
+  // WebGL viewport around the otherwise full-bleed hologram.
+  const oracleCanvasExpanded = oracleEntranceActive;
   // True when the 6s fallback fired but we still have no live session — shows "FRACTURE MANIFESTING"
   // instead of a silently frozen face so the seeker knows the system is trying to reconnect.
   const isFractureManifesting = isOracleMode && forceOracleManifest && !isGeminiConnected;

@@ -19,6 +19,8 @@ import { getGPUTier } from 'detect-gpu';
 export interface GPUProfile {
   /** 0 (no effects) → 3 (everything, high DPR). */
   tier: 0 | 1 | 2 | 3;
+  /** WebGPU is preferred; WebGL is only the compatibility fallback. */
+  backend: 'webgpu' | 'webgl' | 'none';
   isMobile: boolean;
   /** false until the async probe resolves — callers get a safe default meanwhile. */
   ready: boolean;
@@ -27,9 +29,9 @@ export interface GPUProfile {
 /** Stay renderer-free until the probe proves a context is available. Starting
  * at tier 2 causes repeated Canvas construction failures on blocked WebGL
  * surfaces, which reads as a bright loading flash rather than a quiet fallback. */
-const DEFAULT_PROFILE: GPUProfile = { tier: 0, isMobile: false, ready: false };
+const DEFAULT_PROFILE: GPUProfile = { tier: 0, backend: 'none', isMobile: false, ready: false };
 
-const STORAGE_KEY = 'oracle_gpu_profile_v5';
+const STORAGE_KEY = 'oracle_gpu_profile_v6';
 
 let cached: GPUProfile | null = null;
 let pending: Promise<GPUProfile> | null = null;
@@ -42,11 +44,52 @@ function readSessionCache(): GPUProfile | null {
     if (typeof parsed?.tier !== 'number') return null;
     return {
       tier: Math.max(0, Math.min(3, parsed.tier)) as GPUProfile['tier'],
+      backend: parsed.backend === 'webgpu' || parsed.backend === 'webgl' ? parsed.backend : 'none',
       isMobile: !!parsed.isMobile,
       ready: true,
     };
   } catch {
     return null;
+  }
+}
+
+type WebGPUProbe = {
+  requestAdapter: (options?: { powerPreference?: 'low-power' | 'high-performance' }) => Promise<{
+    requestDevice: () => Promise<{ destroy?: () => void }>;
+  } | null>;
+  getPreferredCanvasFormat: () => string;
+};
+
+type WebGPUCanvasContext = {
+  configure: (configuration: { device: unknown; format: string; alphaMode: 'premultiplied' }) => void;
+  unconfigure?: () => void;
+};
+
+async function probeWebGPU(): Promise<{ supported: boolean; isMobile: boolean }> {
+  const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+  const gpu = (navigator as Navigator & { gpu?: WebGPUProbe }).gpu;
+  if (!gpu) return { supported: false, isMobile };
+
+  let device: { destroy?: () => void } | null = null;
+  let context: WebGPUCanvasContext | null = null;
+  try {
+    const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) return { supported: false, isMobile };
+    device = await adapter.requestDevice();
+    const canvas = document.createElement('canvas');
+    context = canvas.getContext('webgpu') as WebGPUCanvasContext | null;
+    if (!context) return { supported: false, isMobile };
+    context.configure({
+      device,
+      format: gpu.getPreferredCanvasFormat(),
+      alphaMode: 'premultiplied',
+    });
+    return { supported: true, isMobile };
+  } catch {
+    return { supported: false, isMobile };
+  } finally {
+    context?.unconfigure?.();
+    device?.destroy?.();
   }
 }
 
@@ -104,51 +147,65 @@ function probe(): Promise<GPUProfile> {
   }
 
   if (!pending) {
-    pending = getGPUTier({ failIfMajorPerformanceCaveat: false })
-      .then((result) => {
-        const rendererInfo = getWebGLRendererInfo();
-        if (!rendererInfo.supported) {
-          cached = { tier: 0, isMobile: rendererInfo.isMobile || !!result.isMobile, ready: true };
-          try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached)); } catch {}
-          return cached;
-        }
+    pending = probeWebGPU().then(async (webgpu) => {
+      if (webgpu.supported) {
+        cached = {
+          tier: webgpu.isMobile ? 2 : 3,
+          backend: 'webgpu',
+          isMobile: webgpu.isMobile,
+          ready: true,
+        };
+        try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached)); } catch {}
+        return cached;
+      }
 
-        const unsupported =
-          result.type === 'WEBGL_UNSUPPORTED' || result.type === 'BLOCKLISTED';
-        if (unsupported) {
-          const { isMobile, supported } = getWebGLRendererInfo();
-          cached = { tier: supported ? 1 : 0, isMobile: isMobile || !!result.isMobile, ready: true };
-          try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached)); } catch {}
-          return cached;
-        }
+      const rendererInfo = getWebGLRendererInfo();
+      if (!rendererInfo.supported) {
+        cached = {
+          tier: 0,
+          backend: 'none',
+          isMobile: webgpu.isMobile || rendererInfo.isMobile,
+          ready: true,
+        };
+        try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached)); } catch {}
+        return cached;
+      }
 
-        let tier = Math.max(0, Math.min(3, result.tier)) as GPUProfile['tier'];
-        const isMobile = !!result.isMobile;
-
-        // If detect-gpu returned tier 1 on a capable desktop (e.g. unknown GPU string / missing benchmark),
-        // use fast hardware heuristic to prevent stranding strong machines at tier 1.
-        if (tier <= 1 && !isMobile) {
-          const heuristic = heuristicTierFromRenderer(rendererInfo.renderer, false);
-          if (heuristic > tier) {
-            tier = heuristic;
+      return getGPUTier({ failIfMajorPerformanceCaveat: false })
+        .then((result) => {
+          const unsupported =
+            result.type === 'WEBGL_UNSUPPORTED' || result.type === 'BLOCKLISTED';
+          if (unsupported) {
+            cached = {
+              tier: 1,
+              backend: 'webgl',
+              isMobile: rendererInfo.isMobile || !!result.isMobile,
+              ready: true,
+            };
+            try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached)); } catch {}
+            return cached;
           }
-        }
 
-        cached = { tier, isMobile, ready: true };
-        try {
-          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached));
-        } catch { /* storage full / private mode — probe again next tab */ }
-        return cached;
-      })
-      .catch(() => {
-        // Benchmark fetch failed (offline / CDN blocked).
-        // Fall back to hardware heuristic instead of blindly sticking to tier 1.
-        // DO NOT write network-failure fallback to sessionStorage so reload can retry detect-gpu.
-        const { renderer, isMobile, supported } = getWebGLRendererInfo();
-        const tier = supported ? heuristicTierFromRenderer(renderer, isMobile) : 0;
-        cached = { tier, isMobile, ready: true };
-        return cached;
-      });
+          let tier = Math.max(0, Math.min(3, result.tier)) as GPUProfile['tier'];
+          const isMobile = !!result.isMobile;
+          if (tier <= 1 && !isMobile) {
+            const heuristic = heuristicTierFromRenderer(rendererInfo.renderer, false);
+            if (heuristic > tier) tier = heuristic;
+          }
+
+          cached = { tier, backend: 'webgl', isMobile, ready: true };
+          try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached)); } catch {}
+          return cached;
+        })
+        .catch(() => {
+          const tier = heuristicTierFromRenderer(rendererInfo.renderer, rendererInfo.isMobile);
+          cached = { tier, backend: 'webgl', isMobile: rendererInfo.isMobile, ready: true };
+          return cached;
+        });
+    }).catch(() => {
+      cached = { tier: 0, backend: 'none', isMobile: false, ready: true };
+      return cached;
+    });
   }
   return pending;
 }

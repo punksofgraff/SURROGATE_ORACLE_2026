@@ -42,6 +42,7 @@ import { TourSelection } from './TourSelection';
 import { TalismanCard, TalismanData, extractProphecy } from './TalismanCard';
 import { OracleHaloRing } from './OracleHaloRing';
 import { Canvas, useThree } from '@react-three/fiber';
+import { WebGPURenderer } from 'three/webgpu';
 import { OracleAvatar3D } from './OracleAvatar3D';
 import { OracleQuarks } from './OracleQuarks';
 import { EffectComposer, DepthOfField, Bloom, ChromaticAberration, Noise, Scanline } from '@react-three/postprocessing';
@@ -240,6 +241,21 @@ const PORTRAIT_REVEAL_VARIANTS: Record<string, any> = {
 
 const SILENCE_VISEME_STATE: VisemeState = { viseme: 'X', openness: 0, rounded: 0, spread: 0, amplitude: 0 };
 
+/**
+ * R3F accepts an async renderer factory. WebGPU is the primary renderer for
+ * the real GLB scene; the existing WebGL options remain the compatibility
+ * path for browsers without WebGPU.
+ */
+const createOracleWebGPURenderer = async (defaults: { canvas: HTMLCanvasElement }) => {
+  const renderer = new WebGPURenderer({
+    canvas: defaults.canvas,
+    alpha: true,
+    antialias: true,
+  });
+  await renderer.init();
+  return renderer as unknown as import('three').WebGLRenderer;
+};
+
 const DEBRIS = [
   ['◈','#00ff88','12%','22%','0s','6.1s'],
   ['▸','#00ccff','78%','18%','1.3s','5.4s'],
@@ -331,14 +347,15 @@ export function SurrogateOracleImmersion() {
   ) as 0 | 1 | 2 | 3;
   useEffect(() => {
     logStep(
-      `RENDER TIER — tier=${renderTier} degraded=${isDegraded ? 'true' : 'false'} gpu=${gpu.tier}`,
+      `RENDER TIER — tier=${renderTier} backend=${gpu.backend} degraded=${isDegraded ? 'true' : 'false'} gpu=${gpu.tier}`,
       isDegraded ? 'warn' : 'ok',
     );
-  }, [renderTier, isDegraded, gpu.tier]);
+  }, [renderTier, isDegraded, gpu.tier, gpu.backend]);
   // Dev-only hook so headless verification can tell "effects broken" apart from
   // "FPS guard correctly degraded the scene" (SwiftShader always trips the guard).
   if (import.meta.env.DEV && typeof window !== 'undefined') {
     (window as unknown as Record<string, unknown>).__oracle_renderTier = renderTier;
+    (window as unknown as Record<string, unknown>).__oracle_gpu_backend = gpu.backend;
   }
   const prefersReducedMotion = typeof window !== 'undefined' 
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches 
@@ -3720,16 +3737,18 @@ export function SurrogateOracleImmersion() {
       <div className="oracle-side-bleeds" />
       <div className="oracle-light-rays" />
 
-      {gpu.ready && renderTier >= 1 && scenePhase === 'dormant' && (
+      {gpu.ready && gpu.backend !== 'none' && renderTier >= 1 && scenePhase === 'dormant' && (
         <div className="oracle-landing-field" aria-hidden="true">
           <Canvas
             camera={{ position: [0, 0, 1.8], fov: 68 }}
             dpr={renderTier === 1 ? Math.min(window.devicePixelRatio, 1.25) : Math.min(window.devicePixelRatio, 1.75)}
-            gl={{
-              antialias: renderTier >= 2,
-              alpha: true,
-              powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
-            }}
+            gl={gpu.backend === 'webgpu'
+              ? createOracleWebGPURenderer
+              : {
+                  antialias: renderTier >= 2,
+                  alpha: true,
+                  powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
+                }}
             style={{ width: '100%', height: '100%', background: 'transparent' }}
             frameloop="always"
           >
@@ -3834,7 +3853,7 @@ export function SurrogateOracleImmersion() {
                 CSS opacity + transition handles the same 1.2 s fade-in that motion.div gave.
                 Suspense fallback: transparent (null) when canvasWarmed, so re-entering seekers
                 never see a "frozen static image" flash during WebGL context init. */}
-            {gpu.ready && renderTier >= 1 && (awakened || scenePhase === 'terminal' || canvasWarmed) && (
+            {gpu.ready && gpu.backend !== 'none' && renderTier >= 1 && (awakened || scenePhase === 'terminal' || canvasWarmed) && (
               <div
                  className="oracle-avatar-canvas oracle-avatar-smoke-hook"
                 style={{
@@ -3875,11 +3894,13 @@ export function SurrogateOracleImmersion() {
                           // above base/2 would silently increase the mobile budget.
                           return oracleCanvasExpanded ? base / ORACLE_ORBIT_EXPANSION : base;
                         })()}
-                        gl={{
-                          antialias: renderTier >= 2,
-                          alpha: true,
-                          powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
-                        }}
+                         gl={gpu.backend === 'webgpu'
+                           ? createOracleWebGPURenderer
+                           : {
+                               antialias: renderTier >= 2,
+                               alpha: true,
+                               powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
+                             }}
                         style={{ width: '100%', height: '100%', background: 'transparent' }}
                         frameloop="always"
                       >

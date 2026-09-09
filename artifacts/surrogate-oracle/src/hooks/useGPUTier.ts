@@ -29,7 +29,7 @@ export interface GPUProfile {
  * surfaces, which reads as a bright loading flash rather than a quiet fallback. */
 const DEFAULT_PROFILE: GPUProfile = { tier: 0, isMobile: false, ready: false };
 
-const STORAGE_KEY = 'oracle_gpu_profile_v2';
+const STORAGE_KEY = 'oracle_gpu_profile_v5';
 
 let cached: GPUProfile | null = null;
 let pending: Promise<GPUProfile> | null = null;
@@ -51,16 +51,19 @@ function readSessionCache(): GPUProfile | null {
 }
 
 function getWebGLRendererInfo(): { renderer: string; isMobile: boolean; supported: boolean } {
+  let gl: WebGLRenderingContext | WebGL2RenderingContext | null = null;
   try {
     const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
     const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
     if (!gl) return { renderer: '', isMobile, supported: false };
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
     const renderer = ext ? (gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '') : (gl.getParameter(gl.RENDERER) || '');
     return { renderer: String(renderer), isMobile, supported: true };
   } catch {
     return { renderer: '', isMobile: false, supported: false };
+  } finally {
+    gl?.getExtension('WEBGL_lose_context')?.loseContext();
   }
 }
 
@@ -103,6 +106,13 @@ function probe(): Promise<GPUProfile> {
   if (!pending) {
     pending = getGPUTier({ failIfMajorPerformanceCaveat: false })
       .then((result) => {
+        const rendererInfo = getWebGLRendererInfo();
+        if (!rendererInfo.supported) {
+          cached = { tier: 0, isMobile: rendererInfo.isMobile || !!result.isMobile, ready: true };
+          try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached)); } catch {}
+          return cached;
+        }
+
         const unsupported =
           result.type === 'WEBGL_UNSUPPORTED' || result.type === 'BLOCKLISTED';
         if (unsupported) {
@@ -118,8 +128,7 @@ function probe(): Promise<GPUProfile> {
         // If detect-gpu returned tier 1 on a capable desktop (e.g. unknown GPU string / missing benchmark),
         // use fast hardware heuristic to prevent stranding strong machines at tier 1.
         if (tier <= 1 && !isMobile) {
-          const { renderer } = getWebGLRendererInfo();
-          const heuristic = heuristicTierFromRenderer(renderer, false);
+          const heuristic = heuristicTierFromRenderer(rendererInfo.renderer, false);
           if (heuristic > tier) {
             tier = heuristic;
           }
@@ -135,8 +144,8 @@ function probe(): Promise<GPUProfile> {
         // Benchmark fetch failed (offline / CDN blocked).
         // Fall back to hardware heuristic instead of blindly sticking to tier 1.
         // DO NOT write network-failure fallback to sessionStorage so reload can retry detect-gpu.
-        const { renderer, isMobile } = getWebGLRendererInfo();
-        const tier = heuristicTierFromRenderer(renderer, isMobile);
+        const { renderer, isMobile, supported } = getWebGLRendererInfo();
+        const tier = supported ? heuristicTierFromRenderer(renderer, isMobile) : 0;
         cached = { tier, isMobile, ready: true };
         return cached;
       });

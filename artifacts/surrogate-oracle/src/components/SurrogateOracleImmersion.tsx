@@ -327,7 +327,7 @@ export function SurrogateOracleImmersion() {
   // available. A confirmed renderer can still fall back to tier 1 under the
   // runtime FPS guard; an unresolved or unsupported renderer remains dark.
   const renderTier = (
-    !gpu.ready ? 0 : isDegraded ? Math.max(1, gpu.tier) : gpu.tier
+    !gpu.ready ? 0 : isDegraded && gpu.tier > 0 ? Math.max(1, gpu.tier) : gpu.tier
   ) as 0 | 1 | 2 | 3;
   useEffect(() => {
     logStep(

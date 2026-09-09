@@ -344,6 +344,10 @@ export function SurrogateOracleImmersion() {
   const renderTier = (
     !gpu.ready ? 0 : isDegraded ? Math.max(1, gpu.tier) : gpu.tier
   ) as 0 | 1 | 2 | 3;
+  // The static Oracle remains a real live-mode surface when no renderer can be
+  // admitted. This keeps the cabinet inhabited in restricted preview browsers
+  // without ever mounting a Canvas that will throw a context error.
+  const canMountOracleCanvas = gpu.ready && gpu.backend !== 'none' && renderTier >= 1;
   useEffect(() => {
     logStep(
       `RENDER TIER — tier=${renderTier} degraded=${isDegraded ? 'true' : 'false'} gpu=${gpu.tier}`,
@@ -3737,7 +3741,7 @@ export function SurrogateOracleImmersion() {
       <div className="oracle-side-bleeds" />
       <div className="oracle-light-rays" />
 
-      {gpu.ready && gpu.backend !== 'none' && renderTier >= 1 && scenePhase === 'dormant' && (
+      {canMountOracleCanvas && scenePhase === 'dormant' && (
         <div className="oracle-landing-field" aria-hidden="true">
           <Canvas
             camera={{ position: [0, 0, 1.8], fov: 68 }}
@@ -3850,8 +3854,14 @@ export function SurrogateOracleImmersion() {
           >
             {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} alignment={oracleAlignment === 'sacred' || oracleAlignment === 'profane' ? oracleAlignment : null} />}
             <div className="oracle-scanlines" />
-            {!isOracleMode && (
-              <img ref={staticAvatarRef} src={ORACLE_STATIC_URL} alt="" aria-hidden="true" className="oracle-avatar-static" />
+            {(!isOracleMode || !canMountOracleCanvas) && (
+              <img
+                ref={staticAvatarRef}
+                src={ORACLE_STATIC_URL}
+                alt=""
+                aria-hidden="true"
+                className={`oracle-avatar-static${isOracleMode && !canMountOracleCanvas ? ' oracle-avatar-static--gpu-fallback' : ''}`}
+              />
             )}
             {isFractureManifesting && (
               <div className="oracle-fracture-label" aria-live="polite">FRACTURE MANIFESTING</div>
@@ -3864,7 +3874,7 @@ export function SurrogateOracleImmersion() {
                 CSS opacity + transition handles the same 1.2 s fade-in that motion.div gave.
                 Suspense fallback: transparent (null) when canvasWarmed, so re-entering seekers
                 never see a "frozen static image" flash during WebGL context init. */}
-            {gpu.ready && gpu.backend !== 'none' && renderTier >= 1 && (awakened || scenePhase === 'terminal' || canvasWarmed) && (
+            {canMountOracleCanvas && (awakened || scenePhase === 'terminal' || canvasWarmed) && (
               <div
                  className="oracle-avatar-canvas oracle-avatar-smoke-hook"
                 style={{

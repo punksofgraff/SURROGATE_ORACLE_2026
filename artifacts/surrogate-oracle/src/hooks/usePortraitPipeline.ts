@@ -43,6 +43,59 @@ export interface PortraitContext {
 
 const MAX_SEEKER_LINES = 6;
 const MAX_LINE_CHARS = 220;
+const ANCHOR_STOPWORDS = new Set([
+  'a', 'about', 'after', 'all', 'also', 'am', 'an', 'and', 'are', 'as', 'at',
+  'be', 'because', 'been', 'but', 'by', 'can', 'could', 'did', 'do', 'does',
+  'for', 'from', 'get', 'got', 'had', 'has', 'have', 'how', 'i', 'if', 'in',
+  'into', 'is', 'it', 'just', 'me', 'more', 'my', 'of', 'on', 'or', 'our',
+  'so', 'some', 'than', 'that', 'the', 'their', 'them', 'there', 'they',
+  'this', 'to', 'too', 'under', 'up', 'was', 'we', 'were', 'what', 'when',
+  'where', 'which', 'who', 'will', 'with', 'would', 'you', 'your',
+]);
+const EMOTIONAL_ANCHOR_WORDS = new Set([
+  'afraid', 'alone', 'angry', 'belong', 'change', 'chosen', 'death', 'dream',
+  'fear', 'grief', 'hope', 'identity', 'love', 'lost', 'need', 'pain',
+  'remember', 'safe', 'shame', 'truth', 'want', 'worry',
+]);
+const LOW_SIGNAL_ANCHOR = /^(?:(?:that\s+)?sounds?\s+interesting|okay(?:,?\s+keep\s+going)?|i\s+hear\s+you|sure|yes|no|right)[.!?]*$/i;
+
+function selectConversationAnchors(lines?: string[]): string[] {
+  if (!lines?.length) return [];
+  const candidates = lines
+    .map((line, index) => ({
+      line: line.replace(/\s+/g, ' ').trim().slice(0, MAX_LINE_CHARS),
+      index,
+    }))
+    .filter(candidate => candidate.line.length > 8)
+    .filter(candidate => !LOW_SIGNAL_ANCHOR.test(candidate.line))
+    .filter((candidate, index, all) => (
+      all.findIndex(other => other.line.toLocaleLowerCase() === candidate.line.toLocaleLowerCase()) === index
+    ))
+    .map(candidate => {
+      const words = candidate.line.toLocaleLowerCase().normalize('NFKC')
+        .match(/[\p{L}\p{N}]{3,}/gu) ?? [];
+      const meaningful = words.filter(word => !ANCHOR_STOPWORDS.has(word));
+      const specificity = new Set(meaningful).size;
+      const emotionalHits = meaningful.filter(word => EMOTIONAL_ANCHOR_WORDS.has(word)).length;
+      return {
+        ...candidate,
+        meaningfulWords: new Set(meaningful),
+        score: (meaningful.filter(word => word.length >= 6).length * 2)
+          + (emotionalHits * 3)
+          + Math.min(specificity, 12)
+          + (candidate.index / 1000),
+      };
+    })
+    .filter(candidate => candidate.meaningfulWords.size >= 2
+      || candidate.score - (candidate.index / 1000) - Math.min(
+        candidate.meaningfulWords.size,
+        12,
+      ) >= 3)
+    .sort((a, b) => b.score - a.score || b.index - a.index)
+    .slice(0, MAX_SEEKER_LINES)
+    .sort((a, b) => a.index - b.index);
+  return candidates.map(candidate => candidate.line);
+}
 
 export type PortraitPipelineState = 'ready' | 'generating' | 'success' | 'failed';
 
@@ -83,7 +136,8 @@ export function usePortraitPipeline({
     const requestId = crypto.randomUUID();
     const attempt = attemptRef.current + 1;
     attemptRef.current = attempt;
-    retryContextRef.current = { themes: [...themes], seekerLines: seekerLines ? [...seekerLines] : undefined };
+    const anchors = selectConversationAnchors(seekerLines);
+    retryContextRef.current = { themes: [...themes], seekerLines: anchors };
     setLastRequestId(requestId);
     setPortraitError(null);
     setPipelineState('generating');
@@ -112,12 +166,7 @@ export function usePortraitPipeline({
         ...(signals.alignment && { alignment: signals.alignment }),
         ...(signals.archetypeTitle && { archetypeTitle: signals.archetypeTitle }),
         ...(signals.sessionPhase && { sessionPhase: signals.sessionPhase }),
-        ...(seekerLines?.length && {
-          seekerLines: seekerLines
-            .filter(l => l.trim().length > 8)
-            .slice(-MAX_SEEKER_LINES)
-            .map(l => l.trim().slice(0, MAX_LINE_CHARS)),
-        }),
+        ...(anchors.length && { seekerLines: anchors }),
       };
       logStep(
         `PORTRAIT CONTEXT — themes: ${weightedThemes.map(t => `${t.theme}×${t.weight}`).join(', ')}` +

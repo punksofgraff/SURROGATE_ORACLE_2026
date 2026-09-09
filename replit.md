@@ -23,6 +23,11 @@ Last updated: 2026-08-18. 3D Scene Visual Effects, GPU Tiering, Rigging Polish (
 | `REPLICATE_API_TOKEN` | Portrait EFA | Flux-schnell generation (Gemini fallback) |
 | `SUPABASE_URL` | Client + EFAs | Project reference URL |
 
+Portrait fallback controls are deliberately opt-in: `ENABLE_HUGGINGFACE_PORTRAITS=true`
+requires `HUGGINGFACE_API_KEY`, and `ALLOW_REPLICATE_FREE_FALLBACK=true` enables
+the account-limited Replicate free lane. Pollinations remains the no-key final
+fallback; provider failures are breaker-gated where supported.
+
 ---
 
 ## Dev UI & Step Logger

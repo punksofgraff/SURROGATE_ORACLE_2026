@@ -3,24 +3,23 @@
  *
  * Generation cascade (first success wins):
  *   1. Gemini 3.7 Flash        → distills conversation context into a visual prompt
- *   2a. Vertex AI Imagen       → PRIMARY image generation (low cost per image)
- *       Guarded by a persistent circuit breaker: 3× 429/5xx opens it, with
- *       escalating cool-downs of 15 min → 1 h → 4 h → 12 h → 24 h (persisted
- *       in public.provider_breaker so cold starts don't reset the schedule).
- *   2b. Gemini Flash image     → same paid Gemini key, modern image models
- *   3. HuggingFace FLUX.1-schnell → keyless free-tier; authenticated if HUGGINGFACE_API_KEY set
- *   4. DeepAI                  → optional key-gated fallback
- *   5. Replicate flux-schnell  → last paid resort; output RE-HOSTED to the
+ *   2. Nano Banana 2 Lite      → low-cost paid Gemini image rung
+ *   3. Nano Banana 2           → paid quality escalation
+ *   4. Vertex AI Imagen        → separate Vertex key, breaker-gated
+ *   5. HuggingFace FLUX.1-schnell → explicit opt-in + key only
+ *   6. DeepAI                  → optional key-gated legacy fallback
+ *   7. Replicate free lane     → reviewed catalog + explicit opt-in
+ *   8. Replicate flux-schnell  → last paid resort; output RE-HOSTED to the
  *       portraits bucket (replicate.delivery URLs expire in ~1 h)
- *   6. Pollinations.ai         → zero-config, no key, always free
- *   7. Themed Unsplash         → static fallback if every AI path fails
+ *   9. Pollinations.ai         → zero-config, no key, always free
+ *  10. Themed Unsplash         → static fallback if every AI path fails
  *
  * Secrets (set via Replit Secrets or: supabase secrets set KEY=value --project-ref <ref>):
  *   GOOGLE_AI_KEY_PAID  — canonical paid Google AI Studio key for Gemini text distillation
  *   GOOGLE_AI_API_KEY   — legacy fallback during secret propagation
  *   VERTEX_AI_API_KEY   — Google Cloud API key for Vertex AI Imagen 3
  *   VERTEX_PROJECT_ID   — Google Cloud project ID (optional; defaults to key's linked project)
- *   HUGGINGFACE_API_KEY — HuggingFace token for authenticated inference (optional)
+ *   HUGGINGFACE_API_KEY — HuggingFace token for authenticated inference (required with ENABLE_HUGGINGFACE_PORTRAITS=true)
  *   DEEPAI_API_KEY      — DeepAI text2img key (optional)
  *   REPLICATE_API_TOKEN — Replicate token for flux-schnell last-resort path (optional)
  *
@@ -35,6 +34,17 @@ import {
   refreshReplicateFreeCatalog,
   staticReplicateFreeCatalog,
 } from '../replicate-free-models.ts';
+import {
+  buildBasePrompt as buildPortraitBasePrompt,
+  buildDistillInstruction as buildPortraitDistillInstruction,
+  promptLeaksSeekerLines as portraitPromptLeaksSeekerLines,
+  selectConversationAnchors,
+  type PortraitScoreContext,
+} from '../portrait-context.ts';
+import {
+  orderedPortraitProviders,
+  type PortraitProviderId,
+} from '../portrait-provider-policy.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -42,14 +52,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, x-oracle-request-id, x-oracle-session-id',
 };
 
-interface PortraitContext {
-  weightedThemes?: Array<{ theme: string; weight: number }>;
-  emotionalWeight?: string;
-  alignment?: string;
-  archetypeTitle?: string;
-  sessionPhase?: string;
-  seekerLines?: string[];
-}
+type PortraitContext = PortraitScoreContext;
 
 interface PortraitRequest {
   sessionId: string;
@@ -200,7 +203,7 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const { sessionId, email, themes, context, style = 'freakdali-graff-punks', userPrompt, fixedSeed } = body;
+  const { sessionId, email, themes, context: requestedContext, style = 'freakdali-graff-punks', userPrompt, fixedSeed } = body;
 
   if (!sessionId || !themes?.length) {
     return new Response(
@@ -209,18 +212,25 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  const context: PortraitContext | undefined = requestedContext
+    ? {
+      ...requestedContext,
+      seekerLines: selectConversationAnchors(requestedContext.seekerLines),
+    }
+    : undefined;
   const hasFluidContext = !!(
     context && (
       context.weightedThemes?.length ||
       context.seekerLines?.length ||
       context.emotionalWeight ||
       context.archetypeTitle ||
-      context.alignment
+      context.alignment ||
+      context.sessionPhase
     )
   );
   console.log(`🎨 Portrait request — session: ${sessionId}, themes: ${themes.join(', ')}, fluid-context: ${hasFluidContext}`);
 
-  const basePrompt = userPrompt ?? buildBasePrompt(themes, hasFluidContext ? context : undefined);
+  const basePrompt = userPrompt ?? buildPortraitBasePrompt(themes, hasFluidContext ? context : undefined);
   let portraitUrl = '';
   let generationMethod = 'themed-fallback';
   let googleAiGenerated = false;
@@ -229,6 +239,15 @@ Deno.serve(async (req: Request) => {
 
   const googleAiApiKey = Deno.env.get('GOOGLE_AI_KEY_PAID') ??
     Deno.env.get('GOOGLE_AI_API_KEY');
+  const providerEnv = Deno.env.toObject();
+  // Preserve the legacy alias accepted by the actual Replicate request path
+  // while keeping the matrix canonical on REPLICATE_API_TOKEN.
+  if (!providerEnv.REPLICATE_API_TOKEN && providerEnv.REPLICATE_API_KEY) {
+    providerEnv.REPLICATE_API_TOKEN = providerEnv.REPLICATE_API_KEY;
+  }
+  const configuredProviders = orderedPortraitProviders(providerEnv);
+  const providerEnabled = (id: PortraitProviderId) =>
+    configuredProviders.some(provider => provider.id === id);
 
   // ── STEP 1: Enhance prompt with Gemini 3.7 Flash (text-only) ──────────────
   // With fluid context this is a true DISTILLATION step: the seeker's own words
@@ -243,7 +262,7 @@ Deno.serve(async (req: Request) => {
       console.warn('⚠️ Gemini distillation cooldown active — using base prompt');
     } else try {
       const distillInstruction = hasFluidContext && context
-        ? buildDistillInstruction(basePrompt, context)
+        ? buildPortraitDistillInstruction(basePrompt, context)
         : `You are a visual art prompt engineer. Rewrite this for AI image generation. Keep under 280 characters. Focus on vivid visual details, cyberpunk street art, neon colours. Original: "${basePrompt}"`;
       const r = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=${googleAiApiKey}`,
@@ -272,7 +291,7 @@ Deno.serve(async (req: Request) => {
         // seeker line (4-word n-gram), REJECT it — fall back to the context-aware
         // base prompt, which is built purely from themes/signals and contains no
         // seeker text. Instructions to the model are not a boundary; this check is.
-        if (context?.seekerLines?.length && promptLeaksSeekerLines(candidate, context.seekerLines, basePrompt)) {
+        if (context?.seekerLines?.length && portraitPromptLeaksSeekerLines(candidate, context.seekerLines, basePrompt)) {
           console.warn('🛑 Distilled prompt leaked seeker line n-gram — rejected, using base prompt');
         } else {
           enhancedPrompt = candidate;
@@ -289,16 +308,78 @@ Deno.serve(async (req: Request) => {
     console.warn('⚠️  GOOGLE_AI_KEY_PAID not set — skipping prompt enhancement');
   }
 
-  // ── STEP 2a: Vertex AI Imagen (express mode — fractions of a cent) ─────────
-  // API keys only authenticate against Vertex EXPRESS endpoints (no project/
-  // location in the path). Project-scoped Vertex URLs require OAuth and will
-  // always 401 with an API key. Requires a Vertex-express-enabled key in
-  // VERTEX_AI_API_KEY; falls through cleanly if the key is absent or invalid.
+  // ── STEP 2: Gemini image models (Lite first, then quality escalation) ───────
+  // Same paid Gemini key as text distillation. The cheaper Lite route is tried
+  // first; the full Nano Banana route is only a quality escalation.
+  if (googleAiApiKey && !portraitUrl) {
+    for (const [model, providerId] of [
+      ['gemini-3.1-flash-lite-image', 'gemini-nano-banana-2-lite'],
+      ['gemini-3.1-flash-image', 'gemini-nano-banana-2'],
+    ] as const) {
+      if (portraitUrl) break;
+      if (!providerEnabled(providerId)) continue;
+      if (await breakerIsOpen(supabase, providerId)) {
+        console.warn(`⛔ ${providerId} breaker open — skipping this rung`);
+        imageErrors.push(`${model}: circuit breaker open (cooling down after repeated 429/5xx)`);
+        continue;
+      }
+      try {
+        console.log(`🎨 Trying ${model}…`);
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${googleAiApiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: enhancedPrompt }] }],
+              generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+            }),
+          }
+        );
+        if (!r.ok) {
+          await breakerRecordFailure(supabase, providerId, r.status);
+          throw new Error(`${model} ${r.status}: ${await r.text()}`);
+        }
+        const json = await r.json();
+        const parts = json.candidates?.[0]?.content?.parts ?? [];
+        const imgPart = parts.find((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
+        if (!imgPart?.inlineData?.data) throw new Error(`${model}: no inlineData in response`);
+        const mimeType = imgPart.inlineData.mimeType ?? 'image/png';
+        const b64 = imgPart.inlineData.data;
+        const imgBuffer = Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer;
+        const { data: uploadData, error: uploadErr } = await supabase.storage
+          .from('portraits')
+          .upload(`${sessionId}-gemini-${Date.now()}.png`, imgBuffer, {
+            contentType: mimeType,
+            upsert: true,
+          });
+        if (uploadErr) {
+          portraitUrl = `data:${mimeType};base64,${b64}`;
+          console.log(`✅ ${model} portrait as base64 data URL`);
+        } else {
+          const { data: { publicUrl } } = supabase.storage.from('portraits').getPublicUrl(uploadData.path);
+          portraitUrl = publicUrl;
+          console.log(`✅ ${model} portrait uploaded:`, publicUrl.slice(0, 60));
+        }
+        generationMethod = providerId;
+        await breakerRecordSuccess(supabase, providerId);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`❌ ${model} failed:`, msg.slice(0, 140));
+        imageErrors.push(`${model}: ${msg}`);
+      }
+    }
+  }
+
+  // ── STEP 3: Vertex AI Imagen (express mode) ────────────────────────────────
+  // API keys only authenticate against Vertex EXPRESS endpoints. The measured
+  // environment currently has a degraded key, so the persistent breaker keeps
+  // repeated invalid/quota/server responses from becoming a per-session tax.
   const vertexApiKey = Deno.env.get('VERTEX_AI_API_KEY');
-  if (vertexApiKey && !portraitUrl && await breakerIsOpen(supabase, 'vertex-imagen')) {
+  if (vertexApiKey && providerEnabled('vertex-imagen') && !portraitUrl && await breakerIsOpen(supabase, 'vertex-imagen')) {
     console.warn('⛔ Vertex Imagen breaker open — skipping this rung');
     imageErrors.push('Vertex Imagen: circuit breaker open (cooling down after repeated 429/5xx)');
-  } else if (vertexApiKey && !portraitUrl) {
+  } else if (vertexApiKey && providerEnabled('vertex-imagen') && !portraitUrl) {
     try {
       console.log('🎨 Trying Vertex AI Imagen (express)…');
       const r = await fetch(
@@ -343,73 +424,30 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── STEP 2b: Gemini 3.1 Flash Image (modern; 2.5-image retires Sep 2026) ───
-  // Same paid Gemini key as text distillation. Lite variant as second try —
-  // separate quota bucket, cheaper.
-  if (googleAiApiKey && !portraitUrl) {
-    for (const model of ['gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image']) {
-      if (portraitUrl) break;
-      try {
-        console.log(`🎨 Trying ${model}…`);
-        const r = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${googleAiApiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: enhancedPrompt }] }],
-              generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
-            }),
-          }
-        );
-        if (!r.ok) throw new Error(`${model} ${r.status}: ${await r.text()}`);
-        const json = await r.json();
-        const parts = json.candidates?.[0]?.content?.parts ?? [];
-        const imgPart = parts.find((p: { inlineData?: { data?: string; mimeType?: string } }) => p.inlineData?.data);
-        if (!imgPart?.inlineData?.data) throw new Error(`${model}: no inlineData in response`);
-        const mimeType = imgPart.inlineData.mimeType ?? 'image/png';
-        const b64 = imgPart.inlineData.data;
-        const imgBuffer = Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer;
-        const { data: uploadData, error: uploadErr } = await supabase.storage
-          .from('portraits')
-          .upload(`${sessionId}-gemini-${Date.now()}.png`, imgBuffer, {
-            contentType: mimeType,
-            upsert: true,
-          });
-        if (uploadErr) {
-          portraitUrl = `data:${mimeType};base64,${b64}`;
-          console.log(`✅ ${model} portrait as base64 data URL`);
-        } else {
-          const { data: { publicUrl } } = supabase.storage.from('portraits').getPublicUrl(uploadData.path);
-          portraitUrl = publicUrl;
-          console.log(`✅ ${model} portrait uploaded:`, publicUrl.slice(0, 60));
-        }
-        generationMethod = 'gemini-image';
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error(`❌ ${model} failed:`, msg.slice(0, 140));
-        imageErrors.push(`${model}: ${msg}`);
-      }
-    }
-  }
-
-  // ── STEP 3: HuggingFace FLUX.1-schnell (keyless free-tier) ────────────────
-  // The HF Inference API allows keyless requests at low rate limits; an
-  // optional HUGGINGFACE_API_KEY gives authenticated higher throughput.
+  // ── STEP 4: HuggingFace FLUX.1-schnell (explicit opt-in only) ──────────────
+  // Keyless router calls are not a production capability check. A present key
+  // plus ENABLE_HUGGINGFACE_PORTRAITS=true is required, and the breaker skips
+  // repeated unhealthy/quota responses.
   // router.huggingface.co is the current endpoint (api-inference.huggingface.co
   // was retired). NOTE: FLUX.1-dev returns 410 (deprecated on hf-inference);
   // FLUX.1-schnell is the supported free model.
-  if (!portraitUrl) {
+  if (providerEnabled('huggingface-flux-schnell') && !portraitUrl) {
     const hfKey = Deno.env.get('HUGGINGFACE_API_KEY');
     const hfHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
     if (hfKey) hfHeaders['Authorization'] = `Bearer ${hfKey}`;
-    try {
+    if (await breakerIsOpen(supabase, 'huggingface-flux-schnell')) {
+      console.warn('⛔ Hugging Face breaker open — skipping this rung');
+      imageErrors.push('HuggingFace: circuit breaker open (cooling down after repeated 429/5xx)');
+    } else try {
       console.log('🎨 Trying HuggingFace FLUX.1-schnell…');
       const r = await fetch(
         'https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell',
         { method: 'POST', headers: hfHeaders, body: JSON.stringify({ inputs: enhancedPrompt }) }
       );
-      if (!r.ok) throw new Error(`HuggingFace ${r.status}: ${await r.text()}`);
+      if (!r.ok) {
+        await breakerRecordFailure(supabase, 'huggingface-flux-schnell', r.status);
+        throw new Error(`HuggingFace ${r.status}: ${await r.text()}`);
+      }
       const imgBuffer = await r.arrayBuffer();
       if (imgBuffer.byteLength < 1000) throw new Error('HuggingFace returned empty image');
       const { data: uploadData, error: uploadErr } = await supabase.storage
@@ -425,6 +463,7 @@ Deno.serve(async (req: Request) => {
         console.log('✅ HuggingFace portrait uploaded to Supabase Storage');
       }
       generationMethod = 'huggingface-flux';
+      await breakerRecordSuccess(supabase, 'huggingface-flux-schnell');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('❌ HuggingFace failed:', msg);
@@ -432,7 +471,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── STEP 4: DeepAI (optional key) ─────────────────────────────────────────
+  // ── STEP 5: DeepAI (optional legacy key) ───────────────────────────────────
   const deepAiKey = Deno.env.get('DEEPAI_API_KEY');
   if (deepAiKey && !portraitUrl) {
     try {
@@ -461,7 +500,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── STEP 5: Replicate Try for Free image lane ─────────────────────────────
+  // ── STEP 6: Replicate Try for Free image lane ──────────────────────────────
   // Free collection membership is not a universal quota. Claiming a run is
   // persisted against the server credential so duplicate retries and an
   // exhausted allowance stop before another provider request is submitted.
@@ -471,7 +510,8 @@ Deno.serve(async (req: Request) => {
   // than persist a URL that will go blank. The free lane is intentionally
   // image-only and must never be used as a story-video/H3 substitute.
   const replicateToken = Deno.env.get('REPLICATE_API_TOKEN') ?? Deno.env.get('REPLICATE_API_KEY');
-  const replicateFreeFallbackEnabled = Deno.env.get('ALLOW_REPLICATE_FREE_FALLBACK') !== 'false';
+  const replicateFreeFallbackEnabled =
+    providerEnabled('replicate-free') && Deno.env.get('ALLOW_REPLICATE_FREE_FALLBACK') === 'true';
   const refreshedReplicateCatalog = replicateToken && replicateFreeFallbackEnabled && !portraitUrl
     ? await refreshReplicateFreeCatalog()
     : {
@@ -590,7 +630,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── STEP 6: Replicate flux-schnell — optional paid resort ─────────────────
+  // ── STEP 7: Replicate flux-schnell — optional paid resort ─────────────────
   const replicatePaidFallbackEnabled = Deno.env.get('ALLOW_REPLICATE_PAID_FALLBACK') === 'true';
   if (replicatePaidFallbackEnabled && replicateToken && !portraitUrl) {
     try {
@@ -653,7 +693,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── STEP 7: Pollinations.ai — zero config, no key, always free ───────────
+  // ── STEP 8: Pollinations.ai — zero config, no key, always free ───────────
   if (!portraitUrl) {
     try {
       // Seed selection:
@@ -680,7 +720,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ── STEP 8: Themed static fallback ────────────────────────────────────────
+  // ── STEP 9: Themed static fallback ────────────────────────────────────────
   if (!portraitUrl) {
     portraitUrl = getThemedFallback(themes);
     generationMethod = 'themed-fallback';
@@ -719,6 +759,7 @@ Deno.serve(async (req: Request) => {
         weighted_themes: context.weightedThemes,
       }),
       ...(hasFluidContext && context?.emotionalWeight && { emotional_weight: context.emotionalWeight }),
+      ...(hasFluidContext && context?.sessionPhase && { session_phase: context.sessionPhase }),
       timestamp: new Date().toISOString(),
     },
   });

@@ -19,7 +19,6 @@ const GOOGLE_KEYS = [
   Deno.env.get('GOOGLE_AI_API_KEY'),
   Deno.env.get('GOOGLE_GENERATIVE_AI_API_KEY'),
   Deno.env.get('GEMINI_API_KEY'),
-  Deno.env.get('GOOGLE_AI_KEY_FREE'),
 ].filter((value, index, all): value is string => Boolean(value) && all.indexOf(value) === index);
 
 const MODEL = 'gemini-2.5-flash-preview-tts';

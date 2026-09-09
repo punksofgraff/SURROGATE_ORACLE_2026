@@ -4,13 +4,14 @@
  * Gemini-powered Oracle fallback for text-based exchanges.
  * Primary path: Gemini Live via gemini-live-proxy WebSocket.
  * This EFA activates when the Live WS drops — keeps the conversation
- * alive as text-only on the same GOOGLE_AI_API_KEY. One key, one model
+ * alive as text-only on the paid Gemini key. One key, one model
  * family, zero Claude dependency.
  *
  * Model anchor: gemini-3.7-flash (generateContent REST, not Live)
  *
  * Secrets required:
- *   GOOGLE_AI_API_KEY — shared with gemini-live-proxy
+ *   GOOGLE_AI_KEY_PAID — canonical paid Gemini key
+ *   GOOGLE_AI_API_KEY — legacy fallback during secret propagation
  *   (No ANTHROPIC_API_KEY needed — Claude fallback retired)
  *
  * Deploy:
@@ -132,7 +133,8 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const googleApiKey = Deno.env.get('GOOGLE_AI_API_KEY');
+  const googleApiKey = Deno.env.get('GOOGLE_AI_KEY_PAID') ??
+    Deno.env.get('GOOGLE_AI_API_KEY');
   let oracleResponse: string;
   let _geminiError: string | null = null;
 
@@ -186,8 +188,8 @@ Deno.serve(async (req: Request) => {
       oracleResponse = getConversationalFallback();
     }
   } else {
-    console.warn('⚠️  GOOGLE_AI_API_KEY not set — using static fallback');
-    _geminiError = 'GOOGLE_AI_API_KEY not found in env';
+    console.warn('⚠️  GOOGLE_AI_KEY_PAID not set — using static fallback');
+    _geminiError = 'GOOGLE_AI_KEY_PAID not found in env';
     oracleResponse = getConversationalFallback();
   }
 

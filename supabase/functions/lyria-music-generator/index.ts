@@ -155,6 +155,7 @@ Deno.serve(async (req: Request) => {
 
   const requestId = crypto.randomUUID();
   const apiKeys = [
+    Deno.env.get('GOOGLE_AI_KEY_PAID'),
     Deno.env.get('GOOGLE_AI_API_KEY'),
     Deno.env.get('GOOGLE_GENERATIVE_AI_API_KEY'),
     Deno.env.get('GEMINI_API_KEY'),

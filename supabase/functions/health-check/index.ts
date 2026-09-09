@@ -36,7 +36,11 @@ Deno.serve(async (req: Request) => {
       region: Deno.env.get("SB_REGION") || "us-east-1",
       uptime: performance.now(),
       apiKeys: {
-        googleAI: !!(Deno.env.get('GOOGLE_AI_API_KEY') || Deno.env.get('VITE_GOOGLE_AI_API_KEY')),
+        googleAI: !!(
+          Deno.env.get('GOOGLE_AI_KEY_PAID') ||
+          Deno.env.get('GOOGLE_AI_API_KEY') ||
+          Deno.env.get('VITE_GOOGLE_AI_API_KEY')
+        ),
         openAI: !!Deno.env.get('OPENAI_API_KEY'),
         elevenLabs: !!Deno.env.get('VITE_ELEVEN_LABS_API_KEY'),
         didAPI: !!Deno.env.get('DID_API_KEY'),

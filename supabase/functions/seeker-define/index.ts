@@ -14,7 +14,7 @@
  * POST { name: string, handles?: string[], territory?: string, themes?: string[] }
  *   → { success, definition: string, confident: boolean, sources: {title,uri}[] }
  *
- * Secrets: GOOGLE_AI_API_KEY (shared with gemini-live-proxy / oracle-conversation).
+ * Secret: GOOGLE_AI_KEY_PAID (canonical paid Gemini key).
  *
  * Deploy: npx supabase functions deploy seeker-define --no-verify-jwt
  */
@@ -58,8 +58,9 @@ Deno.serve(async (req: Request) => {
       return json({ success: false, error: 'name or handles required' }, 400);
     }
 
-    const apiKey = Deno.env.get('GOOGLE_AI_API_KEY');
-    if (!apiKey) return json({ success: false, error: 'GOOGLE_AI_API_KEY not configured' }, 500);
+    const apiKey = Deno.env.get('GOOGLE_AI_KEY_PAID') ??
+      Deno.env.get('GOOGLE_AI_API_KEY');
+    if (!apiKey) return json({ success: false, error: 'GOOGLE_AI_KEY_PAID not configured' }, 500);
 
     // The identity signal the Seeker volunteered. Handles are the disambiguator —
     // a bare first name resolves poorly, so we lean on whatever they offered.

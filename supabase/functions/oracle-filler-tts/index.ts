@@ -12,7 +12,7 @@
  *     --project-ref $SUPABASE_PROJECT_REF --use-api --no-verify-jwt
  */
 
-const GOOGLE_AI_KEY  = Deno.env.get('GOOGLE_AI_KEY_FREE')
+const GOOGLE_AI_KEY  = Deno.env.get('GOOGLE_AI_KEY_PAID')
   ?? Deno.env.get('GOOGLE_AI_API_KEY')
   ?? Deno.env.get('GOOGLE_GENERATIVE_AI_API_KEY')
   ?? Deno.env.get('GEMINI_API_KEY')
@@ -57,7 +57,7 @@ Deno.serve(async (req: Request) => {
   }
 
   if (!GOOGLE_AI_KEY) {
-    console.error('[oracle-filler-tts] GOOGLE_AI_KEY_FREE not set');
+    console.error('[oracle-filler-tts] GOOGLE_AI_KEY_PAID not set');
     return new Response('TTS key not configured', { status: 503, headers: CORS_HEADERS });
   }
 

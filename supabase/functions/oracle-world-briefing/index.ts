@@ -67,11 +67,12 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
-  const googleApiKey = Deno.env.get('GOOGLE_GENERATIVE_AI_API_KEY') ??
+  const googleApiKey = Deno.env.get('GOOGLE_AI_KEY_PAID') ??
+                       Deno.env.get('GOOGLE_GENERATIVE_AI_API_KEY') ??
                        Deno.env.get('GOOGLE_AI_API_KEY') ?? '';
   if (!googleApiKey) {
     return new Response(
-      JSON.stringify({ success: false, error: 'GOOGLE_GENERATIVE_AI_API_KEY not configured' }),
+      JSON.stringify({ success: false, error: 'GOOGLE_AI_KEY_PAID not configured' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

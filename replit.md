@@ -17,7 +17,9 @@ Last updated: 2026-08-18. 3D Scene Visual Effects, GPU Tiering, Rigging Polish (
 
 | Secret | Used By | Notes |
 |--------|---------|-------|
-| `GEMINI_API_KEY` | Gemini WS/REST | Google AI Studio free-tier key |
+| `GOOGLE_AI_KEY_FREE` | Gemini Live | Free-tier key used by the default Live session path |
+| `GOOGLE_AI_KEY_PAID` | Gemini/Lyria paid paths | Canonical paid key; also used by Live failover |
+| `VERTEX_AI_API_KEY` | Vertex Imagen | Separate Vertex Express-enabled key; do not assume Gemini-key compatibility |
 | `REPLICATE_API_TOKEN` | Portrait EFA | Flux-schnell generation (Gemini fallback) |
 | `SUPABASE_URL` | Client + EFAs | Project reference URL |
 

@@ -7,7 +7,7 @@
  *       Guarded by a persistent circuit breaker: 3× 429/5xx opens it, with
  *       escalating cool-downs of 15 min → 1 h → 4 h → 12 h → 24 h (persisted
  *       in public.provider_breaker so cold starts don't reset the schedule).
- *   2b. Gemini Flash image     → same GOOGLE_AI_API_KEY, modern image models
+ *   2b. Gemini Flash image     → same paid Gemini key, modern image models
  *   3. HuggingFace FLUX.1-schnell → keyless free-tier; authenticated if HUGGINGFACE_API_KEY set
  *   4. DeepAI                  → optional key-gated fallback
  *   5. Replicate flux-schnell  → last paid resort; output RE-HOSTED to the
@@ -16,7 +16,8 @@
  *   7. Themed Unsplash         → static fallback if every AI path fails
  *
  * Secrets (set via Replit Secrets or: supabase secrets set KEY=value --project-ref <ref>):
- *   GOOGLE_AI_API_KEY   — Google AI Studio key for Gemini 3.7 Flash text distillation
+ *   GOOGLE_AI_KEY_PAID  — canonical paid Google AI Studio key for Gemini text distillation
+ *   GOOGLE_AI_API_KEY   — legacy fallback during secret propagation
  *   VERTEX_AI_API_KEY   — Google Cloud API key for Vertex AI Imagen 3
  *   VERTEX_PROJECT_ID   — Google Cloud project ID (optional; defaults to key's linked project)
  *   HUGGINGFACE_API_KEY — HuggingFace token for authenticated inference (optional)
@@ -226,7 +227,8 @@ Deno.serve(async (req: Request) => {
   let googleAiError = '';
   let imageErrors: string[] = [];
 
-  const googleAiApiKey = Deno.env.get('GOOGLE_AI_API_KEY');
+  const googleAiApiKey = Deno.env.get('GOOGLE_AI_KEY_PAID') ??
+    Deno.env.get('GOOGLE_AI_API_KEY');
 
   // ── STEP 1: Enhance prompt with Gemini 3.7 Flash (text-only) ──────────────
   // With fluid context this is a true DISTILLATION step: the seeker's own words
@@ -283,8 +285,8 @@ Deno.serve(async (req: Request) => {
       console.error('❌ Gemini enhancement failed (using base prompt):', googleAiError);
     }
   } else {
-    googleAiError = 'GOOGLE_AI_API_KEY not configured';
-    console.warn('⚠️  GOOGLE_AI_API_KEY not set — skipping prompt enhancement');
+    googleAiError = 'GOOGLE_AI_KEY_PAID not configured';
+    console.warn('⚠️  GOOGLE_AI_KEY_PAID not set — skipping prompt enhancement');
   }
 
   // ── STEP 2a: Vertex AI Imagen (express mode — fractions of a cent) ─────────
@@ -342,7 +344,7 @@ Deno.serve(async (req: Request) => {
   }
 
   // ── STEP 2b: Gemini 3.1 Flash Image (modern; 2.5-image retires Sep 2026) ───
-  // Same GOOGLE_AI_API_KEY as text distillation. Lite variant as second try —
+  // Same paid Gemini key as text distillation. Lite variant as second try —
   // separate quota bucket, cheaper.
   if (googleAiApiKey && !portraitUrl) {
     for (const model of ['gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image']) {

@@ -111,6 +111,8 @@ interface OracleConversationProps {
   portraitCount?: number;
   portraitLimit?: number;
   portraitUrl?: string | null;
+  /** Portrait controls are tucked into the Oracle hamburger by default. */
+  portraitAccessOpen?: boolean;
   onSeekerProgress?: (count: number, max: number) => void;
   onSeekerIdentified?: (name: string | null, handles: string[]) => void;
   onConnected?: () => void;
@@ -250,7 +252,7 @@ const OracleConversation = forwardRef(
       onSessionEnd, onTurnComplete, onPortraitRequest, onSeekerProgress, onSeekerIdentified,
       onPortraitRetry, onPortraitView,
       portraitState = 'ready', portraitError = null, portraitCount = 0,
-      portraitLimit = 2, portraitUrl = null,
+      portraitLimit = 2, portraitUrl = null, portraitAccessOpen = false,
       onMicWillStart,
       onMicClick,
       onAudioSessionChanged,
@@ -1879,8 +1881,8 @@ const OracleConversation = forwardRef(
         {/* Portrait access HUD — keeps the payoff legible while the Oracle is
             live: unlock progress, generation state, retry path, and the
             per-session allowance all stay visible in one place. */}
-        {turns.filter(t => t.role === 'oracle').length >= 1 && onPortraitRequestRef.current && (
-          <div className="oc-summon-hud">
+        {turns.filter(t => t.role === 'oracle').length >= 1 && onPortraitRequestRef.current && portraitAccessOpen && (
+          <div className="oc-summon-hud oc-summon-hud--menu">
             <div className="oc-summon-hud__header">
               <span>◈ PORTRAIT ACCESS</span>
               <span>{Math.min(portraitCount, portraitLimit)} / {portraitLimit}</span>

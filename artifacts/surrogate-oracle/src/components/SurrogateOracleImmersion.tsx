@@ -416,6 +416,7 @@ export function SurrogateOracleImmersion() {
   const [loreStarted, setLoreStarted]       = useState(false);
   const [holdTooltip, setHoldTooltip]       = useState<{ title: string; body: string } | null>(null);
   const [hamburgerOpen, setHamburgerOpen]   = useState(false);
+  const [portraitAccessOpen, setPortraitAccessOpen] = useState(false);
   const [showReferenceImage, setShowReferenceImage] = useState(false);
   const referenceImageTriggerRef = useRef<HTMLButtonElement>(null);
   const referenceImageCloseRef = useRef<HTMLButtonElement>(null);
@@ -1582,6 +1583,10 @@ export function SurrogateOracleImmersion() {
 
   // Kill XR mode when Oracle session ends — placed here so isXRMode / deactivateXRMode are in scope.
   const prevScenePhaseRef = useRef<string>('');
+  useEffect(() => {
+    if (scenePhase !== 'oracle') setPortraitAccessOpen(false);
+  }, [scenePhase]);
+
   useEffect(() => {
     if (prevScenePhaseRef.current === 'oracle' && scenePhase === 'dormant' && isXRMode) {
       deactivateXRMode();
@@ -3815,7 +3820,16 @@ export function SurrogateOracleImmersion() {
           <div data-halo-ghost={awakened ? 'true' : undefined}>
             <OracleHaloRing active={awakened} isXRMode={isXRMode} />
           </div>
-          <div className="oracle-avatar-wrapper">
+          <div
+            className="oracle-avatar-wrapper"
+            style={isOracleMode ? {
+              overflow: 'visible',
+              borderRadius: 0,
+              clipPath: 'none',
+              maskImage: 'none',
+              WebkitMaskImage: 'none',
+            } : undefined}
+          >
             {isOracleMode && <OracleSpectrumRing getAnalyser={connection.getAnalyser} isActive={isOracleSpeaking} alignment={oracleAlignment === 'sacred' || oracleAlignment === 'profane' ? oracleAlignment : null} />}
             <div className="oracle-scanlines" />
             {!isOracleMode && (
@@ -3852,7 +3866,14 @@ export function SurrogateOracleImmersion() {
                   zIndex: 3,
                 }}
               >
-                <div className="oracle-avatar-headroom-hook" style={{ width: '100%', height: '100%' }}>
+                <div
+                  className="oracle-avatar-headroom-hook"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    overflow: isOracleMode ? 'visible' : undefined,
+                  }}
+                >
                   <OracleErrorBoundary>
                     <Suspense fallback={canvasWarmed ? null : <OracleAvatarFallback />}>
                       <Canvas
@@ -3878,7 +3899,21 @@ export function SurrogateOracleImmersion() {
                           alpha: true,
                           powerPreference: renderTier >= 2 ? 'high-performance' : 'default',
                         }}
-                        style={{ width: '100%', height: '100%', background: 'transparent' }}
+                         style={{
+                           width: '100%',
+                           height: '100%',
+                           display: 'block',
+                           background: 'transparent',
+                           borderRadius: 0,
+                           clipPath: 'none',
+                           maskImage: 'none',
+                           WebkitMaskImage: 'none',
+                         }}
+                         onCreated={({ gl, scene }) => {
+                           gl.setClearColor(0x000000, 0);
+                           gl.setClearAlpha(0);
+                           scene.background = null;
+                         }}
                         frameloop="always"
                       >
                          <OrbitZoomCompensator enabled={oracleCanvasExpanded} />
@@ -3954,7 +3989,7 @@ export function SurrogateOracleImmersion() {
                             </Physics>
                           </Suspense>
                         )}
-                        {renderTier >= 1 && (
+                         {renderTier >= 1 && !isOracleMode && (
                           <EffectComposer multisampling={renderTier >= 2 ? 4 : 0}>
                             {[
                               <Bloom
@@ -4650,6 +4685,7 @@ export function SurrogateOracleImmersion() {
           portraitCount={portraitGenerationCount}
           portraitLimit={2}
           portraitUrl={portraitViewerUrl}
+          portraitAccessOpen={portraitAccessOpen}
           onDocumentSelected={(file) => {
             setDocumentIntake({ file, requestId: Date.now() });
             logStep(`DOCUMENT INTAKE STARTED — ${file.name}`, 'ok');
@@ -5172,6 +5208,13 @@ export function SurrogateOracleImmersion() {
               <button onClick={() => { if (confirm('Reset?')) { resetJourney(); setHamburgerOpen(false); } }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>RESET</button>
               <button onClick={() => { if (isXRMode) deactivateXRMode(); else handleActivateXRMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#b026ff', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isXRMode ? '◈ EXIT AR' : '◈ AR MODE'}</button>
               <button onClick={() => { oracleConversationRef.current?.toggleTypeMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isTypeMode ? 'CLOSE PAD' : 'TYPE SIGNAL'}</button>
+               <button
+                 onClick={() => setPortraitAccessOpen(current => !current)}
+                 aria-expanded={portraitAccessOpen}
+                 style={{ display: 'block', width: '100%', padding: '12px 16px', background: portraitAccessOpen ? 'rgba(0,255,136,0.10)' : 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}
+               >
+                 ◈ PORTRAIT ACCESS {portraitAccessOpen ? '▲' : '▼'}
+               </button>
                <button onClick={() => { setShowDocumentArchive(true); setHamburgerOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>
                  <Archive size={14} /> READOUT ARCHIVE {documentArchive.length > 0 && `(${documentArchive.length})`}
                </button>

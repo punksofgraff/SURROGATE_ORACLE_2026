@@ -5703,6 +5703,18 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   text-align: center;
 }
 
+/* Portrait access is a hamburger-owned utility, not a permanent live-scene
+   banner. It opens beneath the menu only when the seeker asks for it. */
+.oc-summon-hud--menu {
+  top: 58px;
+  left: auto;
+  right: 14px;
+  transform: none;
+  width: min(280px, calc(100vw - 28px));
+  pointer-events: auto;
+  z-index: 101;
+}
+
 .oc-summon-hud__header {
   display: flex;
   justify-content: space-between;
@@ -6072,6 +6084,20 @@ body[data-rift-opening="true"] .oracle-terminal-overlay {
   border: none !important;
   border-radius: 0 !important;
   overflow: visible !important;
+  clip-path: none !important;
+  mask: none !important;
+  -webkit-mask: none !important;
+}
+
+/* No rectangular compositing boundary may survive on the live surface. */
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-headroom-hook,
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas,
+.oracle-stage[data-oracle-state="oracle"] .oracle-avatar-canvas canvas {
+  overflow: visible !important;
+  border-radius: 0 !important;
+  clip-path: none !important;
+  mask: none !important;
+  -webkit-mask: none !important;
 }
 
 /* ── Free the orbit: grow the WebGL canvas box beyond the avatar footprint ────

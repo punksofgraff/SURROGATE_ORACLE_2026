@@ -195,10 +195,12 @@ const ORACLE_AVATAR_URL  = '/oracle-avatar-live.png';
 const ALLEY_BG_URL       = '/alley-bg.png';
 const DEFAULT_STATION    = 0; // Graff Punks — sole station
 const FREE_EXCHANGES     = 20; // two rounds of ten completed Seeker + Oracle exchanges, not exits
-// Fresh journey ledger after the production IP reset. Versioning this key is
-// required because browser localStorage survives clearing the server ledger.
-// Never reuse a prior epoch after a production reset.
-const COMPLETION_LEDGER_PREFIX = 'surrogate_completed_exchanges_v3_20260823_';
+// Fresh journey ledger after the production free-session reset. Versioning this
+// key is required because browser localStorage survives clearing any server
+// ledger. The previous epoch is intentionally abandoned so every seeker starts
+// this free-session allowance at zero without touching wallet identity, seeker
+// echo/history, portraits, stories, or authentication state.
+const COMPLETION_LEDGER_PREFIX = 'surrogate_completed_exchanges_v4_20260909_';
 // Development previews must remain usable for repeated testing. This is compiled
 // out of production behavior: published builds still enforce the free-session cap.
 // The pressure harness can opt into the real gate with ?pressure_gate without

@@ -3977,7 +3977,7 @@ export function SurrogateOracleImmersion() {
                             </Physics>
                           </Suspense>
                         )}
-                        {renderTier >= 1 && (
+                        {renderTier >= 1 && gpu.backend !== 'webgpu' && !isOracleMode && (
                           <EffectComposer multisampling={renderTier >= 2 ? 4 : 0}>
                             {[
                               <Bloom

@@ -31,7 +31,7 @@ export interface GPUProfile {
  * surfaces, which reads as a bright loading flash rather than a quiet fallback. */
 const DEFAULT_PROFILE: GPUProfile = { tier: 0, backend: 'none', isMobile: false, ready: false };
 
-const STORAGE_KEY = 'oracle_gpu_profile_v6';
+const STORAGE_KEY = 'oracle_gpu_profile_v7';
 
 let cached: GPUProfile | null = null;
 let pending: Promise<GPUProfile> | null = null;
@@ -42,9 +42,10 @@ function readSessionCache(): GPUProfile | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (typeof parsed?.tier !== 'number') return null;
+    if (parsed.backend !== 'webgpu' && parsed.backend !== 'webgl') return null;
     return {
       tier: Math.max(0, Math.min(3, parsed.tier)) as GPUProfile['tier'],
-      backend: parsed.backend === 'webgpu' || parsed.backend === 'webgl' ? parsed.backend : 'none',
+      backend: parsed.backend,
       isMobile: !!parsed.isMobile,
       ready: true,
     };
@@ -167,7 +168,6 @@ function probe(): Promise<GPUProfile> {
           isMobile: webgpu.isMobile || rendererInfo.isMobile,
           ready: true,
         };
-        try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cached)); } catch {}
         return cached;
       }
 

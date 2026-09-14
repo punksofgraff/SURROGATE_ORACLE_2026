@@ -7,10 +7,10 @@ import type { SensorLifecycleState } from '../lib/sensorLifecycle';
 
 const DEFAULT_STATION = 0; // Graff Punks — sole station
 
-const MUSIC_LANDING_VOLUME  = 0.039375; // Another 25% reduction from 0.0525
+const MUSIC_LANDING_VOLUME  = 0.02953125; // Another 25% reduction from 0.039375
 const MUSIC_LORE_VOLUME_RATIO = 0.15;
-const MUSIC_KNIFE_VOLUME    = 0.01575;  // Another 25% reduction from 0.021
-const MUSIC_SESSION_AMBIENT = 0.006;  // Another 25% reduction from 0.008
+const MUSIC_KNIFE_VOLUME    = 0.0118125; // Same 25% base reduction
+const MUSIC_SESSION_AMBIENT = 0.0045;    // Same 25% base reduction
 const MUSIC_OFF_VOLUME      = 0;
 // The Law story starts on a hard narrative boundary. Duck quickly enough that
 // the radio never competes with its first sentence, while leaving a faint

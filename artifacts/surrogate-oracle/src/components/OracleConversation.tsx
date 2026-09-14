@@ -118,7 +118,6 @@ interface OracleConversationProps {
   onConnected?: () => void;
   onSessionReady?: () => void;
   onListeningChange?: (isListening: boolean) => void;
-  onMicWillStart?: () => void;
   onMicClick?: (willListen: boolean) => void;
   /** Fired after mic capture opens or closes — the two moments the mobile OS
    *  audio session gets reconfigured (iOS voice-processing / Android comms
@@ -253,7 +252,6 @@ const OracleConversation = forwardRef(
       onPortraitRetry, onPortraitView,
       portraitState = 'ready', portraitError = null, portraitCount = 0,
       portraitLimit = 2, portraitUrl = null, portraitAccessOpen = false,
-      onMicWillStart,
       onMicClick,
       onAudioSessionChanged,
       onTypeModeChange,
@@ -586,9 +584,6 @@ const OracleConversation = forwardRef(
 
     const onBargeInRef = useRef(onBargeIn);
     useEffect(() => { onBargeInRef.current = onBargeIn; }, [onBargeIn]);
-
-    const onMicWillStartRef = useRef(onMicWillStart);
-    useEffect(() => { onMicWillStartRef.current = onMicWillStart; }, [onMicWillStart]);
 
     const onAudioSessionChangedRef = useRef(onAudioSessionChanged);
     useEffect(() => { onAudioSessionChangedRef.current = onAudioSessionChanged; }, [onAudioSessionChanged]);
@@ -1297,12 +1292,6 @@ const OracleConversation = forwardRef(
       releaseDuringAcquireRef.current = null;
       updateMicLifecycle('recovering', 'microphone acquisition');
       try {
-        console.log('[startMic] acquiring mic, onMicWillStartRef.current=', onMicWillStartRef.current);
-        // Notify parent to duck music BEFORE getUserMedia — iOS audio session change
-        // (which happens on mic activation) causes speaker volume boost for voice.
-        // Ducking first minimizes the perceived loudness spike.
-        onMicWillStartRef.current?.();
-
         const ctx = getAudioContext();
         // Step 1: Resume AudioContext IMMEDIATELY before any awaits.
         // Safari and modern browsers require ctx.resume() to be synchronous with the user gesture.

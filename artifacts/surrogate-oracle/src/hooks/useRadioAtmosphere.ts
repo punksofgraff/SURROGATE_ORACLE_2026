@@ -42,7 +42,6 @@ export interface UseRadioAtmosphereParams {
   isLoreActive: boolean;
   isLoreComplete: boolean;
   isOracleSpeaking: boolean;
-  isMicActive: boolean;
   oracleHasSpokenRef: RefObject<boolean>;
 }
 
@@ -65,7 +64,6 @@ export function useRadioAtmosphere({
   isLoreActive,
   isLoreComplete,
   isOracleSpeaking,
-  isMicActive,
   oracleHasSpokenRef,
 }: UseRadioAtmosphereParams) {
   const audioRef      = useRef<HTMLAudioElement | null>(null);
@@ -234,10 +232,6 @@ export function useRadioAtmosphere({
 
     if (!isAudioPlaying) {
       nextTarget = MUSIC_OFF_VOLUME;
-    } else if (isMicActive) {
-      // Duck completely when mic is active to avoid acoustic VAD battle
-      nextTarget = MUSIC_OFF_VOLUME;
-      rampMs = 80;
     } else if (isOracleSpeaking && !isLoreActive) {
       nextTarget = MUSIC_OFF_VOLUME;
     } else if (isLoreActive) {
@@ -260,8 +254,8 @@ export function useRadioAtmosphere({
       nextTarget = showStage00 ? MUSIC_OFF_VOLUME : MUSIC_KNIFE_VOLUME;
       rampMs = 1500;
     } else if (scenePhase === 'oracle') {
-      // Restore music volume when in oracle mode and mic is NOT active!
-      // If Oracle has already spoken, lock to the low ambient state (0.008) to avoid voice clashes
+      // Mic capture is intentionally independent from the outboard mix.
+      // If Oracle has already spoken, lock to the low ambient state (0.008) to avoid voice clashes.
       nextTarget = oracleHasSpokenRef.current ? MUSIC_SESSION_AMBIENT : MUSIC_KNIFE_VOLUME;
       rampMs = 1500;
     } else {
@@ -272,7 +266,7 @@ export function useRadioAtmosphere({
       fadeToVolume(nextTarget, rampMs);
     }
     wasLoreActiveRef.current = isLoreActive;
-  }, [scenePhase, showStage00, isLoreActive, isLoreComplete, isOracleSpeaking, isMicActive, isAudioPlaying, targetVol, fadeToVolume]);
+  }, [scenePhase, showStage00, isLoreActive, isLoreComplete, isOracleSpeaking, isAudioPlaying, targetVol, fadeToVolume]);
 
   useEffect(() => {
     if (!audioRef.current) return;

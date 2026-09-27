@@ -227,8 +227,10 @@ export function SignalChaptersPanel({
       <header className="sc-head">
         <div>
           <span className="sc-kicker">PRINTS / PRIVATE CHAPTERS</span>
-          <h2 className="sc-title">SIGNAL CHAPTERS</h2>
-          <p className="sc-lede">Threads you chose to keep from the alley. Nothing is saved until you press save.</p>
+          <h2 className="sc-title" id="oracle-signal-chapters-title">SIGNAL CHAPTERS</h2>
+          <p className="sc-lede" id="oracle-signal-chapters-instructions">
+            Threads you chose to keep from the alley. Nothing is saved until you press save. Say “open chapters” while the Oracle is listening to open this collection.
+          </p>
         </div>
         <div className="sc-head__actions">
           {onCapture && (

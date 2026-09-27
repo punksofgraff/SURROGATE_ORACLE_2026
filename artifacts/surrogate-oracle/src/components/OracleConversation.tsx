@@ -29,6 +29,7 @@ import { useVisionFrames } from '../hooks/useVisionFrames';
 import { useConversationCompactor } from '../hooks/useConversationCompactor';
 import type { SensorLifecycleState } from '../lib/sensorLifecycle';
 import { isCreativeProductionRequest } from '../lib/creativeProduction';
+import { isSignalChaptersCommand } from '../lib/signalChapterCommands';
 
 // GEMINI_MODEL, ORACLE_SYSTEM_PROMPT and its supporting prompt blocks moved to
 // useGeminiSession.ts — they are pure inputs to the WS session.config payload
@@ -173,6 +174,8 @@ interface OracleConversationProps {
   onPersonaTakeover?: (mode: OraclePersonaMode) => void;
   /** Opens the shared device-safe document picker (Co-pilot only for voice). */
   onDocumentRequest?: () => void;
+  /** Opens private saved chapters on an explicit spoken or typed command. */
+  onChaptersRequest?: () => void;
   onDocumentSelected?: (file: File) => void;
   /** Routes an explicit Money Mite production brief into the parent job layer. */
   onCreativeRequest?: (prompt: string) => void;
@@ -276,6 +279,7 @@ const OracleConversation = forwardRef(
       onDocumentRequest,
       onDocumentSelected,
       onCreativeRequest,
+      onChaptersRequest,
     } = props;
 
     const [isListening, setIsListening] = useState(false);
@@ -367,6 +371,13 @@ const OracleConversation = forwardRef(
         activateCopilotFromCommand();
         setShowSignalPad(false);
         onTypeModeChange?.(false);
+        return;
+      }
+      if (isSignalChaptersCommand(trimmed)) {
+        setInputText('');
+        setShowSignalPad(false);
+        onTypeModeChange?.(false);
+        onChaptersRequestRef.current?.();
         return;
       }
       if (personaMode === 'creative-director' && DOCUMENT_UPLOAD_INTENT.test(trimmed)) {
@@ -516,9 +527,11 @@ const OracleConversation = forwardRef(
     const [documentPickerPending, setDocumentPickerPending] = useState(false);
     const documentInputRef = useRef<HTMLInputElement>(null);
     const onDocumentRequestRef = useRef(onDocumentRequest);
+    const onChaptersRequestRef = useRef(onChaptersRequest);
     const onDocumentSelectedRef = useRef(onDocumentSelected);
     const onCreativeRequestRef = useRef(onCreativeRequest);
     useEffect(() => { onDocumentRequestRef.current = onDocumentRequest; }, [onDocumentRequest]);
+    useEffect(() => { onChaptersRequestRef.current = onChaptersRequest; }, [onChaptersRequest]);
     useEffect(() => { onDocumentSelectedRef.current = onDocumentSelected; }, [onDocumentSelected]);
     useEffect(() => { onCreativeRequestRef.current = onCreativeRequest; }, [onCreativeRequest]);
 
@@ -536,6 +549,7 @@ const OracleConversation = forwardRef(
     // Accumulates the Seeker's spoken words from inputTranscription frames.
     // Committed as a user turn when the Oracle starts responding (turn boundary).
     const currentUserTranscriptRef = useRef('');
+    const chapterCommandPendingRef = useRef(false);
     // Input transcription can trail the first Oracle PCM chunk. Hold music
     // intent until turnComplete so Lyria receives the complete spoken brief.
     const pendingMusicPromptRef = useRef<string | null>(null);
@@ -872,6 +886,7 @@ const OracleConversation = forwardRef(
         const commitUserTranscript = () => {
           const spoken = currentUserTranscriptRef.current.trim();
           currentUserTranscriptRef.current = '';
+          chapterCommandPendingRef.current = false;
           if (!spoken) return;
           if (personaModeRef.current === 'creative-director' && DOCUMENT_UPLOAD_INTENT.test(spoken)) {
             logStep('DOCUMENT REQUEST DETECTED (voice) — OPENING PICKER', 'ok');
@@ -941,6 +956,19 @@ const OracleConversation = forwardRef(
           return;
         }
 
+        if (chapterCommandPendingRef.current) {
+          if (msg.serverContent?.turnComplete) {
+            chapterCommandPendingRef.current = false;
+            currentResponseText.current = '';
+            currentUserTranscriptRef.current = '';
+            setOracleSpeaking(false);
+            setIsOracleThinking(false);
+          }
+          // The spoken control opened the panel; discard the resulting Oracle
+          // reply instead of treating a navigation command as a conversation turn.
+          return;
+        }
+
         // Native-audio models: spoken text (and the hidden ORACLE_SCORE /
         // SEEKER_IRL blocks) arrives via outputTranscription, NOT modelTurn text
         // parts — those are now thought summaries (part.thought === true) and
@@ -953,6 +981,19 @@ const OracleConversation = forwardRef(
         // portrait-intent detection work for voice, not just the type pad.
         if (msg.serverContent?.inputTranscription?.text) {
           currentUserTranscriptRef.current += msg.serverContent.inputTranscription.text;
+          if (isSignalChaptersCommand(currentUserTranscriptRef.current)) {
+            currentUserTranscriptRef.current = '';
+            currentResponseText.current = '';
+            chapterCommandPendingRef.current = !msg.serverContent.turnComplete;
+            interruptResponseRef.current();
+            onBargeInRef.current?.();
+            setOracleSpeaking(false);
+            setIsOracleThinking(false);
+            setInputText('');
+            onChaptersRequestRef.current?.();
+            logStep('SIGNAL CHAPTERS OPENED BY VOICE COMMAND', 'ok');
+            return;
+          }
           if (isCopilotPersonaCommand(currentUserTranscriptRef.current)) {
             activateCopilotFromCommand();
           }

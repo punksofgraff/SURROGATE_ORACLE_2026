@@ -4,6 +4,7 @@ import {
   findStoredChapter, newChapterDraft, readSignalChapters, removeSignalChapter,
   saveSignalChapter, type ChapterDraft, type ChapterStorage,
 } from '../src/lib/signalChapters';
+import { isSignalChaptersCommand } from '../src/lib/signalChapterCommands';
 
 class MemoryStorage implements ChapterStorage {
   private values = new Map<string, string>();
@@ -19,6 +20,12 @@ const draft = (id: string): ChapterDraft => ({
 });
 const profile = new MemoryStorage();
 const anotherProfile = new MemoryStorage();
+assert.equal(isSignalChaptersCommand('Open chapters'), true);
+assert.equal(isSignalChaptersCommand('Hey Oracle, show me my saved chapters!'), true);
+assert.equal(isSignalChaptersCommand('view signal chapters'), true);
+assert.equal(isSignalChaptersCommand('My chapters'), true);
+assert.equal(isSignalChaptersCommand('Tell me why chapters matter'), false);
+assert.equal(isSignalChaptersCommand('open the creative chapter'), false);
 assert.deepEqual(readSignalChapters(profile), []);
 assert.match(newChapterDraft().id, /^[0-9a-f]{8}-/i);
 assert.equal(newChapterDraft().title, '');

@@ -112,11 +112,12 @@ export interface TalismanData {
 interface TalismanCardProps {
   data: TalismanData | null;
   onDismiss: () => void;
+  onSaveChapter?: () => void;
 }
 
 const TALISMAN_DURATION_MS = 8000;
 
-export function TalismanCard({ data, onDismiss }: TalismanCardProps) {
+export function TalismanCard({ data, onDismiss, onSaveChapter }: TalismanCardProps) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const restoreRef = useRef<HTMLButtonElement>(null);
   const [isTucked, setIsTucked] = useState(false);
@@ -214,6 +215,14 @@ export function TalismanCard({ data, onDismiss }: TalismanCardProps) {
 
           {/* ── Content stack ── */}
           <div className="oracle-talisman-content" style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+            {onSaveChapter && <button type="button"
+              onClick={(event) => { event.stopPropagation(); if (timerRef.current) clearTimeout(timerRef.current); onSaveChapter(); }}
+              style={{ padding: '12px 20px', marginBottom: 20, background: '#042015', color: '#baffdf', border: '1px solid #00bb77', cursor: 'pointer', font: '14px monospace' }}>
+              REVIEW &amp; SAVE CHAPTER
+            </button>}
+            {onSaveChapter && <p style={{ color: '#b1c7bd', font: '12px/1.5 system-ui, sans-serif', margin: '0 0 16px' }}>
+              Closing this card does not save a chapter.
+            </p>}
             <button
               type="button"
               className="oracle-overlay-tuck"

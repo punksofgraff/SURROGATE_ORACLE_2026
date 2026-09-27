@@ -131,6 +131,8 @@ interface OracleConversationProps {
   autoStart?: boolean;
   sessionContext?: string;
   seekerSummary?: string | null;
+  /** Read the currently approved chapter at session-config time, not render time. */
+  getChapterContext?: () => string | null;
   onUserSpeakingChange?: (isSpeaking: boolean, score: number) => void;
   onBargeIn?: () => void;
   onDisconnected?: () => void;
@@ -244,6 +246,7 @@ const OracleConversation = forwardRef(
       autoStart = true,
       sessionContext,
       seekerSummary,
+      getChapterContext,
       initialTotemLevel = 0,
       onUserSpeakingChange, onBargeIn, onDisconnected,
       isGuidedTour,
@@ -1178,6 +1181,7 @@ const OracleConversation = forwardRef(
       autoStart,
       personaMode,
       seekerSummary,
+      getChapterContext,
       turnsRef,
       debugInfo,
       onConnectedRef,

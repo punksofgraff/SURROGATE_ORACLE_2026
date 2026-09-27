@@ -1,0 +1,23 @@
+.oracle-chapters-dialog {
+  box-sizing: border-box;
+  width: min(1040px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 20px;
+  color: #e6fff4;
+  background: #05100c;
+  border: 1px solid #23795a;
+  border-radius: 4px 20px 4px 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.oracle-chapters-dialog::backdrop { background: #000d; backdrop-filter: blur(8px); }
+.oracle-chapters-dialog__bar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px; font:12px 'Share Tech Mono', monospace; color:#87baaa; }
+.oracle-chapters-dialog__bar button { display:flex; align-items:center; gap:8px; border:1px solid #23795a; background:#0b231a; color:#baffdf; padding:12px; cursor:pointer; }
+.oracle-chapters-notice { padding:12px; border-left:3px solid #00ccff; font:14px/1.6 system-ui,sans-serif; background:#08212a; color:#bdf2ff; }
+.oracle-chapters-entry { position:fixed; z-index:130; right:16px; top:72px; display:flex; align-items:center; gap:8px; min-height:44px; border:1px solid #227b5b; border-radius:4px 12px 4px 12px; background:#04140feb; color:#a4ffcf; padding:10px 14px; font:12px 'Share Tech Mono',monospace; cursor:pointer; }
+.oracle-chapter-menu-save { display:block; width:100%; padding:12px 16px; background:transparent; border:0; border-top:1px solid #174330; color:#00ffcc; text-align:left; font-size:.85rem; cursor:pointer; }
+.oracle-chapters-entry:focus-visible,.oracle-chapters-dialog button:focus-visible { outline:2px solid #00ccff; outline-offset:3px; }
+@media(max-width:600px) {
+  .oracle-chapters-dialog { padding:14px; width:calc(100vw - 12px); max-height:calc(100dvh - 16px); }
+}

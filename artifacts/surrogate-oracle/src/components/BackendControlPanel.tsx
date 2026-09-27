@@ -296,6 +296,8 @@ interface BackendControlPanelProps {
   userId?: string;
   sessionId?: string;
   savedReadoutCount?: number;
+  chapterCount?: number;
+  onOpenChapters?: () => void;
   isVisible?: boolean;
   initialTab?: string;
   onClose?: () => void;
@@ -308,7 +310,7 @@ interface BackendControlPanelProps {
 // ── Main ───────────────────────────────────────────────────────────────────────
 export const BackendControlPanel = ({
   userId, sessionId, isVisible = true, initialTab = 'vault',
-  onClose, userEmail, pendingCoins = 0, oracleConversationRef, savedReadoutCount = 0,
+  onClose, userEmail, pendingCoins = 0, oracleConversationRef, savedReadoutCount = 0, chapterCount = 0, onOpenChapters,
 }: BackendControlPanelProps) => {
   const [activeIdx, setActiveIdx]     = useState<number>(() => {
     const saved = localStorage.getItem('oracle_crate_active_freq') as Frequency | null;
@@ -617,6 +619,16 @@ export const BackendControlPanel = ({
             ════════════════════════════════════════════════════════════ */}
             {activeFreq.id === 'PRINTS' && (
               <>
+                {onOpenChapters && <div className="ec-card">
+                  <div className="ec-territory">SIGNAL<br />CHAPTERS</div>
+                  <p className="ec-sub">PRIVATE TO THIS BROWSER · {chapterCount} SAVED</p>
+                  <div className="ec-divider" />
+                  <button type="button" className="ec-upgrade-btn" onClick={onOpenChapters}>OPEN CHAPTERS</button>
+                  <p style={{ font: '14px/1.6 system-ui, sans-serif', color: '#99bbaa', marginTop: 16 }}>
+                    Review, edit, export or delete a chapter. Choose what to continue in your next encounter.
+                    Browser-only storage; no wallet or cross-device sync.
+                  </p>
+                </div>}
                 <div className="ec-card">
                   <div className="ec-territory">PRINTS</div>
                   <div className="ec-sub" style={{ color: '#00ff88' }}>PORTRAIT ARCHIVE · {activeFreq.mhz}MHz</div>

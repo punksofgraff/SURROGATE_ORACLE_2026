@@ -79,6 +79,10 @@ import WalletGateCard from './WalletGateCard';
 import { InlineSubscriptionModal } from './InlineSubscriptionModal';
 import { DocumentIntakeCard, type DocumentIntakeFile } from './DocumentIntakeCard';
 import { DocumentArchive } from './DocumentArchive';
+import { SignalChaptersPanel } from './SignalChaptersPanel';
+import { useSignalChapters } from '../hooks/useSignalChapters';
+import { chapterContinuation, chapterOutput, findStoredChapter, newChapterDraft, type ChapterDraft, type SignalChapter } from '../lib/signalChapters';
+import './SignalChapterDialog.css';
 import { loadDocumentArchive, saveDocumentReadout, type ArchivedDocumentReadout } from '../lib/documentArchive';
 import CreativeArtifactCard, { CreativeSeriesHistoryShelf } from './CreativeArtifactCard';
 import {
@@ -452,6 +456,48 @@ export function SurrogateOracleImmersion() {
   // Ghost transmissions — Oracle-voiced phrases from the ghost_phrase column,
   // fetched once at mount via op:'fragments'. Raw session content never arrives here.
   const [alleyFragments, setAlleyFragments]   = useState<string[]>([]);
+  const [showChapters, setShowChapters] = useState(false);
+  const [chapterDraft, setChapterDraft] = useState<ChapterDraft | null>(null);
+  const [chapterDraftVersion, setChapterDraftVersion] = useState(0);
+  const [chapterNotice, setChapterNotice] = useState<string | null>(null);
+  const [selectedChapter, setSelectedChapter] = useState<{ id: string; updatedAt: string } | null>(null);
+  const selectedChapterRef = useRef(selectedChapter);
+  const chapterIntentRef = useRef<'default' | 'fresh' | 'continue'>('default');
+  const chapterEntryStartedRef = useRef(false);
+  const encounterChapterRef = useRef<{ sessionId: string; draft: ChapterDraft } | null>(null);
+  const chapterDialogRef = useRef<HTMLDialogElement>(null);
+  const { chapters, error: chapterLoadError } = useSignalChapters();
+
+  useEffect(() => {
+    const dialog = chapterDialogRef.current;
+    if (showChapters && dialog && !dialog.open) dialog.showModal();
+    if (!showChapters && dialog?.open) dialog.close();
+  }, [showChapters]);
+
+  const clearChapterSelection = useCallback(() => {
+    selectedChapterRef.current = null;
+    chapterIntentRef.current = 'fresh';
+    setSelectedChapter(null);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedChapter) return;
+    const current = chapters.find(chapter => chapter.id === selectedChapter.id);
+    if (chapterLoadError || !current || current.updatedAt !== selectedChapter.updatedAt) {
+      clearChapterSelection();
+      setChapterNotice('The selected chapter changed or is unavailable. Select it again to approve continuation.');
+    }
+  }, [chapters, chapterLoadError, selectedChapter, clearChapterSelection]);
+
+  // Resolve from storage at the point of connection, not from a stale UI snapshot.
+  // Selection is deliberately not persisted: every return requires a fresh choice.
+  const getChapterContext = useCallback(() => {
+    const selection = selectedChapterRef.current;
+    if (!selection || chapterIntentRef.current !== 'continue') return null;
+    const stored = findStoredChapter(selection.id);
+    if (!stored || stored.updatedAt !== selection.updatedAt) return null;
+    return chapterContinuation(stored);
+  }, []);
 
   useEffect(() => {
     if (!showReferenceImage) return;
@@ -627,7 +673,10 @@ export function SurrogateOracleImmersion() {
     const nextId = crypto.randomUUID();
     localStorage.setItem('oracle_active_session_id', nextId);
     setCurrentSessionId(nextId);
-  }, [connection]);
+    chapterEntryStartedRef.current = false;
+    if (chapterIntentRef.current !== 'default') clearChapterSelection();
+    setChapterNotice(null);
+  }, [connection, clearChapterSelection]);
 
   // Awaited by exitOracleMode before onCleanup — resolves when the post-session
   // background writes (echo + distill) settle, or immediately when none are staged.
@@ -642,6 +691,28 @@ export function SurrogateOracleImmersion() {
   });
 
   const { scenePhase, enterTerminal, enterTour, awakeFromTerminal, exitOracleMode, selectKnifeQuestion, markOracleReady, resetJourney } = journey;
+  const continuationLocked = scenePhase !== 'dormant' || chapterEntryStartedRef.current;
+  const handleChapterContinue = useCallback((chapter: SignalChapter) => {
+    if (scenePhase !== 'dormant' || chapterEntryStartedRef.current) return;
+    // The transport prewarms on mount even in dormant. Reconfigure that idle
+    // socket after approval; never interrupt a started encounter or add a turn.
+    oracleConversationRef.current?.disconnect();
+    const selection = { id: chapter.id, updatedAt: chapter.updatedAt };
+    selectedChapterRef.current = selection;
+    chapterIntentRef.current = 'continue';
+    pendingWalletGreetingRef.current = null;
+    priorCompactSummariesRef.current = [];
+    setSelectedChapter(selection);
+    setChapterNotice(`Ready to continue “${chapter.title}”. Close chapters and enter the Oracle when you are ready.`);
+  }, [scenePhase]);
+  const handleChapterFresh = useCallback(() => {
+    if (scenePhase !== 'dormant' || chapterEntryStartedRef.current) return;
+    oracleConversationRef.current?.disconnect();
+    clearChapterSelection();
+    pendingWalletGreetingRef.current = null;
+    priorCompactSummariesRef.current = [];
+    setChapterNotice('Start fresh selected. No saved chapter or prior summary will be sent on entry.');
+  }, [scenePhase, clearChapterSelection]);
   const returningCard = isReturning || hasCompletedLore || hasSignedWallet ||
     (typeof window !== 'undefined' && !!localStorage.getItem('oracle_wallet_signed'));
   const startPresencePreflight = useCallback((continueJourney: () => void) => {
@@ -714,6 +785,7 @@ export function SurrogateOracleImmersion() {
     // Pre-warm at the moment of user intent — gives the full ~850ms transition
     // animation for the WS to establish before knife cards are interactive.
     // Safe to call even if prewarm already fired (idempotent — no-ops if OPEN/CONNECTING).
+    chapterEntryStartedRef.current = true;
     oracleConversationRef.current?.prewarm();
     const hasWalletKey = !!(currentUserId || localStorage.getItem('oracle_seeker_key'));
     const isFirstTimeSeeker = (!hasCompletedLore && !hasWalletKey) || new URLSearchParams(window.location.search).has('newuser');
@@ -940,6 +1012,7 @@ export function SurrogateOracleImmersion() {
 
   const handleFirstTap = useCallback(async () => {
     if (scenePhase !== 'dormant' || showStage00) return;
+    chapterEntryStartedRef.current = true;
     // iOS Safari: ALL audio operations must be synchronous within the gesture handler.
     // setupAudioSpine is now fully sync — creates/unlocks AudioContext and wires the
     // radio graph without any await or setTimeout boundary. initializePCMPlayer must
@@ -995,7 +1068,7 @@ export function SurrogateOracleImmersion() {
       logStep('WALLET SIGNED → DIRECT ALLEY ENTRY', 'ok');
       // Build a personalized greeting if the seeker has a known echo record
       const greetLabel = loadedEcho?.name || loadedEcho?.last_archetype;
-      if (greetLabel) {
+      if (greetLabel && chapterIntentRef.current === 'default') {
         const echoLines = [
           loadedEcho.name ? `Their name is ${loadedEcho.name}.` : '',
           loadedEcho.last_archetype ? `Their last known archetype: ${loadedEcho.last_archetype}.` : '',
@@ -1117,6 +1190,48 @@ export function SurrogateOracleImmersion() {
     }
   }, []);
 
+  // In-memory encounter draft only. Nothing is written until the seeker presses Save.
+  const snapshotChapter = useCallback((turns: SessionTurns): ChapterDraft => {
+    const previous = encounterChapterRef.current;
+    const artifact = activeCreativeArtifactRef.current;
+    const outputs = [];
+    if (portraitViewerUrl) outputs.push(chapterOutput('portrait', 'Encounter portrait', 'portrait', portraitViewerUrl));
+    if (artifact) outputs.push(chapterOutput(artifact.id.slice(0, 100) || 'creative', artifact.title.slice(0, 100) || 'Creative output', artifact.kind, artifact.outputUrl));
+    if (lyria.audioUrl) outputs.push(chapterOutput('music', 'Encounter music', 'audio', lyria.audioUrl));
+    const lastOracle = [...turns].reverse().find(turn => turn.role === 'oracle');
+    const existing = previous?.sessionId === currentSessionId ? previous.draft : null;
+    const draft: ChapterDraft = {
+      ...(existing ?? newChapterDraft()),
+      title: existing?.title ?? `Encounter · ${new Date().toLocaleDateString()}`,
+      summary: existing?.summary || (lastOracle ? extractProphecy(lastOracle.content).slice(0, 1600) : ''),
+      threadKind: personaMode === 'creative-director' ? 'creative' : 'reflective',
+      outputs,
+    };
+    encounterChapterRef.current = { sessionId: currentSessionId, draft };
+    return draft;
+  }, [currentSessionId, portraitViewerUrl, lyria.audioUrl, personaMode]);
+
+  const captureChapter = useCallback(() => {
+    const candidate = scenePhase === 'dormant' && encounterChapterRef.current
+      ? encounterChapterRef.current.draft
+      : snapshotChapter(sessionFinalizedRef.current ? finalTurnsRef.current : oracleConversationRef.current?.getSessionTurns() ?? []);
+    let draft = candidate;
+    try {
+      const saved = findStoredChapter(candidate.id);
+      if (saved) {
+        const { createdAt: _created, updatedAt: _updated, ...savedDraft } = saved;
+        draft = { ...savedDraft, outputs: [...savedDraft.outputs, ...candidate.outputs.filter(output => !savedDraft.outputs.some(savedOutput => savedOutput.id === output.id))].slice(0, 12) };
+      }
+      setChapterNotice(null);
+    } catch {
+      setChapterNotice('Browser storage is unavailable. You can review a draft, but it is not saved.');
+    }
+    setChapterDraft(draft);
+    setChapterDraftVersion(version => version + 1);
+    setShowChapters(true);
+    setHamburgerOpen(false);
+  }, [scenePhase, snapshotChapter]);
+
   /**
    * Centralized, idempotent exit finalization — EVERY exit path must run this:
    * mic-button exit (via handleSessionEnd), hamburger EXIT, tier-gate close.
@@ -1138,6 +1253,12 @@ export function SurrogateOracleImmersion() {
     // hooks, so on mobile this teardown causes no playback-chain side effects.
     const allTurns = oracleConversationRef.current?.getSessionTurns() ?? [];
     finalTurnsRef.current = allTurns;
+    try {
+      snapshotChapter(allTurns);
+    } catch {
+      // Optional drafting must never prevent the existing voice teardown.
+      setChapterNotice('The encounter draft could not be prepared. No chapter was saved.');
+    }
     oracleConversationRef.current?.disconnect();
     connection.flushPlayback();
 
@@ -1200,7 +1321,7 @@ export function SurrogateOracleImmersion() {
     }
 
     return allTurns;
-  }, [hasSignedWallet, connection, scenePhase]);
+  }, [hasSignedWallet, connection, scenePhase, snapshotChapter]);
 
   const handleSessionEnd = useCallback((alignment: string, totemLevel: number, _coins: number) => {
     if (sessionEndedRef.current) return; // guard: ignore double exit taps (reset on re-entering oracle)
@@ -1285,7 +1406,7 @@ export function SurrogateOracleImmersion() {
     {
       const fullStory = LORE_SEQUENCE.join('\n');
       let memoryBlock = '';
-      if (echo?.session_summary || echo?.last_session_themes?.length || priorCompactSummariesRef.current.length) {
+      if (chapterIntentRef.current === 'default' && (echo?.session_summary || echo?.last_session_themes?.length || priorCompactSummariesRef.current.length)) {
         const parts: string[] = [];
         if (echo?.session_summary) parts.push(`Prior session distillation: "${echo.session_summary}".`);
         if (echo?.last_session_themes?.length) parts.push(`Themes that surfaced last time: ${echo.last_session_themes.join(', ')}.`);
@@ -4705,6 +4826,7 @@ export function SurrogateOracleImmersion() {
           }}
            onCreativeRequest={handleCreativeRequest}
           seekerSummary={(() => {
+            if (chapterIntentRef.current !== 'default') return null;
             if (!echo) return null;
             const lines: string[] = [];
             if (echo.name) lines.push(`Name: ${echo.name}`);
@@ -4712,6 +4834,7 @@ export function SurrogateOracleImmersion() {
             if (echo.totem_level) lines.push(`Totem level: ${echo.totem_level}`);
             return lines.join('\n');
           })()}
+          getChapterContext={getChapterContext}
           isGuidedTour={isGuidedTour}
         />
 
@@ -5218,6 +5341,7 @@ export function SurrogateOracleImmersion() {
           {hamburgerOpen && (
             <motion.div initial={{ opacity: 0, scale: 0.94, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.94, y: -6 }} style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'rgba(0,4,2,0.94)', border: '1px solid rgba(0,255,136,0.35)', borderRadius: '8px', overflow: 'hidden', minWidth: '160px', backdropFilter: 'blur(14px)' }}>
               <button onClick={() => { finalizeOracleSession(echoTrackRef.current.alignment, echoTrackRef.current.totemLevel); exitOracleMode(echoTrackRef.current.alignment); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>EXIT</button>
+              <button onClick={captureChapter} className="oracle-chapter-menu-save">SAVE A CHAPTER</button>
               <button onClick={() => { if (confirm('Reset?')) { resetJourney(); setHamburgerOpen(false); } }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>RESET</button>
               <button onClick={() => { if (isXRMode) deactivateXRMode(); else handleActivateXRMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#b026ff', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isXRMode ? '◈ EXIT AR' : '◈ AR MODE'}</button>
               <button onClick={() => { oracleConversationRef.current?.toggleTypeMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isTypeMode ? 'CLOSE PAD' : 'TYPE SIGNAL'}</button>
@@ -5325,6 +5449,8 @@ export function SurrogateOracleImmersion() {
           isAuthenticated={!!currentUserId}
           pendingCoins={sessionCoins}
           oracleConversationRef={oracleConversationRef}
+          chapterCount={chapters.length}
+          onOpenChapters={() => setShowChapters(true)}
         />
       )}
 
@@ -5341,7 +5467,37 @@ export function SurrogateOracleImmersion() {
       {/* ── Talisman Card — post-session walk-away moment ────────────────────
           Shown over the still-lit oracle scene between session end and dormant.
           Auto-dismisses after 8s; tap anywhere to dismiss early. */}
-      <TalismanCard data={talismanData} onDismiss={handleTalismanDismiss} />
+      <TalismanCard data={talismanData} onDismiss={handleTalismanDismiss} onSaveChapter={() => {
+        captureChapter();
+        handleTalismanDismiss();
+      }} />
+
+      {scenePhase === 'dormant' && !debugMode && (
+        <button type="button" className="oracle-chapters-entry" onClick={() => setShowChapters(true)} data-testid="open-chapters">
+          <Archive size={16} aria-hidden="true" /> {selectedChapter ? 'CHAPTER READY' : 'CHAPTERS'} {chapters.length > 0 ? `(${chapters.length})` : ''}
+        </button>
+      )}
+      <dialog ref={chapterDialogRef} className="oracle-chapters-dialog" aria-label="Private signal chapters"
+        onCancel={() => setShowChapters(false)} onClose={() => setShowChapters(false)}>
+        <div className="oracle-chapters-dialog__bar">
+          <span>PRIVATE / THIS BROWSER</span>
+          <button type="button" aria-label="Close chapters" onClick={() => setShowChapters(false)}>CLOSE <X size={16} /></button>
+        </div>
+        {chapterNotice && <p className="oracle-chapters-notice" role="status">{chapterNotice}</p>}
+        <SignalChaptersPanel
+          draft={chapterDraft} draftVersion={chapterDraftVersion} selectedId={selectedChapter?.id ?? null}
+          onCapture={captureChapter} continuationLocked={continuationLocked}
+          onContinue={handleChapterContinue} onStartFresh={handleChapterFresh}
+          onDeleted={(id) => {
+            if (selectedChapterRef.current?.id === id) clearChapterSelection();
+            if (encounterChapterRef.current?.draft.id === id) encounterChapterRef.current = null;
+            if (chapterDraft?.id === id) setChapterDraft(null);
+          }}
+          onSaved={(chapter) => {
+            if (selectedChapterRef.current?.id === chapter.id) clearChapterSelection();
+          }}
+        />
+      </dialog>
     </div>
   );
 }

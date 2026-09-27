@@ -22,6 +22,7 @@ const profile = new MemoryStorage();
 const anotherProfile = new MemoryStorage();
 assert.equal(isSignalChaptersCommand('Open chapters'), true);
 assert.equal(isSignalChaptersCommand('Hey Oracle, show me my saved chapters!'), true);
+assert.equal(isSignalChaptersCommand('Oracle, can you open up my chapters?'), true);
 assert.equal(isSignalChaptersCommand('view signal chapters'), true);
 assert.equal(isSignalChaptersCommand('My chapters'), true);
 assert.equal(isSignalChaptersCommand('Tell me why chapters matter'), false);

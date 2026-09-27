@@ -27,6 +27,8 @@ function check(value, message) { assert.ok(value, message); checks++; console.lo
 const tid = (page, name) => page.getByTestId(name);
 const records = page => page.evaluate(storageKey => JSON.parse(localStorage.getItem(storageKey) || '[]'), key);
 const open = async page => {
+  await tid(page, 'oracle-menu-toggle').waitFor({ timeout: 30000 });
+  if (await tid(page, 'open-chapters').count() === 0) await tid(page, 'oracle-menu-toggle').click();
   await tid(page, 'open-chapters').waitFor({ timeout: 30000 });
   await tid(page, 'open-chapters').click();
   await tid(page, 'signal-chapters').waitFor();
@@ -50,6 +52,7 @@ async function blockedNetwork(context, { immediate = false } = {}) {
     sessionStorage.setItem('oracle_presence_preference_v1', 'none');
     const NativeSocket = window.WebSocket;
     window.__chapterFrames = [];
+    window.__chapterSockets = [];
     const pendingSockets = new Set();
     // The app dials its voice socket on dormant mount. Do not acknowledge that
     // warm socket until actual entry; otherwise onConnected locks chapter choice
@@ -76,6 +79,7 @@ async function blockedNetwork(context, { immediate = false } = {}) {
       constructor(address) {
         super();
         this.url = String(address);
+        window.__chapterSockets.push(this);
         if (immediate || window.__chapterEntryClicked) this.activate();
         else pendingSockets.add(this);
       }
@@ -119,7 +123,7 @@ async function blockedNetwork(context, { immediate = false } = {}) {
 async function freshPage(context) {
   const page = await context.newPage();
   await page.goto(url, { waitUntil: 'load' }); // networkidle never settles (HMR).
-  await tid(page, 'open-chapters').waitFor({ timeout: 30000 });
+  await tid(page, 'oracle-menu-toggle').waitFor({ timeout: 30000 });
   return page;
 }
 async function save(page) {
@@ -247,6 +251,22 @@ async function verifyTail(browser) {
       'last actual entry config carries selected approved text only, never output URL');
       check(!frames.filter(f => f.type !== 'session.config').some(f => JSON.stringify(f).includes(marker)),
         'selected chapter was not sent as an additional text turn');
+      await page.evaluate(() => {
+        const socket = window.__chapterSockets.filter(candidate =>
+          String(candidate.url).includes('/functions/v1/gemini-live-proxy'),
+        ).at(-1);
+        if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error('No open synthetic Oracle socket');
+        socket.emit(new MessageEvent('message', { data: JSON.stringify({
+          type: 'server.content',
+          serverContent: { inputTranscription: { text: 'open chapters' }, turnComplete: true },
+        }) }));
+      });
+      await tid(page, 'signal-chapters').waitFor({ state: 'visible' });
+      await tid(page, 'chapter-live-announcement').filter({ hasText: 'Private Signal Chapters opened' }).waitFor();
+      const afterVoiceCommand = await page.evaluate(() => window.__chapterFrames);
+      check(!afterVoiceCommand.some(frame => frame.type === 'client.realtimeInput' &&
+        frame.realtimeInput?.text === 'open chapters'),
+      'spoken chapter command opens the accessible panel without becoming a conversation turn');
     } finally { await context.close(); }
   }
   {
@@ -303,6 +323,8 @@ async function main() {
       }, { storageKey: key, chapterList: fixture });
     }
     const page = await freshPage(context);
+      check(await tid(page, 'open-chapters').count() === 0,
+        'Chapters is not permanently on screen when the menu is closed');
     await open(page);
     if (!resume) {
     check(await tid(page, 'signal-chapters').isVisible(), 'real dormant chapter dialog opens');
@@ -380,7 +402,7 @@ async function main() {
     secondPage.on('pageerror', error => secondErrors.push(error.message));
     await secondPage.goto(url, { waitUntil: 'load' });
     try {
-      await tid(secondPage, 'open-chapters').waitFor({ timeout: 12000 });
+      await tid(secondPage, 'oracle-menu-toggle').waitFor({ timeout: 12000 });
     } catch (error) {
       const diagnostic = await secondPage.evaluate(() => ({
         body: document.body?.innerText?.slice(0, 1200),

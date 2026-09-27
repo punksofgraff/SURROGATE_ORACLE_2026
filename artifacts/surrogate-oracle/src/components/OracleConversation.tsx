@@ -961,6 +961,8 @@ const OracleConversation = forwardRef(
             chapterCommandPendingRef.current = false;
             currentResponseText.current = '';
             currentUserTranscriptRef.current = '';
+            debugInfo.current.audioChunksReceived = 0;
+            wasInterruptedRef.current = false;
             setOracleSpeaking(false);
             setIsOracleThinking(false);
           }

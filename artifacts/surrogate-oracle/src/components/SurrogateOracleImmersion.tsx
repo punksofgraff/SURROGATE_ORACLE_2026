@@ -457,6 +457,7 @@ export function SurrogateOracleImmersion() {
   // fetched once at mount via op:'fragments'. Raw session content never arrives here.
   const [alleyFragments, setAlleyFragments]   = useState<string[]>([]);
   const [showChapters, setShowChapters] = useState(false);
+  const [chapterAnnouncement, setChapterAnnouncement] = useState('');
   const [chapterDraft, setChapterDraft] = useState<ChapterDraft | null>(null);
   const [chapterDraftVersion, setChapterDraftVersion] = useState(0);
   const [chapterNotice, setChapterNotice] = useState<string | null>(null);
@@ -470,14 +471,27 @@ export function SurrogateOracleImmersion() {
 
   useEffect(() => {
     const dialog = chapterDialogRef.current;
-    if (showChapters && dialog && !dialog.open) dialog.showModal();
-    if (!showChapters && dialog?.open) dialog.close();
+    if (showChapters && dialog) {
+      if (!dialog.open) dialog.showModal();
+      const timer = window.setTimeout(() => {
+        setChapterAnnouncement('Private Signal Chapters opened. Your saved chapters are available only in this browser profile.');
+      }, 80);
+      return () => window.clearTimeout(timer);
+    }
+    if (dialog?.open) dialog.close();
+    setChapterAnnouncement('');
+    return undefined;
   }, [showChapters]);
 
   const clearChapterSelection = useCallback(() => {
     selectedChapterRef.current = null;
     chapterIntentRef.current = 'fresh';
     setSelectedChapter(null);
+  }, []);
+
+  const openSignalChapters = useCallback(() => {
+    setHamburgerOpen(false);
+    setShowChapters(true);
   }, []);
 
   useEffect(() => {
@@ -4751,6 +4765,7 @@ export function SurrogateOracleImmersion() {
             }
           }}
           onSeekerIdentified={handleSeekerIdentified}
+          onChaptersRequest={openSignalChapters}
           initialTotemLevel={echo?.totem_level ?? 0}
           onConnected={() => setIsGeminiConnected(true)}
            onSessionReady={() => setIsGeminiSessionLive(true)}
@@ -5326,22 +5341,40 @@ export function SurrogateOracleImmersion() {
         )}
       </AnimatePresence>
 
-      {isOracleMode && (
+      {(isOracleMode || scenePhase === 'dormant') && (
         <div style={{ position: 'fixed', top: '14px', right: '14px', zIndex: 100 }}>
           <button
             ref={referenceImageTriggerRef}
             onClick={() => setHamburgerOpen(!hamburgerOpen)}
             className="oracle-hamburger"
-            aria-label={hamburgerOpen ? 'Close Oracle menu' : 'Open Oracle menu'}
+            aria-label={hamburgerOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={hamburgerOpen}
+            aria-controls="oracle-hamburger-menu"
+            data-testid="oracle-menu-toggle"
             data-tooltip="Open menu for terminal typing"
           >
             {hamburgerOpen ? '✕' : '☰'}
           </button>
           <AnimatePresence>
           {hamburgerOpen && (
-            <motion.div initial={{ opacity: 0, scale: 0.94, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.94, y: -6 }} style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'rgba(0,4,2,0.94)', border: '1px solid rgba(0,255,136,0.35)', borderRadius: '8px', overflow: 'hidden', minWidth: '160px', backdropFilter: 'blur(14px)' }}>
-              <button onClick={() => { finalizeOracleSession(echoTrackRef.current.alignment, echoTrackRef.current.totemLevel); exitOracleMode(echoTrackRef.current.alignment); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>EXIT</button>
-              <button onClick={captureChapter} className="oracle-chapter-menu-save">SAVE A CHAPTER</button>
+            <motion.div id="oracle-hamburger-menu" role="group" aria-label="Oracle menu actions" initial={{ opacity: 0, scale: 0.94, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.94, y: -6 }} style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'rgba(0,4,2,0.94)', border: '1px solid rgba(0,255,136,0.35)', borderRadius: '8px', overflow: 'hidden', minWidth: '190px', backdropFilter: 'blur(14px)' }}>
+              {isOracleMode && (
+                <>
+                  <button onClick={() => { finalizeOracleSession(echoTrackRef.current.alignment, echoTrackRef.current.totemLevel); exitOracleMode(echoTrackRef.current.alignment); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>EXIT</button>
+                  <button onClick={captureChapter} className="oracle-chapter-menu-save">SAVE A CHAPTER</button>
+                </>
+              )}
+              <button
+                type="button"
+                className="oracle-chapters-menu-button"
+                aria-label={`Open private signal chapters${chapters.length ? `, ${chapters.length} saved` : ''}`}
+                onClick={openSignalChapters}
+                data-testid="open-chapters"
+              >
+                <Archive size={16} aria-hidden="true" /> SIGNAL CHAPTERS {chapters.length > 0 ? `(${chapters.length})` : ''}
+              </button>
+              {isOracleMode && (
+                <>
               <button onClick={() => { if (confirm('Reset?')) { resetJourney(); setHamburgerOpen(false); } }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ffcc', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>RESET</button>
               <button onClick={() => { if (isXRMode) deactivateXRMode(); else handleActivateXRMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#b026ff', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isXRMode ? '◈ EXIT AR' : '◈ AR MODE'}</button>
               <button onClick={() => { oracleConversationRef.current?.toggleTypeMode(); setHamburgerOpen(false); }} style={{ display: 'block', width: '100%', padding: '12px 16px', background: 'transparent', border: 'none', borderTop: '1px solid rgba(0,255,136,0.2)', color: '#00ff88', fontSize: '0.85rem', cursor: 'pointer', textAlign: 'left' }}>{isTypeMode ? 'CLOSE PAD' : 'TYPE SIGNAL'}</button>
@@ -5378,6 +5411,8 @@ export function SurrogateOracleImmersion() {
                 <div style={{ padding: '10px 16px', borderTop: '1px solid rgba(0,255,136,0.15)', color: 'rgba(0,255,136,0.45)', fontSize: '0.62rem', fontFamily: "'PhillySans', monospace", letterSpacing: '0.12em' }}>
                   ◈ {currentUserId.slice(0, 6)}…{currentUserId.slice(-4)}
                 </div>
+              )}
+                </>
               )}
             </motion.div>
           )}
@@ -5450,7 +5485,7 @@ export function SurrogateOracleImmersion() {
           pendingCoins={sessionCoins}
           oracleConversationRef={oracleConversationRef}
           chapterCount={chapters.length}
-          onOpenChapters={() => setShowChapters(true)}
+          onOpenChapters={openSignalChapters}
         />
       )}
 
@@ -5472,17 +5507,16 @@ export function SurrogateOracleImmersion() {
         handleTalismanDismiss();
       }} />
 
-      {scenePhase === 'dormant' && !debugMode && (
-        <button type="button" className="oracle-chapters-entry" onClick={() => setShowChapters(true)} data-testid="open-chapters">
-          <Archive size={16} aria-hidden="true" /> {selectedChapter ? 'CHAPTER READY' : 'CHAPTERS'} {chapters.length > 0 ? `(${chapters.length})` : ''}
-        </button>
-      )}
-      <dialog ref={chapterDialogRef} className="oracle-chapters-dialog" aria-label="Private signal chapters"
-        onCancel={() => setShowChapters(false)} onClose={() => setShowChapters(false)}>
+      <dialog ref={chapterDialogRef} className="oracle-chapters-dialog" aria-labelledby="oracle-signal-chapters-title" aria-describedby="oracle-signal-chapters-instructions"
+        onCancel={() => setShowChapters(false)} onClose={() => {
+          setShowChapters(false);
+          window.requestAnimationFrame(() => referenceImageTriggerRef.current?.focus());
+        }}>
         <div className="oracle-chapters-dialog__bar">
           <span>PRIVATE / THIS BROWSER</span>
           <button type="button" aria-label="Close chapters" onClick={() => setShowChapters(false)}>CLOSE <X size={16} /></button>
         </div>
+        <p className="oracle-chapters-sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="chapter-live-announcement">{chapterAnnouncement}</p>
         {chapterNotice && <p className="oracle-chapters-notice" role="status">{chapterNotice}</p>}
         <SignalChaptersPanel
           draft={chapterDraft} draftVersion={chapterDraftVersion} selectedId={selectedChapter?.id ?? null}

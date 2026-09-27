@@ -7,12 +7,25 @@
  * Run: node scripts/oracle-pressure.mjs
  * Dev server must be running (defaults to http://localhost:5173; override with
  * ORACLE_PRESSURE_URL, e.g. ORACLE_PRESSURE_URL=http://localhost:22168).
+ * Focused repeat: ORACLE_PRESSURE_SCENARIO=return-gate node scripts/oracle-pressure.mjs
  */
 import { chromium } from 'playwright';
 import { existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
-const BASE_URL = process.env.ORACLE_PRESSURE_URL || 'http://localhost:5173';
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const SCENARIO = process.env.ORACLE_PRESSURE_SCENARIO || 'full';
+const BASE_URL = process.env.ORACLE_PRESSURE_URL || (
+  SCENARIO === 'return-gate'
+    ? 'http://localhost:80/surrogate-oracle/'
+    : 'http://localhost:5173'
+);
+const AUDIO_FIXTURE = process.env.ORACLE_PRESSURE_AUDIO_FILE || (
+  SCENARIO === 'return-gate'
+    ? join(SCRIPT_DIR, 'fixtures', 'oracle-open-chapters.wav')
+    : '/home/runner/workspace/artifacts/surrogate-oracle/public/mock-speech.wav'
+);
 const OUT_DIR  = join('/home/runner/workspace/screenshots');
 if (!existsSync(OUT_DIR)) mkdirSync(OUT_DIR, { recursive: true });
 
@@ -147,6 +160,388 @@ function assertBefore(stepA, stepB, pass, fail, label) {
 
 async function getGumCalls(page) {
   return page.evaluate(function() { return window.__gumCalls || []; });
+}
+
+async function pollUntil(page, predicate, timeoutMs, intervalMs) {
+  var deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    var value = await predicate();
+    if (value) return value;
+    await page.waitForTimeout(intervalMs || 250);
+  }
+  return null;
+}
+
+async function conversationTurnCounts(page) {
+  return page.evaluate(function() {
+    return {
+      seeker: document.querySelectorAll('[data-role="user"]').length,
+      oracle: document.querySelectorAll('[data-role="oracle"]').length,
+    };
+  });
+}
+
+async function waitForStableOracleOutput(page, timeoutMs) {
+  var deadline = Date.now() + timeoutMs;
+  var previousActivity = null;
+  var stableSince = 0;
+  var sawOracleActivity = false;
+
+  while (Date.now() < deadline) {
+    var steps = await getSteps(page);
+    var activity = steps
+      .filter(function(step) {
+        return step.label.includes('ORACLE AUDIO START') || step.label.includes('ORACLE TURN COMPLETE');
+      })
+      .map(function(step) { return step.label + ':' + step.ts; })
+      .join('|');
+    if (activity !== previousActivity) {
+      if (activity) sawOracleActivity = true;
+      stableSince = sawOracleActivity ? Date.now() : 0;
+    } else if (sawOracleActivity) {
+      if (!stableSince) stableSince = Date.now();
+      if (Date.now() - stableSince >= 1200) return true;
+    }
+    previousActivity = activity;
+    await page.waitForTimeout(250);
+  }
+  // If the Oracle has not started any output, the full quiet window is needed
+  // to separate a delayed initial greeting from a reply to the later command.
+  return !sawOracleActivity;
+}
+
+// ── Focused return-gate journey ───────────────────────────────────────────────
+// The API route is mocked so this scenario never reads or writes a real seeker
+// record. The session marker represents an existing "continue without presence"
+// choice; it keeps the microphone unopened until the visible Oracle mic control.
+
+async function runReturnGateAttempt(browser, attempt) {
+  var pass = [];
+  var fail = [];
+  var blocked = [];
+  var actions = [];
+  var serviceFailures = [];
+  var voiceServiceFailures = [];
+  var context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    permissions: ['microphone'],
+  });
+  var page = await context.newPage();
+  var label = 'return-gate-' + String(attempt).padStart(2, '0');
+
+  page.on('pageerror', function(error) {
+    console.warn('    ⚠ PAGE ERROR: ' + error.message.slice(0, 160));
+  });
+  page.on('response', function(response) {
+    if (response.status() < 400) return;
+    var path = '';
+    try { path = new URL(response.url()).pathname; } catch (_) {}
+    var failure = { status: response.status(), path: path };
+    serviceFailures.push(failure);
+    if (/generative|gemini|live|bidi|transcri/i.test(path)) {
+      voiceServiceFailures.push(failure);
+    }
+  });
+  page.on('requestfailed', function(request) {
+    var url = request.url();
+    if (!/generative|gemini|live|bidi|transcri/i.test(url)) return;
+    var path = '';
+    try { path = new URL(url).pathname; } catch (_) {}
+    voiceServiceFailures.push({ status: 'network failure', path: path });
+  });
+  await injectCollector(page);
+  await page.addInitScript(function() {
+    sessionStorage.setItem('oracle_presence_preference_v1', 'without');
+  });
+
+  // The returning-seeker fixture is synthetic and fully intercepted. Even the
+  // mark-visited upsert is answered locally; no Supabase write can escape.
+  await page.route(/user-wallet-sync/, async function(route) {
+    var request = route.request();
+    var method = request.method();
+    var requestHeaders = request.headers();
+    var corsHeaders = {
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'POST, OPTIONS',
+      'access-control-allow-headers': requestHeaders['access-control-request-headers']
+        || 'authorization, apikey, content-type, x-client-info',
+    };
+    if (method === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: corsHeaders });
+      return;
+    }
+    try {
+      var body = request.postDataJSON();
+      if (body?.action) actions.push(body.action);
+    } catch (_) {}
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: corsHeaders,
+      body: JSON.stringify({
+        ip_address: '203.0.113.42',
+        data: {
+          ip_address: '203.0.113.42',
+          onboarding_status: 'lore_completed',
+        },
+      }),
+    });
+  });
+
+  console.log('\n  ── RETURN-GATE ATTEMPT ' + attempt + ' ────────────────────────────────');
+
+  try {
+    var target = new URL(BASE_URL);
+    await page.goto(target.toString(), { waitUntil: 'load', timeout: 60000 });
+    await waitForPhase(page, 'dormant', 20000);
+    await page.waitForFunction(
+      function() { return localStorage.getItem('surrogate_lore_completed_203.0.113.42') === 'true'; },
+      undefined,
+      { timeout: 15000 }
+    );
+    if (actions.includes('get')) {
+      pass.push('returning-seeker boundary answered by isolated fixture');
+      console.log('    ✓  returning-seeker state loaded from local route fixture');
+    } else {
+      fail.push('returning-seeker fixture did not receive the initial get request');
+      console.log('    ✗  user-wallet-sync mock did not receive the initial get request');
+    }
+
+    // Enter through the live surface, then use the return card's actual CTA.
+    await page.locator('.oracle-center').click({ timeout: 12000 });
+    var returnButton = page.getByRole('button', { name: '[ RETURN TO ALLEY ]' });
+    await returnButton.waitFor({ state: 'visible', timeout: 15000 });
+    if (await page.locator('[data-oracle-state="terminal"]').count()) {
+      pass.push('return card shown in terminal phase');
+      console.log('    ✓  return card shown in terminal phase');
+    } else {
+      fail.push('return card did not appear in terminal phase');
+      console.log('    ✗  return card phase was not terminal');
+    }
+    await snap(page, label + '-card');
+    await returnButton.click();
+
+    await waitForPhase(page, 'awakened', 20000);
+    var knifeCard = page.locator('.oracle-knife-card').first();
+    await knifeCard.waitFor({ state: 'visible', timeout: 15000 });
+    var preOracleCalls = await getGumCalls(page);
+    if (preOracleCalls.length === 0) {
+      pass.push('no getUserMedia request before Oracle phase');
+      console.log('    ✓  microphone remains unopened before Oracle phase');
+    } else {
+      fail.push('getUserMedia ran before Oracle phase: ' + preOracleCalls.map(function(call) { return call.phase; }).join(','));
+      console.log('    ✗  getUserMedia ran before Oracle phase');
+    }
+
+    await knifeCard.click({ timeout: 12000 });
+    await waitForPhase(page, 'oracle', 25000);
+    if (await page.locator('[data-oracle-state="oracle"]').count()) {
+      pass.push('visible knife selection reached Oracle phase');
+      console.log('    ✓  visible knife selection reached Oracle phase');
+    } else {
+      fail.push('knife selection did not enter Oracle phase');
+      console.log('    ✗  knife selection did not enter Oracle phase');
+    }
+    await snap(page, label + '-oracle');
+
+    // The feature under test must not depend on an initial Oracle greeting.
+    // Wait for any in-flight speech to settle, then snapshot turns immediately
+    // before the test's explicit mic action.
+    var oracleSettled = await waitForStableOracleOutput(page, 10000);
+    if (!oracleSettled) {
+      fail.push('initial Oracle output did not settle before the voice command');
+      console.log('    ✗  initial Oracle output did not settle before the voice command');
+    }
+    var beforeMicCalls = await getGumCalls(page);
+    if (beforeMicCalls.length === 0) {
+      pass.push('no microphone permission request before the visible Oracle mic action');
+      console.log('    ✓  no microphone request before the visible Oracle mic action');
+    } else {
+      fail.push('microphone permission request preceded the Oracle mic action');
+      console.log('    ✗  microphone was requested before the Oracle mic action');
+    }
+
+    var beforeTurns = await conversationTurnCounts(page);
+    var beforeSteps = await getSteps(page);
+    var beforeOracleCompleteCount = beforeSteps
+      .filter(function(step) { return step.label.includes('ORACLE TURN COMPLETE'); }).length;
+    var beforeOracleAudioStartCount = beforeSteps
+      .filter(function(step) { return step.label.includes('ORACLE AUDIO START'); }).length;
+    var serviceFailureCountBeforeMic = serviceFailures.length;
+    var voiceFailureCountBeforeMic = voiceServiceFailures.length;
+    var chaptersDialog = page.getByTestId('signal-chapters');
+    if (!(await chaptersDialog.isVisible().catch(function() { return false; }))) {
+      pass.push('Signal Chapters dialog is closed before the voice command');
+      console.log('    ✓  Chapters dialog is closed before the voice command');
+    } else {
+      fail.push('Signal Chapters dialog was already open before the voice command');
+      console.log('    ✗  Chapters dialog was already open before the voice command');
+    }
+    var micButton = page.locator('.oc-mic-trigger');
+    await micButton.waitFor({ state: 'visible', timeout: 10000 });
+    await micButton.click();
+
+    var micStarted = await pollUntil(page, async function() {
+      var calls = await getGumCalls(page);
+      var labelText = await page.locator('.oc-mic-label').innerText().catch(function() { return ''; });
+      return calls.length > 0 && /LISTENING|TRANSMITTING/.test(labelText);
+    }, 10000, 200);
+
+    var oracleMicCalls = await getGumCalls(page);
+    if (micStarted && oracleMicCalls.length > 0
+      && oracleMicCalls.every(function(call) { return call.phase === 'oracle'; })) {
+      pass.push('fake microphone requested only after Oracle phase became active');
+      console.log('    ✓  fake microphone requested only in Oracle phase');
+    } else {
+      fail.push('fake microphone did not start in the Oracle phase');
+      console.log('    ✗  fake microphone did not start in the Oracle phase');
+    }
+
+    await pollUntil(page, async function() {
+      var steps = await getSteps(page);
+      var commandDetected = steps.some(function(step) {
+        return step.label.includes('SIGNAL CHAPTERS OPENED BY VOICE COMMAND');
+      });
+      var dialogVisible = await chaptersDialog.isVisible().catch(function() { return false; });
+      return commandDetected || dialogVisible || voiceServiceFailures.length > voiceFailureCountBeforeMic;
+    }, 30000, 250);
+    var commandStepBefore = (await getSteps(page))
+      .filter(function(step) { return step.label.includes('SIGNAL CHAPTERS OPENED BY VOICE COMMAND'); }).length;
+    if (commandStepBefore > 0) {
+      await pollUntil(page, async function() {
+        return await chaptersDialog.isVisible().catch(function() { return false; });
+      }, 5000, 100);
+    }
+    var dialogAppeared = await chaptersDialog.isVisible().catch(function() { return false; });
+    if (commandStepBefore > 0) {
+      pass.push('fixed fake-mic phrase transcribed: open chapters');
+      console.log('    ✓  fixed fake-mic phrase transcribed');
+    }
+    if (!dialogAppeared) {
+      if (commandStepBefore > 0) {
+        fail.push('the transcribed Chapters command did not open Signal Chapters');
+        console.log('    ✗  transcribed command did not open the dialog');
+      } else if (voiceServiceFailures.length > voiceFailureCountBeforeMic) {
+        var latestFailure = voiceServiceFailures[voiceServiceFailures.length - 1];
+        blocked.push('voice connection failed (' + latestFailure.status + ') at ' + latestFailure.path);
+        console.log('    ⚠  BLOCKED: voice connection failed (' + latestFailure.status + ')');
+      } else {
+        blocked.push('live voice service did not transcribe the fake phrase or open Chapters');
+        console.log('    ⚠  BLOCKED: live voice service did not transcribe “open chapters”');
+        var unrelatedFailures = serviceFailures.slice(serviceFailureCountBeforeMic);
+        if (unrelatedFailures.length) {
+          console.log('      other upstream errors: ' + unrelatedFailures.map(function(failure) {
+            return failure.status + ' ' + failure.path;
+          }).join(' | '));
+        }
+      }
+    } else {
+      if (commandStepBefore === 0) {
+        fail.push('Chapters dialog opened without the voice-command step');
+        console.log('    ✗  Chapters dialog opened without the voice-command step');
+      }
+      var micLabelAfterOpen = await page.locator('.oc-mic-label').innerText().catch(function() { return ''; });
+      if (/LISTENING|TRANSMITTING/.test(micLabelAfterOpen)) {
+        await micButton.evaluate(function(button) { button.click(); });
+        var micStopped = await pollUntil(page, async function() {
+          var labelText = await page.locator('.oc-mic-label').innerText().catch(function() { return ''; });
+          return !/LISTENING|TRANSMITTING/.test(labelText);
+        }, 3000, 100);
+        if (micStopped) {
+          pass.push('fake microphone stopped after the voice command');
+          console.log('    ✓  fake microphone stopped after the command');
+        } else {
+          fail.push('fake microphone remained active after the voice command');
+          console.log('    ✗  fake microphone remained active after the command');
+        }
+      }
+      var phaseAtOpen = await page.locator('[data-oracle-state]').first().getAttribute('data-oracle-state').catch(function() { return 'missing'; });
+      if (phaseAtOpen === 'oracle') {
+        pass.push('spoken command opened Signal Chapters while Oracle was active');
+        console.log('    ✓  spoken command opened Signal Chapters in Oracle phase');
+      } else {
+        fail.push('Signal Chapters opened outside Oracle phase (phase=' + phaseAtOpen + ')');
+        console.log('    ✗  Chapters dialog opened outside Oracle phase (phase=' + phaseAtOpen + ')');
+      }
+
+      var announcement = page.getByTestId('chapter-live-announcement');
+      try {
+        await page.waitForFunction(
+          function() {
+            return (document.querySelector('[data-testid="chapter-live-announcement"]')?.textContent || '')
+              .includes('Private Signal Chapters opened');
+          },
+          undefined,
+          { timeout: 5000 }
+        );
+      } catch (_) {}
+      var announcementText = await announcement.innerText().catch(function() { return ''; });
+      if (announcementText.includes('Private Signal Chapters opened')) {
+        pass.push('Chapters dialog announces its opening to assistive technology');
+        console.log('    ✓  live announcement confirmed');
+      } else {
+        fail.push('Chapters opening announcement missing');
+        console.log('    ✗  Chapters opening announcement missing');
+      }
+
+      await page.waitForTimeout(6000);
+      var afterTurns = await conversationTurnCounts(page);
+      if (afterTurns.seeker === beforeTurns.seeker && afterTurns.oracle === beforeTurns.oracle) {
+        pass.push('spoken command added no seeker or Oracle conversation turn');
+        console.log('    ✓  no extra seeker or Oracle conversation turn');
+      } else {
+        fail.push('conversation turn count changed after the Chapters command');
+        console.log('    ✗  conversation turn count changed after the Chapters command');
+      }
+      var afterOracleCompleteCount = (await getSteps(page))
+        .filter(function(step) { return step.label.includes('ORACLE TURN COMPLETE'); }).length;
+      var afterOracleAudioStartCount = (await getSteps(page))
+        .filter(function(step) { return step.label.includes('ORACLE AUDIO START'); }).length;
+      if (afterOracleCompleteCount === beforeOracleCompleteCount
+        && afterOracleAudioStartCount === beforeOracleAudioStartCount) {
+        pass.push('spoken command triggered no Oracle reply');
+        console.log('    ✓  no Oracle reply followed the command');
+      } else {
+        fail.push('Oracle emitted a reply after the Chapters command');
+        console.log('    ✗  Oracle emitted a reply after the Chapters command');
+        console.log('      reply diagnostics: user/oracle turns ' + beforeTurns.seeker + '/' + beforeTurns.oracle
+          + ' → ' + afterTurns.seeker + '/' + afterTurns.oracle
+          + '; Oracle audio-start steps +' + (afterOracleAudioStartCount - beforeOracleAudioStartCount)
+          + '; app turn-complete steps +' + (afterOracleCompleteCount - beforeOracleCompleteCount));
+      }
+
+      await snap(page, label + '-chapters');
+      await page.getByRole('button', { name: 'Close chapters' }).click();
+      await page.waitForFunction(
+        function() {
+          return document.activeElement === document.querySelector('[data-testid="oracle-menu-toggle"]')
+            && !document.querySelector('.oracle-chapters-dialog')?.open;
+        },
+        undefined,
+        { timeout: 5000 }
+      ).catch(function() {});
+      var focusRestored = await page.evaluate(function() {
+        return document.activeElement === document.querySelector('[data-testid="oracle-menu-toggle"]');
+      });
+      if (focusRestored) {
+        pass.push('closing Chapters restores focus to the Oracle menu launcher');
+        console.log('    ✓  focus restored to the Oracle menu launcher');
+      } else {
+        fail.push('focus was not restored to the Oracle menu launcher');
+        console.log('    ✗  focus was not restored to the Oracle menu launcher');
+      }
+    }
+  } catch (error) {
+    fail.push('RETURN-GATE SUITE CRASHED: ' + error.message);
+    console.error('    ✗  RETURN-GATE SUITE CRASHED: ' + error.message);
+    await snap(page, label + '-crash').catch(function() {});
+  }
+
+  console.log('    PASS:' + pass.length + '  FAIL:' + fail.length + '  BLOCKED:' + blocked.length);
+  fail.forEach(function(message) { console.log('      ✗ ' + message); });
+  blocked.forEach(function(message) { console.log('      ⚠ ' + message); });
+  await context.close();
+  return { pass: pass, fail: fail, blocked: blocked };
 }
 
 // Assert mic (getUserMedia) was NOT called before oracle phase on the
@@ -825,19 +1220,50 @@ async function main() {
   console.log('Captures every oracle:step event, asserts each handshake checkpoint.');
   console.log('Target: ' + BASE_URL + '\n');
 
+  var launchArgs = [
+    '--no-sandbox', '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--autoplay-policy=no-user-gesture-required',
+    '--disable-web-security',
+    '--use-fake-ui-for-media-stream',
+    '--use-fake-device-for-media-stream',
+    '--use-file-for-fake-audio-capture=' + AUDIO_FIXTURE,
+  ];
+  if (SCENARIO === 'return-gate') {
+    launchArgs.push('--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader');
+  } else {
+    launchArgs.push('--disable-gpu');
+  }
+
   var browser = await chromium.launch({
     headless: true,
     executablePath: CHROMIUM,
-    args: [
-      '--no-sandbox', '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage', '--disable-gpu',
-      '--autoplay-policy=no-user-gesture-required',
-      '--disable-web-security',
-      '--use-fake-ui-for-media-stream',
-      '--use-fake-device-for-media-stream',
-      '--use-file-for-fake-audio-capture=/home/runner/workspace/artifacts/surrogate-oracle/public/mock-speech.wav'
-    ],
+    args: launchArgs,
   });
+
+  if (SCENARIO === 'return-gate') {
+    var focusedPass = 0, focusedFail = 0, focusedBlocked = 0;
+    var attemptCount = Number.parseInt(process.env.ORACLE_PRESSURE_ATTEMPTS || '3', 10);
+    attemptCount = Number.isFinite(attemptCount) ? Math.max(1, Math.min(3, attemptCount)) : 3;
+    for (var attempt = 1; attempt <= attemptCount; attempt++) {
+      try {
+        var focusedResult = await runReturnGateAttempt(browser, attempt);
+        focusedPass += focusedResult.pass.length;
+        focusedFail += focusedResult.fail.length;
+        focusedBlocked += focusedResult.blocked.length;
+      } catch(error) {
+        console.error('  ✗ return-gate attempt ' + attempt + ' crashed: ' + error.message);
+        focusedFail++;
+      }
+    }
+    await browser.close();
+    console.log('\n' + '═'.repeat(60));
+    console.log('RETURN-GATE TOTAL: ' + focusedPass + ' passed  '
+      + focusedFail + ' failed  ' + focusedBlocked + ' blocked');
+    console.log('Screenshots → /home/runner/workspace/screenshots/');
+    process.exit(focusedFail > 0 ? 1 : focusedBlocked > 0 ? 2 : 0);
+    return;
+  }
 
   var totalPass = 0, totalFail = 0;
   var viewports = [

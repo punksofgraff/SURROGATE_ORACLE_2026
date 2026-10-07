@@ -145,11 +145,12 @@ const ORACLE_TO_OVR: Record<string, OVRName[]> = {
   O: ['viseme_oh'], // "oh"
   U: ['viseme_ou'], // "oo"
   B: ['viseme_PP'], // p/b/m
-  C: ['viseme_sil'], // neutral
+  C: ['viseme_aa'], // generic audible speech — keep the jaw visibly engaged
   D: ['viseme_DD'], // d/t/n
   F: ['viseme_FF'], // f/v
   G: ['viseme_kk'], // k/g
   H: ['viseme_ou', 'viseme_oh'], // rounded
+  S: ['viseme_SS'], // sibilant from the analyser fallback
 };
 
 // Secondary viseme contributions driven by VisemeState shape parameters.
@@ -898,7 +899,7 @@ export function OracleAvatar3D({
       // 2. Drive physics velocity with speech transients (emphasis impulses).
       if (amp > 0.035) {
         // Sudden volume increases cause a downward nod impulse
-        hp.nodVel -= ampDiff * 2.8;
+        hp.nodVel -= ampDiff * 1.4;
 
         // Tilt left/right randomly based on emphasis.
         // Grace period: suppress tilt for first 2 s after mount so the opening
@@ -913,7 +914,7 @@ export function OracleAvatar3D({
 
       // 3. Spring forces pulling back to baseline
       // If speaking, lean slightly forward (nodding down target)
-      const targetNodBaseline = amp > 0.035 ? -0.06 * Math.min(1.0, amp * 4) : 0;
+      const targetNodBaseline = amp > 0.035 ? -0.03 * Math.min(1.0, amp * 4) : 0;
       const targetTiltBaseline = 0;
 
       // Nod spring (Stiffness = 32, damping = 6.2 for snappy but damped response)
@@ -1126,7 +1127,12 @@ export function OracleAvatar3D({
 
       if (amp > 0.005) {
         const dominant = ORACLE_TO_OVR[vs.viseme] ?? ['viseme_sil'];
-        const weight   = Math.min(amp * 4.5, 1.0);
+        // C is the worklet's common mixed/neutral speech class, not silence.
+        // Give it a modest openness-shaped jaw pose; amp*4.5 would either leave
+        // it nearly shut at normal levels or make generic speech look like "ah".
+        const weight = vs.viseme === 'C'
+          ? THREE.MathUtils.clamp(vs.openness * 0.68, 0.16, 0.42)
+          : Math.min(amp * 4.5, 1.0);
         const perShape = weight / dominant.length;
         for (const name of dominant) {
           targets.set(name, (targets.get(name) ?? 0) + perShape);

@@ -7,7 +7,7 @@
 
 import { createAudioContext } from './browserCapabilities';
 
-export type Viseme = 'X' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
+export type Viseme = 'X' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'O' | 'U' | 'S';
 
 export interface VisemeState {
   viseme: Viseme;

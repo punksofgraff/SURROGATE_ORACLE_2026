@@ -622,14 +622,14 @@ export class PCMPlayer {
 
       // ── Classify primary viseme from spectral balance ────────────────────
       // Viseme tokens must match ORACLE_TO_OVR keys in OracleAvatar3D.tsx:
-      //   X=sil  A=aa  E=E+ih  I=ih  O=oh+ou  U=ou  C=SS+CH  F=FF
+      //   X=sil  A=aa  E=E+ih  I=ih  O=oh+ou  U=ou  S=SS+CH  F=FF
       let viseme: string;
       let rounded = 0;
       let spread  = 0;
 
       if (eHigh > 0.10 && eHigh > eLow * 1.4) {
         // Fricative-dominant (s, z, sh, f, th)
-        viseme = eUp > eMid ? 'C' : 'F';        // C = SS/CH sibilant, F = FF labiodental
+        viseme = eUp > eMid ? 'S' : 'F';        // S = SS/CH sibilant, F = FF labiodental
         spread = Math.min(1, eHigh * 6);
       } else if (eUp > eMid * 1.35) {
         // High-F2: front vowels (E, I)

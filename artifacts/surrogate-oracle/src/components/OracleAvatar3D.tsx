@@ -244,6 +244,9 @@ const CAM_X_RANGE   = 0.30; // horizontal look-around extent (world units)
 const CAM_Y_CENTER  = 1.32;
 const CAM_Y_RANGE   = 0.22; // vertical look-around extent
 const CAM_LERP      = 0.08; // responsive on phone while still smooth
+// Head + eye + neck pitch combine to roughly this much rotation per normalized
+// gaze unit. Convert the actual eye-to-camera angle into that range below.
+const GAZE_PITCH_TOTAL_GAIN = 0.86;
 
 // Fallback group offset if the head bone can't be located. The real offset is
 // computed per-model from the actual Head bone (see meshData.avatarYOffset) so a
@@ -278,6 +281,10 @@ export function OracleAvatar3D({
   const { animations: talking2Clips } = useGLTF('/oracle-talking-2.glb');
   const { camera, gl } = useThree();
   const groupRef   = useRef<THREE.Group>(null);
+  const allowMouseGaze = useMemo(
+    () => typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches,
+    [],
+  );
   const transporterProgressRef = useRef(1);
   const transporterWasActiveRef = useRef(false);
   // Smooth camera target — avoids snapping on sudden gesture changes
@@ -822,17 +829,23 @@ export function OracleAvatar3D({
     }
 
     // ── Gaze & bone animation ─────────────────────────────────────────────
-    // Seeker Tracking: Use real motion data if in XR/Camera mode, else use parallax
-    let seekerX = cameraStateRef?.current ? cameraStateRef.current.x : 0;
-    let seekerY = cameraStateRef?.current ? -cameraStateRef.current.y : 0;
+    // cameraStateRef is shared with gyro/touch parallax, so its normalized values
+    // are not themselves gaze angles. Aim vertically along the actual eye-to-camera
+    // ray instead; this keeps a phone's resting pitch from making the Oracle look up
+    // or down by an exaggerated amount. Preserve horizontal mouse gaze on desktop.
+    const cameraPitch = Math.atan2(
+      camTargetY - camera.position.y,
+      Math.max(0.1, camera.position.z),
+    );
+    let seekerX = allowMouseGaze && cameraStateRef?.current ? cameraStateRef.current.x : 0;
+    let seekerY = THREE.MathUtils.clamp(cameraPitch / GAZE_PITCH_TOTAL_GAIN, -1, 1);
 
     if (seekerMotionRef?.current) {
       const { facePos, hasFace, touchPos, hasTouch, touchGazeSuppressedUntil } = seekerMotionRef.current;
 
       // Priority: face (camera) > touch position > parallax/mouse (default seekerX/Y)
-      // NOTE: phoneTilt is NOT used for head gaze — tilt drives the cabinet CSS transform
-      // in useParallax, so using it here too would make head+cabinet move in lockstep
-      // (zero Mona Lisa effect). Touch position is screen-relative and independent.
+      // Phone tilt steers the cabinet/camera parallax, not horizontal head gaze.
+      // Face and active-touch signals remain direct seeker targets.
 
       // Suppress stale touch gaze for the first ~1.8s of oracle entry so the knife-selection
       // tap doesn't make the avatar appear right-shifted on manifestation.

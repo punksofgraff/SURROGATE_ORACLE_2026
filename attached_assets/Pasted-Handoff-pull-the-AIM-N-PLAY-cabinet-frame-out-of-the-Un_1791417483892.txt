@@ -1,0 +1,119 @@
+Handoff: pull the AIM N PLAY cabinet frame out of the Unity v12 build
+
+For: the Replit agent, or any session that has the AWS credentials in its env. Why it's handed off: the Claude cloud session can't reach the CDN or the S3 bucket (its AWS key is a placeholder). Goal: find the 2025 arcade-cabinet frame image (SNEAKAR marquee + ARCADE button bar) inside the v12 build's .data file, export it, and later swap it for a sleek new overlay. The Unity project isn't needed, because the frame is a texture asset in .data, not WebAssembly code.
+
+Rules (read first)
+
+Read-only on prod.
+Never overwrite, delete or re-upload anything under SNEAKARCADE-STATIC-PROD-v12-1024-NoComp/ or -Brotli/.
+New builds go under a NEW prefix (step 4).
+Don't print, log or commit AWS keys.
+Bucket: sneakar-xr-prod, region us-east-1. CloudFront d1ayqkdig6uisz.cloudfront.net serves it.
+Prod build files (what the site loads today):
+SNEAKARCADE-STATIC-PROD-v12-1024-Brotli/Build/SNEAKARCADE-STATIC-PROD-v12-1024-Brotli.{data,framework.js,wasm}.br (default)
+SNEAKARCADE-STATIC-PROD-v12-1024-NoComp/Build/SNEAKARCADE-STATIC-PROD-v12-1024-NoComp.{data,framework.js,wasm} (?build=nocomp)
+The two .data files are the same game. Brotli differs only in a 31-byte build-guid stamp.
+Step 1: see what's in the bucket (read-only)
+
+aws s3 ls s3://sneakar-xr-prod/ --region us-east-1
+aws s3 ls s3://sneakar-xr-prod/SNEAKARCADE-STATIC-PROD-v12-1024-NoComp/ --recursive --human-readable --region us-east-1
+# Also check for a Unity project/source upload (the founder says "it's in SNEAKAR XR PROD"):
+aws s3 ls s3://sneakar-xr-prod/ --recursive --region us-east-1 | grep -iE "\.unity$|ProjectSettings|Assets/|\.unitypackage|\.zip$" | head -50
+Report back: the top-level prefixes, plus any Unity project/source zip you find.
+
+Step 2: download the uncompressed .data (~95 MB, read-only)
+
+mkdir -p unity-v12 && cd unity-v12
+aws s3 cp s3://sneakar-xr-prod/SNEAKARCADE-STATIC-PROD-v12-1024-NoComp/Build/SNEAKARCADE-STATIC-PROD-v12-1024-NoComp.data . --region us-east-1
+python3 -m venv .venv && . .venv/bin/activate && pip install "UnityPy>=1.20" pillow
+Step 3: list and export every image, then find the frame
+
+Save as list_textures.py and run python list_textures.py SNEAKARCADE-STATIC-PROD-v12-1024-NoComp.data out/:
+
+import sys, os, json, UnityPy
+src, out = sys.argv[1], sys.argv[2]
+os.makedirs(out, exist_ok=True)
+env = UnityPy.load(src)
+rows = []
+for obj in env.objects:
+    if obj.type.name not in ("Texture2D", "Sprite"):
+        continue
+    try:
+        d = obj.read()
+        name = getattr(d, "m_Name", None) or getattr(d, "name", "") or f"id{obj.path_id}"
+        img = d.image
+        w, h = img.size
+        fn = f"{obj.type.name}_{obj.path_id}_{name}".replace("/", "_")[:120] + ".png"
+        img.save(os.path.join(out, fn))
+        rows.append({"type": obj.type.name, "path_id": obj.path_id, "name": name, "w": w, "h": h,
+                     "file": fn, "container": obj.container if hasattr(obj, "container") else None})
+    except Exception as e:
+        rows.append({"type": obj.type.name, "path_id": obj.path_id, "error": str(e)})
+rows.sort(key=lambda r: -(r.get("w", 0) * r.get("h", 0)))
+json.dump(rows, open(os.path.join(out, "_textures.json"), "w"), indent=1)
+for r in rows[:60]:
+    print(r)
+Find the frame. It's almost certainly one of:
+
+a large texture (around phone or screen size, often 1024+ on one side) with a transparent middle; or
+a set of sprites named like frame, marquee, bezel, cabinet, border, overlay, arcade or button.
+python - <<'EOF'
+import json
+for r in json.load(open('out/_textures.json')):
+    n = (r.get('name') or '').lower()
+    if any(k in n for k in ['frame','marquee','bezel','cabinet','border','overlay','arcade','button','ui']):
+        print(r)
+EOF
+Report back. Commit these to a branch in the SNEAKARXR repo (punksofgraff/SNEAKARXR, e.g. branch chore/aim-n-play-frame-assets, folder scratch/unity-v12-frame/) so the Claude session can read them over GitHub:
+
+out/_textures.json;
+the PNGs you believe make up the frame (and anything that looks like part of it);
+one screenshot of AIM N PLAY with the frame showing, so pieces can be matched.
+Don't commit the 95 MB .data or the whole out/ folder.
+
+Step 4 (later, after the new art is approved): swap the frame without Unity
+
+Two options, picked at design time:
+
+A) Transparent frame: Unity draws nothing, and a sleek HTML/SVG overlay is drawn by the web page on top.
+Easiest to iterate on.
+Recommended.
+B) New frame image: the new art (Nano Banana via the generate-image Supabase EF) is baked into the same texture slot.
+Save as swap_texture.py and run python swap_texture.py <in.data> <out.data> <path_id> <new.png|transparent>:
+
+import sys, UnityPy
+from PIL import Image
+src, dst, pid, new = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+env = UnityPy.load(src)
+for obj in env.objects:
+    if obj.path_id == pid and obj.type.name == "Texture2D":
+        d = obj.read()
+        w, h = d.image.size
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0)) if new == "transparent" else Image.open(new).convert("RGBA").resize((w, h))
+        d.image = img
+        d.save()
+        print("replaced", pid, d.m_Name, w, h)
+open(dst, "wb").write(env.file.save())
+Notes:
+
+If the frame is a Sprite, replace its underlying Texture2D (the sprite's m_RD.texture path_id).
+Sprite-atlas textures hold other UI too. Then blank only the frame's rect (paste a transparent box into that rect) instead of the whole atlas.
+Upload to a new prefix only. Never touch the prod prefixes:
+
+NEW=SNEAKARCADE-STATIC-PROD-v12b-1024-NoComp
+# Copy the rest of the build alongside it, renamed to match:
+for f in framework.js wasm loader.js; do
+  aws s3 cp s3://sneakar-xr-prod/SNEAKARCADE-STATIC-PROD-v12-1024-NoComp/Build/SNEAKARCADE-STATIC-PROD-v12-1024-NoComp.$f \
+            s3://sneakar-xr-prod/$NEW/Build/$NEW.$f --region us-east-1
+done
+aws s3 cp out.data s3://sneakar-xr-prod/$NEW/Build/$NEW.data --region us-east-1 --content-type application/octet-stream
+Test with the uncompressed build first.
+
+Point a branch's next.config.js rewrite and public/spokes/alley/index.html buildName at the new prefix, and preview-deploy it.
+Make a Brotli copy (brotli -q 11, uploaded with Content-Encoding: br) only after it looks right.
+What to send back
+
+The output of step 1, plus whether a Unity project zip exists in the bucket.
+The branch and folder with _textures.json, the frame PNG(s), and an AIM N PLAY screenshot.
+Any UnityPy load errors. These usually mean a newer Unity version: try pip install -U UnityPy, or set UnityPy.config.FALLBACK_UNITY_VERSION.
+From there, the Claude session designs the new overlay and gives you the exact path_id and image for step 4.

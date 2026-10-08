@@ -17,7 +17,7 @@
  * Usage: npm run inject
  */
 
-import { readFileSync, writeFileSync, copyFileSync } from 'fs';
+import { readFileSync, writeFileSync, copyFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -173,6 +173,29 @@ const VISEMES = {
   ],
 };
 
+// The first generated pass produced only a few millimeters of jaw travel after
+// the landmark falloff. Give speech shapes enough displacement to read at the
+// live portrait distance. Blink targets keep their original calibrated strength.
+const VISEME_GAIN = {
+  viseme_sil: 1,
+  viseme_PP: 2.5,
+  viseme_FF: 2.5,
+  viseme_TH: 2.5,
+  viseme_DD: 2.5,
+  viseme_kk: 2.5,
+  viseme_CH: 2.5,
+  viseme_SS: 2.5,
+  viseme_nn: 2.5,
+  viseme_RR: 2.5,
+  viseme_aa: 3.2,
+  viseme_E: 2.5,
+  viseme_ih: 2.5,
+  viseme_oh: 3,
+  viseme_ou: 2,
+  eyeBlinkLeft: 1,
+  eyeBlinkRight: 1,
+};
+
 // ── Gaussian influence ────────────────────────────────────────────────────────
 
 function gaussian(vx, vy, vz, cx, cy, cz, sigma) {
@@ -202,7 +225,10 @@ function computeDisplacements(positions, visemeName) {
       }
     }
 
-    out[i*3] = dx; out[i*3+1] = dy; out[i*3+2] = dz;
+    const gain = VISEME_GAIN[visemeName] ?? 1;
+    out[i*3] = dx * gain;
+    out[i*3+1] = dy * gain;
+    out[i*3+2] = dz * gain;
   }
   return out;
 }
@@ -274,9 +300,13 @@ console.log(`  GLB : ${(glbBuf.length / 1024).toFixed(0)} KB`);
 console.log(`  Generator: ${gltf.asset?.generator ?? '?'}`);
 console.log(`  Meshes: ${gltf.meshes.length}  Accessors: ${gltf.accessors.length}  BufferViews: ${gltf.bufferViews.length}\n`);
 
-// Backup original
-copyFileSync(GLB_IN, GLB_BAK);
-console.log(`  Backup → public/hero3.glb.bak\n`);
+// Preserve the first pre-rig backup; rerunning the injector must not replace it.
+if (!existsSync(GLB_BAK)) {
+  copyFileSync(GLB_IN, GLB_BAK);
+  console.log(`  Backup → public/hero3.glb.bak\n`);
+} else {
+  console.log(`  Keeping existing backup → public/hero3.glb.bak\n`);
+}
 
 // ── Read vertex positions for each target mesh ────────────────────────────────
 const TARGETS = ['Wolf3D_Head', 'Wolf3D_Teeth'];
@@ -296,6 +326,7 @@ for (const meshName of TARGETS) {
   const prim      = mesh.primitives[0];
 
   const targetEntries = []; // [{POSITION: accessorIdx}, ...]
+  const existingNames = mesh.extras?.targetNames ?? [];
 
   process.stdout.write(`  Generating visemes for ${meshName}: `);
 
@@ -309,31 +340,54 @@ for (const meshName of TARGETS) {
     for (let i = 0; i < disp.length; i++) dispBuf.writeFloatLE(disp[i], i * 4);
     const dispPadded = padBin(dispBuf);
 
-    // Append to binData
-    const byteOffset = binData.length;
-    binData = Buffer.concat([binData, dispPadded]);
+    // Replace existing generated targets in place, making injection idempotent.
+    // Only append when the source GLB has no matching target yet.
+    const existingIndex = existingNames.indexOf(visemeName);
+    const existingAccessorIndex = existingIndex >= 0
+      ? prim.targets?.[existingIndex]?.POSITION
+      : undefined;
 
-    // Add BufferView
-    const bvIdx = gltf.bufferViews.length;
-    gltf.bufferViews.push({
-      buffer:     0,
-      byteOffset: byteOffset,
-      byteLength: dispBuf.length,
-    });
+    if (existingAccessorIndex !== undefined) {
+      const accessor = gltf.accessors[existingAccessorIndex];
+      const bufferView = gltf.bufferViews[accessor.bufferView];
+      const byteOffset = (bufferView.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+      if (
+        accessor.componentType !== 5126 ||
+        accessor.type !== 'VEC3' ||
+        accessor.count !== positions.length / 3 ||
+        bufferView.byteStride ||
+        byteOffset + dispBuf.length > binData.length
+      ) {
+        throw new Error(`Cannot safely replace ${meshName}.${visemeName} accessor`);
+      }
+      dispBuf.copy(binData, byteOffset);
+      accessor.min = min;
+      accessor.max = max;
+      targetEntries.push({ POSITION: existingAccessorIndex });
+    } else {
+      const byteOffset = binData.length;
+      binData = Buffer.concat([binData, dispPadded]);
 
-    // Add Accessor
-    const accIdx = gltf.accessors.length;
-    gltf.accessors.push({
-      bufferView:    bvIdx,
-      byteOffset:    0,
-      componentType: 5126, // FLOAT
-      type:          'VEC3',
-      count:         positions.length / 3,
-      min,
-      max,
-    });
+      const bvIdx = gltf.bufferViews.length;
+      gltf.bufferViews.push({
+        buffer:     0,
+        byteOffset: byteOffset,
+        byteLength: dispBuf.length,
+      });
 
-    targetEntries.push({ POSITION: accIdx });
+      const accIdx = gltf.accessors.length;
+      gltf.accessors.push({
+        bufferView:    bvIdx,
+        byteOffset:    0,
+        componentType: 5126,
+        type:          'VEC3',
+        count:         positions.length / 3,
+        min,
+        max,
+      });
+      targetEntries.push({ POSITION: accIdx });
+    }
+
     process.stdout.write('.');
   }
   process.stdout.write(' done\n');
@@ -381,5 +435,5 @@ writeFileSync(GLB_OUT, outBuf);
 console.log(`\n  ✅ Written: public/hero3.glb`);
 console.log(`     Original : ${(glbBuf.length  / 1024).toFixed(0)} KB`);
 console.log(`     With morphs: ${(outBuf.length / 1024).toFixed(0)} KB`);
-console.log(`     Added: ${OVR_NAMES.length} OVR visemes × ${TARGETS.length} meshes`);
+console.log(`     Generated: ${OVR_NAMES.length} OVR visemes × ${TARGETS.length} meshes`);
 console.log('\n  Next: npm run calibrate → patches OracleAvatar3D.tsx automatically\n');

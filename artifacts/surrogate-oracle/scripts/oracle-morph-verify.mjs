@@ -67,6 +67,11 @@ const foreheadIdxs = Array.from({length:N}, (_,i)=>i).filter(isForeheadRegion);
 // ── OVR morph target accessors on Wolf3D_Head ─────────────────────────────────
 const targets     = headMesh.primitives[0].targets ?? [];
 const targetNames = headMesh.extras?.targetNames ?? [];
+const teethMesh   = gltf.meshes.find(m => m.name === 'Wolf3D_Teeth');
+const teethPrim   = teethMesh?.primitives?.[0];
+const teethTargets = teethPrim?.targets ?? [];
+const teethNames   = teethMesh?.extras?.targetNames ?? [];
+const teethVertexCount = gltf.accessors[teethPrim?.attributes?.POSITION]?.count ?? 0;
 
 // ── Test results ──────────────────────────────────────────────────────────────
 let pass = 0, fail = 0;
@@ -97,6 +102,10 @@ console.log('TEST 1 — STRUCTURE\n');
 assert('Wolf3D_Head has morph targets',  targets.length > 0,   `(${targets.length} targets)`);
 assert('17 OVR + blink morph targets present', targets.length === 17, `(got ${targets.length})`);
 assert('targetNames count matches',      targetNames.length === targets.length);
+assert('Wolf3D_Teeth has morph targets', !!teethMesh && teethTargets.length > 0, `(${teethTargets.length} targets)`);
+assert('Wolf3D_Teeth has all 17 targets', teethTargets.length === 17, `(got ${teethTargets.length})`);
+assert('teeth targetNames count matches', teethNames.length === teethTargets.length);
+assert('head and teeth target names align', JSON.stringify(teethNames) === JSON.stringify(targetNames));
 
 for (let t = 0; t < targets.length; t++) {
   const name = targetNames[t];
@@ -106,6 +115,17 @@ for (let t = 0; t < targets.length; t++) {
     `  ${name} accessor`,
     acc?.type === 'VEC3' && acc?.componentType === 5126,
     `count=${acc?.count} type=${acc?.type}`
+  );
+}
+
+for (let t = 0; t < teethTargets.length; t++) {
+  const name = teethNames[t];
+  const accIdx = teethTargets[t]['POSITION'];
+  const acc = gltf.accessors[accIdx];
+  assert(
+    `  Wolf3D_Teeth ${name} accessor`,
+    acc?.type === 'VEC3' && acc?.componentType === 5126 && acc?.count === teethVertexCount,
+    `count=${acc?.count} expected=${teethVertexCount} type=${acc?.type}`
   );
 }
 
@@ -124,6 +144,20 @@ for (let t = 0; t < targets.length; t++) {
     assert(`${name} has non-zero data`, maxD > 0.0001, `maxAbs=${maxD.toFixed(5)}`);
   }
 }
+assert(
+  'jaw-open target has visible head displacement',
+  maxAbs(dispByViseme['viseme_aa']) >= 0.02,
+  `maxAbs=${maxAbs(dispByViseme['viseme_aa']).toFixed(5)}m`
+);
+const teethJawIndex = teethNames.indexOf('viseme_aa');
+const teethJawDisp = teethJawIndex >= 0
+  ? readAccessor(teethTargets[teethJawIndex]?.POSITION)
+  : new Float32Array();
+assert(
+  'teeth jaw-open target has generated displacement',
+  maxAbs(teethJawDisp) >= 0.001,
+  `maxAbs=${maxAbs(teethJawDisp).toFixed(5)}m`
+);
 
 // ── 3. LOCALITY — mouth moves more than forehead ──────────────────────────────
 console.log('\nTEST 3 — LOCALITY (mouth region > forehead)\n');

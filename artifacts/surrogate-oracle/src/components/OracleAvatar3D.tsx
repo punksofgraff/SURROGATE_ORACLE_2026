@@ -7,7 +7,7 @@
  *   AudioWorklet → VisemeState ref → useFrame → OVR morph targets
  *
  * Design principles:
- * - SkinnedMesh is cached on mount — zero scene traversal per frame
+ * - Morph-capable head and teeth meshes are cached on mount — zero scene traversal per frame
  * - OVR morph target indices resolved once at load from morphTargetDictionary
  * - Co-articulation: openness/rounded/spread drive secondary morphs for
  *   natural blending, not just a single active shape at a time
@@ -423,7 +423,7 @@ export function OracleAvatar3D({
   // Cache skinned meshes + gaze bones — found once on mount, zero traversal per frame.
   const meshData = useMemo(() => {
     const result: Array<{
-      mesh:     THREE.SkinnedMesh;
+      mesh:     THREE.Mesh;
       indexMap: Map<string, number>;
     }> = [];
     let headBone:          THREE.Object3D | null = null;
@@ -475,18 +475,18 @@ export function OracleAvatar3D({
       if (n === 'leftforearm'   && !leftForeArmBone)   leftForeArmBone   = child;
       if (n === 'rightforearm'  && !rightForeArmBone)  rightForeArmBone  = child;
 
-      const sm = child as THREE.SkinnedMesh;
-      if (!sm.isSkinnedMesh || !sm.morphTargetDictionary || !sm.morphTargetInfluences) return;
-      const indexMap = buildIndexMap(sm.morphTargetDictionary);
+      const morphMesh = child as THREE.Mesh;
+      if (!morphMesh.isMesh || !morphMesh.morphTargetDictionary || !morphMesh.morphTargetInfluences) return;
+      const indexMap = buildIndexMap(morphMesh.morphTargetDictionary);
       
       // Auto-detect extra blinking morphs
-      const dict = sm.morphTargetDictionary;
+      const dict = morphMesh.morphTargetDictionary;
       const extraBlinks = ['eyeBlinkLeft', 'eyeBlinkRight', 'EyeBlinkLeft', 'EyeBlinkRight', 'eyesClosed', 'EyesClosed', 'blink'];
       for (const b of extraBlinks) {
         if (dict[b] !== undefined) indexMap.set(b, dict[b]);
       }
 
-      result.push({ mesh: sm, indexMap });
+      result.push({ mesh: morphMesh, indexMap });
     });
 
     if (import.meta.env.DEV) {
@@ -899,7 +899,7 @@ export function OracleAvatar3D({
       // 2. Drive physics velocity with speech transients (emphasis impulses).
       if (amp > 0.035) {
         // Sudden volume increases cause a downward nod impulse
-        hp.nodVel -= ampDiff * 1.4;
+        hp.nodVel -= ampDiff * 0.6;
 
         // Tilt left/right randomly based on emphasis.
         // Grace period: suppress tilt for first 2 s after mount so the opening
@@ -914,7 +914,7 @@ export function OracleAvatar3D({
 
       // 3. Spring forces pulling back to baseline
       // If speaking, lean slightly forward (nodding down target)
-      const targetNodBaseline = amp > 0.035 ? -0.03 * Math.min(1.0, amp * 4) : 0;
+      const targetNodBaseline = amp > 0.035 ? -0.012 * Math.min(1.0, amp * 4) : 0;
       const targetTiltBaseline = 0;
 
       // Nod spring (Stiffness = 32, damping = 6.2 for snappy but damped response)
@@ -1128,10 +1128,10 @@ export function OracleAvatar3D({
       if (amp > 0.005) {
         const dominant = ORACLE_TO_OVR[vs.viseme] ?? ['viseme_sil'];
         // C is the worklet's common mixed/neutral speech class, not silence.
-        // Give it a modest openness-shaped jaw pose; amp*4.5 would either leave
-        // it nearly shut at normal levels or make generic speech look like "ah".
+        // Keep a visible jaw pose for that common class; otherwise the head nod
+        // reads as speech while the generated mouth rig barely moves.
         const weight = vs.viseme === 'C'
-          ? THREE.MathUtils.clamp(vs.openness * 0.68, 0.16, 0.42)
+          ? THREE.MathUtils.clamp(0.48 + vs.openness * 0.4, 0.48, 0.82)
           : Math.min(amp * 4.5, 1.0);
         const perShape = weight / dominant.length;
         for (const name of dominant) {

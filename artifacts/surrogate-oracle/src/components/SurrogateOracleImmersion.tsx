@@ -891,6 +891,7 @@ export function SurrogateOracleImmersion() {
 
   const {
     audioRef,
+    radioAnalyserRef,
     targetVol,
     isAudioPlaying,
     setIsAudioPlaying,
@@ -4109,6 +4110,8 @@ export function SurrogateOracleImmersion() {
                           <OracleQuarks
                             tier={renderTier as 1 | 2 | 3}
                             speakingRef={isOracleSpeakingRef}
+                            radioAnalyserRef={radioAnalyserRef}
+                            radioReactive={isOracleMode && isGeminiSessionLive && !isMusicMode && isAudioPlaying}
                             amplitude={visemeStateRef.current?.amplitude ?? 0}
                             thinking={isOracleThinking}
                             listening={isMicActive}

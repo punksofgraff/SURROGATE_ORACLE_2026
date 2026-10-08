@@ -67,6 +67,7 @@ export function useRadioAtmosphere({
   oracleHasSpokenRef,
 }: UseRadioAtmosphereParams) {
   const audioRef      = useRef<HTMLAudioElement | null>(null);
+  const radioAnalyserRef = useRef<AnalyserNode | null>(null);
   const radioGainRef  = useRef<GainNode | null>(null);
   const fadeGenerationRef = useRef(0);
   const requestedTargetRef = useRef(0);
@@ -91,6 +92,9 @@ export function useRadioAtmosphere({
     try {
       logStep(`AUDIO CONTEXT STATE: ${ctx.state}`, ctx.state === 'running' ? 'ok' : 'pending');
       const source = ctx.createMediaElementSource(audioRef.current);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.72;
       const gain   = ctx.createGain();
       // Volume effects can run before the first gesture creates the graph.
       // Initialize from the latest queued target, not a stale render value
@@ -100,8 +104,12 @@ export function useRadioAtmosphere({
         ? requestedTargetRef.current
         : targetVol;
       gain.gain.value = initialTarget;
-      source.connect(gain);
+      // Read the station before the session volume duck so its signal can drive
+      // the neural field even when the audible radio bed is intentionally quiet.
+      source.connect(analyser);
+      analyser.connect(gain);
       gain.connect(ctx.destination);
+      radioAnalyserRef.current = analyser;
       radioGainRef.current = gain;
       setRadioLifecycle('active');
       publishRadioDebug(gain, initialTarget);
@@ -332,6 +340,7 @@ export function useRadioAtmosphere({
 
   return {
     audioRef,
+    radioAnalyserRef,
     targetVol,
     isAudioPlaying,
     setIsAudioPlaying,

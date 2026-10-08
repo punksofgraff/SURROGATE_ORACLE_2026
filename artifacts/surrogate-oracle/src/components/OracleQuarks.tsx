@@ -22,6 +22,10 @@ interface OracleQuarksProps {
   tier: 1 | 2 | 3;
   /** Live "oracle is speaking" ref */
   speakingRef: React.RefObject<boolean>;
+  /** Radio stream analyzer; sampled only during a live Oracle exchange. */
+  radioAnalyserRef?: React.RefObject<AnalyserNode | null>;
+  /** Let the radio's live waveform energize the neural field. */
+  radioReactive?: boolean;
   /** Live viseme amplitude ref if available */
   amplitude?: number;
   /** Oracle is between turns, preparing a response. */
@@ -39,6 +43,7 @@ interface OracleQuarksProps {
 const QUARKS_VERTEX_SHADER = /* glsl */ `
   uniform float uTime;
   uniform float uSpeaking;
+  uniform float uRadio;
   uniform float uSize;
   uniform float uMotionScale;
    uniform float uThinking;
@@ -149,7 +154,8 @@ const QUARKS_VERTEX_SHADER = /* glsl */ `
      noiseOffset.y + cos(uTime * 0.33 + pos.x * 2.1) * 0.16 * uPreview,
      noiseOffset.z + sin(uTime * 0.27 + pos.z * 3.0) * 0.14 * uPreview
    );
-   vec3 finalPos = streamPos + (curlOffset * (0.065 + uPreview * 0.035)) + speechSurge;
+    vec3 radioPulse = streamPos * (uRadio * 0.045);
+    vec3 finalPos = streamPos + (curlOffset * (0.065 + uPreview * 0.035)) + speechSurge + radioPulse;
 
     // Face zone protection: push away if within face cylinder
     vec2 faceDist = finalPos.xy - vec2(0.0, 0.0);
@@ -162,7 +168,7 @@ const QUARKS_VERTEX_SHADER = /* glsl */ `
     gl_Position = projectionMatrix * mvPosition;
 
     // Perspective point size
-    float pSize = aScale * uSize * (1.0 + uSpeaking * 0.65) * vLife;
+    float pSize = aScale * uSize * (1.0 + uSpeaking * 0.65 + uRadio * 0.3) * vLife;
     gl_PointSize = pSize * (300.0 / -mvPosition.z);
 
    // Thinking is a warm threshold state: purple and orange alternate softly.
@@ -172,6 +178,7 @@ const QUARKS_VERTEX_SHADER = /* glsl */ `
    float channelOpen = clamp(uListening + uSpeaking * 0.85, 0.0, 1.0);
    vec3 channelColor = mix(aColor.rgb, vec3(0.92, 1.0, 0.96), channelOpen);
    vec3 finalColor = mix(channelColor, thinkColor, uThinking);
+    finalColor = mix(finalColor, vec3(0.58, 1.0, 0.80), uRadio * 0.24);
    vColor = vec4(finalColor, aColor.a) * vLife;
   }
 `;
@@ -203,6 +210,8 @@ const TIER_QUARK_COUNTS = {
 export function OracleQuarks({
   tier,
   speakingRef,
+  radioAnalyserRef,
+  radioReactive = false,
   amplitude = 0,
   thinking = false,
   listening = false,
@@ -214,6 +223,7 @@ export function OracleQuarks({
   const materialRef = useRef<THREE.ShaderMaterial>(null);
   const motionTimeRef = useRef(0);
   const frameCountRef = useRef(0);
+  const radioWaveformRef = useRef<Uint8Array<ArrayBuffer>>(new Uint8Array(0));
   const count = TIER_QUARK_COUNTS[tier];
 
   useEffect(() => {
@@ -277,6 +287,7 @@ export function OracleQuarks({
     const unis = {
       uTime: { value: 0 },
       uSpeaking: { value: 0 },
+      uRadio: { value: 0 },
       uSize: { value: 1.0 },
       // Reduced Motion: ambient orbital stream runs at full speed — it IS the
       // sign of life. Only the speaking-excitation surge is suppressed (see
@@ -324,6 +335,30 @@ export function OracleQuarks({
     // Scaling uSize by camera.zoom keeps quark screen size identical too.
     const camZoom = (state.camera as THREE.PerspectiveCamera).zoom ?? 1;
     mat.uniforms.uSize.value = camZoom;
+
+    // Sample the radio's pre-duck waveform only during a live exchange. Smooth
+    // the visual response so listening transitions do not flash or pop.
+    let radioEnergy = 0;
+    const radioAnalyser = radioReactive && !reducedMotion ? radioAnalyserRef?.current : null;
+    if (radioAnalyser) {
+      if (radioWaveformRef.current.length !== radioAnalyser.fftSize) {
+        radioWaveformRef.current = new Uint8Array(radioAnalyser.fftSize);
+      }
+      const waveform = radioWaveformRef.current;
+      radioAnalyser.getByteTimeDomainData(waveform);
+      let signalPower = 0;
+      for (let i = 0; i < waveform.length; i += 1) {
+        const sample = (waveform[i] - 128) / 128;
+        signalPower += sample * sample;
+      }
+      const rms = Math.sqrt(signalPower / waveform.length);
+      radioEnergy = THREE.MathUtils.clamp((rms - 0.012) * 4.5, 0, 1);
+    }
+    mat.uniforms.uRadio.value = THREE.MathUtils.lerp(
+      mat.uniforms.uRadio.value,
+      radioEnergy,
+      Math.min(1, delta * 9.0),
+    );
 
     
     // Smooth speaking excitation — suppressed in Reduced Motion so the surge

@@ -16,6 +16,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { logStep } from './CodeAuditor';
+import { advanceRadioNeuralSignal } from '../lib/radioNeuralSignal';
 
 interface OracleQuarksProps {
   /** Effective GPU tier (1–3) */
@@ -24,8 +25,10 @@ interface OracleQuarksProps {
   speakingRef: React.RefObject<boolean>;
   /** Radio stream analyzer; sampled only during a live Oracle exchange. */
   radioAnalyserRef?: React.RefObject<AnalyserNode | null>;
-  /** Let the radio's live waveform energize the neural field. */
-  radioReactive?: boolean;
+  /** A Gemini exchange is live in Oracle mode (not music mode). */
+  liveExchange?: boolean;
+  /** The seeker's radio toggle is on. */
+  radioActive?: boolean;
   /** Live viseme amplitude ref if available */
   amplitude?: number;
   /** Oracle is between turns, preparing a response. */
@@ -211,7 +214,8 @@ export function OracleQuarks({
   tier,
   speakingRef,
   radioAnalyserRef,
-  radioReactive = false,
+  liveExchange = false,
+  radioActive = false,
   amplitude = 0,
   thinking = false,
   listening = false,
@@ -336,29 +340,24 @@ export function OracleQuarks({
     const camZoom = (state.camera as THREE.PerspectiveCamera).zoom ?? 1;
     mat.uniforms.uSize.value = camZoom;
 
-    // Sample the radio's pre-duck waveform only during a live exchange. Smooth
-    // the visual response so listening transitions do not flash or pop.
-    let radioEnergy = 0;
-    const radioAnalyser = radioReactive && !reducedMotion ? radioAnalyserRef?.current : null;
+    // Sample the radio's pre-duck waveform only during a live exchange with
+    // the radio enabled. Reduced Motion suppresses this visual response.
+    const radioCanReact = liveExchange && radioActive && !reducedMotion;
+    const radioAnalyser = radioCanReact ? radioAnalyserRef?.current : null;
     if (radioAnalyser) {
       if (radioWaveformRef.current.length !== radioAnalyser.fftSize) {
         radioWaveformRef.current = new Uint8Array(radioAnalyser.fftSize);
       }
-      const waveform = radioWaveformRef.current;
-      radioAnalyser.getByteTimeDomainData(waveform);
-      let signalPower = 0;
-      for (let i = 0; i < waveform.length; i += 1) {
-        const sample = (waveform[i] - 128) / 128;
-        signalPower += sample * sample;
-      }
-      const rms = Math.sqrt(signalPower / waveform.length);
-      radioEnergy = THREE.MathUtils.clamp((rms - 0.012) * 4.5, 0, 1);
+      radioAnalyser.getByteTimeDomainData(radioWaveformRef.current);
     }
-    mat.uniforms.uRadio.value = THREE.MathUtils.lerp(
-      mat.uniforms.uRadio.value,
-      radioEnergy,
-      Math.min(1, delta * 9.0),
-    );
+    mat.uniforms.uRadio.value = advanceRadioNeuralSignal({
+      waveform: radioAnalyser ? radioWaveformRef.current : null,
+      currentEnergy: mat.uniforms.uRadio.value,
+      deltaSeconds: delta,
+      liveExchange,
+      radioActive,
+      reducedMotion,
+    });
 
     
     // Smooth speaking excitation — suppressed in Reduced Motion so the surge

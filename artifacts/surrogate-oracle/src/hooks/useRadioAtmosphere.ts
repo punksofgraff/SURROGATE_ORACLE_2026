@@ -4,19 +4,23 @@ import { getAudioContext } from '../lib/oracleSfx';
 import { defaultAudioTracks } from '../config/audioTracks';
 import { logStep } from '../components/CodeAuditor';
 import type { SensorLifecycleState } from '../lib/sensorLifecycle';
+import {
+  LORE_DUCK_RAMP_MS,
+  LORE_RESTORE_RAMP_MS,
+  MUSIC_LANDING_VOLUME,
+  MUSIC_LORE_VOLUME_RATIO,
+  MUSIC_KNIFE_VOLUME,
+  MUSIC_SCENE_RAMP_MS,
+  MUSIC_SESSION_AMBIENT,
+  MUSIC_OFF_VOLUME,
+  resolveRadioVolumeTarget,
+} from '../lib/radioAtmospherePolicy';
 
 const DEFAULT_STATION = 0; // Graff Punks — sole station
 
-const MUSIC_LANDING_VOLUME  = 0.02953125; // Another 25% reduction from 0.039375
-const MUSIC_LORE_VOLUME_RATIO = 0.15;
-const MUSIC_KNIFE_VOLUME    = 0.0118125; // Same 25% base reduction
-const MUSIC_SESSION_AMBIENT = 0.0045;    // Same 25% base reduction
-const MUSIC_OFF_VOLUME      = 0;
 // The Law story starts on a hard narrative boundary. Duck quickly enough that
 // the radio never competes with its first sentence, while leaving a faint
 // spatial bed audible underneath it.
-const LORE_DUCK_RAMP_MS     = 140;
-const LORE_RESTORE_RAMP_MS  = 1800;
 
 function publishRadioDebug(gain: GainNode | null, target: number) {
   if (!import.meta.env.DEV || typeof window === 'undefined') return;
@@ -210,8 +214,6 @@ export function useRadioAtmosphere({
   }, [currentStation]);
 
   useEffect(() => {
-    let nextTarget: number;
-    let rampMs: number | undefined;
     // Track if Oracle has spoken during this session
     if (isOracleSpeaking) {
       oracleHasSpokenRef.current = true;
@@ -238,37 +240,18 @@ export function useRadioAtmosphere({
       );
     }
 
-    if (!isAudioPlaying) {
-      nextTarget = MUSIC_OFF_VOLUME;
-    } else if (isOracleSpeaking && !isLoreActive) {
-      nextTarget = MUSIC_OFF_VOLUME;
-    } else if (isLoreActive) {
-      // Keep a quiet rhythmic bed under the archive voice. This is the app
-      // mix, not the browser/iOS master volume.
-      nextTarget = loreBaseVolumeRef.current * MUSIC_LORE_VOLUME_RATIO;
-      rampMs = LORE_DUCK_RAMP_MS;
-    } else if (isLoreComplete) {
-      // Stage 00 is the post-lore release beat. Restore the pre-lore level
-      // gradually before later phase-specific targets take over.
-      nextTarget = loreBaseVolumeRef.current;
-      rampMs = LORE_RESTORE_RAMP_MS;
-    } else if (scenePhase === 'dormant') {
-      nextTarget = MUSIC_LANDING_VOLUME;
-    } else if (scenePhase === 'terminal' || scenePhase === 'tour') {
-      nextTarget = MUSIC_OFF_VOLUME;
-      rampMs = 800;
-    } else if (scenePhase === 'awakened') {
-      // Keep silent while the Stage00 ACK card is up — fade in only once knife cards are visible
-      nextTarget = showStage00 ? MUSIC_OFF_VOLUME : MUSIC_KNIFE_VOLUME;
-      rampMs = 1500;
-    } else if (scenePhase === 'oracle') {
-      // Mic capture is intentionally independent from the outboard mix.
-      // If Oracle has already spoken, lock to the low ambient state (0.008) to avoid voice clashes.
-      nextTarget = oracleHasSpokenRef.current ? MUSIC_SESSION_AMBIENT : MUSIC_KNIFE_VOLUME;
-      rampMs = 1500;
-    } else {
-      nextTarget = MUSIC_OFF_VOLUME;
-    }
+    // Mic capture is independent of this outboard mix. Keep the exact volume
+    // target matrix centralized so regression fixtures can exercise it directly.
+    const { target: nextTarget, rampMs } = resolveRadioVolumeTarget({
+      scenePhase,
+      showStage00,
+      isLoreActive,
+      isLoreComplete,
+      isOracleSpeaking,
+      isAudioPlaying,
+      oracleHasSpoken: oracleHasSpokenRef.current,
+      loreBaseVolume: loreBaseVolumeRef.current,
+    });
 
     if (Math.abs(nextTarget - targetVol) > 0.0001) {
       fadeToVolume(nextTarget, rampMs);

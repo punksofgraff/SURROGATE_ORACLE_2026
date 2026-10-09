@@ -7,7 +7,7 @@ Scope: the 67 open items present before this audit task was added (39 Drafts and
 
 The backlog is mostly valid. Three Drafts are clearly already delivered, and one pair of Drafts is a single release-check task. Several others have partial implementation but still need verification or a narrower remaining scope.
 
-No task statuses were changed: existing items can be archived from the project's Tasks panel, not from this conversation. The exact archive and consolidation list is below. Three plans were updated to describe their remaining work accurately: #4, #7, and #260.
+The user archived #3, #56, #116, and #274 in the Tasks panel. Three plans were updated to describe their remaining work accurately: #4, #7, and #260. The inventory tables preserve the original audit snapshot; the current counts are listed below.
 
 ## Recommended next work
 
@@ -20,7 +20,7 @@ No task statuses were changed: existing items can be archived from the project's
 7. **#403 and #402 — Catch radio-to-neural regressions, then verify the pulse on a real device.** These cover the recent radio/neural behavior report; do not treat a desktop preview as device proof.
 8. **#379 — Switch Live failover only when Gemini reports quota exhaustion.** Keep this ahead of any failover expansion to avoid switching providers for unrelated failures.
 
-## Drafts (39)
+## Drafts (39 at audit start)
 
 | Ref | Title | Disposition |
 |---|---|---|
@@ -64,7 +64,7 @@ No task statuses were changed: existing items can be archived from the project's
 | #359 | Let reviewers stage original replacements for source-policy blocks | **Keep.** Human-reviewed replacement staging remains valid work. |
 | #360 | Run provider recovery fixtures through the deployed story-job boundary | **Keep.** Valuable boundary coverage; use sanitized fixtures and do not submit provider work. |
 
-## Active (28)
+## Active (28 at audit start)
 
 Accepted and underway work was reviewed but not canceled or re-scoped.
 
@@ -101,11 +101,10 @@ Accepted and underway work was reviewed but not canceled or re-scoped.
 
 ## Counts and task-panel actions
 
-- Baseline audited: **67 open tasks** — 39 Drafts and 28 Active.
-- Statuses actually changed: **0**. Plan text was updated for #4 and #7; #260 now also covers #274.
-- Once #404 closes, the original backlog remains **67 open tasks** until the archive list below is applied.
-- Recommended cull: archive #3, #56, and #116; merge #274 into #260 and archive #274.
-- Projected count after those four archive actions: **63 open tasks** — 35 Drafts and 28 Active.
-- No Active task is recommended for cancellation without approval. #356 is the only clear policy conflict; it should remain held until the user approves a no-cost rewrite or cancellation.
+- Baseline audited: **67 open tasks** — 39 Drafts and 28 Active, before #404 was added.
+- The user archived #3, #56, #116, and #274. #260 now includes #274's tour-check criteria and both prerequisite links.
+- Current live count while #404 is open: **34 Drafts and 29 Active** (including #404).
+- After #404 closes: **62 open tasks** — 34 Drafts and 28 other Active tasks.
+- No other Active task is recommended for cancellation without approval. #356 is the only clear policy conflict; it should remain held until the user approves a no-cost rewrite or cancellation.
 - The task view exposes each item's last-updated time, but not a full change timeline; historical edits could not be audited.
 - No new follow-up tasks are proposed: each concrete remaining gap is already represented by one or more items in this backlog.

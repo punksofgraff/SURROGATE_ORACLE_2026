@@ -447,6 +447,7 @@ export function SurrogateOracleImmersion() {
   const referenceImageCloseRef = useRef<HTMLButtonElement>(null);
   const [isTypeMode, setIsTypeMode]         = useState(false);
   const [personaMode, setPersonaMode]       = useState<OraclePersonaMode>('deep');
+  const pendingPersonaTakeoverRef = useRef<OraclePersonaMode | null>(null);
   const [mintUrl, setMintUrl]               = useState<string | null>(null);
   const [showArchiveOpen, setShowArchiveOpen] = useState(false);
   const [showNamePrompt, setShowNamePrompt]   = useState(false);
@@ -1773,13 +1774,20 @@ export function SurrogateOracleImmersion() {
   }, []);
 
   const handlePersonaTakeover = useCallback((nextMode: OraclePersonaMode) => {
+    pendingPersonaTakeoverRef.current = nextMode;
     setPersonaMode(nextMode);
     connection.flushPlayback();
+  }, [connection]);
+
+  useEffect(() => {
+    const nextMode = pendingPersonaTakeoverRef.current;
+    if (!nextMode || nextMode !== personaMode) return;
+    pendingPersonaTakeoverRef.current = null;
     oracleConversationRef.current?.restartSession(
       nextMode === 'creative-director' ? COPILOT_TAKEOVER_BOOT : PERSONA_SWITCH_MESSAGE[nextMode],
     );
     logStep(`PERSONA TAKEOVER — LIVE SESSION REPLACED (${nextMode})`, 'ok');
-  }, [connection]);
+  }, [personaMode]);
 
   const handleConfirmRift = useCallback(() => {
     setShowRiftRitual(false);

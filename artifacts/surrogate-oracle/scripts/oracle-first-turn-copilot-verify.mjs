@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * First-turn Co-pilot contract:
- * - exact typed commands switch while the opening Oracle response is active;
+ * - natural typed commands switch while the opening Oracle response is active;
  * - Oracle/Copilot alone stay ordinary Deep-mode input;
  * - the command itself is not sent as a normal realtime text turn;
  * - the selected persona survives a reconnect and the browser stays clean.
@@ -29,7 +29,7 @@ async function enterOracle(page) {
 async function typeSignal(page, text) {
   const input = page.locator('input[placeholder="TYPE SIGNAL..."]');
   if (await input.count() === 0) {
-    await page.getByRole('button', { name: 'Open Oracle menu' }).click();
+    await page.getByRole('button', { name: 'Open menu' }).click();
     await page.getByRole('button', { name: 'TYPE SIGNAL' }).click();
   }
   await input.fill(text);
@@ -79,7 +79,7 @@ async function waitForCondition(predicate, timeoutMs, description) {
     await wait(350);
     check(await page.locator('[data-oracle-persona="deep"]').count() === 1, 'Oracle alone does not switch persona');
 
-    await typeSignal(page, 'Oracle Copilot');
+    await typeSignal(page, 'Switch me to Copilot');
     await page.waitForSelector('[data-oracle-persona="creative-director"]', { timeout: 5_000 });
     check(true, 'exact first-turn command switches to Money Mite');
 
@@ -87,7 +87,7 @@ async function waitForCondition(predicate, timeoutMs, description) {
       .filter((frame) => frame.type === 'client.realtimeInput')
       .map((frame) => frame.realtimeInput?.text)
       .filter((text) => typeof text === 'string');
-    check(!textFrames.includes('Oracle Copilot'), 'control phrase is not sent as a normal seeker turn');
+    check(!textFrames.includes('Switch me to Copilot'), 'control phrase is not sent as a normal seeker turn');
     check(sentFrames.some((frame) =>
       frame.type === 'client.realtimeInput' &&
       frame.realtimeInput?.activityStart

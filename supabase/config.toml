@@ -392,6 +392,11 @@ backend = "postgres"
 [functions.oracle-world-briefing]
 verify_jwt = true
 
+# On-demand search is an explicit, paid provider call; keep the anon-JWT gateway
+# check enabled and bound every request in the Edge Function.
+[functions.oracle-grounded-search]
+verify_jwt = true
+
 # Experimental features may be deprecated any time
 [experimental]
 # Configures Postgres storage engine to use OrioleDB (S3)

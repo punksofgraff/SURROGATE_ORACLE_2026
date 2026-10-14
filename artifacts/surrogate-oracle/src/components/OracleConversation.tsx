@@ -30,6 +30,13 @@ import { useConversationCompactor } from '../hooks/useConversationCompactor';
 import type { SensorLifecycleState } from '../lib/sensorLifecycle';
 import { isCreativeProductionRequest } from '../lib/creativeProduction';
 import { isSignalChaptersCommand } from '../lib/signalChapterCommands';
+import {
+  isCopilotPersonaCommand,
+  isExplicitGroundingRequest,
+  isExplicitLyriaRequest,
+  isMusicGenerationRequest,
+} from '../lib/oracleRequestRouting';
+import { buildGroundedOracleInstruction, searchOracleGrounding } from '../lib/oracleGrounding';
 
 // GEMINI_MODEL, ORACLE_SYSTEM_PROMPT and its supporting prompt blocks moved to
 // useGeminiSession.ts — they are pure inputs to the WS session.config payload
@@ -72,18 +79,8 @@ const isPortraitRequest = (text: string, entryCount: number): boolean =>
 // Music is deliberately stricter than portrait intent. Mentioning a song,
 // soundtrack, or music in ordinary Oracle conversation must never start a paid
 // generation request.
-const MUSIC_INTENT =
-  /\b(?:make|generate|compose|create|produce|build|drop|play)\b[^.!?]{0,45}\b(?:beat|track|music|song|soundscape|instrumental)\b/i;
 const MUSIC_RETURN =
   /\b(?:stop\s+(?:the\s+)?(?:beat|music|track)|back\s+to\s+(?:the\s+)?oracle|return\s+(?:to\s+the\s+)?(?:session|oracle)|thank\s+you,?\s+oracle)\b/i;
-
-const normalizePersonaCommand = (text: string): string =>
-  text.normalize('NFKC').toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-
-const isCopilotPersonaCommand = (text: string): boolean => {
-  const normalized = normalizePersonaCommand(text);
-  return normalized === 'oracle copilot' || normalized === 'copilot oracle';
-};
 
 // Requires an action plus a concrete media noun; ordinary file mentions stay
 // ordinary conversation and never open the device picker.
@@ -344,6 +341,7 @@ const OracleConversation = forwardRef(
     const onPersonaCommandRef = useRef(onPersonaCommand);
     const onPersonaTakeoverRef = useRef(onPersonaTakeover);
     const interruptResponseRef = useRef<() => void>(() => {});
+    const sendHiddenGroundingRef = useRef<(text: string) => void>(() => {});
     const personaModeRef = useRef(personaMode);
     const musicModeRef = useRef(musicMode);
     onMusicRequestRef.current = onMusicRequest;
@@ -354,15 +352,30 @@ const OracleConversation = forwardRef(
     musicModeRef.current = musicMode;
 
     const inspectMusicSignal = (text: string): boolean => {
-      if (musicMode && MUSIC_RETURN.test(text)) {
+      if (musicModeRef.current && MUSIC_RETURN.test(text)) {
         onMusicReturnRef.current?.();
         return true;
       }
-      if (MUSIC_INTENT.test(text)) {
+      if (isMusicGenerationRequest(text)) {
         onMusicRequestRef.current?.(text);
       }
       return false;
     };
+
+    const requestGroundedAnswer = useCallback(async (query: string) => {
+      logStep('EXPLICIT WEB SEARCH — REQUESTED', 'ok');
+      try {
+        const result = await searchOracleGrounding(query);
+        sendHiddenGroundingRef.current(buildGroundedOracleInstruction(query, result));
+        logStep(`WEB SEARCH COMPLETE — ${result.sources.length} sources`, 'ok');
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : 'Search failed.';
+        sendHiddenGroundingRef.current(
+          `[SYSTEM: The Seeker explicitly requested web search, but the search failed (${reason}). Do not guess or present unsupported current facts; tell them the search failed and invite them to retry.]`,
+        );
+        logStep(`WEB SEARCH FAILED — ${reason}`, 'err');
+      }
+    }, []);
 
     const submitSignalText = (text: string) => {
       const trimmed = text.trim();
@@ -549,6 +562,8 @@ const OracleConversation = forwardRef(
     // Accumulates the Seeker's spoken words from inputTranscription frames.
     // Committed as a user turn when the Oracle starts responding (turn boundary).
     const currentUserTranscriptRef = useRef('');
+    const fullVoiceTranscriptRef = useRef('');
+    const groundingRequestPendingRef = useRef(false);
     const chapterCommandPendingRef = useRef(false);
     // Input transcription can trail the first Oracle PCM chunk. Hold music
     // intent until turnComplete so Lyria receives the complete spoken brief.
@@ -853,12 +868,14 @@ const OracleConversation = forwardRef(
       isFillerPlayingRef.current = false;
       currentResponseText.current = '';
       currentUserTranscriptRef.current = '';
+      fullVoiceTranscriptRef.current = '';
+      groundingRequestPendingRef.current = false;
       setOracleSpeaking(false);
       setIsOracleThinking(false);
       setInputText('');
       logStep('VOICE PERSONA OVERRIDE — CREATIVE DIRECTOR', 'ok');
-      onPersonaCommandRef.current?.('creative-director');
-      onPersonaTakeoverRef.current?.('creative-director');
+      if (onPersonaTakeoverRef.current) onPersonaTakeoverRef.current('creative-director');
+      else onPersonaCommandRef.current?.('creative-director');
     }, []);
 
     useEffect(() => {
@@ -873,8 +890,10 @@ const OracleConversation = forwardRef(
         seekerEntryCountRef.current = 0;
         setSeekerCount(0);
         currentUserTranscriptRef.current = '';
+        fullVoiceTranscriptRef.current = '';
         personaCommandHandledRef.current = false;
         personaOverridePendingRef.current = false;
+        groundingRequestPendingRef.current = false;
         pendingMusicPromptRef.current = null;
         micAutoRestartEnabledRef.current = false; // Don't carry over armed mic from prior session
       },
@@ -884,6 +903,7 @@ const OracleConversation = forwardRef(
       // text record at all with the native-audio model.
       onServerContent: (msg, sendText) => {
         const commitUserTranscript = () => {
+          if (groundingRequestPendingRef.current && !msg.serverContent?.turnComplete) return;
           const spoken = currentUserTranscriptRef.current.trim();
           currentUserTranscriptRef.current = '';
           chapterCommandPendingRef.current = false;
@@ -901,17 +921,21 @@ const OracleConversation = forwardRef(
           setSeekerCount(seekerEntryCountRef.current);
           onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
           if (seekerEntryCountRef.current === SEEKER_MAX) playSignalLockedSfx();
-           const isCreativeBrief = personaModeRef.current === 'creative-director' && isCreativeProductionRequest(spoken) && !MUSIC_RETURN.test(spoken);
-           if (!isCreativeBrief && MUSIC_INTENT.test(spoken)) {
-             pendingMusicPromptRef.current = spoken;
-             logStep('MUSIC INTENT QUEUED — WAITING FOR FULL TRANSCRIPT', 'ok');
-           } else if (musicModeRef.current && MUSIC_RETURN.test(spoken)) {
-             pendingMusicPromptRef.current = spoken;
-           }
-           if (isCreativeBrief) {
-             logStep('CREATIVE REQUEST DETECTED (voice) — ROUTING TO DISPATCH', 'ok');
-             onCreativeRequestRef.current?.(spoken);
-           }
+          const explicitLyria = isExplicitLyriaRequest(spoken);
+          const isCreativeBrief = personaModeRef.current === 'creative-director'
+            && isCreativeProductionRequest(spoken)
+            && !MUSIC_RETURN.test(spoken)
+            && !explicitLyria;
+          if (!isCreativeBrief && isMusicGenerationRequest(spoken)) {
+            pendingMusicPromptRef.current = spoken;
+            logStep('MUSIC INTENT QUEUED — WAITING FOR FULL TRANSCRIPT', 'ok');
+          } else if (musicModeRef.current && MUSIC_RETURN.test(spoken)) {
+            pendingMusicPromptRef.current = spoken;
+          }
+          if (isCreativeBrief) {
+            logStep('CREATIVE REQUEST DETECTED (voice) — ROUTING TO DISPATCH', 'ok');
+            onCreativeRequestRef.current?.(spoken);
+          }
           if (isPortraitRequest(spoken, seekerEntryCountRef.current)) {
             logStep('PORTRAIT INTENT DETECTED (voice)', 'ok');
             onPortraitRequestRef.current?.();
@@ -982,9 +1006,21 @@ const OracleConversation = forwardRef(
         // and committed as a user entry on turn boundaries so entry counting and
         // portrait-intent detection work for voice, not just the type pad.
         if (msg.serverContent?.inputTranscription?.text) {
-          currentUserTranscriptRef.current += msg.serverContent.inputTranscription.text;
+          const transcription = msg.serverContent.inputTranscription.text;
+          currentUserTranscriptRef.current += transcription;
+          fullVoiceTranscriptRef.current += transcription;
+          if (!groundingRequestPendingRef.current && isExplicitGroundingRequest(fullVoiceTranscriptRef.current)) {
+            groundingRequestPendingRef.current = true;
+            currentResponseText.current = '';
+            interruptResponseRef.current();
+            onBargeInRef.current?.();
+            setOracleSpeaking(false);
+            setIsOracleThinking(false);
+            logStep('EXPLICIT WEB SEARCH — INTERRUPTING UNGROUNDED RESPONSE', 'ok');
+          }
           if (isSignalChaptersCommand(currentUserTranscriptRef.current)) {
             currentUserTranscriptRef.current = '';
+            fullVoiceTranscriptRef.current = '';
             currentResponseText.current = '';
             chapterCommandPendingRef.current = !msg.serverContent.turnComplete;
             interruptResponseRef.current();
@@ -1003,9 +1039,9 @@ const OracleConversation = forwardRef(
 
         const parts = msg.serverContent?.modelTurn?.parts || [];
         for (const part of parts) {
-          if (!personaOverridePendingRef.current && part.text && part.thought !== true) currentResponseText.current += part.text;
+          if (!personaOverridePendingRef.current && !groundingRequestPendingRef.current && part.text && part.thought !== true) currentResponseText.current += part.text;
           if (part.inlineData?.mimeType === 'audio/pcm;rate=24000') {
-            if (personaOverridePendingRef.current) continue;
+            if (personaOverridePendingRef.current || groundingRequestPendingRef.current) continue;
             // Lyria owns the speakers once playback starts. Gemini can still
             // finish an already-issued turn, but never let late PCM escape
             // into the music bed.
@@ -1075,6 +1111,28 @@ const OracleConversation = forwardRef(
           // Safety net for text-only turns (no audio chunk ever arrived) — commit
           // any buffered voice transcript before the oracle turn is recorded.
           commitUserTranscript();
+          const completeVoiceTranscript = fullVoiceTranscriptRef.current.trim();
+          fullVoiceTranscriptRef.current = '';
+          if (groundingRequestPendingRef.current) {
+            const groundedQuery = completeVoiceTranscript || currentUserTranscriptRef.current.trim();
+            groundingRequestPendingRef.current = false;
+            currentUserTranscriptRef.current = '';
+            currentResponseText.current = '';
+            pendingMusicPromptRef.current = null;
+            debugInfo.current.audioChunksReceived = 0;
+            wasInterruptedRef.current = false;
+            setOracleSpeaking(false);
+            setIsOracleThinking(false);
+            if (groundedQuery) void requestGroundedAnswer(groundedQuery);
+            return;
+          }
+          if (!pendingMusicPromptRef.current &&
+              isMusicGenerationRequest(completeVoiceTranscript) &&
+              (personaModeRef.current !== 'creative-director' ||
+                !isCreativeProductionRequest(completeVoiceTranscript) ||
+                isExplicitLyriaRequest(completeVoiceTranscript))) {
+            pendingMusicPromptRef.current = completeVoiceTranscript;
+          }
           // Wait until the complete turn boundary before dispatching music.
           // Input transcription can trail the first Oracle PCM chunk, so
           // dispatching earlier can send Lyria a truncated spoken brief.
@@ -1199,8 +1257,14 @@ const OracleConversation = forwardRef(
         setSeekerCount(seekerEntryCountRef.current);
         onSeekerProgressRef.current?.(seekerEntryCountRef.current, SEEKER_MAX);
         if (seekerEntryCountRef.current === SEEKER_MAX) playSignalLockedSfx();
-        const isCreativeBrief = personaModeRef.current === 'creative-director' && isCreativeProductionRequest(text) && !MUSIC_RETURN.test(text);
-        if (!isCreativeBrief) inspectMusicSignal(text);
+        if (isExplicitGroundingRequest(text)) {
+          interruptResponseRef.current();
+          void requestGroundedAnswer(text);
+          return;
+        }
+        const explicitLyria = isExplicitLyriaRequest(text);
+        const isCreativeBrief = personaModeRef.current === 'creative-director' && isCreativeProductionRequest(text) && !MUSIC_RETURN.test(text) && !explicitLyria;
+        if (!isCreativeBrief && inspectMusicSignal(text)) return;
         if (isCreativeBrief) {
           logStep('CREATIVE REQUEST DETECTED (typed) — ROUTING TO DISPATCH', 'ok');
           onCreativeRequestRef.current?.(text);
@@ -1251,6 +1315,7 @@ const OracleConversation = forwardRef(
        sessionBootedRef,
     } = geminiSession;
     interruptResponseRef.current = interruptResponse;
+    sendHiddenGroundingRef.current = (text) => sendText(text, true);
 
     // Additive vision feed — streams periodic camera snapshots into the same
     // Gemini Live session over `wsRef`, gated on `sessionBootedRef` (not

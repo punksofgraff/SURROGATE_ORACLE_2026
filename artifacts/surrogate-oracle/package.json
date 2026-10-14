@@ -15,6 +15,7 @@
     "xr-bridge-contract-test": "tsx scripts/xr-bridge-contract.test.ts",
     "persona-verify": "node scripts/oracle-persona-contract-verify.mjs",
     "first-turn-copilot-verify": "node scripts/oracle-first-turn-copilot-verify.mjs",
+    "request-routing-test": "tsx scripts/oracle-request-routing.test.ts",
     "fresh-dormant-verify": "node scripts/oracle-fresh-dormant-verify.mjs",
     "presence-entry-verify": "node scripts/oracle-presence-entry-verify.mjs",
     "wallet-return-pressure": "node scripts/oracle-wallet-return-pressure.mjs",

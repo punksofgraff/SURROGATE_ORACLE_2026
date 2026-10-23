@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { emitConversion } from '../lib/parentTelemetry';
 import type { RefObject } from 'react';
 import { supabase } from '../lib/supabase';
 import { logStep } from '../components/CodeAuditor';
@@ -148,6 +149,7 @@ export function useWalletBridge({
     setShowJourneyLimitGate(false);
     logStep('WALLET SIGNED — ALLEY RETURN ENABLED', 'ok');
     traceEvent('bridge', { kind: 'sign_in_processed', has_address: !!walletAddress, phase: scenePhase });
+    emitConversion('wallet_connect'); // parent embed relay (no address leaves the frame)
 
     // Transition BEFORE the async echo/merge work: the awaits below can take
     // seconds, during which the captured scenePhase goes stale — the seeker was

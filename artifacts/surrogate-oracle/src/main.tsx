@@ -3,6 +3,7 @@ import { Component, type ReactNode } from "react";
 import App from "./App";
 import "./index.css";
 import type { OracleRuntimeError } from "./types/oracle-window";
+import { installParentTelemetry } from "./lib/parentTelemetry";
 // The smoke runner and the browser must normalize the same malformed values.
 // @ts-ignore -- the shared JS helper is intentionally executable by Node too.
 import { normalizeRuntimeError } from "../scripts/oracle-runtime-evidence.mjs";
@@ -96,5 +97,8 @@ if (_sp.has('reset')) {
   ['oracle_scene_phase','oracle_selected_knife_question','oracle_selected_knife_index','oracle_canvas_warmed'].forEach(k => sessionStorage.removeItem(k));
   window.location.replace('/?newuser');
 }
+
+// Opt-in engagement relay for a SNEAKAR parent embed (?embed=sneakarcade + allowlisted parent origin only).
+installParentTelemetry();
 
 createRoot(document.getElementById("root")!).render(<RootBoundary><App /></RootBoundary>);
